@@ -26,7 +26,7 @@ argument-hint: "[scope]（可选，默认 git diff main..HEAD）"
 
 ### 2. 并行审查
 
-**Phase 3 启用**：主 Agent 在一条消息里并行调用 7 个专项 checker Agent + 1 综合 reviewer：
+主 Agent 在一条消息里并行调用 7 个专项 checker Agent + 1 综合 reviewer：
 
 - `design-consistency-checker`
 - `security-checker`
@@ -35,9 +35,8 @@ argument-hint: "[scope]（可选，默认 git diff main..HEAD）"
 - `error-handling-checker`
 - `auxiliary-spec-checker`
 - `performance-checker`
-- `code-quality-reviewer`（综合裁决）
 
-**Phase 2b 降级**：上述 Agent 未就位时，主 Agent 按 7 个维度**顺序**做审查（每维度摘要 < 200 字）。由 `code-review-report` Skill 在报告中标注"⚠️ 未运行独立 checker Agent，主 Agent 顺序审查"。
+所有 checker 返回后，调用 `code-quality-reviewer` 做综合裁决（输入 = 7 份 checker 结果，不读源码）。
 
 ### 3. 报告：`code-review-report` Skill
 
