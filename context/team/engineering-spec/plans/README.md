@@ -8,7 +8,7 @@
 | 2a | 10 Skill（伞形 + 专项） | [phase-2a-skills](./2026-04-20-phase-2a-skills.md) | ✅ 已完成（11 Tasks · 分支 `setup/phase-2a-skills`） |
 | 2b | 16 Command + 集成验证 | [phase-2b-commands](./2026-04-20-phase-2b-commands.md) | ✅ 已完成（6 Tasks · 分支 `setup/phase-2b-commands`） |
 | 3 | 20 Agent | [phase-3-agents](./2026-04-20-phase-3-agents.md) | ✅ 已完成（6 Tasks · 分支 `setup/phase-3-agents`） |
-| 4 | 集成验收 + Phase 1 示例需求跑通 | 待 Phase 3 完成后撰写 | ⏸ 未开始 |
+| 4 | 集成验收 + 示例需求跑通 | [phase-4-integration](./2026-04-20-phase-4-integration.md) | ✅ 已完成（REQ-2026-001 端到端通过 / 5 个缺口已处理） |
 
 ## 执行原则
 
