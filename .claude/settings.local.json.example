@@ -1,0 +1,8 @@
+{
+  "// 说明": "这是个人级覆盖模板。复制为 settings.local.json（已 gitignore）后按需修改。",
+  "model": "sonnet",
+  "env": {
+    "// 示例": "设置自定义环境变量供 Hook 使用",
+    "// CLAUDE_PROTECTED_BRANCHES": "main,master,release"
+  }
+}
