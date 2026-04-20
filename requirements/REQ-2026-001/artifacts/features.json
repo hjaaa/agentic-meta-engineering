@@ -1,0 +1,12 @@
+{
+  "features": [
+    {
+      "id": "F-001",
+      "title": "在 CLAUDE.md 注入 Common Pitfalls 段",
+      "description": "新增 ## Common Pitfalls 段，5 条坑，每条症状/原因/修复",
+      "interfaces": [],
+      "dependencies": ["CLAUDE.md"],
+      "notes": "位置在'未实现清单'段后、'反馈'段前"
+    }
+  ]
+}

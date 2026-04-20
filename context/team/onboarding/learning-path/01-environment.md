@@ -17,6 +17,16 @@
 5. 输入：`读一下 README.md 告诉我这个仓库是做什么的`
 6. 输入：`状态行显示了什么？`
 
+## 环境依赖
+
+骨架的 Hook / 门禁脚本依赖以下 Python 包：
+
+```bash
+pip install pyyaml
+```
+
+无 pyyaml 时 meta.yaml 解析会失败，门禁脚本会报错。Homebrew 或系统 Python 都可安装。
+
 ## MCP 配置（可选）
 
 本仓库默认启用 `context7`（库文档）、`chrome-devtools`（浏览器自动化）。其他 MCP（Jira / 飞书 / 企业 Wiki）未配置，需要时按以下步骤：
