@@ -39,3 +39,10 @@
 2026-04-20T06:59:32Z [tech-research] tool=Bash
 2026-04-20T15:25:00Z [tech-research] feasibility-assessor 结论 high，1 人天
 2026-04-20T06:59:35Z [tech-research] tool=Bash
+2026-04-20T06:59:42Z [tech-research] tool=Bash
+2026-04-20T07:00:20Z [tech-research] tool=Bash
+2026-04-20T07:00:28Z [tech-research] tool=Bash
+2026-04-20T07:00:33Z [outline-design] tool=Bash
+2026-04-20T07:00:42Z [outline-design] tool=Write
+2026-04-20T15:30:00Z [phase-transition] tech-research → outline-design
+2026-04-20T15:35:00Z [outline-design] approved（3 条关键决策记录）

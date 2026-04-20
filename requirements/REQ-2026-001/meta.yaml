@@ -1,6 +1,6 @@
 id: REQ-2026-001
-title: "\u6DFB\u52A0\u9AA8\u67B6\u4F7F\u7528 Common Pitfalls"
-phase: tech-research
+title: 添加骨架使用 Common Pitfalls
+phase: outline-design
 created_at: 2026-04-20 15:00:00+00:00
 branch: setup/phase-4-integration
 project: agentic-meta
@@ -10,3 +10,5 @@ gates_passed:
   at: '2026-04-20T15:05:00Z'
 - phase: tech-research
   at: '2026-04-20T15:25:00Z'
+- phase: tech-research
+  at: '2026-04-20T15:30:00Z'
