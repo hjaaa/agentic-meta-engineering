@@ -46,3 +46,15 @@
 2026-04-20T07:00:42Z [outline-design] tool=Write
 2026-04-20T15:30:00Z [phase-transition] tech-research → outline-design
 2026-04-20T15:35:00Z [outline-design] approved（3 条关键决策记录）
+2026-04-20T07:00:48Z [outline-design] tool=Bash
+2026-04-20T07:00:55Z [outline-design] tool=Bash
+2026-04-20T07:00:59Z [outline-design] tool=Bash
+2026-04-20T07:01:37Z [outline-design] tool=Bash
+2026-04-20T07:01:44Z [detail-design] tool=Bash
+2026-04-20T07:01:58Z [detail-design] tool=Write
+2026-04-20T07:02:01Z [detail-design] tool=Write
+2026-04-20T07:02:05Z [detail-design] tool=Bash
+2026-04-20T15:40:00Z [phase-transition] outline-design → detail-design
+2026-04-20T15:45:00Z [detail-design] detailed-design.md + features.json 已生成
+2026-04-20T15:45:00Z [detail-design] approved（1 feature: F-001）
+2026-04-20T07:02:08Z [detail-design] tool=Bash
