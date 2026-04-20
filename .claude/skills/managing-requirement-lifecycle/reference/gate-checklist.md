@@ -40,8 +40,8 @@
 - [ ] 每个 feature_id 状态为 `done`
 - [ ] 每个 feature_id 有对应的代码审查报告（`artifacts/review-*.md` 提到）
 - [ ] 所有代码已 commit（无 uncommitted changes）
+- [ ] `traceability-gate-checker` Skill PASS（追溯链完整性校验，见设计规范 §4.2）
 
 ## testing → completed
 
 - [ ] `artifacts/test-report.md` 存在
-- [ ] `traceability-gate-checker` Skill PASS

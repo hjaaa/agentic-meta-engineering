@@ -50,8 +50,20 @@ head_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).stri
 base_sha = subprocess.check_output(["git", "rev-parse", base], text=True).strip()
 branch = subprocess.check_output(["git", "branch", "--show-current"], text=True).strip()
 
-stat = subprocess.check_output(["git", "diff", "--shortstat", f"{base}...HEAD"], text=True)
+import re
+stat = subprocess.check_output(["git", "diff", "--shortstat", f"{base}...HEAD"], text=True).strip()
 diff = subprocess.check_output(["git", "diff", "--stat", f"{base}...HEAD"], text=True)
+
+# 解析 shortstat（形如 "12 files changed, 320 insertions(+), 45 deletions(-)"）
+def _parse(pattern, text, default=0):
+    m = re.search(pattern, text)
+    return int(m.group(1)) if m else default
+
+stats = {
+    "files_changed": _parse(r"(\d+) files? changed", stat),
+    "insertions":    _parse(r"(\d+) insertions?\(\+\)", stat),
+    "deletions":     _parse(r"(\d+) deletions?\(-\)", stat),
+}
 
 scope = {
     "mode": "standalone",
@@ -60,12 +72,12 @@ scope = {
     "base_branch": base,
     "current_branch": branch,
     "services": [],
-    "stats": {"raw": stat.strip()},
+    "stats": stats,
     "diff_summary": diff.strip(),
     "timestamp": datetime.now(timezone.utc).isoformat()
 }
 with open(".review-scope.json", "w") as f:
     json.dump(scope, f, indent=2, ensure_ascii=False)
-print(f".review-scope.json written ({scope['stats']['raw']})")
+print(f".review-scope.json written ({stats['files_changed']} files / +{stats['insertions']} -{stats['deletions']})")
 EOF
 ```

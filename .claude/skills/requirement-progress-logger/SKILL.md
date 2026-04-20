@@ -22,7 +22,7 @@ description: 追加进度日志到 requirements/<id>/process.txt。追加式（a
    ```
    例：
    ```
-   2026-04-20T11:02:08Z [review:pending] requirement-quality-reviewer 结论 needs_revision（3 条 major）
+   2026-04-20T11:02:08Z [review:needs_revision] requirement-quality-reviewer 3 条 major
    2026-04-20T11:16:00Z [phase-transition] definition → tech-research
    ```
 
