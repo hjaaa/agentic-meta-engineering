@@ -78,6 +78,37 @@ Phase 2（Commands + Skills）和 Phase 3（Agents）未开始。
 - [ ] Phase 3 — Agents 20 个
 - [ ] Phase 4 — 集成验收（跑通一个小需求）
 
+## Common Pitfalls
+
+<!-- @feature:F-001 -->
+
+新人使用骨架时最容易踩的 5 个坑。每条按「症状 / 原因 / 修复」三段式。
+
+### 1. 在 main 分支直接 Edit 被 Hook 拦截
+- **症状**：执行 Edit / Write 工具报错 "禁止在受保护分支..."
+- **原因**：`.claude/hooks/protect-branch.sh` 对 Edit/Write 在 main/master 分支做阻塞
+- **修复**：切到 feature 分支再操作，或运行 `/requirement:new` 自动建分支
+
+### 2. `/note` 后 notes.md 没更新
+- **症状**：跑完 `/note` 后 ls 不到对应文件的新行
+- **原因**：当前分支没匹配到 `requirements/*/meta.yaml` 的 branch 字段
+- **修复**：先 `/requirement:new` 或 `/requirement:continue` 绑定到某个需求
+
+### 3. Command 超过 100 行或 SKILL.md 超过 2k token
+- **症状**：新写的 Command / Skill 行为不稳定
+- **原因**：违反 `context/team/engineering-spec/tool-design-spec/` 的硬约束
+- **修复**：Command 拆到委托 Skill；Skill 内容拆到 `reference/`
+
+### 4. 需求文档写了"看起来合理"但无来源的事实
+- **症状**：`requirement-quality-reviewer` 返回 `needs_revision`
+- **原因**：违反刨根问底三态（有引用 / 待确认 / 待补充），出现了第四态"无来源但合理"
+- **修复**：按 `.claude/skills/requirement-doc-writer/reference/sourcing-rules.md` 补标注
+
+### 5. /code-review 审查范围 > 2000 行被拒绝
+- **症状**：`/code-review` 预检阶段终止并提示"范围过大"
+- **原因**：`code-review-prepare` 硬约束不审超 2000 行 diff
+- **修复**：按 feature_id 拆分提交，或 `/requirement:rollback` 回前阶段重新拆
+
 ## 反馈
 
 `/agentic:feedback`（Phase 2 后可用）写入 `context/team/feedback-log.yaml`。
