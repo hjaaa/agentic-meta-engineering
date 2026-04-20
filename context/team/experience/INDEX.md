@@ -22,3 +22,10 @@
 - 文件名 `kebab-case.md`，描述具体场景（如 `mysql-lock-wait-timeout-in-long-transaction.md`）
 - 正文不超过 200 字
 - 必须包含：问题、根因、解法、验证方法
+
+## 已有经验文档
+
+| 文件 | 场景 | 沉淀时间 |
+|---|---|---|
+| `markdown-section-iteration.md` | 用 awk 遍历 Markdown 同级 section 的首尾边界问题 | 2026-04-20 |
+| `phase-4-deferred-issues.md` | Phase 4 集成验收中未立即修复的 2 个观察项（G-02 Agent Task tool 调用、G-06 .review-scope.json gitignore） | 2026-04-20 |
