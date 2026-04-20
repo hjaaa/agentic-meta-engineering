@@ -80,6 +80,8 @@ Phase 2（Commands + Skills）和 Phase 3（Agents）未开始。
 
 ## Common Pitfalls
 
+> 最近更新：2026-04-20
+
 <!-- @feature:F-001 -->
 
 新人使用骨架时最容易踩的 5 个坑。每条按「症状 / 原因 / 修复」三段式。
