@@ -24,6 +24,16 @@ bootstrap → definition → tech-research → outline-design → detail-design
 
 回退允许跨阶段，但必须执行回退流程（归档 artifacts + 写 notes.md）。
 
+## 特殊分支场景
+
+以下分支名前缀为例外，不要求匹配 `feat/req-*` 模式：
+
+- `setup/*` — 骨架搭建或集成验收（如 Phase 4 的 `setup/phase-4-integration`）
+- `fix/*` — 紧急修复
+- `release/*` — 发版
+
+这些分支下创建的需求，`meta.yaml.branch` 字段应记录**实际分支名**，以保持 Hook 和 StatusLine 的匹配。Skill 的门禁校验对分支前缀不做强制限制，只校验"`meta.yaml.branch == 当前分支`"。
+
 ## 各阶段必产出
 
 | 阶段 | 必备 artifacts |
