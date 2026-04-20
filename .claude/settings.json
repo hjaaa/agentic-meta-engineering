@@ -41,9 +41,5 @@
         "hooks": [{"type": "command", "command": ".claude/hooks/stop-session-save.sh"}]
       }
     ]
-  },
-  "statusLine": {
-    "type": "command",
-    "command": ".claude/statusline.sh"
   }
 }
