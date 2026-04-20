@@ -1,6 +1,6 @@
 id: REQ-2026-001
 title: 添加骨架使用 Common Pitfalls
-phase: development
+phase: completed
 created_at: 2026-04-20 15:00:00+00:00
 branch: setup/phase-4-integration
 project: agentic-meta
@@ -18,3 +18,7 @@ gates_passed:
   at: '2026-04-20T15:50:00Z'
 - phase: task-planning
   at: '2026-04-20T16:00:00Z'
+- phase: development
+  at: '2026-04-20T16:20:00Z'
+- phase: testing
+  at: '2026-04-20T16:35:00Z'
