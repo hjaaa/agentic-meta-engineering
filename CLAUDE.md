@@ -2,6 +2,13 @@
 
 本仓库是 Agentic Engineering 工程骨架。克隆即具备骨架能力，按 `context/team/onboarding/agentic-engineer-guide.md` 上手。
 
+## 仓库布局
+
+- `.claude/` — Commands / Skills / Agents / Hooks 定义（工具层）
+- `context/team/` — 团队通用知识（规范、协作准则、onboarding）
+- `context/project/<X>/` — 项目 X 专属知识（按需创建）
+- `requirements/<REQ-ID>/` — 单个需求的全周期产出（meta / artifacts / notes）
+
 ## 常用入口
 
 | 想做什么 | 用什么 |
