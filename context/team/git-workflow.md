@@ -29,12 +29,12 @@
 
 ### 首次启用 develop（仓库初始化）
 
-`scripts/migrate-to-develop.sh` 给出一次性迁移命令。核心操作：
+克隆本仓库即自带 develop。**从零搭建**新仓库时按以下步骤启用：
 
 ```bash
 git checkout -b develop main
 git push -u origin develop
-# GitHub 仓库设置 → Default branch 改为 develop
+gh api -X PATCH repos/<owner>/<repo> -f default_branch=develop
 ```
 
 ## 提交规范（Conventional Commits）
