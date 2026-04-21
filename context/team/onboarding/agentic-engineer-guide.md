@@ -58,6 +58,7 @@
 ## 哪里遇到问题
 
 1. 先运行 `/agentic:help` 看 FAQ
-2. 读 `ai-collaboration.md`
-3. 问有经验的同事
-4. `/agentic:feedback` 把问题提给团队（会写入 `context/team/feedback-log.yaml`）
+2. 查 [`common-pitfalls.md`](common-pitfalls.md) — 新人最容易踩的 7 个坑
+3. 读 `ai-collaboration.md`
+4. 问有经验的同事
+5. `/agentic:feedback` 把问题提给团队（会写入 `context/team/feedback-log.yaml`）
