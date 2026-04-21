@@ -7,14 +7,14 @@ argument-hint: <需求标题>
 
 开始一个新需求开发周期。会创建：
 
-- 新分支 `feat/req-<ID>`（从 main 切出）
+- 新分支 `feat/req-<ID>`（优先从 `develop` 切出，仓库未启用 develop 时降级到 `main`）
 - 需求目录 `requirements/<ID>/`
 - 骨架文件：`meta.yaml` / `plan.md` / `process.txt`（空）/ `notes.md`（空）
 
 ## 预检
 
 1. 工作目录 clean（无 uncommitted changes）：`git status --porcelain` 为空
-2. 当前分支为 `main` 或其他起点分支（不能从某个既有 feat/req-* 派生）
+2. 当前分支为起点分支（`develop` / `main` / `master`），不能从某个既有 `feat/req-*` 派生
 3. 参数 `<需求标题>` 非空
 
 预检不通过立即返回错误并终止。
