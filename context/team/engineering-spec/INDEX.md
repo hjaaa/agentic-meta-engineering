@@ -17,6 +17,7 @@
 ## 迭代方式
 
 - [`iteration-sop.md`](iteration-sop.md) — 项目迭代 SOP
+- [`roadmap.md`](roadmap.md) — 骨架当前能力快照 + 未实现缺口
 
 ## 历史设计文档
 
