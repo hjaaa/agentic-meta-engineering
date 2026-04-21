@@ -113,9 +113,9 @@ Phase 2（Commands + Skills）和 Phase 3（Agents）未开始。
 
 ### 6. PR 目标分支错选 main
 - **症状**：`/requirement:submit` 开出的 PR target 是 main，绕过了 develop 的集成验证
-- **原因**：`meta.yaml.base_branch` 缺失或被手动改成 main；或仓库尚未执行 `scripts/migrate-to-develop.sh`
+- **原因**：`meta.yaml.base_branch` 缺失或被手动改成 main；或仓库尚未启用 develop 分支
 - **修复**：
-  - 仓库未启用 develop：先跑 `bash scripts/migrate-to-develop.sh --apply --push`
+  - 仓库未启用 develop：按 `context/team/git-workflow.md` "首次启用 develop" 小节执行
   - 已启用：`/requirement:submit --target develop` 显式指定，或修正 `meta.yaml.base_branch`
 
 ### 7. `/requirement:submit` 反复失败说 "无审查报告"
