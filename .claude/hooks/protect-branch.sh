@@ -3,7 +3,7 @@
 set -euo pipefail
 
 # 受保护分支可通过环境变量覆盖
-PROTECTED=${CLAUDE_PROTECTED_BRANCHES:-"main,master"}
+PROTECTED=${CLAUDE_PROTECTED_BRANCHES:-"main,master,develop"}
 
 # 获取工具名：优先环境变量（便于测试），否则解析 stdin JSON
 TOOL=${CLAUDE_HOOK_TOOL_NAME:-}

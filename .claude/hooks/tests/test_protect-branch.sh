@@ -49,6 +49,23 @@ actual=$?
 set -e
 assert_exit 0 $actual "main + Read 应放行"
 
+# Test 4: develop 分支 + Edit → exit 2（新增：git-flow 集成分支也受保护）
+git checkout -q -b develop
+export CLAUDE_HOOK_TOOL_NAME="Edit"
+set +e
+bash -c "cd $TMPDIR && bash $OLDPWD/$HOOK"
+actual=$?
+set -e
+assert_exit 2 $actual "develop + Edit 应被阻止"
+
+# Test 5: develop + Read → exit 0（非写操作仍放行）
+export CLAUDE_HOOK_TOOL_NAME="Read"
+set +e
+bash -c "cd $TMPDIR && bash $OLDPWD/$HOOK"
+actual=$?
+set -e
+assert_exit 0 $actual "develop + Read 应放行"
+
 echo ""
 echo "Passed: $PASS / Failed: $FAIL"
 [ "$FAIL" = "0" ] || exit 1

@@ -48,9 +48,9 @@
 
 以下是文章原版有、本骨架**暂不实现**的能力，避免 Agent 假设它们存在：
 
-### Command 缺口（12 个）
+### Command 缺口（11 个）
 
-全为文章原版中对应内部业务的命令，本骨架未迁移。
+全为文章原版中对应内部业务的命令，本骨架未迁移。`/requirement:submit` 已于 2026-04-21 落地，不在缺口之列。
 
 ### Skill 缺口（17 个）
 
@@ -80,16 +80,16 @@ Phase 2（Commands + Skills）和 Phase 3（Agents）未开始。
 
 ## Common Pitfalls
 
-> 最近更新：2026-04-20
+> 最近更新：2026-04-21
 
 <!-- @feature:F-001 -->
 
-新人使用骨架时最容易踩的 5 个坑。每条按「症状 / 原因 / 修复」三段式。
+新人使用骨架时最容易踩的 7 个坑。每条按「症状 / 原因 / 修复」三段式。
 
-### 1. 在 main 分支直接 Edit 被 Hook 拦截
+### 1. 在 main / develop 分支直接 Edit 被 Hook 拦截
 - **症状**：执行 Edit / Write 工具报错 "禁止在受保护分支..."
-- **原因**：`.claude/hooks/protect-branch.sh` 对 Edit/Write 在 main/master 分支做阻塞
-- **修复**：切到 feature 分支再操作，或运行 `/requirement:new` 自动建分支
+- **原因**：`.claude/hooks/protect-branch.sh` 对 Edit/Write 在 **main / master / develop** 分支做阻塞
+- **修复**：切到 feature 分支再操作，或运行 `/requirement:new` 自动建分支（默认从 develop 派生）
 
 ### 2. `/note` 后 notes.md 没更新
 - **症状**：跑完 `/note` 后 ls 不到对应文件的新行
@@ -110,6 +110,18 @@ Phase 2（Commands + Skills）和 Phase 3（Agents）未开始。
 - **症状**：`/code-review` 预检阶段终止并提示"范围过大"
 - **原因**：`code-review-prepare` 硬约束不审超 2000 行 diff
 - **修复**：按 feature_id 拆分提交，或 `/requirement:rollback` 回前阶段重新拆
+
+### 6. PR 目标分支错选 main
+- **症状**：`/requirement:submit` 开出的 PR target 是 main，绕过了 develop 的集成验证
+- **原因**：`meta.yaml.base_branch` 缺失或被手动改成 main；或仓库尚未执行 `scripts/migrate-to-develop.sh`
+- **修复**：
+  - 仓库未启用 develop：先跑 `bash scripts/migrate-to-develop.sh --apply --push`
+  - 已启用：`/requirement:submit --target develop` 显式指定，或修正 `meta.yaml.base_branch`
+
+### 7. `/requirement:submit` 反复失败说 "无审查报告"
+- **症状**：预检报 `artifacts/code-review-reports/` 为空
+- **原因**：尚未跑过 `/code-review`，或报告落在了其他路径
+- **修复**：先 `/code-review` 生成报告，确认路径为 `artifacts/code-review-reports/*.md`
 
 ## 反馈
 

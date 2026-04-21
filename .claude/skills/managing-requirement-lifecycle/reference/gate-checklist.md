@@ -45,3 +45,17 @@
 ## testing → completed
 
 - [ ] `artifacts/test-report.md` 存在
+
+## /requirement:submit 前置门禁（不改变 phase，只记录 PR）
+
+submit 不是阶段切换，而是在 `development` 或 `testing` 阶段内部的一次"推送 + 开 PR"动作。失败则阻止提交，不污染 meta.yaml。
+
+- [ ] 当前分支 = `meta.yaml.branch`
+- [ ] 当前 phase ∈ {`development`, `testing`}（禁止更早阶段提 PR）
+- [ ] 工作区干净（`git status --porcelain` 为空）
+- [ ] 本地有领先 origin 的 commit（`git log origin/<branch>..HEAD` 非空，或分支尚未推送过）
+- [ ] `artifacts/code-review-reports/` 存在且至少一份报告，且报告无 `severity: blocker`
+- [ ] `gh auth status` 成功（未登录无法开 PR）
+- [ ] base 分支在远端可用（`git ls-remote --exit-code origin <base>`）
+  - base 取值顺序：`--target` 参数 > `meta.yaml.base_branch` > `develop`（仓库已启用）> `main`
+- [ ] 若存在已打开的同分支 PR，改为 `gh pr edit` 更新正文，不重复开新 PR
