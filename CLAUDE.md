@@ -30,11 +30,6 @@
 
 详见 @context/team/engineering-spec/design-guidance/context-engineering.md
 
-## 通信与代码规范
-
-- 沟通与说明：简体中文
-- 代码注释：简体中文
-
 ## 和 AI 协作的基本法
 
 @context/team/ai-collaboration.md
