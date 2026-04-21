@@ -2,6 +2,18 @@
 
 本仓库是 Agentic Engineering 工程骨架。克隆即具备骨架能力，按 `context/team/onboarding/agentic-engineer-guide.md` 上手。
 
+## 常用入口
+
+| 想做什么 | 用什么 |
+|---|---|
+| 开一个新需求 | `/requirement:new <标题>` |
+| 恢复之前的需求 | `/requirement:continue` |
+| 看当前阶段/进度 | `/requirement:status` |
+| 做代码审查 | `/code-review` |
+| 提 PR | `/requirement:submit` |
+
+全量命令见 `.claude/commands/`；详细 SOP 见 `context/team/onboarding/agentic-engineer-guide.md`。
+
 ## 四条硬原则
 
 1. **文档即记忆**：人和 AI 读同一份 Markdown
@@ -62,21 +74,22 @@
 
 ### Agent 缺口（2 个）
 
-文章 5.1 图表之外的阶段级 Agent。本骨架的 20 个已覆盖所有明确图表中的 Agent。
+文章 5.1 图表之外的阶段级 Agent。本骨架的 21 个已覆盖所有明确图表中的 Agent（含 Phase 4 新增 `history-context-checker`）。
 
 ### MCP 缺口
 
 - Jira / 飞书 / DingTalk 替换：未开箱
 - 内部 TAPD / iWiki / 企微：无法外部重建
 
-## 开发中阶段状态
+## 骨架能力清单
 
-当前 Phase 1 完成：基础设施 + 上下文文档。
-Phase 2（Commands + Skills）和 Phase 3（Agents）未开始。
+Phase 1-4 已完成（截至 2026-04-21，REQ-2026-001 端到端验收通过）。
 
-- [ ] Phase 2 — Commands 16 个 + Skills 10 个
-- [ ] Phase 3 — Agents 20 个
-- [ ] Phase 4 — 集成验收（跑通一个小需求）
+- Commands：16 个（`.claude/commands/`，含 `requirement:* / knowledge:* / agentic:* / code-review / note`）
+- Skills：10 个（`.claude/skills/`）
+- Agents：21 个（`.claude/agents/`）
+- Hooks：3 个（`protect-branch` / `auto-progress-log` / `stop-session-save`）
+- MCP：见 `.mcp.json`（默认启用 context7、chrome-devtools 等）
 
 ## Common Pitfalls
 
@@ -125,4 +138,4 @@ Phase 2（Commands + Skills）和 Phase 3（Agents）未开始。
 
 ## 反馈
 
-`/agentic:feedback`（Phase 2 后可用）写入 `context/team/feedback-log.yaml`。
+`/agentic:feedback` 写入 `context/team/feedback-log.yaml`。
