@@ -26,7 +26,7 @@ argument-hint: "[scope]（可选，默认 git diff main..HEAD）"
 
 ### 2. 并行审查
 
-主 Agent 在一条消息里并行调用 7 个专项 checker Agent + 1 综合 reviewer：
+主 Agent 在一条消息里并行调用 8 个专项 checker Agent + 1 综合 reviewer：
 
 - `design-consistency-checker`
 - `security-checker`
@@ -35,8 +35,9 @@ argument-hint: "[scope]（可选，默认 git diff main..HEAD）"
 - `error-handling-checker`
 - `auxiliary-spec-checker`
 - `performance-checker`
+- `history-context-checker`
 
-所有 checker 返回后，调用 `code-quality-reviewer` 做综合裁决（输入 = 7 份 checker 结果，不读源码）。
+所有 checker 返回后，调用 `code-quality-reviewer` 做综合裁决（输入 = 8 份 checker 结果，不读源码）。
 
 ### 3. 报告：`code-review-report` Skill
 

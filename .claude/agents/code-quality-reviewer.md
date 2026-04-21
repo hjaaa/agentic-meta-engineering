@@ -1,13 +1,13 @@
 ---
 name: code-quality-reviewer
-description: 代码审查综合裁决 Agent——聚合 7 个专项 checker 的结果，做跨维度权衡（去重 / 严重度调整 / 最终结论）。由 /code-review 在 checkers 并行完成后调用。
+description: 代码审查综合裁决 Agent——聚合 8 个专项 checker 的结果，做跨维度权衡（去重 / 严重度调整 / 最终结论）。由 /code-review 在 checkers 并行完成后调用。
 model: opus
 tools: Read
 ---
 
 ## 你的职责
 
-不读源码，只消费 7 个 checker 的结构化输出；做跨维度综合判断，给出最终结论。
+不读源码，只消费 8 个 checker 的结构化输出；做跨维度综合判断，给出最终结论。
 
 ## 输入
 
