@@ -1,17 +1,18 @@
-# 实施计划索引
+# 实施计划目录
 
-按文章"每个 Phase 结束都是一个可用状态"的原则拆分。每个 Phase 对应一份独立的 plan 文档。
+本目录放**正在进行**的 Phase plan。每个 Phase 对应一份独立文档，完成后归档到 `history/`。
 
-| Phase | 范围 | Plan 文档 | 状态 |
-|---|---|---|---|
-| 1 | 基础设施 + 上下文文档（root configs / hooks / statusline / 完整 context/ 树） | [phase-1-foundation](./2026-04-20-phase-1-foundation.md) | ✅ 已完成（20 Tasks · 合入 `setup/phase-1-foundation`） |
-| 2a | 10 Skill（伞形 + 专项） | [phase-2a-skills](./2026-04-20-phase-2a-skills.md) | ✅ 已完成（11 Tasks · 分支 `setup/phase-2a-skills`） |
-| 2b | 16 Command + 集成验证 | [phase-2b-commands](./2026-04-20-phase-2b-commands.md) | ✅ 已完成（6 Tasks · 分支 `setup/phase-2b-commands`） |
-| 3 | 20 Agent | [phase-3-agents](./2026-04-20-phase-3-agents.md) | ✅ 已完成（6 Tasks · 分支 `setup/phase-3-agents`） |
-| 4 | 集成验收 + 示例需求跑通 | [phase-4-integration](./2026-04-20-phase-4-integration.md) | ✅ 已完成（REQ-2026-001 端到端通过 / 5 个缺口已处理） |
+## 当前进行中
+
+_暂无进行中的 Phase plan_
+
+## 已归档
+
+骨架建设期（Phase 1–4）的计划文档见 [`history/INDEX.md`](./history/INDEX.md)。
 
 ## 执行原则
 
 1. 一次只执行一个 Phase，完成后再写下一个 Phase 的 plan
 2. 每个 Phase 内部按 task 顺序执行，每个 task 单独 commit
 3. Phase 完成后做一次整体 review，通过才进下一 Phase
+4. Phase 完成并合入 main 后，把 plan 文档 `git mv` 到 `history/`
