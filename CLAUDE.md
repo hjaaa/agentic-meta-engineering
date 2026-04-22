@@ -19,7 +19,13 @@
 | 做代码审查 | `/code-review` |
 | 提 PR | `/requirement:submit` |
 
-全量命令见 `.claude/commands/`；详细 SOP 见 `context/team/onboarding/agentic-engineer-guide.md`。
+全量命令见 `.claude/commands/`；详细 SOP 见 `context/team/onboarding/agentic-engineer-guide.md`。需求按 8 阶段推进（初始化 → 需求定义 → 技术预研 → 概要设计 → 详细设计 → 任务规划 → 开发实施 → 测试验收），`/requirement:next` 逐阶段切换并触发门禁。
+
+## 自动机制（Hook）
+
+- `protect-branch` — 在 `main/master/develop` 上直接做 Edit/Write/Bash 写操作会被阻断；改代码前先切 feature 分支
+- `auto-progress-log` — 当前需求的 `process.txt` 由 Hook 自动追加，不要手工维护
+- `stop-session-save` — 会话结束自动打 `SESSION_END` 标记，支撑 `/requirement:continue` 跨会话恢复
 
 ## 四条硬原则
 
@@ -41,6 +47,7 @@
 
 ## 体系自身
 
+- 知识库根索引：`context/INDEX.md`（渐进式检索的第一跳）
 - 设计指导：`context/team/engineering-spec/design-guidance/`（四层架构 / 上下文工程 / 复利工程）
 - 工具规范：`context/team/engineering-spec/tool-design-spec/`（Command / Skill / Subagent）
 - 迭代 SOP：`context/team/engineering-spec/iteration-sop.md`
