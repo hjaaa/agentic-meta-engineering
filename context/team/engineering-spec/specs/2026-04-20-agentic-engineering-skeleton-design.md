@@ -108,7 +108,7 @@ agenticMetaEngineering/
 │   │   └── stop-session-save.sh
 │   └── statusline.sh
 │
-├── .mcp.json                          # MCP 配置（公开 MCP 开箱 + 内部占位）
+├── .mcp.json.example                  # MCP 候选模板（默认不启用；cp 为 .mcp.json 后生效，已 gitignore）
 │
 ├── context/                           # 【长期记忆：知识库】
 │   ├── INDEX.md
@@ -531,8 +531,9 @@ gates_passed:                   # 门禁历史
 
 ### 7.5 `.mcp.json` 策略
 
-- **开箱启用**：`context7`（库文档）、`chrome-devtools`（浏览器自动化）
-- **占位**：`jira` / `wiki` / `notifier`（对应原文 TAPD / iWiki / 企微），以 JSON 注释形式保留，需替换真实 endpoint 后启用
+- **默认不启用**：仓库只提供 `.mcp.json.example` 作为候选模板，避免 `git clone` 后被动触发 `npx` 拉包和 Chromium 下载。`.mcp.json` 已 gitignore
+- **候选内容**：`context7`（库文档）、`chrome-devtools`（浏览器自动化）——用户按需 `cp .mcp.json.example .mcp.json` 并裁剪
+- **占位**：`jira` / `wiki` / `notifier`（对应原文 TAPD / iWiki / 企微），以 JSON 注释形式保留在模板里，需替换真实 endpoint 后启用
 
 ### 7.6 开箱体验对照表
 

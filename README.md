@@ -38,4 +38,4 @@
 - `.claude/` — Claude Code 扩展（Command / Skill / Agent / Hook / StatusLine）
 - `context/` — 知识库（team / project / engineering-spec）
 - `requirements/` — 需求产出物（全部入库）
-- `.mcp.json` — MCP 配置（公开 MCP 开箱，内部 MCP 占位）
+- `.mcp.json.example` — MCP 配置模板（默认不启用；`cp` 为 `.mcp.json` 后生效，已 gitignore）
