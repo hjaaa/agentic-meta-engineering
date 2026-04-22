@@ -38,11 +38,21 @@ tools: Read, Write, Bash
 ## 行为准则
 
 - ❌ 禁止覆盖已有 `requirements/REQ-XXXX-NNN/`（冲突时递增序号）
-- ❌ 禁止写入 meta.yaml 之外的初始字段（title / phase / created_at / branch / base_branch / project / services:[] / gates_passed:[] / pr_url / pr_number 十个）
+- ❌ 禁止为语义组字段填值——`feature_area / change_type / affected_modules / tags` 留空（`""` 或 `[]`），由 definition 阶段补齐
+- ❌ 禁止为结果组字段填值——`outcome / completed_at / lessons_extracted` 留空/false，由 completed 阶段回写
+- ✅ 只填流程组 10 个字段：`id / title / phase=bootstrap / created_at / branch / base_branch / project / services:[] / gates_passed:[] / pr_url / pr_number`
 - ✅ REQ-ID 规则：`REQ-<YYYY>-<NNN>`，NNN 按当年 requirements/ 下序号 +1
 - ✅ 必须从模板生成：`.claude/skills/managing-requirement-lifecycle/templates/meta.yaml.tmpl` 和 `plan.md.tmpl`
 - ✅ 必须切分支并做一次 commit：`feat(req): bootstrap <REQ-ID>`
 - ✅ 分支名 = 小写 REQ-ID（替换 `_` 为 `-`）
+
+## meta.yaml 字段分组（完整 schema 见 `context/team/engineering-spec/meta-schema.yaml`）
+
+| 组 | 字段 | bootstrap 阶段动作 |
+|---|---|---|
+| 流程组 | id / title / phase / created_at / branch / base_branch / project / services / gates_passed / pr_url / pr_number | 生成并填充 |
+| 语义组 | feature_area / change_type / affected_modules / tags | 留空，提示 definition 阶段补齐 |
+| 结果组 | outcome / completed_at / lessons_extracted | 留空/false，completed 阶段回写 |
 
 ## 分支基点（base branch）选择
 
