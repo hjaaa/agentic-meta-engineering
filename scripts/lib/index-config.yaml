@@ -1,0 +1,39 @@
+# check-index.sh 的配置
+# 变更原则：ignore 白名单新增条目必须在 PR 里说明理由（避免"反正加到白名单就不告警了"）
+
+# ---------- 扫描根 ----------
+scan_roots:
+  - context/
+  - requirements/
+
+# ---------- 孤岛白名单 ----------
+# 以下 glob 匹配的文件，即使全局无任何 INDEX 引用也不算"孤岛"
+# 原因：它们属于"被上层逻辑/脚本消费"或"非主入口内容"
+ignore:
+  # 索引文件本身不需要被其他 INDEX 引用
+  - "**/INDEX.md"
+
+  # 根级说明文件（由 README / CLAUDE.md 本身担当入口角色）
+  - "CLAUDE.md"
+  - "README.md"
+
+  # 需求目录内部产物，由该需求的 plan.md / 工具消费
+  - "requirements/**/notes.md"
+  - "requirements/**/plan.md"
+  - "requirements/**/artifacts/**"
+  - "requirements/**/process.txt"
+  - "requirements/**/meta.yaml"
+
+  # 历史归档目录，不再挂主入口
+  - "context/team/engineering-spec/plans/history/**"
+
+  # spec 设计记录，由 roadmap.md 按需引用
+  - "context/team/engineering-spec/specs/**"
+
+# ---------- INDEX.md 体检 ----------
+warn_line_limit: 200     # INDEX.md 超过此行数 warning
+
+# ---------- 遗漏检查范围 ----------
+# 扫 INDEX.md 同目录 + 直接子目录的 md，判断是否被 INDEX 列出
+# 超过此深度的嵌套目录，由各自的 INDEX.md 负责
+sibling_scan_depth: 1

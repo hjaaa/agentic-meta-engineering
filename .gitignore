@@ -14,3 +14,7 @@
 .idea/
 .vscode/
 *.swp
+
+# Python 字节码缓存（scripts/lib 里的 .py 被执行时生成）
+__pycache__/
+*.pyc
