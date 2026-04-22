@@ -15,7 +15,7 @@ scope: 方案 A（骨架全量重建）· 选项 2（只落地文章明确命名
 在本仓库（`/Users/richardhuang/learnspace/agenticMetaEngineering`）搭建一套对标参考文章最终形态的 Agentic Engineering 工程骨架，供团队通过 `git clone` 获得**开箱即用**的 AI 辅助研发能力。核心交付物包括：
 
 - 8 阶段需求全生命周期管理体系（含强制门禁）
-- 多 Agent 并行代码审查能力（7 专项 checker + 1 综合裁决）
+- 多 Agent 并行代码审查能力（8 专项 checker + 1 综合裁决）
 - 三层记忆系统（工作记忆 / 溢出区 / 长期记忆）
 - 跨会话恢复机制
 - 团队落地的 8 阶段学习路径
@@ -282,7 +282,7 @@ agenticMetaEngineering/
 | 4 | 概要设计 | `outline-design` | 架构方案、模块划分、评审 | Agent `outline-design-quality-reviewer` | `outline-design.md` + 评审报告 |
 | 5 | 详细设计 | `detail-design` | 接口签名、数据结构、时序图、评审 | Agent `detail-design-quality-reviewer` | `detailed-design.md` + `features.json` + 评审报告 |
 | 6 | 任务规划 | `task-planning` | 功能点拆分、进入开发门禁 | Skill `feature-lifecycle-manager` + `task-context-builder` | `tasks/<feature-id>.md`（每点一份） |
-| 7 | 开发实施 | `development` | 编码、代码审查、提交 | Agent `code-quality-reviewer` + 7 专项 checker | 代码 + 审查报告 |
+| 7 | 开发实施 | `development` | 编码、代码审查、提交 | Agent `code-quality-reviewer` + 8 专项 checker | 代码 + 审查报告 |
 | 8 | 测试验收 | `testing` | 测试用例生成、执行、追溯链校验 | Agent `test-runner` + `traceability-consistency-checker` | `test-report.md` + 追溯链报告 |
 
 ### 4.2 阶段门禁（强制）
