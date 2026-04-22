@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# 本地 pre-commit 校验 —— check-meta + check-index
+#
+# 启用方式（项目级，一次性）：
+#   git config core.hooksPath scripts/git-hooks
+#
+# 策略：
+#   - 只拦 error，不拦 warning（warning 是腐化信号，由人工治理）
+#   - 只在相关文件被 staged 时触发，不增加无关 commit 耗时
+#   - 绕过：`git commit --no-verify`（紧急 hotfix 时允许，但 CI 兜底）
+
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+cd "${REPO_ROOT}"
+
+# 取本次 staged 的文件列表
+STAGED="$(git diff --cached --name-only --diff-filter=ACMR)"
+if [ -z "${STAGED}" ]; then
+    exit 0
+fi
+
+# 是否需要跑 check-meta
+if echo "${STAGED}" | grep -qE '^requirements/[^/]+/meta\.yaml$'; then
+    echo "→ 检测到 meta.yaml 变更，运行 check-meta..."
+    if ! bash scripts/check-meta.sh --all; then
+        echo ""
+        echo "✗ meta.yaml 校验失败，commit 被阻止"
+        echo "  修复后重新 git add && git commit"
+        echo "  紧急情况可用 \`git commit --no-verify\`，但 CI 仍会拦"
+        exit 1
+    fi
+fi
+
+# 是否需要跑 check-index
+if echo "${STAGED}" | grep -qE '(INDEX\.md$|^context/.*\.md$|^requirements/.*\.md$)'; then
+    echo "→ 检测到 INDEX.md 或内容 md 变更，运行 check-index..."
+    if ! bash scripts/check-index.sh; then
+        echo ""
+        echo "✗ INDEX 校验失败，commit 被阻止"
+        echo "  修复 INDEX 条目或移除失效链接后重试"
+        exit 1
+    fi
+fi
+
+exit 0

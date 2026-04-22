@@ -31,11 +31,17 @@
 1. 安装 Claude Code（官方文档）
 2. 克隆本仓库
 3. 打开终端，进入仓库目录，运行 `claude`
+4. **启用本地质量校验 Hook**（可选但推荐）：
+   ```bash
+   git config core.hooksPath scripts/git-hooks
+   ```
+   启用后每次 `git commit` 会自动跑 `check-meta.sh` / `check-index.sh`，提前拦截 schema 不合法与 INDEX 腐化。紧急情况可 `git commit --no-verify` 绕过（CI 仍会兜底）。
 
 ### 验证
 
 - 终端底部应有状态行显示 `[no-requirement] <branch>`
 - 输入 `/agentic:help` 应看到帮助（Phase 2 后）
+- `git config core.hooksPath` 输出 `scripts/git-hooks`（确认 Hook 生效）
 
 ### 第一条练习
 
