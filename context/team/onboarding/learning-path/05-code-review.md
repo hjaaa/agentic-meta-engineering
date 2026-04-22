@@ -11,14 +11,14 @@
 在任意 git 仓库里运行 `/code-review`。它会：
 
 1. 取当前分支 vs master 的 diff 作为 ReviewScope
-2. 并行跑 7 个 checker + 1 综合 reviewer
+2. 并行跑 8 个 checker + 1 综合 reviewer
 3. 生成审查报告
 
 ### 嵌入模式（Agentic Engineering 工作流）
 
 阶段 7 功能点完成时，`feature-lifecycle-manager` Skill 自动调用 `/code-review`，范围限定到该功能点。
 
-## 7 个 checker 维度
+## 8 个 checker 维度
 
 - design-consistency — 设计一致性
 - security — 注入/鉴权/敏感日志
@@ -27,6 +27,7 @@
 - error-handling — 异常/错误码
 - auxiliary-spec — 命名/注释/格式
 - performance — 热点 SQL/N+1
+- history-context — git log/blame 识别近期改过的 bug 行、WORKAROUND/HACK，避免误判
 
 ## 练习
 

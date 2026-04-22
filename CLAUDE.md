@@ -18,6 +18,7 @@
 | 看当前阶段/进度 | `/requirement:status` |
 | 做代码审查 | `/code-review` |
 | 提 PR | `/requirement:submit` |
+| 卡住了/不确定 | `/agentic:help` |
 
 全量命令见 `.claude/commands/`；详细 SOP 见 `context/team/onboarding/agentic-engineer-guide.md`。需求按 8 阶段推进（初始化 → 需求定义 → 技术预研 → 概要设计 → 详细设计 → 任务规划 → 开发实施 → 测试验收），`/requirement:next` 逐阶段切换并触发门禁。
 
