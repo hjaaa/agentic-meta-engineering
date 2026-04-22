@@ -1,0 +1,31 @@
+name: quality-check
+
+# 对 PR + 推到主干兜底。本地 pre-commit 可被 --no-verify 绕过，这里是强制墙。
+# 策略：只拦 error；warning 是腐化信号，不 fail CI（治理由 /knowledge:organize-index 负责）。
+# 团队把 warning 清零后，把 --strict 打开，当前 PR 未做。
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - develop
+
+jobs:
+  schema-and-index:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install pyyaml
+
+      - name: Check meta.yaml schema
+        run: bash scripts/check-meta.sh --all
+
+      - name: Check INDEX.md integrity
+        run: bash scripts/check-index.sh

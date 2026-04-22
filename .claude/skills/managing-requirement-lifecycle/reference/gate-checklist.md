@@ -2,9 +2,16 @@
 
 每次 `/requirement:next` 切阶段时，必须全部通过。失败则阻止切换并列出缺口。
 
+## 通用前置（所有阶段切换都必跑）
+
+- [ ] `bash scripts/check-meta.sh requirements/<REQ-ID>/meta.yaml` 退出码 = 0
+  - 该脚本依据 `context/team/engineering-spec/meta-schema.yaml` 校验 schema / 枚举 / 格式 / 条件必填
+  - 不同 phase 下校验项不同：bootstrap 阶段允许语义组为空；definition 起语义组必填；completed 阶段必填 outcome / completed_at
+  - 任一 error 即视为"meta.yaml 不合法"，阻止阶段切换
+
 ## bootstrap → definition
 
-- [ ] `meta.yaml` 存在且合法
+- [ ] 通用前置通过（见上）
 - [ ] 当前分支 = `meta.yaml.branch`
 - [ ] `plan.md` 存在
 
