@@ -1,0 +1,94 @@
+# meta.yaml 团队级 Schema 定义
+#
+# 用途：
+#   - check-meta.sh 校验 requirements/<id>/meta.yaml 时的唯一事实源
+#   - /requirement:next 门禁 / CI workflow 依赖此文件决定必填与枚举
+#
+# 修改原则：
+#   - required_fields / enums / format 的变更必须走 PR review（影响历史需求）
+#   - 新增可选字段可以宽松合入
+#
+# 关联文档：
+#   - context/team/engineering-spec/specs/2026-04-22-index-meta-validation-design.md
+#   - .claude/skills/managing-requirement-lifecycle/templates/meta.yaml.tmpl
+#   - .claude/skills/managing-requirement-lifecycle/reference/phase-rules.md
+
+# ---------- 必填字段（按组分类） ----------
+# 所有 phase 下都要求字段在 YAML 中存在（即使值为空），便于机器校验。
+# "非空必填" 由下方 conditional_required 按 phase 驱动。
+required_fields:
+  process:    # 流程组：所有阶段都必须存在且非空
+    - id
+    - title
+    - phase
+    - created_at
+    - branch
+    - base_branch
+    - project
+    - services
+  semantic:   # 语义组：字段必须存在，但 bootstrap 阶段允许值为空
+    - feature_area
+    - change_type
+    - affected_modules
+
+# ---------- 枚举白名单 ----------
+enums:
+  # phase 枚举以 .claude/skills/managing-requirement-lifecycle/reference/phase-rules.md 为事实源
+  # 此处同步一份便于 check-meta.sh 直接读取
+  phase:
+    - bootstrap
+    - definition
+    - tech-research
+    - outline-design
+    - detail-design
+    - task-planning
+    - development
+    - testing
+    - completed
+
+  change_type:
+    - feature     # 新功能
+    - bugfix      # 线上/测试环境修 bug
+    - refactor    # 结构调整但行为不变
+    - perf        # 性能优化
+    - security    # 安全相关（漏洞修复 / 加固）
+
+  outcome:
+    - shipped        # 已上线并稳定运行
+    - abandoned      # 评估后放弃
+    - rolled-back    # 上过线但被回滚
+
+# ---------- 字段格式 ----------
+format:
+  id: '^REQ-\d{4}-\d{3}$'
+  created_at: iso8601
+  completed_at: iso8601
+
+# ---------- 条件必填（非空校验） ----------
+# 语法：
+#   when.phase_not：当 meta.phase 不在列表中时触发
+#   when.phase：当 meta.phase 等于指定值时触发
+#   non_empty：列出的字段必须非空（string 非 ""，list 非 []）
+conditional_required:
+  # bootstrap 阶段允许语义字段为空；任何后续阶段必须补齐
+  - when:
+      phase_not: [bootstrap]
+    non_empty:
+      - feature_area
+      - change_type
+      - affected_modules
+
+  # completed 阶段必须记录结果信息
+  - when:
+      phase: completed
+    non_empty:
+      - outcome
+      - completed_at
+
+# ---------- 项目级依赖 ----------
+# feature_area 的合法值由各项目的 areas.yaml 决定
+# check-meta.sh 读取 context/project/<meta.project>/areas.yaml
+project_scoped_enums:
+  feature_area:
+    source: "context/project/{project}/areas.yaml"
+    key: areas
