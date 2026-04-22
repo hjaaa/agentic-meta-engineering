@@ -1,0 +1,14 @@
+{
+  "// 说明": "项目级 MCP 模板，默认不启用，避免 clone 仓库即触发 npx 拉包 / Chromium 下载。需要时复制为 .mcp.json（已 gitignore），并在个人环境里按需裁剪。",
+  "// 用法": "cp .mcp.json.example .mcp.json，然后重启 Claude Code",
+  "mcpServers": {
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@context7/mcp-server"]
+    },
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp"]
+    }
+  }
+}

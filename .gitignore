@@ -1,6 +1,9 @@
 # 个人 Claude Code 配置覆盖（不入库）
 .claude/settings.local.json
 
+# 项目级 MCP 实际配置（从 .mcp.json.example 复制生成，个人按需裁剪）
+.mcp.json
+
 # 代码审查运行态临时文件（每次 /code-review 会重写）
 .review-scope.json
 
