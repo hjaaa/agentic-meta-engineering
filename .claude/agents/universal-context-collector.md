@@ -36,7 +36,9 @@ tools: Read, Grep, Glob
     }
   ],
   "summary": "一段话总结关键信息（< 200 字）",
-  "gaps": ["未找到的相关主题，建议用户补充的内容"]
+  "gaps": [
+    "未找到的相关主题，建议用户补充的内容"
+  ]
 }
 ```
 
@@ -46,11 +48,11 @@ tools: Read, Grep, Glob
 - ❌ 禁止访问 WebSearch / WebFetch（若 `exclude_external=true` 或 `phase` 为 outline-design / detail-design）
 - ✅ 必须先读 `context/<dir>/INDEX.md`，根据索引决定深入哪些文件
 - ✅ 检索顺序（硬约束）：
-  1. `context/project/<project>/*`（最相关）
-  2. `context/project/<project>/INDEX.md`
-  3. `context/team/engineering-spec/`
-  4. `context/team/*`
-  5. 历史 `requirements/*/artifacts/`
-  6. 外部（仅允许时）
+    1. `context/project/<project>/*`（最相关）
+    2. `context/project/<project>/INDEX.md`
+    3. `context/team/engineering-spec/`
+    4. `context/team/*`
+    5. 历史 `requirements/*/artifacts/`
+    6. 外部（仅允许时）
 - ✅ 如某优先级层找到充分信息，不再下探后续层
 - ✅ 每条 `matches` 必须带文件路径+行号，供主 Agent 按需深入
