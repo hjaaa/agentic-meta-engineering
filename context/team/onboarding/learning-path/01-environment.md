@@ -12,7 +12,7 @@
 
 1. 装 Claude Code CLI（参考官方文档）
 2. 配置 `ANTHROPIC_API_KEY`（或通过登录流程）
-3. 克隆本仓库：`git clone <repo-url> && cd agenticMetaEngineering`
+3. 克隆本仓库：`git clone <repo-url> && cd agentic-meta-engineering`
 4. 运行 `claude` 进入会话
 5. 输入：`读一下 README.md 告诉我这个仓库是做什么的`
 6. 输入：`状态行显示了什么？`
