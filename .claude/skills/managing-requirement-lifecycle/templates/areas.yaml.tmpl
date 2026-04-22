@@ -1,0 +1,17 @@
+# 项目业务域白名单
+#
+# 路径：context/project/<project>/areas.yaml
+# 消费者：check-meta.sh 校验 meta.yaml.feature_area 时的合法值来源
+#
+# 变更原则：
+#   - 新增业务域：PR review 即可合入
+#   - 删除或重命名业务域：必须同步排查历史 meta.yaml.feature_area 引用
+#   - 命名小写、连字符连接（kebab-case），不使用中文与驼峰
+
+areas:
+  - auth           # 登录、注册、鉴权、权限
+  - payment        # 支付、结算、对账
+  - order          # 订单、履约
+  - report         # 报表、统计、导出
+  - infra          # 基础设施、部署、运维
+  - gateway        # 网关、路由、限流
