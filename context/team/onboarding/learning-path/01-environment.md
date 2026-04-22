@@ -29,14 +29,21 @@ pip install pyyaml
 
 ## MCP 配置（可选）
 
-本仓库默认启用 `context7`（库文档）、`chrome-devtools`（浏览器自动化）。其他 MCP（Jira / 飞书 / 企业 Wiki）未配置，需要时按以下步骤：
+本仓库默认**不启用**任何 MCP，避免 `git clone` 后被动触发 `npx` 拉包和 Chromium 下载。仓库提供 `.mcp.json.example` 作为候选配置模板，当前包含：
 
-1. 获取对应 MCP Server（官方或团队内部分发）
-2. 编辑 `.mcp.json`（**团队共享配置，改动要 PR**）或 `.claude/settings.local.json`（个人覆盖）
-3. 重启 Claude Code
+- `context7` — 库文档检索（补训练数据滞后）
+- `chrome-devtools` — 浏览器自动化（UI 测试，首次使用会拉 Chromium）
+
+启用步骤：
+
+1. `cp .mcp.json.example .mcp.json`（已 gitignore，个人裁剪不影响他人）
+2. 按需保留/删除 `mcpServers` 下的条目
+3. 重启 Claude Code，首次会话按提示批准 MCP
+
+其他 MCP（Jira / 飞书 / 企业 Wiki）未配置，需要时：获取对应 Server → 加到本地 `.mcp.json` → 重启。**团队共享配置若要变更候选列表，改 `.mcp.json.example` 并 PR**。
 
 ## 完成标志
 
 - [ ] `claude` 能启动且状态行显示
 - [ ] 能让 AI 读文件
-- [ ] 知道 `.mcp.json` 在哪
+- [ ] 知道 `.mcp.json.example` 是 MCP 模板，`.mcp.json` 是本地启用态
