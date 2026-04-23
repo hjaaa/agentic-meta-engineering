@@ -24,8 +24,9 @@ ignore:
   - "requirements/**/process.txt"
   - "requirements/**/meta.yaml"
 
-  # 历史归档目录，不再挂主入口
-  - "context/team/engineering-spec/plans/history/**"
+  # 新人学习课程：由 onboarding/agentic-engineer-guide.md 以有序列表形式索引，
+  # 属于"故意不挂 INDEX"（见 specs/2026-04-22 §6.1 的"故意不列"语义）
+  - "context/team/onboarding/learning-path/**"
 
   # spec 设计记录，由 roadmap.md 按需引用
   - "context/team/engineering-spec/specs/**"
