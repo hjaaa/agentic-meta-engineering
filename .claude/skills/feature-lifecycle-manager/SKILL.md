@@ -28,8 +28,11 @@ pending → in-progress → done
 
 当用户说 "F-xxx 完成"：
 1. 调 `task-context-builder` 确认当前 feature 代码已 commit
-2. 触发 `/code-review` scope = 该 feature
-3. 审查结果：
+2. **跑脚本级总门禁 `post-dev-verify`**（在 `/code-review` 之前，过不了直接挂，省 AI 审查成本）：
+   - `bash scripts/post-dev-verify.sh --requirement <REQ-ID> --feature <F-xxx>`
+   - 退出码 ≠ 0 → status 保持 `in-progress`，列出失败项让用户修，**禁止进入下一步**
+3. 触发 `/code-review` scope = 该 feature
+4. 审查结果：
    - `approved` → 更新 task 文件 status 到 `done`，记录 review 报告路径
    - `needs_revision` / `rejected` → status 保持 `in-progress`，通知用户修改
 
@@ -37,6 +40,7 @@ pending → in-progress → done
 
 - ❌ 禁止跳过状态（不允许 pending 直接 done）
 - ❌ 禁止在 `done` 后再退回（如需修改，走 `/requirement:rollback`）
+- ❌ 禁止跳过 `post-dev-verify`——即便"只改了文档""只是小改动"也必须跑；这正是用脚本代替口头承诺的价值
 - ✅ 每个 task 文件必须有 `status`、`created_at`、`updated_at` 字段
 - ✅ `done` 必须附代码审查报告路径
 
