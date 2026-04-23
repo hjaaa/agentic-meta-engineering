@@ -7,8 +7,7 @@
 ## 练习需求（任选其一）
 
 1. 给本仓库加一个 `/status-summary` 命令，输出仓库文件数/行数统计
-2. 给 `.claude/statusline.sh` 加一个显示当前 Token 用量的段（如果 Claude Code 环境变量暴露了）
-3. 在 `context/team/` 下加一份"如何挑选 Claude 模型档位"的规范
+2. 在 `context/team/` 下加一份"如何挑选 Claude 模型档位"的规范
 
 ## 步骤
 
