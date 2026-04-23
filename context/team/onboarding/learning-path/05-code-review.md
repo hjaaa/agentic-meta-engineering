@@ -11,8 +11,8 @@
 在任意 git 仓库里运行 `/code-review`。它会：
 
 1. 取当前分支 vs master 的 diff 作为 ReviewScope
-2. 并行跑 8 个 checker + 1 综合 reviewer
-3. 生成审查报告
+2. 并行跑 8 个 checker → `review-critic` 对抗验证 → `code-quality-reviewer` 三方裁决
+3. 生成审查报告（含裁决明细段）
 
 ### 嵌入模式（Agentic Engineering 工作流）
 
@@ -28,6 +28,16 @@
 - auxiliary-spec — 命名/注释/格式
 - performance — 热点 SQL/N+1
 - history-context — git log/blame 识别近期改过的 bug 行、WORKAROUND/HACK，避免误判
+
+## 三层验证机制
+
+checker 并不是最终声音——`/code-review` 走三层来抑制误报：
+
+1. **Checker**（并行）：8 维度各自给候选 finding，只对自己维度负责
+2. **Critic**（review-critic，对抗式）：逐条尝试寻反证，给 `rejected / not_proven / not_rebutted`；找不到反证必须承认
+3. **Judge**（code-quality-reviewer，opus）：独立调研 + 三方对比（checker 证据 / critic 反证 / 自己读码），最终处置分 `keep / downgrade / drop / follow-up`
+
+报告中"裁决明细"段展示每条候选 finding 的三方过程，方便事后复盘。零 finding 时自动跳过 critic 和 Judge。
 
 ## 练习
 
