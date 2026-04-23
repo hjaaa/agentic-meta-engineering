@@ -21,8 +21,9 @@ argument-hint: <内容>
 2. 读 `meta.yaml.phase`
 3. 追加到 `requirements/<id>/notes.md` 末尾：
    ```
-   - [<ISO8601>] [<phase>] <内容>
+   - [YYYY-MM-DD HH:MM:SS] [<phase>] <内容>
    ```
+   时间戳取 Asia/Shanghai 当下（`TZ=Asia/Shanghai date +"%Y-%m-%d %H:%M:%S"`，详见 `context/team/engineering-spec/time-format.md`）
 4. 输出简短确认（< 50 字）：`已追加到 requirements/<id>/notes.md`
 5. **不 commit**—— notes.md 会在 `/requirement:save` 或合适节点由开发者统一提交
 
@@ -30,4 +31,4 @@ argument-hint: <内容>
 
 - 单次内容 < 500 字符
 - 不 commit
-- 格式固定：`- [ISO8601] [phase] <内容>`
+- 格式固定：`- [YYYY-MM-DD HH:MM:SS] [phase] <内容>`（Asia/Shanghai 时区）
