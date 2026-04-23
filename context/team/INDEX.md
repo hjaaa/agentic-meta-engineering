@@ -21,7 +21,3 @@
 ## 经验沉淀
 
 - [`experience/`](experience/INDEX.md) — 跨项目沉淀的经验文档
-
-## 运行态
-
-- `feedback-log.yaml` — /agentic:feedback 写入位置（结构化条目）

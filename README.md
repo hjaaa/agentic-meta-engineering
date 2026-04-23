@@ -27,10 +27,6 @@
 - 体系自身规范：`context/team/engineering-spec/`
 - 迭代方式：`context/team/engineering-spec/iteration-sop.md`
 
-## 反馈
-
-运行 `/agentic:feedback`，会追加到 `context/team/feedback-log.yaml`。
-
 ## 目录结构
 
 完整结构见设计文档第 2 节。简要：
