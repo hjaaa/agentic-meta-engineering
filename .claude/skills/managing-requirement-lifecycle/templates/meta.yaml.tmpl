@@ -12,6 +12,7 @@ services: []                   # 涉及的服务仓库
 gates_passed: []
 pr_url: ""                     # /requirement:submit 成功后回写
 pr_number: 0                   # /requirement:submit 成功后回写
+log_layout: split              # split（默认，工具日志→process.tool.log / 语义事件→process.txt） | legacy（老格式，全写 process.txt）
 
 # ============ 语义组（definition 阶段补齐，供跨需求检索） ============
 feature_area: ""                         # definition 起必填；值必须在 context/project/<project>/areas.yaml 白名单内
