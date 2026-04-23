@@ -1,8 +1,8 @@
 # Common Pitfalls
 
-> 最近更新：2026-04-21
+> 最近更新：2026-04-23
 
-新人使用骨架时最容易踩的 7 个坑。每条按「症状 / 原因 / 修复」三段式。
+新人使用骨架时最容易踩的 8 个坑。每条按「症状 / 原因 / 修复」三段式。
 
 ## 1. 在 main / develop 分支直接 Edit 被 Hook 拦截
 - **症状**：执行 Edit / Write 工具报错 "禁止在受保护分支..."
@@ -40,3 +40,8 @@
 - **症状**：预检报 `artifacts/code-review-reports/` 为空
 - **原因**：尚未跑过 `/code-review`，或报告落在了其他路径
 - **修复**：先 `/code-review` 生成报告，确认路径为 `artifacts/code-review-reports/*.md`
+
+## 8. 所有改动都走 `/requirement:new` 把小事拖重
+- **症状**：改 3 行代码或加一条注释也建了 `requirements/<id>/`，8 阶段门禁来回卡
+- **原因**：误以为 `/requirement:new` 是唯一入口，忽视了"直通分支"路径
+- **修复**：对照 `/agentic:help fast-path` 的"选择三问"——不需要跨会话恢复 + 不需要设计评审 + 不需要追溯链 → 切 feature 分支直接改 + `/code-review` + PR，不建需求目录
