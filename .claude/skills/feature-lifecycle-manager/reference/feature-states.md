@@ -6,7 +6,7 @@
 |---|---|---|
 | `pending` | 尚未开始 | 阶段 6 拆分时默认 |
 | `in-progress` | 开发中 | 用户明确开始（或开始 commit 涉及该 feature 的代码） |
-| `done` | 已完成且过审 | 代码 commit + /code-review approved |
+| `done` | 已完成且过审 | 代码 commit + `post-dev-verify` 通过 + `/code-review` approved |
 
 ## 合法流转
 
