@@ -18,6 +18,7 @@
 
 - [`iteration-sop.md`](iteration-sop.md) — 项目迭代 SOP
 - [`roadmap.md`](roadmap.md) — 骨架当前能力快照 + 未实现缺口
+- [`plans/README.md`](plans/README.md) — 实施计划目录（活计划 + 历史归档）
 
 ## 历史设计文档
 
