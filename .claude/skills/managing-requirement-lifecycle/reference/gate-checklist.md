@@ -8,6 +8,11 @@
   - 该脚本依据 `context/team/engineering-spec/meta-schema.yaml` 校验 schema / 枚举 / 格式 / 条件必填
   - 不同 phase 下校验项不同：bootstrap 阶段允许语义组为空；definition 起语义组必填；completed 阶段必填 outcome / completed_at
   - 任一 error 即视为"meta.yaml 不合法"，阻止阶段切换
+- [ ] `bash scripts/check-plan.sh --requirement <REQ-ID>` —— plan.md 软校验
+  - 该脚本检查 plan.md 的**占位符残留**（W001）、**阶段刷新新鲜度**（W002）、**"不包含"段落非空**（W003）
+  - 依据 `context/team/engineering-spec/specs/2026-04-20-agentic-engineering-skeleton-design.md §6.2`：plan.md 是阶段级活文档，应随阶段切换刷新
+  - `E001`（plan.md 缺失）阻止阶段切换；**warning 仅提示不 block**，CI 下 `--strict` 方将 warning 升级为失败
+  - 主 Agent 在 warning 出现时应主动询问用户："要不要先刷新 plan.md 再切阶段？"，用户明确拒绝才可继续
 
 ## bootstrap → definition
 
