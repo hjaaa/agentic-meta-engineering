@@ -23,7 +23,7 @@
 - **两条硬规则的工程化**：`check-sourcing.sh` 执行"刨根问底"，`post-dev-verify.sh` 做 feature done 总门禁
 - **自动机制（Hook）**：
   - `protect-branch` — `main/master/develop` 上直接写会被阻断
-  - `auto-progress-log` — `process.txt` 由 Hook 自动追加
+  - `auto-progress-log` — 工具日志由 Hook 自动追加（v2 写 `process.tool.log`，legacy 写 `process.txt`）
   - `stop-session-save` — 会话结束打 `SESSION_END` 标记，支撑 `/requirement:continue`
 - **MCP 模板**：`.mcp.json.example`，默认不启用，`cp` 后生效
 

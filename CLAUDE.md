@@ -25,7 +25,7 @@
 ## 自动机制（Hook）
 
 - `protect-branch` — 在 `main/master/develop` 上直接做 Edit/Write/Bash 写操作会被阻断；改代码前先切 feature 分支
-- `auto-progress-log` — 当前需求的 `process.txt` 由 Hook 自动追加，不要手工维护
+- `auto-progress-log` — 工具级日志由 Hook 自动追加：v2 布局写 `process.tool.log`（不入 git），legacy 写 `process.txt`；不要手工维护
 - `stop-session-save` — 会话结束自动打 `SESSION_END` 标记，支撑 `/requirement:continue` 跨会话恢复
 
 ## 四条硬原则

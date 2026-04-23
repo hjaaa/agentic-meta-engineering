@@ -58,6 +58,10 @@ enums:
     - abandoned      # 评估后放弃
     - rolled-back    # 上过线但被回滚
 
+  log_layout:        # 可选；缺省视为 legacy（兼容老需求）
+    - split          # v2：工具日志→process.tool.log / 语义事件→process.txt
+    - legacy         # v1：工具 + 语义都写 process.txt
+
 # ---------- 字段格式 ----------
 format:
   id: '^REQ-\d{4}-\d{3}$'
