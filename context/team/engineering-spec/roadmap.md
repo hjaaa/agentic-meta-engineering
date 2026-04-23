@@ -1,6 +1,6 @@
 # 骨架路线图
 
-> 最近更新：2026-04-22
+> 最近更新：2026-04-23
 
 项目当前能力快照 + 尚未实现的缺口 + 随规模演进的计划。给贡献者看，不是 AI 运行时上下文。
 
@@ -8,7 +8,7 @@
 
 Phase 1-4 已完成（截至 2026-04-21，REQ-2026-001 端到端验收通过）。
 
-- Commands：16 个（`.claude/commands/`，含 `requirement:* / knowledge:* / agentic:* / code-review / note`）
+- Commands：15 个（`.claude/commands/`，含 `requirement:* / knowledge:* / agentic:* / code-review / note`；已下线 `/agentic:feedback`，见 `specs/2026-04-23-retire-agentic-feedback.md`）
 - Skills：10 个（`.claude/skills/`）
 - Agents：21 个（`.claude/agents/`）
 - Hooks：3 个（`protect-branch` / `auto-progress-log` / `stop-session-save`）

@@ -9,7 +9,6 @@
 | 用户需要新能力 | 定层级（见决策点 2），加到对应层 |
 | Agent 行为出错 | 定位问题层级（设计 / 功能预期 / 场景规范 / 工具），改最窄的层 |
 | 业务场景变化 | 更新 `context/project/<X>/`，可能升级到 `context/team/experience/` |
-| 用户反馈建议 | 读 `feedback-log.yaml`，分类处理 |
 | 新人上手困难 | 更新 `onboarding/` 或 `learning-path/` |
 | 模型 / 平台能力升级 | 可能触发设计层变更，需全团队评审 |
 

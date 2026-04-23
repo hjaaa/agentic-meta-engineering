@@ -86,4 +86,3 @@
 2. 查 [`common-pitfalls.md`](common-pitfalls.md) — 新人最容易踩的 7 个坑
 3. 读 `ai-collaboration.md`
 4. 问有经验的同事
-5. `/agentic:feedback` 把问题提给团队（会写入 `context/team/feedback-log.yaml`）
