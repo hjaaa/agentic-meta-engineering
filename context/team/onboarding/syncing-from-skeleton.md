@@ -10,6 +10,8 @@
 
 ## 1. 一次性配置
 
+> **适用范围**：仅下游仓库执行。骨架仓库自身的 `origin` 就是源头，无需也不应把自己加成 `upstream`（会与 `origin` 指向同一 URL，毫无意义）。
+
 在下游仓库里执行：
 
 ```bash
@@ -22,6 +24,15 @@ git remote -v
 # origin    <你的下游仓库>                                      (fetch/push)
 # upstream  git@github.com:hjaaa/agentic-meta-engineering.git  (fetch/push)
 ```
+
+### 关于 `upstream` 这个名字
+
+`upstream` 不是 git 命令，而是一个**约定俗成的 remote 别名**。`git remote add <name> <url>` 里的 `<name>` 可以任意起，社区惯例来自 GitHub fork 工作流：
+
+- `origin` = 你自己的仓库（可 push）
+- `upstream` = 派生源头（只 fetch，用来跟进上游更新）
+
+本文档沿用该惯例，让任何 git 老手看一眼 `git remote -v` 就能识别出这是一个派生仓库以及它的源头是谁。
 
 ## 2. 受管目录清单（同步边界）
 
