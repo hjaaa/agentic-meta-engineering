@@ -30,12 +30,19 @@ git remote -v
 | 路径 | 内容 |
 |---|---|
 | `.claude/commands/` `.claude/skills/` `.claude/agents/` `.claude/hooks/` | 工具定义 |
+| `.claude/settings.local.json.example` `.mcp.json.example` | 本地配置模板（下游拷贝去 `.example` 后缀后使用） |
+| `context/INDEX.md` | 知识库**根**索引（渐进式检索的第一跳） |
+| `context/team/INDEX.md` | 团队目录索引 |
 | `context/team/engineering-spec/` | 体系规范（设计指导 / 工具规范 / 迭代 SOP） |
 | `context/team/onboarding/` | 入门指南与学习路径 |
+| `context/team/rollout/` | 推广材料（four-phase-strategy / embedded-push-playbook 等） |
 | `context/team/ai-collaboration.md` | AI 协作准则 |
 | `context/team/git-workflow.md` | 分支/提交规范 |
 | `context/team/tool-chain.md` | 工具链约定 |
-| `context/team/INDEX.md` | 根索引 |
+| `scripts/` | 骨架工具链脚本（`check-*.sh` / `post-dev-verify.sh` / `git-hooks/` / `lib/`） |
+| `.github/` | CI 工作流与 issue/PR 模板 |
+| `.gitignore` | 骨架基线忽略规则（下游追加条目时见 2.4） |
+| `CHANGELOG.md` `VERSION` | 骨架变更记录与版本号（sync 前读 CHANGELOG 判断破坏性变更） |
 
 ### 2.2 不同步的（下游私有）
 
@@ -43,15 +50,25 @@ git remote -v
 |---|---|
 | `context/project/` | 下游项目专属知识 |
 | `requirements/` | 下游需求全周期产出 |
-| `.claude/settings.local.json` | 本地权限/模型配置 |
+| `.claude/settings.local.json` | 本地权限/模型配置（由 `.example` 拷贝而来） |
+| `.mcp.json` | 本地 MCP 配置（由 `.example` 拷贝而来） |
 
-### 2.3 冲突敏感的（人工判断）
+### 2.3 目录同步、内容私有（结构随骨架、条目下游自填）
+
+| 路径 | 说明 |
+|---|---|
+| `context/team/experience/` | 骨架预置经验沉淀目录与 `INDEX.md` 骨架；下游追加的经验条目属于下游私有，sync 时**只应更新结构性文件，不要覆盖下游填充的条目** |
+
+合并出现冲突时：骨架侧改了 `INDEX.md` 骨架或新增子目录 → 接受骨架改动再把下游条目追加回去；下游条目文件骨架侧没动 → 跳过即可。
+
+### 2.4 冲突敏感的（人工判断）
 
 | 路径 | 处理策略 |
 |---|---|
 | `CLAUDE.md` | 骨架基线 + 下游扩展。**建议：骨架版保持不动，下游扩展写到 `CLAUDE.local.md` 或 `context/project/<X>/CLAUDE.md` 并用 `@path` 引用进来** |
 | `.claude/settings.json` | 下游可能追加 hook/权限，手工合并时保留双方 |
 | `README.md` | 下游通常会完全重写为自己的项目 README，同步时 `git checkout --ours` |
+| `.gitignore` | 骨架基线只新增不删改；下游条目追加在文件末尾独立区块，合并冲突时保留双方 |
 
 ## 3. 日常同步流程
 
@@ -120,6 +137,9 @@ gh pr create --base develop \
 - `.claude/hooks/` 目录改动（可能改变自动行为）
 - `.claude/commands/` 删除或重命名（可能让下游脚本失效）
 - `context/team/engineering-spec/tool-design-spec/` 改动（可能影响下游自建 Skill 的合法性）
+- `scripts/` 改动（校验/验证脚本变化，可能影响下游 CI 或 pre-commit 行为）
+- `.github/workflows/` 改动（CI 流水线变化，下游需要验证 secrets/权限是否仍然匹配）
+- `VERSION` 跨大版本跃迁（按语义化版本判断整体兼容性）
 
 遇到破坏性变更，把 sync PR 的描述里列出影响点，便于团队复核。
 
