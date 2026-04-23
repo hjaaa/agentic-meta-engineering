@@ -30,3 +30,6 @@ jobs:
 
       - name: Check INDEX.md integrity
         run: bash scripts/check-index.sh --strict
+
+      - name: Check sourcing (刨根问底三态)
+        run: bash scripts/check-sourcing.sh --all --strict
