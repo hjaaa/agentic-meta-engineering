@@ -13,7 +13,8 @@
 ## 入门与落地
 
 - [`onboarding/agentic-engineer-guide.md`](onboarding/agentic-engineer-guide.md) — 新人入门指南
-- [`onboarding/learning-path/`](onboarding/learning-path/) — 8 阶段学习路径
+- [`onboarding/common-pitfalls.md`](onboarding/common-pitfalls.md) — 新人最常踩的 7 个坑（症状 / 原因 / 修复）
+- [`onboarding/learning-path/`](onboarding/learning-path/) — 8 阶段学习路径（由 `agentic-engineer-guide.md` 顺序索引）
 - [`rollout/four-phase-strategy.md`](rollout/four-phase-strategy.md) — 团队落地四阶段策略
 - [`rollout/embedded-push-playbook.md`](rollout/embedded-push-playbook.md) — 嵌入式推进手册
 
