@@ -32,7 +32,7 @@ bootstrap → definition → tech-research → outline-design → detail-design
 - `fix/*` — 紧急修复
 - `release/*` — 发版
 
-这些分支下创建的需求，`meta.yaml.branch` 字段应记录**实际分支名**，以保持 Hook 和 StatusLine 的匹配。Skill 的门禁校验对分支前缀不做强制限制，只校验"`meta.yaml.branch == 当前分支`"。
+这些分支下创建的需求，`meta.yaml.branch` 字段应记录**实际分支名**，以保持 Hook 的匹配。Skill 的门禁校验对分支前缀不做强制限制，只校验"`meta.yaml.branch == 当前分支`"。
 
 ## 各阶段必产出
 
