@@ -49,9 +49,10 @@
 
 ## development → testing
 
-- [ ] 每个 feature_id 状态为 `done`
+- [ ] 每个 feature_id 状态为 `done`（其转换已隐含 `post-dev-verify` 通过 + `/code-review` approved）
 - [ ] 每个 feature_id 有对应的代码审查报告（`artifacts/review-*.md` 提到）
 - [ ] 所有代码已 commit（无 uncommitted changes）
+- [ ] `bash scripts/post-dev-verify.sh --requirement <REQ-ID>` 退出码 = 0（不指定 feature 时作为整体兜底）
 - [ ] `traceability-gate-checker` Skill PASS（追溯链完整性校验，见设计规范 §4.2）
 
 ## testing → completed
