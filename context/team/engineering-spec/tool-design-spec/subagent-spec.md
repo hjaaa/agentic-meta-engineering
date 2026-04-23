@@ -17,7 +17,7 @@
 | 初始化类（创建资源） | 轻量（sonnet） | `requirement-bootstrapper` |
 | 准备类（收集信息） | 轻量 | `universal-context-collector` |
 | 评审类（评估质量） | 高能力（opus） | `requirement-quality-reviewer` / `code-quality-reviewer` |
-| 执行类（生成代码） | 中等（sonnet） | 7 个代码审查 checker |
+| 执行类（生成代码） | 中等（sonnet） | 8 个代码审查 checker |
 | 维护类（更新文档） | 轻量 | `documentation-batch-updater` |
 
 不同类别推荐不同模型——让一次完整操作既全面又经济。

@@ -8,6 +8,15 @@
 - `needs_revision` — 需修改后复审
 - `rejected` — 驳回，方向性问题
 
+## 裁决明细
+
+> 对每条候选 finding 的最终处置和理由——完整展示"reviewer 发现 → critic 反证 → Judge 裁决"的三方透明度。
+
+- **F-1** [__source_checker__ · __original_severity__] → critic: __critic_verdict__ → **最终处置：__final_disposition__**
+  - 裁决依据：__rationale__
+- **F-2** [...] → ...
+- ...
+
 ## Critical（必须修复）
 
 ### [__tag__] __file__:__line__
@@ -28,6 +37,10 @@ __description__
 
 ...
 
+## Follow-up Notes（不阻塞，但值得提醒）
+
+- __note__（来自 F-__id__）
+
 ## 未运行的 checker（如有）
 
 - ⚠️ __checker_name__（原因：__reason__）
@@ -36,6 +49,7 @@ __description__
 
 - **审查范围**：__scope_summary__（__files_changed__ 文件，+__ins__ -__del__ 行）
 - **并行 checker**：__n_checkers__，总耗时 __elapsed__s
+- **Critic 统计**：rejected __n_rejected__ / not_proven __n_not_proven__ / not_rebutted __n_not_rebutted__
 - **综合模型**：__quality_reviewer_model__
 - **Base SHA**：__base_sha__
 - **Head SHA**：__head_sha__
