@@ -160,7 +160,7 @@ Total: 1 error, 3 warnings
 id: __REQ_ID__
 title: __TITLE__
 phase: bootstrap
-created_at: __ISO8601__
+created_at: __CREATED_AT__
 branch: __BRANCH__
 base_branch: __BASE_BRANCH__
 project: __PROJECT__
@@ -184,7 +184,7 @@ pr_number: 0
 id: REQ-2026-001
 title: "接入短信登录"
 phase: development
-created_at: 2026-04-22T10:00:00Z
+created_at: 2026-04-22 18:00:00
 branch: feat/req-2026-001
 base_branch: develop
 project: yh-platform
@@ -264,8 +264,8 @@ enums:
   outcome: [shipped, abandoned, rolled-back]
 
 format:
-  created_at: iso8601
-  completed_at: iso8601
+  created_at: datetime    # YYYY-MM-DD HH:MM:SS（Asia/Shanghai）；兼容旧 YYYY-MM-DDTHH:MM:SSZ
+  completed_at: datetime  # 同上
   id: ^REQ-\d{4}-\d{3}$
 
 # 条件必填：bootstrap 允许语义组为空，其它阶段必填；completed 阶段回写结果组

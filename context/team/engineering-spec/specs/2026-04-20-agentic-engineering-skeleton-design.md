@@ -451,22 +451,22 @@ gates_passed:                   # 门禁历史
 `process.txt`（语义事件）：
 
 ```
-2026-04-20T10:30:00Z [bootstrap] 创建目录 REQ-2026-001
-2026-04-20T10:45:22Z [definition] requirement.md 完成草稿
-2026-04-20T11:02:08Z [review:needs_revision] requirement-quality-reviewer 3 条 major
-2026-04-20T11:16:00Z [phase-transition] definition → tech-research
-2026-04-20T11:40:12Z [SESSION_END] 会话结束
+2026-04-20 18:30:00 [bootstrap] 创建目录 REQ-2026-001
+2026-04-20 18:45:22 [definition] requirement.md 完成草稿
+2026-04-20 19:02:08 [review:needs_revision] requirement-quality-reviewer 3 条 major
+2026-04-20 19:16:00 [phase-transition] definition → tech-research
+2026-04-20 19:40:12 [SESSION_END] 会话结束
 ```
 
 `process.tool.log`（v2 工具日志，Hook 写入，不入 git）：
 
 ```
-2026-04-20T10:45:10Z [definition] tool=Edit
-2026-04-20T10:45:22Z [definition] tool=Write
-2026-04-20T11:16:05Z [tech-research] tool=Bash
+2026-04-20 18:45:10 [definition] tool=Edit
+2026-04-20 18:45:22 [definition] tool=Write
+2026-04-20 19:16:05 [tech-research] tool=Bash
 ```
 
-**时间戳规范**（v2 新约束）：Skill 写入时必须取"写入当下"的 UTC now，不得预先计算。消除 Hook 与 Skill 并发写入时的行序与时序错位（v1 下曾出现 `phase-transition` 时间戳早于前几行 `tool=Edit`）。
+**时间戳规范**（v2 新约束）：Skill 写入时必须取"写入当下"的 Asia/Shanghai now（`TZ=Asia/Shanghai date +"%Y-%m-%d %H:%M:%S"`），不得预先计算。消除 Hook 与 Skill 并发写入时的行序与时序错位（v1 下曾出现 `phase-transition` 时间戳早于前几行 `tool=Edit`）。统一格式与时区约定见 `context/team/engineering-spec/time-format.md`；历史 UTC ISO 8601 数据保留兼容读取。
 
 ### 6.4 跨会话恢复流程
 

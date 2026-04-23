@@ -26,12 +26,15 @@ from __future__ import annotations
 import argparse
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from common import REPO_ROOT, Report, Severity, paint, rel
 
 REQUIREMENTS_DIR = REPO_ROOT / "requirements"
+
+# 时间戳约定：详见 context/team/engineering-spec/time-format.md
+CST = timezone(timedelta(hours=8))
 
 # 占位符：取自 plan.md.tmpl 中最具辨识度的片段
 # 改模板时需同步此列表
@@ -43,10 +46,28 @@ TEMPLATE_MARKERS: tuple[str, ...] = (
 )
 
 RE_PHASE = re.compile(r"^phase:\s*(\S+)", re.MULTILINE)
+# 时间戳匹配两种格式（新/旧），详见 time-format.md
+#   新：2026-04-23 15:10:40（空格分隔，无时区后缀，隐含 Asia/Shanghai）
+#   旧：2026-04-23T15:10:40Z（T 分隔，带 Z，UTC）
 RE_PHASE_TRANSITION = re.compile(
-    r"^(?P<ts>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)\s+\[phase-transition\]\s+\S+\s+→\s+(?P<to>\S+)",
+    r"^(?P<ts>\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}Z?)\s+\[phase-transition\]\s+\S+\s+→\s+(?P<to>\S+)",
     re.MULTILINE,
 )
+
+
+def _parse_ts(ts: str) -> datetime | None:
+    """把 process.txt 里的时间戳字符串解析为 aware datetime。
+
+    新格式视为 Asia/Shanghai，旧格式视为 UTC，统一转成 aware 以便跨时区比较。
+    """
+    try:
+        return datetime.strptime(ts, "%Y-%m-%d %H:%M:%S").replace(tzinfo=CST)
+    except ValueError:
+        pass
+    try:
+        return datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
 RE_SCOPE_EXCLUDE = re.compile(r"^-\s*不包含\s*[：:]?\s*$", re.MULTILINE)
 RE_TOP_BULLET = re.compile(r"^[-*]\s+\S")
 RE_NESTED_BULLET = re.compile(r"^\s+[-*]\s+\S")
@@ -68,12 +89,9 @@ def _phase_enter_time(process_file: Path, phase: str) -> datetime | None:
     for m in RE_PHASE_TRANSITION.finditer(process_file.read_text(encoding="utf-8")):
         if m.group("to") != phase:
             continue
-        try:
-            last_ts = datetime.strptime(m.group("ts"), "%Y-%m-%dT%H:%M:%SZ").replace(
-                tzinfo=timezone.utc
-            )
-        except ValueError:
-            continue
+        parsed = _parse_ts(m.group("ts"))
+        if parsed is not None:
+            last_ts = parsed
     return last_ts
 
 
@@ -146,15 +164,16 @@ def check_requirement(req_dir: Path, report: Report) -> None:
     if phase and phase != "bootstrap":
         enter_ts = _phase_enter_time(process_file, phase)
         if enter_ts is not None:
-            mtime = datetime.fromtimestamp(plan_file.stat().st_mtime, tz=timezone.utc)
+            mtime = datetime.fromtimestamp(plan_file.stat().st_mtime, tz=CST)
             if mtime < enter_ts:
+                enter_cst = enter_ts.astimezone(CST)
                 report.add(
                     plan_label,
                     Severity.WARNING,
                     "W002",
                     (
-                        f"mtime {mtime:%Y-%m-%dT%H:%M:%SZ} 早于进入 {phase} "
-                        f"阶段（{enter_ts:%Y-%m-%dT%H:%M:%SZ}），未随阶段刷新"
+                        f"mtime {mtime:%Y-%m-%d %H:%M:%S} 早于进入 {phase} "
+                        f"阶段（{enter_cst:%Y-%m-%d %H:%M:%S}），未随阶段刷新"
                     ),
                 )
 

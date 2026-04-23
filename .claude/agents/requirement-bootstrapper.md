@@ -41,6 +41,7 @@ tools: Read, Write, Bash
 - ❌ 禁止为语义组字段填值——`feature_area / change_type / affected_modules / tags` 留空（`""` 或 `[]`），由 definition 阶段补齐
 - ❌ 禁止为结果组字段填值——`outcome / completed_at / lessons_extracted` 留空/false，由 completed 阶段回写
 - ✅ 只填流程组字段：`id / title / phase=bootstrap / created_at / branch / base_branch / project / services:[] / gates_passed:[] / pr_url / pr_number / log_layout=split`
+- ✅ `created_at` 格式 `YYYY-MM-DD HH:MM:SS`（Asia/Shanghai，取 bootstrap 那一刻），推荐 `TZ=Asia/Shanghai date +"%Y-%m-%d %H:%M:%S"`；详见 `context/team/engineering-spec/time-format.md`
 - ✅ `log_layout` 新建时固定写 `split`（v2 分层日志）；不要填 `legacy`（那只为兼容老需求存在）
 - ✅ REQ-ID 规则：`REQ-<YYYY>-<NNN>`，NNN 按当年 requirements/ 下序号 +1
 - ✅ 必须从模板生成：`.claude/skills/managing-requirement-lifecycle/templates/meta.yaml.tmpl` 和 `plan.md.tmpl`

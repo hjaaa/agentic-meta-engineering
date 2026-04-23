@@ -48,8 +48,8 @@ case "${LAYOUT:-legacy}" in
     *)     LOG_FILE="$REQ_DIR/process.txt" ;;
 esac
 
-# 追加日志
-TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+# 追加日志（时间戳格式见 context/team/engineering-spec/time-format.md）
+TS=$(TZ=Asia/Shanghai date +"%Y-%m-%d %H:%M:%S")
 echo "$TS [$PHASE] tool=$TOOL" >> "$LOG_FILE"
 
 exit 0
