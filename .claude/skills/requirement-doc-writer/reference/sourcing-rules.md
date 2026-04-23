@@ -47,3 +47,24 @@
 ## 评审依据
 
 `requirement-quality-reviewer` Agent（Phase 3）会扫描文档里所有关键信息是否标注了三态之一。Phase 2 期间由主 Agent 自检。
+
+## 可执行校验
+
+三态规则已下沉为脚本，不再只靠语义 reviewer：
+
+- `bash scripts/check-sourcing.sh <path.md>` — 单文件自检
+- `bash scripts/check-sourcing.sh --requirement <REQ-ID>` — 扫该需求所有 artifacts
+- `bash scripts/check-sourcing.sh --all --strict` — CI 全量强校验
+
+检查项（代码见 `scripts/lib/check_sourcing.py`）：
+
+| 码 | 严重度 | 描述 |
+|---|---|---|
+| E001 | error | `[待补充]` 段落缺假设四要素（内容/依据/风险/验证时机 ≥3）|
+| E002 | error | `（来源：...）` 引用路径不存在 |
+| E003 | error | `（来源：path:N）` 行号超出目标文件 |
+| W001 | warning | 含 `[待用户确认]`/`[待补充]` 但缺 `## 待澄清清单` 章节 |
+| W002 | warning | 强约束数字断言但整段无三态标记（疑似第四态幻觉）|
+| W003 | warning | 待澄清清单条目数 < 标记总数 |
+
+`definition → tech-research` 阶段门禁强制 error = 0；warning 由 CI 的 `--strict` 兜底。

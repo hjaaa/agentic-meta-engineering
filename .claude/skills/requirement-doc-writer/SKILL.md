@@ -16,7 +16,8 @@ description: 撰写 artifacts/requirement.md（阶段 2 产出物），严格执
    - 涉及选择的决策点
 3. **用户确认后**，基于 `templates/requirement.md.tmpl` 撰写正式文档
 4. **刨根问底**：按 `reference/sourcing-rules.md` 的三态规则标注每条关键信息
-5. **提示补 meta.yaml 语义字段**：requirement.md 成稿后，提醒用户补齐 `meta.yaml` 的语义组（`feature_area / change_type / affected_modules / tags`）——这些字段是跨需求检索的基础，bootstrap 阶段为空，离开 definition 阶段前必须补齐
+5. **本地自检**：成稿后跑 `bash scripts/check-sourcing.sh --requirement <REQ-ID>`，期望退出码 = 0；有 error 必须修复后再进入下一阶段（`/requirement:next` 门禁会再跑一次）
+6. **提示补 meta.yaml 语义字段**：requirement.md 成稿后，提醒用户补齐 `meta.yaml` 的语义组（`feature_area / change_type / affected_modules / tags`）——这些字段是跨需求检索的基础，bootstrap 阶段为空，离开 definition 阶段前必须补齐
 
 ## 硬约束
 

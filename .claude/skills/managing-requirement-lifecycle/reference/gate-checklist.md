@@ -18,6 +18,11 @@
 ## definition → tech-research
 
 - [ ] `artifacts/requirement.md` 存在
+- [ ] `bash scripts/check-sourcing.sh --requirement <REQ-ID>` 退出码 = 0
+  - 依据 `context/team/ai-collaboration.md` §"刨根问底"三态规则把关
+  - `[待补充]` 必须含假设四要素（内容/依据/风险/验证时机）≥3 个
+  - `（来源：path:line）` 的路径与行号必须真实存在
+  - error 阻止阶段切换；warning 仅提示（strict 由 CI 把关）
 - [ ] 需求评审结论 ≠ `rejected`（由 `requirement-quality-reviewer` Agent 产生，Phase 2 可先跳过此校验，标记 "reviewer pending"）
 - [ ] 所有"待用户确认"项已处理（无 `[待用户确认]` 遗留标记）
 
