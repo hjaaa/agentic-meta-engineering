@@ -39,3 +39,4 @@ description: 需求全生命周期管理伞形 Skill，被 8 个 /requirement:* 
 - [`templates/meta.yaml.tmpl`](templates/meta.yaml.tmpl) — 新建需求的 meta.yaml 模板
 - [`templates/plan.md.tmpl`](templates/plan.md.tmpl) — 新建需求的 plan.md 模板
 - [`templates/pr-body.md.tmpl`](templates/pr-body.md.tmpl) — `/requirement:submit` 的 PR 正文模板
+- [`reference/blocker-conventions.md`](reference/blocker-conventions.md) — 主 Agent 识别与记录 blocker / blocker-resolved 事件的行为约定
