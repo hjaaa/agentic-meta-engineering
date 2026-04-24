@@ -4,7 +4,7 @@
 
 ## 当前进行中
 
-_暂无进行中的 Phase plan_
+活跃 Plan 清单见 [`INDEX.md`](./INDEX.md)。
 
 ## 已归档
 

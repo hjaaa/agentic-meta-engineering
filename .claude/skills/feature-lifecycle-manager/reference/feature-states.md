@@ -28,11 +28,15 @@ pending ──开始开发──→ in-progress ──审查通过──→ done
 feature_id: F-001
 title: 用户注册
 status: pending
+complexity: medium          # low | medium | high，来自 features.json.complexity；影响 subagent 模型档位
+depends_on: []              # F-ID 数组，来自 features.json.depends_on_features；影响派发前置校验
 created_at: 2026-04-20T10:00:00Z
 updated_at: 2026-04-20T10:00:00Z
-review_report: null   # done 时填 artifacts/review-*.md 路径
+review_report: null         # done 时填 artifacts/review-*.md 路径
 ---
 ```
+
+`complexity` 与 `depends_on` 是 `features.json` 字段在 task 文件的冗余镜像——用户可直接扫 task 文件理解派发策略，`feature-lifecycle-manager` 阶段 7 读取也更便捷。如果 `features.json` 未填（缺省），复制到 task 时写 `complexity: medium` 和 `depends_on: []`。
 
 ## 状态变更时同步动作
 

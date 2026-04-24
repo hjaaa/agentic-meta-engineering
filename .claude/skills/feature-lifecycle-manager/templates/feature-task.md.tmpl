@@ -2,6 +2,8 @@
 feature_id: __FEATURE_ID__
 title: __TITLE__
 status: pending
+complexity: __COMPLEXITY__
+depends_on: __DEPENDS_ON__
 created_at: __ISO8601__
 updated_at: __ISO8601__
 review_report: null
@@ -15,11 +17,21 @@ review_report: null
 
 ## 接口/数据结构
 
-（从 features.json 的 interfaces 复制）
+（从 features.json 的 interfaces 复制；若 `interfaces_frozen: false` 在此备注"契约可能随实现调整"）
 
 ## 依赖
 
-（从 features.json 的 dependencies 复制）
+### 依赖的 feature
+
+（从 features.json 的 `depends_on_features` 复制；若为空写"无"。实际开始前会校验这些前置 feature 状态为 `done`）
+
+### 依赖的模块
+
+（从 features.json 的 `depends_on_modules` 复制）
+
+## 触及范围
+
+（从 features.json 的 `touches` 复制，作为 subagent 开发边界约束）
 
 ## 开发笔记
 
