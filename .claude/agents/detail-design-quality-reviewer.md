@@ -34,7 +34,8 @@ tools: Read, Grep
   },
   "features_json_validation": {
     "valid": true,
-    "issues": []
+    "issues": [],
+    "enhancement_suggestions": []
   },
   "required_fixes": [],
   "suggestions": []
@@ -43,7 +44,24 @@ tools: Read, Grep
 
 ## 行为准则
 
+### 必填项（缺失即 `invalid`，阻塞门禁）
+
+- ✅ `id` 唯一；`title` < 30 字；`description` < 200 字；可在详细设计文档中找到对应章节
 - ❌ 禁止忽视 features.json 合法性（每条必须有 id/title/description）
-- ✅ features.json 每条 feature 必须：(1) id 唯一；(2) title < 30 字；(3) description < 200 字；(4) 可在详细设计文档中找到对应章节
+
+### 可选增强字段（缺失不阻塞，但进 `enhancement_suggestions`）
+
+以下字段是阶段 7 subagent 派发的机读入口，缺失会让派发策略退化为最保守模式（串行 + sonnet）。评审时：
+
+- 若 feature 明显偏简单实现（单文件 / CRUD / DTO 转换）→ 建议补 `complexity: low`
+- 若 feature 涉及多 feature 协作 → 建议补 `depends_on_features: [...]` 列出前置
+- 若 feature 明显有多文件覆盖范围 → 建议补 `touches: [...]`
+- 若详细设计里接口签名已完整冻结 → 建议补 `interfaces_frozen: true`
+- 字段定义详见 `.claude/skills/task-context-builder/reference/extract-rules.md`
+
+这些建议写入 `enhancement_suggestions`，不升级为 `required_fixes`，不影响 `conclusion`。
+
+### 其他
+
 - ✅ 时序图用 Mermaid 时必须语法合法（尝试 parse）
 - ✅ 结论规则同其他 reviewer
