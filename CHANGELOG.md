@@ -2,6 +2,29 @@
 
 本文件记录 Agentic Engineering 骨架仓库的版本变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.2.0] - 2026-04-24
+
+围绕"阶段 7 subagent 化"补强开发实施能力，并对溢出区做 Hook 级清理。
+
+### Features
+
+- **阶段 7 引入 subagent 实现派发（保守档）** — 开发实施从"主 Agent 亲自做"升级为"派 fresh implementer subagent 做"。串行不并发；按 `complexity` 选模型档位（haiku / sonnet / opus）；按 `depends_on_features` 校验前置；DONE / DONE_WITH_CONCERNS / NEEDS_CONTEXT / BLOCKED 四态回执契约
+- **features.json schema 扩展** — 新增 `interfaces_frozen` / `depends_on_features` / `depends_on_modules` / `touches` / `complexity` / `shared_resources` 可选字段，给派发决策提供机读入口；旧 `dependencies` 标 deprecated 作回退
+
+### Refactor
+
+- **溢出区三文件重定义** — 删除 `auto-progress-log.sh` / `stop-session-save.sh` 两个 Hook 及其测试，下线 `process.tool.log` 日志通道（详见 PR #26）
+
+### Upgrade Notes
+
+- 旧 `features.json`（只有 `id/title/description/interfaces/dependencies`）仍合法，必填门禁未变
+- 新字段缺失时派发策略退化为保守默认（`medium + sonnet + 串行`）
+- 下游 sync 骨架的仓库需感知 Hook 变化：如引用过 `auto-progress-log.sh` / `stop-session-save.sh`，需要相应调整
+
+**完整变更**：https://github.com/hjaaa/agentic-meta-engineering/compare/v1.1.0...v1.2.0
+
+[1.2.0]: https://github.com/hjaaa/agentic-meta-engineering/releases/tag/v1.2.0
+
 ## [1.1.0] - 2026-04-24
 
 围绕"可追溯的时间语义 + 下游仓库同步路径"补强骨架能力。
