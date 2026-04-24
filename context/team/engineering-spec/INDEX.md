@@ -14,6 +14,11 @@
 - [`tool-design-spec/skill-spec.md`](tool-design-spec/skill-spec.md) — Skill 硬约束（SKILL.md < 2k token）
 - [`tool-design-spec/subagent-spec.md`](tool-design-spec/subagent-spec.md) — Subagent 硬约束（返回 < 2k token，禁止嵌套）
 
+## 数据格式约定
+
+- [`time-format.md`](time-format.md) — 写入时间戳统一格式（`YYYY-MM-DD HH:MM:SS` / Asia/Shanghai）+ 向后兼容规则
+- [`meta-schema.yaml`](meta-schema.yaml) — `requirements/<id>/meta.yaml` 的字段 schema / 枚举 / 条件必填
+
 ## 迭代方式
 
 - [`iteration-sop.md`](iteration-sop.md) — 项目迭代 SOP

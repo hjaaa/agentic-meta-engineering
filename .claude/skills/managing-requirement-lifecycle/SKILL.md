@@ -12,7 +12,7 @@ description: 需求全生命周期管理伞形 Skill，被 8 个 /requirement:* 
 1. **识别意图**：映射到 8 个子动作之一
    - 新建 → bootstrap（创建分支+目录+meta.yaml，委托 `requirement-bootstrapper`）
    - 继续 → 委托 `requirement-session-restorer`
-   - 下一阶段 → 门禁校验（见 `reference/phase-rules.md`）→ 更新 phase
+   - 下一阶段 → 门禁校验（见 `reference/gate-checklist.md`，含 plan.md 软校验）→ 若 check-plan.sh 出 warning 主动提示刷新 plan.md → 更新 phase
    - 保存 → 委托 `requirement-progress-logger`
    - 查看状态 → 读 meta.yaml 输出阶段+最近动作
    - 回退 → 归档当前 artifacts + 改 phase + 写 notes.md

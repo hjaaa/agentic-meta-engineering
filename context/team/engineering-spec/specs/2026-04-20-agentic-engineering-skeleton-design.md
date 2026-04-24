@@ -431,24 +431,42 @@ gates_passed:                   # 门禁历史
 长期记忆（Long-term Memory）· context/ + skills/reference/ + requirements/*/artifacts/
 ```
 
-### 6.2 四个溢出文件
+### 6.2 四个溢出文件 + 工具日志（v2 分层）
 
-| 文件 | 写入频率 | 写入方式 | 谁写 | 谁读 |
-|---|---|---|---|---|
-| `meta.yaml` | 低（阶段切换） | 覆盖 | `managing-requirement-lifecycle` | 全体 |
-| `process.txt` | 高（每个关键动作） | **追加** | `requirement-progress-logger` + Hook | `requirement-session-restorer` |
-| `notes.md` | 中 | 追加 | `/note` + Agent 自主 | `/knowledge:*` 提炼时 |
-| `plan.md` | 中 | 覆盖 | 主 Agent 在对齐阶段 | 主 Agent 回看 |
+| 文件 | 写入频率 | 写入方式 | 谁写 | 谁读 | 入 git |
+|---|---|---|---|---|---|
+| `meta.yaml` | 低（阶段切换） | 覆盖 | `managing-requirement-lifecycle` | 全体 | ✅ |
+| `process.txt` | 中（每个语义事件） | **追加** | `requirement-progress-logger` Skill + `stop-session-save` Hook | `requirement-session-restorer` | ✅ |
+| `process.tool.log` | 高（每次 Edit/Write/Bash） | **追加** | `auto-progress-log` Hook | （可选）恢复时 tail 看活动密度 | ❌（.gitignore） |
+| `notes.md` | 中 | 追加 | `/note` + Agent 自主 | `/knowledge:*` 提炼时 | ✅ |
+| `plan.md` | 中 | 覆盖 | 主 Agent 在对齐阶段 | 主 Agent 回看 + session-restorer | ✅ |
 
-### 6.3 `process.txt` 格式
+**布局切换**：由 `meta.yaml.log_layout` 控制：
+
+- `split`（新需求默认，v2）：工具日志 → `process.tool.log`；语义事件 → `process.txt`
+- `legacy` 或缺字段（老需求兼容，v1）：工具 + 语义混写 `process.txt`，无 `process.tool.log`
+
+### 6.3 `process.txt` / `process.tool.log` 格式
+
+`process.txt`（语义事件）：
 
 ```
-2026-04-20T10:30:00Z [bootstrap] 创建目录 REQ-2026-001
-2026-04-20T10:45:22Z [definition] requirement.md 完成草稿
-2026-04-20T11:02:08Z [review:pending] requirement-quality-reviewer 结论 needs_revision（3 条 major）
-2026-04-20T11:16:00Z [phase-transition] definition → tech-research
-2026-04-20T11:40:12Z [SESSION_END] 会话结束
+2026-04-20 18:30:00 [bootstrap] 创建目录 REQ-2026-001
+2026-04-20 18:45:22 [definition] requirement.md 完成草稿
+2026-04-20 19:02:08 [review:needs_revision] requirement-quality-reviewer 3 条 major
+2026-04-20 19:16:00 [phase-transition] definition → tech-research
+2026-04-20 19:40:12 [SESSION_END] 会话结束
 ```
+
+`process.tool.log`（v2 工具日志，Hook 写入，不入 git）：
+
+```
+2026-04-20 18:45:10 [definition] tool=Edit
+2026-04-20 18:45:22 [definition] tool=Write
+2026-04-20 19:16:05 [tech-research] tool=Bash
+```
+
+**时间戳规范**（v2 新约束）：Skill 写入时必须取"写入当下"的 Asia/Shanghai now（`TZ=Asia/Shanghai date +"%Y-%m-%d %H:%M:%S"`），不得预先计算。消除 Hook 与 Skill 并发写入时的行序与时序错位（v1 下曾出现 `phase-transition` 时间戳早于前几行 `tool=Edit`）。统一格式与时区约定见 `context/team/engineering-spec/time-format.md`；历史 UTC ISO 8601 数据保留兼容读取。
 
 ### 6.4 跨会话恢复流程
 
@@ -456,10 +474,11 @@ gates_passed:                   # 门禁历史
 /requirement:continue
   → managing-requirement-lifecycle 识别意图
   → requirement-session-restorer Skill
-     ├── 读 meta.yaml          → 阶段
-     ├── 读 process.txt 末 50 行 → 最近动作
-     ├── 读 notes.md            → 踩坑
-     └── 读 plan.md             → 当前计划
+     ├── 读 meta.yaml                         → 阶段 + log_layout
+     ├── 读 process.txt 末 50 行               → 语义事件（v2 密度约 100%）
+     ├── （可选）tail process.tool.log 末 20 行 → v2 下看近期工具活动密度
+     ├── 读 notes.md                          → 踩坑
+     └── 读 plan.md                           → 当前计划
   → 主 Agent 输出"恢复摘要"（< 200 字）
   → 等用户确认后继续
 ```

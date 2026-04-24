@@ -4,7 +4,7 @@
 id: __REQ_ID__                 # 例：REQ-2026-001
 title: __TITLE__
 phase: bootstrap
-created_at: __ISO8601__
+created_at: __CREATED_AT__     # 格式 YYYY-MM-DD HH:MM:SS（Asia/Shanghai），见 context/team/engineering-spec/time-format.md
 branch: __BRANCH__             # 例：feat/req-2026-001
 base_branch: __BASE_BRANCH__   # feat/* 派生的基点分支：develop / main / master
 project: __PROJECT__           # 关联 context/project/<project>/
@@ -12,6 +12,7 @@ services: []                   # 涉及的服务仓库
 gates_passed: []
 pr_url: ""                     # /requirement:submit 成功后回写
 pr_number: 0                   # /requirement:submit 成功后回写
+log_layout: split              # split（默认，工具日志→process.tool.log / 语义事件→process.txt） | legacy（老格式，全写 process.txt）
 
 # ============ 语义组（definition 阶段补齐，供跨需求检索） ============
 feature_area: ""                         # definition 起必填；值必须在 context/project/<project>/areas.yaml 白名单内

@@ -11,7 +11,7 @@ for meta in requirements/*/meta.yaml; do
     if [ "$META_BRANCH" = "$BRANCH" ]; then
         REQ_DIR=$(dirname "$meta")
         PHASE=$(grep -E '^phase:' "$meta" 2>/dev/null | head -1 | awk '{print $2}')
-        TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        TS=$(TZ=Asia/Shanghai date +"%Y-%m-%d %H:%M:%S")
         echo "$TS [${PHASE:-unknown}] SESSION_END" >> "$REQ_DIR/process.txt"
         break
     fi

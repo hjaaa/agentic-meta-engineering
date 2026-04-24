@@ -17,6 +17,6 @@ argument-hint: "[事件描述]（可选）"
 
 - 如用户提供了事件描述：直接用作日志正文
 - 如未提供：从最近对话上下文摘要一句话作日志正文
-- 格式化 `ISO8601 [phase] <事件描述>`
+- 格式化 `YYYY-MM-DD HH:MM:SS [phase] <事件描述>`（Asia/Shanghai 时区，详见 `context/team/engineering-spec/time-format.md`）
 - 追加到 process.txt
 - 输出确认

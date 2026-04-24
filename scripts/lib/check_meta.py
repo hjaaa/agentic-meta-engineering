@@ -44,11 +44,21 @@ def _is_empty(value: Any) -> bool:
     return False
 
 
-def _check_iso8601(value: Any) -> bool:
-    # PyYAML 对 `2026-04-22T10:00:00Z` 这类字面量会自动解析为 datetime，视为合法
+def _check_datetime(value: Any) -> bool:
+    """接受新格式（YYYY-MM-DD HH:MM:SS，Asia/Shanghai）和旧 ISO 8601（YYYY-MM-DDTHH:MM:SSZ，UTC）。
+
+    PyYAML 会把 `2026-04-22 10:00:00` 或 `2026-04-22T10:00:00Z` 这类字面量自动解析为
+    datetime 对象（分别是 naive 和 aware），视为合法。
+    详见 context/team/engineering-spec/time-format.md。
+    """
     if isinstance(value, datetime):
         return True
     if isinstance(value, str):
+        try:
+            datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+            return True
+        except ValueError:
+            pass
         try:
             datetime.fromisoformat(value.replace("Z", "+00:00"))
             return True
@@ -63,9 +73,15 @@ def _check_format(meta: dict[str, Any], schema: dict[str, Any], report: Report, 
         value = meta.get(field)
         if _is_empty(value):
             continue  # 空值由必填规则处理
-        if rule == "iso8601":
-            if not _check_iso8601(value):
-                report.add(file_label, Severity.ERROR, "format", f"字段 {field} 值 {value!r} 不符合 ISO 8601")
+        if rule in ("datetime", "iso8601"):
+            # "iso8601" 保留兼容，等价 "datetime"；两者都接受新旧两种格式
+            if not _check_datetime(value):
+                report.add(
+                    file_label,
+                    Severity.ERROR,
+                    "format",
+                    f"字段 {field} 值 {value!r} 不符合时间格式（YYYY-MM-DD HH:MM:SS 或 YYYY-MM-DDTHH:MM:SSZ）",
+                )
         elif isinstance(rule, str) and rule.startswith("^"):
             if not isinstance(value, str) or not re.match(rule, value):
                 report.add(file_label, Severity.ERROR, "format", f"字段 {field} 值 {value!r} 不符合正则 {rule}")

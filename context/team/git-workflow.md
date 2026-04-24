@@ -27,6 +27,27 @@
 | `release/*` | `develop` | PR → `main`，合并后 merge 回 `develop`，打 Tag | ❌ |
 | `hotfix/*` | `main` | PR → `main`，合并后 merge/cherry-pick 回 `develop` | ❌ |
 
+### 开分支前的标准动作（硬性要求）
+
+**所有 `feat/* / feature/* / fix/* / docs/* / chore/*` 分支必须从最新 `develop` 切出**，不得从 `main` 切。
+原因：`main` 与 `develop` 在每次 `release/*` 发版后会形成**两条平行历史**（内容一致但 commit 哈希不同）。从 `main` 切出的分支 PR 到 `develop` 时，会把 `main` 那一整条平行历史拖进 PR，造成大面积虚假冲突。
+
+开分支前统一执行这三行：
+
+```bash
+git fetch origin
+git checkout develop && git pull --ff-only
+git checkout -b <type>/<desc>     # type = feat / feature / fix / docs / chore
+```
+
+> 已经从 `main` 切了分支并提交了怎么办？
+> ```bash
+> git fetch origin
+> git rebase --onto origin/develop $(git merge-base HEAD origin/main) HEAD
+> git push --force-with-lease
+> ```
+> 效果：把你的 commit 直接落到 `origin/develop` 之上，丢掉中间那段平行历史，PR 冲突立刻消失。
+
 ### 首次启用 develop（仓库初始化）
 
 克隆本仓库即自带 develop。**从零搭建**新仓库时按以下步骤启用：

@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# PostToolUse hook: 追加进度日志到当前需求的 process.txt
+# PostToolUse hook: 追加工具级进度日志
+#
+# 日志布局（由 meta.yaml 的 log_layout 字段控制）：
+#   - split（v2 默认）：工具日志写 process.tool.log，语义事件由 Skill 写 process.txt
+#   - legacy / 缺字段：工具日志写 process.txt（老需求兼容）
 set -uo pipefail
 
 # 获取工具名：优先环境变量，否则解析 stdin JSON
@@ -37,8 +41,15 @@ done
 PHASE=$(grep -E '^phase:' "$REQ_DIR/meta.yaml" 2>/dev/null | head -1 | awk '{print $2}')
 PHASE=${PHASE:-unknown}
 
-# 追加日志
-TS=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-echo "$TS [$PHASE] tool=$TOOL" >> "$REQ_DIR/process.txt"
+# 读 log_layout，决定写入目标
+LAYOUT=$(grep -E '^log_layout:' "$REQ_DIR/meta.yaml" 2>/dev/null | head -1 | awk '{print $2}')
+case "${LAYOUT:-legacy}" in
+    split) LOG_FILE="$REQ_DIR/process.tool.log" ;;
+    *)     LOG_FILE="$REQ_DIR/process.txt" ;;
+esac
+
+# 追加日志（时间戳格式见 context/team/engineering-spec/time-format.md）
+TS=$(TZ=Asia/Shanghai date +"%Y-%m-%d %H:%M:%S")
+echo "$TS [$PHASE] tool=$TOOL" >> "$LOG_FILE"
 
 exit 0

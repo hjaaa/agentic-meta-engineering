@@ -18,7 +18,7 @@ argument-hint: <目标阶段英文标识>
 
 调用 Skill `managing-requirement-lifecycle` 的 **rollback** 流程：
 
-- 把 `artifacts/` 下所有"晚于目标阶段"的产出归档到 `artifacts/.rollback-<ISO8601>/`
+- 把 `artifacts/` 下所有"晚于目标阶段"的产出归档到 `artifacts/.rollback-<YYYYMMDD-HHMMSS>/`（Asia/Shanghai 紧凑时间戳，文件系统友好，详见 `context/team/engineering-spec/time-format.md`）
 - 更新 `meta.yaml.phase` = 目标阶段
 - 询问用户回退原因（一句话），追加到 `notes.md`
 - 委托 `requirement-progress-logger` 写 `[phase-transition] <old> → <new> (rollback)`

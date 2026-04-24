@@ -15,10 +15,13 @@ description: 跨会话恢复上下文。读 meta.yaml + process.txt + notes.md +
    - 都找不到 → 请用户指定
 
 2. **读取四个文件**（**按顺序**）：
-   - `meta.yaml` → 知道阶段
-   - `process.txt` 末尾 50 行 → 最近动作
+   - `meta.yaml` → 知道阶段（同时读 `log_layout` 字段决定下一步读取策略）
+   - `process.txt` 末尾 50 行 → **语义事件**（阶段切换 / 评审 / 门禁 / 决策 / 坑 / SESSION_END）
+     - `log_layout=split` 时 process.txt 只含语义，50 行信号密度接近 100%
+     - `log_layout=legacy` 或缺字段时 process.txt 里混杂工具日志，按"过滤 `tool=` 开头的行"取语义
    - `notes.md` → 已发现的坑/待澄清
    - `plan.md` → 当前计划
+   - （可选）`process.tool.log` 末尾 20 行 → 工具活动密度（仅 v2；判断"最近是否活跃"，不进入摘要正文）
 
 3. **输出恢复摘要**（< 200 字）：
    ```

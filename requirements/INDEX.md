@@ -10,9 +10,10 @@
 
 ```
 requirements/REQ-YYYY-NNN/
-├── meta.yaml         # 元信息：阶段、分支、服务、门禁历史
+├── meta.yaml         # 元信息：阶段、分支、服务、门禁历史、log_layout
 ├── plan.md           # 阶段级计划
-├── process.txt       # 进度日志（Hook 自动追加）
+├── process.txt       # 语义事件日志（阶段切换 / 评审 / 门禁 / SESSION_END 等）
+├── process.tool.log  # v2: 工具级日志（Hook 自动追加 Edit/Write/Bash，不入 git）
 ├── notes.md          # 随手笔记
 └── artifacts/
     ├── requirement.md          # 需求文档（阶段 2）
