@@ -18,7 +18,3 @@
 # Python 字节码缓存（scripts/lib 里的 .py 被执行时生成）
 __pycache__/
 *.pyc
-
-# 需求运行态：工具级日志（auto-progress-log Hook 写入，高频噪音）
-# 语义事件仍在 process.txt，入 git；此处仅排除工具日志
-requirements/**/process.tool.log
