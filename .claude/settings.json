@@ -29,17 +29,6 @@
         "matcher": "Bash|Edit|Write",
         "hooks": [{"type": "command", "command": ".claude/hooks/protect-branch.sh"}]
       }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write|Bash",
-        "hooks": [{"type": "command", "command": ".claude/hooks/auto-progress-log.sh"}]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [{"type": "command", "command": ".claude/hooks/stop-session-save.sh"}]
-      }
     ]
   }
 }

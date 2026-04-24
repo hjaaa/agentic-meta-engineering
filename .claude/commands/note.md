@@ -7,6 +7,8 @@ argument-hint: <内容>
 
 开发过程中随手记录发现、坑、想法。是日常最高频的命令，直接 append 不触发任何 Skill。
 
+**不要用 /note 记 blocker**：阻塞是当前需求的时间线状态，应由主 Agent 委托 `requirement-progress-logger` 写入 `process.txt` 的 `[blocker]` 事件，不走 notes.md。详见 `../skills/managing-requirement-lifecycle/reference/blocker-conventions.md`。
+
 ## 预检
 
 1. 当前分支对应 `requirements/*/meta.yaml` 存在（需要 notes.md 归属）
