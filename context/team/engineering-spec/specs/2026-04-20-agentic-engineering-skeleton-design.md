@@ -446,7 +446,14 @@ gates_passed:                   # 门禁历史
 
 工具调用不再记录到任何溢出文件；变更详情请用 `git log` 回看。
 
-### 6.3 `process.txt` 格式
+**布局切换**：由 `meta.yaml.log_layout` 控制：
+
+- `split`（新需求默认，v2）：工具日志 → `process.tool.log`；语义事件 → `process.txt`
+- `legacy` 或缺字段（老需求兼容，v1）：工具 + 语义混写 `process.txt`，无 `process.tool.log`
+
+### 6.3 `process.txt` / `process.tool.log` 格式
+
+`process.txt`（语义事件）：
 
 ```
 2026-04-24 10:20:10 [definition] [blocker] DB 主键冲突 / 怀疑唯一索引重复
