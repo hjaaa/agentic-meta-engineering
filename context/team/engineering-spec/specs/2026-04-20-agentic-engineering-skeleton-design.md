@@ -102,10 +102,8 @@ agenticMetaEngineering/
 │   │   ├── agentic/                   # 2 个（help / feedback）
 │   │   ├── code-review.md
 │   │   └── note.md
-│   ├── hooks/                         # 3 个 Hook 脚本
-│   │   ├── protect-branch.sh
-│   │   ├── auto-progress-log.sh
-│   │   └── stop-session-save.sh
+│   ├── hooks/                         # 1 个 Hook 脚本
+│   │   └── protect-branch.sh
 │   └── statusline.sh
 │
 ├── .mcp.json.example                  # MCP 候选模板（默认不启用；cp 为 .mcp.json 后生效，已 gitignore）
@@ -221,7 +219,7 @@ agenticMetaEngineering/
 | `managing-requirement-lifecycle` | 伞形 Skill，被 7 个 `/requirement:*` 共用；负责意图识别、阶段检查、门禁验证 | `reference/phase-rules.md`（8 阶段规范）`templates/`（需求骨架） |
 | `requirement-doc-writer` | 需求文档撰写，核心是"刨根问底"—每条信息必须"有引用 / 待确认 / 待补充" | `reference/sourcing-rules.md` `templates/requirement.md` |
 | `requirement-session-restorer` | 跨会话恢复：读 `meta.yaml + process.txt + notes.md + plan.md` | 纯指令 |
-| `requirement-progress-logger` | 实时记录进度到 `process.txt` | `reference/log-format.md` |
+| `requirement-progress-logger` | 语义事件发生时追加到 `process.txt` | 纯指令 |
 | `task-context-builder` | 为单个功能点构建开发上下文 | `reference/extract-rules.md` |
 | `code-review-prepare` | 代码审查预检：识别需求、定范围、取 diff | `scripts/prepare.sh` |
 | `code-review-report` | 代码审查结果汇总 | `templates/review-report.md` |
@@ -426,47 +424,41 @@ gates_passed:                   # 门禁历史
 ```
 工作记忆（Working Memory）· 会话对话上下文 · 不可持久化
          ↓ 中断溢出
-溢出区（Spillover）· requirements/<id>/ 下的四个文件
+溢出区（Spillover）· requirements/<id>/ 下的三个文件 + 一份元数据（meta.yaml）
          ↓ 验收沉淀
 长期记忆（Long-term Memory）· context/ + skills/reference/ + requirements/*/artifacts/
 ```
 
-### 6.2 四个溢出文件 + 工具日志（v2 分层）
+### 6.2 三个溢出文件 + 元数据
 
 | 文件 | 写入频率 | 写入方式 | 谁写 | 谁读 | 入 git |
 |---|---|---|---|---|---|
 | `meta.yaml` | 低（阶段切换） | 覆盖 | `managing-requirement-lifecycle` | 全体 | ✅ |
-| `process.txt` | 中（每个语义事件） | **追加** | `requirement-progress-logger` Skill + `stop-session-save` Hook | `requirement-session-restorer` | ✅ |
-| `process.tool.log` | 高（每次 Edit/Write/Bash） | **追加** | `auto-progress-log` Hook | （可选）恢复时 tail 看活动密度 | ❌（.gitignore） |
-| `notes.md` | 中 | 追加 | `/note` + Agent 自主 | `/knowledge:*` 提炼时 | ✅ |
-| `plan.md` | 中 | 覆盖 | 主 Agent 在对齐阶段 | 主 Agent 回看 + session-restorer | ✅ |
+| `process.txt` | 中（每个语义事件） | **追加** | `requirement-progress-logger` Skill（唯一通道） | `requirement-session-restorer` | ✅ |
+| `notes.md` | 中 | 追加 | `/note` + 主 Agent 自主 | `/knowledge:*` 提炼时 | ✅ |
+| `plan.md` | 中 | 上半覆盖 / 下半 ADR 段追加 | 主 Agent 在对齐阶段 + 决策发生时 | 主 Agent 回看 + session-restorer | ✅ |
 
-**布局切换**：由 `meta.yaml.log_layout` 控制：
+**三文件 slogan**：
 
-- `split`（新需求默认，v2）：工具日志 → `process.tool.log`；语义事件 → `process.txt`
-- `legacy` 或缺字段（老需求兼容，v1）：工具 + 语义混写 `process.txt`，无 `process.tool.log`
+- `process.txt` — 做到哪了 + 遇到了什么阻塞
+- `notes.md` — 过程中发现的经验 + 待沉淀的知识
+- `plan.md` — 当前计划 + 决策记录（ADR 小卡）
 
-### 6.3 `process.txt` / `process.tool.log` 格式
+工具调用不再记录到任何溢出文件；变更详情请用 `git log` 回看。
 
-`process.txt`（语义事件）：
-
-```
-2026-04-20 18:30:00 [bootstrap] 创建目录 REQ-2026-001
-2026-04-20 18:45:22 [definition] requirement.md 完成草稿
-2026-04-20 19:02:08 [review:needs_revision] requirement-quality-reviewer 3 条 major
-2026-04-20 19:16:00 [phase-transition] definition → tech-research
-2026-04-20 19:40:12 [SESSION_END] 会话结束
-```
-
-`process.tool.log`（v2 工具日志，Hook 写入，不入 git）：
+### 6.3 `process.txt` 格式
 
 ```
-2026-04-20 18:45:10 [definition] tool=Edit
-2026-04-20 18:45:22 [definition] tool=Write
-2026-04-20 19:16:05 [tech-research] tool=Bash
+2026-04-24 10:20:10 [definition] [blocker] DB 主键冲突 / 怀疑唯一索引重复
+2026-04-24 10:35:40 [definition] [blocker] XX 表索引正常 / 方向转向数据层
+2026-04-24 11:45:00 [definition] [blocker-resolved] batchInsert 没去重 / 已补 distinct
+2026-04-24 12:02:08 [definition] [review:needs_revision] requirement-quality-reviewer 3 条 major
+2026-04-24 12:16:00 [definition] [phase-transition] definition → tech-research
 ```
 
-**时间戳规范**（v2 新约束）：Skill 写入时必须取"写入当下"的 Asia/Shanghai now（`TZ=Asia/Shanghai date +"%Y-%m-%d %H:%M:%S"`），不得预先计算。消除 Hook 与 Skill 并发写入时的行序与时序错位（v1 下曾出现 `phase-transition` 时间戳早于前几行 `tool=Edit`）。统一格式与时区约定见 `context/team/engineering-spec/time-format.md`；历史 UTC ISO 8601 数据保留兼容读取。
+**事件标签白名单**：`[phase-transition]` / `[save]` / `[review:*]` / `[gate:*]` / `[blocker]` / `[blocker-resolved]`。完整定义与调用路径见 `.claude/skills/requirement-progress-logger/SKILL.md`。
+
+**时间戳规范**：Skill 写入时必须取"写入当下"的 Asia/Shanghai now（`TZ=Asia/Shanghai date +"%Y-%m-%d %H:%M:%S"`），不得预先计算。统一格式与时区约定见 `context/team/engineering-spec/time-format.md`。历史 UTC ISO 8601 与旧格式（`[decision]` / `[issue]` / `[SESSION_END]` / `tool=*`）保留兼容读取（session-restorer 直接忽略）。
 
 ### 6.4 跨会话恢复流程
 
@@ -474,11 +466,10 @@ gates_passed:                   # 门禁历史
 /requirement:continue
   → managing-requirement-lifecycle 识别意图
   → requirement-session-restorer Skill
-     ├── 读 meta.yaml                         → 阶段 + log_layout
-     ├── 读 process.txt 末 50 行               → 语义事件（v2 密度约 100%）
-     ├── （可选）tail process.tool.log 末 20 行 → v2 下看近期工具活动密度
-     ├── 读 notes.md                          → 踩坑
-     └── 读 plan.md                           → 当前计划
+     ├── 读 meta.yaml                → 阶段
+     ├── 读 process.txt 末 50 行      → 白名单事件（非白名单 tag 直接忽略）
+     ├── 读 notes.md                 → 踩坑 / 待澄清
+     └── 读 plan.md                  → 当前计划 + 决策记录（取最近一条 ADR 入摘要）
   → 主 Agent 输出"恢复摘要"（< 200 字）
   → 等用户确认后继续
 ```
@@ -503,22 +494,21 @@ gates_passed:                   # 门禁历史
 # 运行态临时文件
 .review-scope.json
 .DS_Store
-
-# requirements/ 必须入 git（团队资产，不是临时文件）
-# context/ 也必须入 git（团队公共记忆）
 ```
+
+`requirements/` 与 `context/` 都必须入 git（团队资产）。不再有工具日志 `.gitignore` 例外——工具调用在溢出区不留痕，回看请用 `git log`。
 
 ---
 
 ## 7. Hook / StatusLine / 开箱体验
 
-### 7.1 Hook 清单（3 个）
+### 7.1 Hook 清单（1 个）
 
 | Hook | 触发 | 目的 |
 |---|---|---|
-| `protect-branch.sh` | `PreToolUse`（Bash/Edit/Write） | master/main 上写操作时阻止 |
-| `auto-progress-log.sh` | `PostToolUse`（Edit/Write/Bash） | 自动追加到 `process.txt` |
-| `stop-session-save.sh` | `Stop` | 会话结束时保存状态、打 `SESSION_END` 标记 |
+| `protect-branch.sh` | `PreToolUse`（Bash/Edit/Write） | master/main/develop 上写操作时阻止 |
+
+> 历史上曾有 `auto-progress-log.sh`（PostToolUse）与 `stop-session-save.sh`（Stop）两个 Hook，在溢出区重定义后移除（见 `specs/2026-04-24-spillover-redefine-design.md`）。
 
 ### 7.2 Hook 硬约束
 
@@ -543,7 +533,7 @@ gates_passed:                   # 门禁历史
     "ask": ["Bash(git push:*)", "Bash(git commit:*)", "Edit", "Write"],
     "deny": ["Bash(rm -rf:*)", "Bash(git reset --hard:*)", "Bash(git push --force:*)"]
   },
-  "hooks": { /* 三个 hook 注册 */ },
+  "hooks": { /* 一个 hook 注册：protect-branch PreToolUse */ },
   "statusLine": { "type": "command", "command": ".claude/statusline.sh" }
 }
 ```
@@ -687,7 +677,7 @@ gates_passed:                   # 门禁历史
 | aa | 审查报告命名 | `review-YYYYMMDD-HHMMSS.md` | 可排序 |
 | bb | 审查报告是否写 notes.md | 否 | 避免冗余 |
 | cc | `requirements/` 入 git | 入 | 团队资产 |
-| dd | 进度记录粒度 | Edit/Write/Bash | 平衡信息与噪音 |
+| dd | 进度记录粒度 | 语义事件（白名单 tag） | 工具级噪音移出溢出区，变更详情走 git log |
 | ee | 恢复摘要长度 | < 200 字 | 渐进披露 |
 | ff | plan.md vs tasks/ | 阶段级 vs 功能点级，互不重叠 | 职责分离 |
 | gg | Git 权限策略 | 读 allow / 写 ask / 危险 deny | 渐进信任 |
