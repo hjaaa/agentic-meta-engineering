@@ -98,6 +98,54 @@ subject 用祈使句、简体中文、不超过 50 字符。
 - 自动引用 `artifacts/code-review-reports/` 和追溯链
 - 自动把 `meta.yaml.pr_url / pr_number` 写回
 
+### 发版路径实战注意（release → main）
+
+本仓库 **main 严禁直接 push**，全局 `git-release` skill 默认的"本地 `git merge --no-ff release/* && git push origin main`"路径会被 hook 拦；必须走 PR。以下是完整顺序：
+
+1. 在 `release/vX.Y.Z` 上完成 VERSION bump、测试等 → push `release/*`
+2. `gh pr create --base main --head release/vX.Y.Z` → 合并方式选 **Merge commit**（不是 Squash）
+3. 合并后本地 `git pull main` → `git tag -a vX.Y.Z` → `git push origin vX.Y.Z`
+4. `gh release create vX.Y.Z` 发布 GitHub Release
+5. 在 release 分支上补 `docs: 更新 CHANGELOG vX.Y.Z` commit → push
+6. 开两个平行 PR：
+   - release → main：同步 CHANGELOG（参考 v1.0.0 #21、v1.2.0 #29），可 Squash
+   - release → develop：回合 VERSION + CHANGELOG + merge 记录，用 Merge commit
+
+### 发版必踩的两个坑
+
+#### 坑 1：squash merge 平行历史导致 "整份 diff 冲突"
+
+feature PR → develop 用 Squash，每次 develop → release → main 又都是 Merge commit 节点。结果：**main 上每个 release tag 都是一个独立的 squash commit**，和 develop 分出的新 `release/*` 分支没有共同近祖，PR 看起来会有几十个文件"冲突"——实则内容一致，只是 commit 哈希不同。
+
+复用 v1.1.0 时沉淀下来的化解方案（在 release 分支本地执行）：
+
+```bash
+git checkout release/vX.Y.Z
+git merge origin/main -X ours --no-ff \
+  -m "release: 合并 origin/main 到 release/vX.Y.Z（保留 release 侧内容）"
+git push origin release/vX.Y.Z
+```
+
+`-X ours` 只处理 modify/modify 冲突（保留 release 侧），**不处理 modify/delete 冲突**（见坑 2）。push 后 PR 自动变成 mergeable。
+
+#### 坑 2：modify/delete 冲突不会被 `-X ours` 自动解决
+
+场景：release 周期内某 PR 删除了文件 F（比如废弃 Hook），但上版 main 的 squash commit 里 F 仍以"修改"形式存在。merge 时出现 `DU（deleted by us, modified by them）`——git 需要人类判断是"恢复"还是"保持删除"。
+
+策略：**按原始 PR 的意图决定**。删除是有意的就保留删除：
+
+```bash
+git rm <path/to/file>   # 保留删除决定
+git commit               # 完成 merge commit
+```
+
+在 commit 前再检查一次：
+- `grep` 一下 `.claude/settings.json` 和其他 registry 文件，确认没有残留引用
+- 看看原 PR 的设计说明，理解为什么要删
+- 不要为了"让 merge 通过"而盲目 `git checkout --theirs` 恢复文件——那等于悄悄撤销了原 PR
+
+> 补充：权限系统会拦"没点名的 `git rm`"，所以在让 AI 执行这一步时要显式授权："授权删除 A/B/C 三个已废弃文件完成 merge"。
+
 ## 和全局 git-* Skill 的关系
 
 `git-feature` / `git-release` / `git-hotfix` 是**用户级**全局 Skill，默认行为已对齐本仓库 git-flow：
