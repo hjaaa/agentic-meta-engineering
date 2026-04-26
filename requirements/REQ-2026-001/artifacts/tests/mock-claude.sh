@@ -4,6 +4,8 @@
 # 通过 MOCK_CLAUDE_MODE 环境变量控制行为，模拟 claude -p 的四种典型结果。
 # 设计原则：吞下所有 --add-dir / --output-format / -p 等参数不报错。
 
+set -eu
+
 # 吞下所有参数——我们不解析它们，只关心环境变量
 while [[ $# -gt 0 ]]; do
   shift

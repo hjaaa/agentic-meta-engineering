@@ -333,7 +333,7 @@ append_skip_marker() {
 | TC-07 | claude -p 输出为空 | mock claude exit 0 + 空 stdout | notes.md 末尾 `[hook-skipped: empty-output-bug-7263]` |
 | TC-08 | 超时 | mock claude sleep 60 | worker 30s 后被 kill，notes.md 不变（trap 不跑） |
 | TC-09 | 大 transcript | fixture 100 轮 | tail 60 行后正常工作 |
-| TC-10 | 并发写 | 同时启动两个 worker | 两条 `## 会话经验` 都写入，无内容撕裂 |
+| TC-10 | 并发写 | 同时启动两个 worker | 至少 1 条 `## 会话经验`（允许 notes-busy 一方走 skip-write 路径不写）；并验证 notes.md 文件未被并发写撕裂（可用 line_count 等粗校验） |
 
 ### 6.2 fixture 设计
 

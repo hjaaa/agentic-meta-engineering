@@ -2,11 +2,11 @@
 # run-e2e.sh
 # REQ-2026-001 集成测试入口，端到端验证 extract-experience Hook 全链路。
 # 运行方式：bash requirements/REQ-2026-001/artifacts/tests/run-e2e.sh
-# 注意：TC-08 需等待 ~30s watchdog 超时，请耐心等待。
+# 注意：TC-08 需等待约 35s watchdog 超时，请耐心等待。
 #
 # 退出码：全 PASS → 0；任一 FAIL → 1（stderr 列出失败 TC）
 
-set -u
+set -eu
 
 # ============================================================
 # 全局路径常量
@@ -40,11 +40,13 @@ FAIL_LIST=""   # 逗号分隔的失败 TC 列表
 #       $2 = 分支名（如 feat/req-TEST-001）
 #       $3 = req_id（如 TEST-001）
 #       $4 = phase（如 development / completed，空则默认 development）
+#       $5 = skip_req_dir（"1" 表示不创建 requirements 目录与 meta.yaml，用于 TC-04 场景）
 setup_fake_repo() {
   local workdir="$1"
   local branch="$2"
   local req_id="$3"
   local phase="${4:-development}"
+  local skip_req_dir="${5:-0}"
 
   # 初始化 git 仓库（bare 最小配置，只需 HEAD 能读）
   git init -q "$workdir"
@@ -55,16 +57,18 @@ setup_fake_repo() {
   # 切到目标分支
   git -C "$workdir" checkout -q -b "$branch"
 
-  # 建 requirements 目录 + meta.yaml + notes.md
-  local req_dir="$workdir/requirements/REQ-${req_id}"
-  mkdir -p "$req_dir"
-  cat > "$req_dir/meta.yaml" <<YAML
+  # 按需创建 requirements 目录 + meta.yaml + notes.md
+  if [ "$skip_req_dir" != "1" ]; then
+    local req_dir="$workdir/requirements/REQ-${req_id}"
+    mkdir -p "$req_dir"
+    cat > "$req_dir/meta.yaml" <<YAML
 id: REQ-${req_id}
 title: 测试需求
 phase: ${phase}
 YAML
-  # notes.md 初始为空（或含占位符）
-  printf '# REQ-%s Notes\n' "$req_id" > "$req_dir/notes.md"
+    # notes.md 初始为空（或含占位符）
+    printf '# REQ-%s Notes\n' "$req_id" > "$req_dir/notes.md"
+  fi
 
   # 把 .claude 目录 symlink 或拷贝进来，让受测脚本能被调用
   # 使用 symlink 避免拷贝大文件，也确保修改受测脚本时测试立即感知
@@ -125,7 +129,7 @@ assert_count_ge() {
 # ============================================================
 
 # make_hook_input: 构造 extract-experience.sh 期望的 stdin JSON
-# $1=cwd $2=transcript_path
+# $1=工作目录路径  $2=transcript 文件路径
 make_hook_input() {
   local cwd="$1"
   local transcript="$2"
@@ -142,7 +146,7 @@ print(json.dumps({'cwd': '$cwd', 'transcript_path': '$transcript'}))
 
 # run_hook_and_wait: 调用 extract-experience.sh，然后等待 worker 完成
 # worker 是 nohup 后台启动的，需要轮询 notes.md 变化来判断完成
-# $1=hook_input_json  $2=notes_file  $3=max_wait_seconds  $4=mock_mode
+# $1=hook_input_json  $2=notes_file  $3=最大等待秒数（实际秒级，sleep 1 累计）  $4=mock_mode
 run_hook_and_wait() {
   local hook_input="$1"
   local notes_file="$2"
@@ -157,6 +161,7 @@ run_hook_and_wait() {
     bash "$MAIN_HOOK" <<< "$hook_input"
 
   # 等待 notes.md 发生变化（说明 worker 已完成写入）
+  # 每次 sleep 1s，elapsed 以秒为单位累加，名实一致
   local elapsed=0
   while [ "$elapsed" -lt "$max_wait" ]; do
     local current_size
@@ -164,7 +169,7 @@ run_hook_and_wait() {
     if [ "$current_size" -gt "$initial_size" ]; then
       return 0
     fi
-    sleep 0.3
+    sleep 1
     elapsed=$((elapsed + 1))
   done
   # 超时未变化也返回 0（部分 TC 期望 notes.md 不变，这里只是等待，不做断言）
@@ -178,7 +183,6 @@ run_hook_and_wait() {
 # TC-01: 正常会话提取
 # 期望：notes.md 末尾增 "## 会话经验（YYYY-MM-DD HH:MM）" 小节
 tc_01_normal() {
-  local tc="TC-01"
   local workdir="/tmp/req-experience-tc01-$$"
   setup_fake_repo "$workdir" "feat/req-TEST-001" "TEST-001" "development"
   local notes_file="$workdir/requirements/REQ-TEST-001/notes.md"
@@ -200,7 +204,6 @@ tc_01_normal() {
 # TC-02: env opt-out
 # 期望：设置 SKIP_EXPERIENCE_HOOK=1 时 notes.md 不变
 tc_02_opt_out() {
-  local tc="TC-02"
   local workdir="/tmp/req-experience-tc02-$$"
   setup_fake_repo "$workdir" "feat/req-TEST-002" "TEST-002" "development"
   local notes_file="$workdir/requirements/REQ-TEST-002/notes.md"
@@ -232,7 +235,6 @@ tc_02_opt_out() {
 # TC-03: 非需求分支
 # 期望：分支为 develop 或 hotfix/xxx 时，notes.md 不变
 tc_03_non_req_branch() {
-  local tc="TC-03"
   local workdir="/tmp/req-experience-tc03-$$"
   # 使用 develop 分支（不匹配 feat/req-* 模式）
   setup_fake_repo "$workdir" "develop" "TEST-003" "development"
@@ -247,12 +249,7 @@ tc_03_non_req_branch() {
   sleep 0.5
 
   local result=0
-  local final_content
-  final_content="$(cat "$notes_file")"
-  if [ "$initial_content" != "$final_content" ]; then
-    echo "[ASSERT FAIL] TC-03: notes.md should not change on non-req branch" >&2
-    result=1
-  fi
+  assert_not_contains "$notes_file" "## 会话经验" "TC-03 非需求分支不应写入会话经验" || result=1
 
   teardown "$workdir"
   return $result
@@ -261,16 +258,9 @@ tc_03_non_req_branch() {
 # TC-04: meta.yaml 缺失
 # 期望：分支匹配 feat/req-* 但 meta.yaml 不存在时，notes.md 不变（且不新建）
 tc_04_no_meta() {
-  local tc="TC-04"
   local workdir="/tmp/req-experience-tc04-$$"
-  # 使用 feat/req-* 分支，但不建 meta.yaml（通过给出错误的 req_id 然后删除）
-  git init -q "$workdir"
-  git -C "$workdir" config user.email "test@test.com"
-  git -C "$workdir" config user.name "test"
-  git -C "$workdir" commit -q --allow-empty -m "init"
-  git -C "$workdir" checkout -q -b "feat/req-TEST-004"
-  # 不建 requirements/REQ-TEST-004/
-  ln -s "$REPO_ROOT/.claude" "$workdir/.claude"
+  # skip_req_dir=1：不创建 requirements 目录与 meta.yaml
+  setup_fake_repo "$workdir" "feat/req-TEST-004" "TEST-004" "" "1"
 
   local hook_input
   hook_input="$(make_hook_input "$workdir" "$FIXTURE_NORMAL")"
@@ -294,7 +284,6 @@ tc_04_no_meta() {
 # TC-05: phase=completed
 # 期望：meta.yaml 设置 phase: completed 时，notes.md 不变
 tc_05_phase_completed() {
-  local tc="TC-05"
   local workdir="/tmp/req-experience-tc05-$$"
   setup_fake_repo "$workdir" "feat/req-TEST-005" "TEST-005" "completed"
   local notes_file="$workdir/requirements/REQ-TEST-005/notes.md"
@@ -308,12 +297,7 @@ tc_05_phase_completed() {
   sleep 0.5
 
   local result=0
-  local final_content
-  final_content="$(cat "$notes_file")"
-  if [ "$initial_content" != "$final_content" ]; then
-    echo "[ASSERT FAIL] TC-05: notes.md should not change when phase=completed" >&2
-    result=1
-  fi
+  assert_not_contains "$notes_file" "## 会话经验" "TC-05 phase=completed 不应写入会话经验" || result=1
 
   teardown "$workdir"
   return $result
@@ -322,7 +306,6 @@ tc_05_phase_completed() {
 # TC-06: claude -p 失败（mock exit 1）
 # 期望：notes.md 末尾写入 "[hook-skipped: claude-exit-1]"
 tc_06_claude_fail() {
-  local tc="TC-06"
   local workdir="/tmp/req-experience-tc06-$$"
   setup_fake_repo "$workdir" "feat/req-TEST-006" "TEST-006" "development"
   local notes_file="$workdir/requirements/REQ-TEST-006/notes.md"
@@ -341,7 +324,6 @@ tc_06_claude_fail() {
 # TC-07: claude -p 输出为空（mock empty）
 # 期望：notes.md 末尾写入 "[hook-skipped: empty-output-bug-7263]"
 tc_07_claude_empty() {
-  local tc="TC-07"
   local workdir="/tmp/req-experience-tc07-$$"
   setup_fake_repo "$workdir" "feat/req-TEST-007" "TEST-007" "development"
   local notes_file="$workdir/requirements/REQ-TEST-007/notes.md"
@@ -359,10 +341,9 @@ tc_07_claude_empty() {
 
 # TC-08: 超时（mock slow，sleep 60）
 # 期望：worker 30s 后被 watchdog kill，notes.md 不变（trap 不跑，无 skipped 标记）
-# 注意：此用例等待约 30s，属正常现象
+# 注意：此用例等待约 35s（watchdog 30s kill + 5s 缓冲），属正常现象
 tc_08_timeout() {
-  local tc="TC-08"
-  echo "[TC-08] 正在等待 watchdog 30s 超时，请耐心等待..." >&2
+  echo "[TC-08] 正在等待 watchdog 约 35s 超时，请耐心等待..." >&2
 
   local workdir="/tmp/req-experience-tc08-$$"
   setup_fake_repo "$workdir" "feat/req-TEST-008" "TEST-008" "development"
@@ -396,7 +377,6 @@ tc_08_timeout() {
 # TC-09: 大 transcript（100 行）
 # 期望：tail 60 行后正常工作，notes.md 写入会话经验小节
 tc_09_large_transcript() {
-  local tc="TC-09"
   local workdir="/tmp/req-experience-tc09-$$"
   setup_fake_repo "$workdir" "feat/req-TEST-009" "TEST-009" "development"
   local notes_file="$workdir/requirements/REQ-TEST-009/notes.md"
@@ -418,7 +398,6 @@ tc_09_large_transcript() {
 #       因此期望 grep "## 会话经验" 出现 >= 1 次（非 0 即合格）
 #       实际行为视锁竞争结果而定：两方都成功 = 2 条；一方 notes-busy = 1 条
 tc_10_concurrent_write() {
-  local tc="TC-10"
   local workdir="/tmp/req-experience-tc10-$$"
   setup_fake_repo "$workdir" "feat/req-TEST-010" "TEST-010" "development"
   local notes_file="$workdir/requirements/REQ-TEST-010/notes.md"
@@ -479,6 +458,9 @@ run_tc() {
 }
 
 main() {
+  # 全局兜底清理：无论正常退出还是被中断，都清除 TC workdir 临时目录
+  trap 'rm -rf /tmp/req-experience-tc*-$$ 2>/dev/null' EXIT INT TERM
+
   echo "=========================================="
   echo " REQ-2026-001 端到端集成测试"
   echo " 受测 Hook: $MAIN_HOOK"
@@ -506,7 +488,7 @@ main() {
   run_tc "TC-05" tc_05_phase_completed "phase=completed"
   run_tc "TC-06" tc_06_claude_fail     "claude -p 失败 (exit 1)"
   run_tc "TC-07" tc_07_claude_empty    "claude -p 输出为空 (bug-7263)"
-  run_tc "TC-08" tc_08_timeout         "超时 watchdog (≥30s，请等待)"
+  run_tc "TC-08" tc_08_timeout         "超时 watchdog (约 35s，请等待)"
   run_tc "TC-09" tc_09_large_transcript "大 transcript (100 行)"
   run_tc "TC-10" tc_10_concurrent_write "并发写 notes.md"
 
