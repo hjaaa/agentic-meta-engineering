@@ -5,3 +5,5 @@
 2026-04-26 10:06:44 [phase-transition] definition → tech-research
 2026-04-26 13:45:44 [gate:pass] tech-feasibility.md 存在 + 风险段 7 行 + sourcing 通过
 2026-04-26 13:45:44 [phase-transition] tech-research → outline-design
+2026-04-26 13:48:48 [gate:pass] outline-design.md 存在；reviewer pending
+2026-04-26 13:48:48 [phase-transition] outline-design → detail-design
