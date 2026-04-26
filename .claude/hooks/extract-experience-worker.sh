@@ -22,11 +22,13 @@ WATCHDOG_PID=$!
 # 临时文件路径：用 $$ 避免多 worker 并发冲突
 TMP_FILE="/tmp/req-experience-$$-transcript.jsonl"
 RESULT_FILE="/tmp/req-experience-$$-result.txt"
+STDERR_FILE="/tmp/req-experience-$$-claude.err"
 LOCK_DIR="${NOTES_FILE}.lock"
 
 # cleanup 覆盖正常退出 + 超时被杀（trap EXIT 在 kill -9 时不会跑，但正常路径会）
 cleanup() {
-  rm -f "$TMP_FILE" "$RESULT_FILE" 2>/dev/null
+  rm -f "$TMP_FILE" "$RESULT_FILE" "$STDERR_FILE" 2>/dev/null
+  rm -f "$LOCK_DIR/owner" 2>/dev/null   # owner 文件可能存在（acquire_lock 成功）
   rmdir "$LOCK_DIR" 2>/dev/null
   # 清理 watchdog，避免 worker 已正常完成后 watchdog 还在等待
   kill -9 "$WATCHDOG_PID" 2>/dev/null
@@ -38,11 +40,26 @@ trap cleanup EXIT INT TERM
 
 # acquire_lock: mkdir 原子锁，最多 5 次重试
 # 成功返回 0，全部失败返回 1
+# mkdir 成功后写入 owner PID，供 stale lock 探测使用
 acquire_lock() {
   local i
   for i in 1 2 3 4 5; do
     if mkdir "$LOCK_DIR" 2>/dev/null; then
+      # 写 owner PID 供 stale lock 探测使用
+      echo $$ > "$LOCK_DIR/owner" 2>/dev/null
       return 0
+    fi
+    # stale lock 探测：若 owner 进程已死（kill -0 失败），说明上次 worker 被 watchdog 杀，强制清锁
+    local owner_pid
+    owner_pid="$(cat "$LOCK_DIR/owner" 2>/dev/null || echo '')"
+    if [[ -n "$owner_pid" ]] && ! kill -0 "$owner_pid" 2>/dev/null; then
+      rm -f "$LOCK_DIR/owner" 2>/dev/null
+      rmdir "$LOCK_DIR" 2>/dev/null
+      # 立即重试一次（不消耗 sleep 配额）
+      if mkdir "$LOCK_DIR" 2>/dev/null; then
+        echo $$ > "$LOCK_DIR/owner" 2>/dev/null
+        return 0
+      fi
     fi
     sleep 0.1
   done
@@ -63,6 +80,8 @@ write_section() {
 # append_skip_marker: 追加"[hook-skipped]"标记到 notes.md
 # $1 = reason（错误码），$2 = "skip-write"（可选，notes-busy 时不写避免死循环）
 # 其它 reason 默认走 acquire_lock + 写，lock 争抢失败则静默放弃
+# 锁所有权契约：acquire_lock 成功后函数不主动 rmdir，由 trap cleanup 在 exit 时释放
+#               → 调用点必须在调用 append_skip_marker 后立即 exit 0
 append_skip_marker() {
   local reason="$1"
   local skip_write="${2:-}"
@@ -105,7 +124,7 @@ SKIP_EXPERIENCE_HOOK=1 "${EXPERIENCE_HOOK_CLAUDE_BIN:-claude}" -p "$PROMPT" \
   --add-dir "$(dirname "$TMP_FILE")" \
   --output-format text \
   </dev/null \
-  > "$RESULT_FILE" 2>&1
+  > "$RESULT_FILE" 2> "$STDERR_FILE"
 CLAUDE_EXIT=$?
 
 # === 5. 判定结果 ===
