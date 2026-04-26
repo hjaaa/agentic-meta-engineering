@@ -113,7 +113,7 @@ bash requirements/REQ-2026-001/artifacts/tests/run-e2e.sh
 
 3. **F-005 onboarding 文档变更不在 e2e 范围**：`context/team/onboarding/agentic-engineer-guide.md` 的新增小节属于文档变更，不适合 e2e bash 脚本验证，已通过独立代码审查流程覆盖。
 
-4. **F-003 prompt.md 静态内容未在 e2e 中验证**：`{{TRANSCRIPT_PATH}}` 占位符和禁止工具的要求是模板文件的静态内容，e2e 未做 grep 断言，属设计接受（开发阶段静态审查已覆盖）。
+4. **F-003 prompt.md 静态内容未在 e2e 中验证**：`{{TRANSCRIPT_PATH}}` 占位符和禁止工具的要求是模板文件的静态内容，e2e 未做 grep 断言，属设计接受（开发阶段静态审查已覆盖）（来源：.claude/hooks/extract-experience.prompt.md:1）。
 
 5. **Linux bash 5 环境未在本次执行验证**：本次测试环境为 macOS bash 3.2.57，Linux 兼容性需在 CI 中补充验证。
 

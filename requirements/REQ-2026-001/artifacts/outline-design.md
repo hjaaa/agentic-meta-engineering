@@ -80,7 +80,7 @@ T+100ms+  worker 后台运行，最多 30s
 数字依据：60 行对应"最近约 30 轮"（来源：requirements/REQ-2026-001/artifacts/tech-feasibility.md:74）；30 秒超时（来源：requirements/REQ-2026-001/artifacts/requirement.md:76）。
 
 1. **加锁**：`mkdir "${NOTES_FILE}.lock"`，失败则 sleep 0.1 重试，最多 5 次
-2. **截断**：`tail -n 60 "$TRANSCRIPT_PATH" > /tmp/req-2026-001-worker-$$.jsonl`
+2. **截断**：`tail -n 60 "$TRANSCRIPT_PATH" > /tmp/req-2026-001-worker-$$.jsonl`（来源：requirements/REQ-2026-001/artifacts/tech-feasibility.md:58）
 3. **看门狗**：`(sleep 30 && kill -9 $$) &`，记录 watchdog PID 用于完成时清理
 4. **调用**：`claude -p "$(cat prompt.md)\n\nTRANSCRIPT_PATH: $TMP_FILE" --output-format text > /tmp/result-$$.txt 2>&1`
    - **不**通过 stdin pipe 传 transcript 内容（绕开 #7263）
