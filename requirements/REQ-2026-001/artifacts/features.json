@@ -1,0 +1,73 @@
+{
+  "schema_version": "1.0",
+  "requirement_id": "REQ-2026-001",
+  "features": [
+    {
+      "id": "F-001",
+      "title": "settings.json SessionEnd 注册 + 主 Hook 守门脚本",
+      "description": "在 .claude/settings.json 增加 SessionEnd hooks 条目，matcher 为 prompt_input_exit|logout|other；新建 .claude/hooks/extract-experience.sh，实现同步读 stdin、4 层守门（env/branch/meta/phase）、nohup fork worker、disown，主进程 ≤ 100ms。",
+      "modules": [".claude/settings.json", ".claude/hooks/extract-experience.sh"],
+      "depends_on": [],
+      "estimate_days": 0.6,
+      "acceptance": [
+        "shellcheck 通过",
+        "TC-02/TC-03/TC-04/TC-05 守门用例通过",
+        "主 Hook 在守门失败路径下耗时 ≤ 100ms"
+      ]
+    },
+    {
+      "id": "F-002",
+      "title": "Worker 后台脚本：截断 + claude -p + notes.md 写入",
+      "description": "新建 .claude/hooks/extract-experience-worker.sh，实现 30s watchdog、tail -n 60 截断、claude -p 调用（--add-dir + 关 stdin 绕 #7263）、mkdir 原子锁、notes.md 追加写入（成功小节 / 失败 hook-skipped 标记）。worker 内部对 claude 命令支持 EXPERIENCE_HOOK_CLAUDE_BIN 环境变量覆盖以便 mock 测试。",
+      "modules": [".claude/hooks/extract-experience-worker.sh"],
+      "depends_on": ["F-001"],
+      "estimate_days": 1.4,
+      "acceptance": [
+        "shellcheck 通过",
+        "TC-01 正常路径 notes.md 增加 ## 会话经验 小节",
+        "TC-06/TC-07/TC-11/TC-12 失败路径写入 [hook-skipped: <reason>]（含 transcript-truncate-failed / prompt-template-missing 两条错误码分支）",
+        "TC-08 超时被 watchdog kill，30s 后 worker 进程不存在",
+        "TC-10 并发写测试不撕裂内容"
+      ]
+    },
+    {
+      "id": "F-003",
+      "title": "extract-experience.prompt.md 模板",
+      "description": "新建 .claude/hooks/extract-experience.prompt.md，含三类抽取目标（决策/坑/事实）+ 输出格式约束 + 上下文约束（不用工具、不写文件、≤1500 字）+ {{TRANSCRIPT_PATH}} 占位符。",
+      "modules": [".claude/hooks/extract-experience.prompt.md"],
+      "depends_on": [],
+      "estimate_days": 0.3,
+      "acceptance": [
+        "包含 {{TRANSCRIPT_PATH}} 占位符",
+        "明确禁止使用工具与编造信息",
+        "在真实 transcript 上手工跑一次能产出 markdown 列表"
+      ]
+    },
+    {
+      "id": "F-004",
+      "title": "集成测试 fixture + 端到端验证脚本",
+      "description": "在 requirements/REQ-2026-001/artifacts/tests/ 下建 fixtures/transcript-normal.jsonl 与 transcript-large.jsonl 两份；建 run-e2e.sh 跑 TC-01 ~ TC-12 共 12 个用例，使用 EXPERIENCE_HOOK_CLAUDE_BIN 注入 mock claude。",
+      "modules": ["requirements/REQ-2026-001/artifacts/tests/"],
+      "depends_on": ["F-001", "F-002", "F-003"],
+      "estimate_days": 1.5,
+      "acceptance": [
+        "12 个 TC 全部 PASS",
+        "测试可在 macOS bash 3.2 + Linux bash 5 上重复运行",
+        "测试不污染仓库（所有产物在 tmp 或测试目录内）"
+      ]
+    },
+    {
+      "id": "F-005",
+      "title": "onboarding-guide 增加自动经验提取小节",
+      "description": "在 context/team/onboarding/agentic-engineer-guide.md 适当位置增 ### 自动经验提取（SessionEnd Hook）小节，说明触发条件、临时关闭方式、已知限制（/exit 不触发）。",
+      "modules": ["context/team/onboarding/agentic-engineer-guide.md"],
+      "depends_on": ["F-001"],
+      "estimate_days": 0.2,
+      "acceptance": [
+        "small section 文字 ≤ 200 字",
+        "明示 SKIP_EXPERIENCE_HOOK=1 与 /exit 已知限制",
+        "check-index.sh 通过"
+      ]
+    }
+  ]
+}

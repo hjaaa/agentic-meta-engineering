@@ -1,0 +1,24 @@
+# 项目 agentic-meta-engineering 的 feature_area 白名单
+#
+# 用途：
+#   - check-meta.sh 校验 requirements/<id>/meta.yaml 的 feature_area 字段时使用
+#   - 见 context/team/engineering-spec/meta-schema.yaml 的 project_scoped_enums.feature_area
+#
+# 维护原则：
+#   - 新增 area 走 PR review（避免每个需求都临时塞新词）
+#   - area 名采用小写连字符（kebab-case）
+#   - 颗粒度：以仓库顶层目录或核心管道为粒度，不要过细
+
+areas:
+  - hooks            # Claude Code Hook（PreToolUse / PostToolUse / Stop / SessionEnd 等）
+  - commands         # 斜杠命令（.claude/commands/）
+  - skills           # Skill 定义（.claude/skills/）
+  - agents           # Subagent 定义（.claude/agents/）
+  - scripts          # 校验脚本 / CI 工具（scripts/）
+  - lifecycle        # 需求生命周期管理（managing-requirement-lifecycle 及配套）
+  - knowledge        # 知识管理（managing-knowledge / context/team/experience/）
+  - review           # 代码审查管道（checker / critic / judge）
+  - ci               # CI 工作流与门禁（.github/workflows/）
+  - onboarding       # 入门指南与学习路径
+  - engineering-spec # 体系自身规范（设计指导 / 工具规范 / 迭代 SOP）
+  - docs             # 顶层文档（README / CLAUDE.md / context/team/*）

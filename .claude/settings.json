@@ -29,6 +29,17 @@
         "matcher": "Bash|Edit|Write",
         "hooks": [{"type": "command", "command": ".claude/hooks/protect-branch.sh"}]
       }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "prompt_input_exit|logout|other",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/extract-experience.sh"
+          }
+        ]
+      }
     ]
   }
 }

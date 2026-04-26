@@ -95,7 +95,7 @@ subject 用祈使句、简体中文、不超过 50 字符。
 开发完成后推荐使用 `/requirement:submit` 自动提 PR：
 
 - 自动从 `meta.yaml` 取需求信息拼装 PR 正文
-- 自动引用 `artifacts/code-review-reports/` 和追溯链
+- 自动引用 `artifacts/review-*.md` 审查报告和追溯链
 - 自动把 `meta.yaml.pr_url / pr_number` 写回
 
 ### 发版路径实战注意（release → main）
