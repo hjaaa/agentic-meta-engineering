@@ -24,3 +24,5 @@
 2026-04-26 17:15:06 [development] F-005 完成（review: review-20260426-171506.md, verdict: approved；fixup b89ac82 闭环 FN-002 issue 引用措辞）
 2026-04-26 17:19:18 [save] F-005 完成；F-001~F-005 全部 done，development 阶段交付完毕，待切换 testing
 2026-04-26 18:09:01 [gate:fail] traceability FAIL: transcript-truncate-failed / prompt-template-missing 两分支无 TC，需补 TC-11/TC-12
+2026-04-26 18:28:28 [gate:pass] traceability + post-dev-verify 全过；TC-11/TC-12 已补齐
+2026-04-26 18:28:28 [phase-transition] development → testing
