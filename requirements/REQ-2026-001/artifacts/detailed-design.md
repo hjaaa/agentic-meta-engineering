@@ -334,6 +334,8 @@ append_skip_marker() {
 | TC-08 | 超时 | mock claude sleep 60 | worker 30s 后被 kill，notes.md 不变（trap 不跑） |
 | TC-09 | 大 transcript | fixture 100 轮 | tail 60 行后正常工作 |
 | TC-10 | 并发写 | 同时启动两个 worker | 至少 1 条 `## 会话经验`（允许 notes-busy 一方走 skip-write 路径不写）；并验证 notes.md 文件未被并发写撕裂（可用 line_count 等粗校验） |
+| TC-11 | transcript 截断失败 | 直接调 worker 传不存在的 transcript 路径（绕过主 Hook 的 -f 守门） | notes.md 末尾 `[hook-skipped: transcript-truncate-failed]` |
+| TC-12 | prompt 模板缺失 | 手工搭最小 workdir，故意不创建 `.claude/hooks/extract-experience.prompt.md` | notes.md 末尾 `[hook-skipped: prompt-template-missing]` |
 
 ### 6.2 fixture 设计
 

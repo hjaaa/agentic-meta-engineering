@@ -25,7 +25,7 @@
       "acceptance": [
         "shellcheck 通过",
         "TC-01 正常路径 notes.md 增加 ## 会话经验 小节",
-        "TC-06/TC-07 失败路径写入 [hook-skipped: <reason>]",
+        "TC-06/TC-07/TC-11/TC-12 失败路径写入 [hook-skipped: <reason>]（含 transcript-truncate-failed / prompt-template-missing 两条错误码分支）",
         "TC-08 超时被 watchdog kill，30s 后 worker 进程不存在",
         "TC-10 并发写测试不撕裂内容"
       ]
@@ -46,12 +46,12 @@
     {
       "id": "F-004",
       "title": "集成测试 fixture + 端到端验证脚本",
-      "description": "在 requirements/REQ-2026-001/artifacts/tests/ 下建 fixtures/transcript-normal.jsonl 与 transcript-large.jsonl 两份；建 run-e2e.sh 跑 TC-01 ~ TC-10 共 10 个用例，使用 EXPERIENCE_HOOK_CLAUDE_BIN 注入 mock claude。",
+      "description": "在 requirements/REQ-2026-001/artifacts/tests/ 下建 fixtures/transcript-normal.jsonl 与 transcript-large.jsonl 两份；建 run-e2e.sh 跑 TC-01 ~ TC-12 共 12 个用例，使用 EXPERIENCE_HOOK_CLAUDE_BIN 注入 mock claude。",
       "modules": ["requirements/REQ-2026-001/artifacts/tests/"],
       "depends_on": ["F-001", "F-002", "F-003"],
       "estimate_days": 1.5,
       "acceptance": [
-        "10 个 TC 全部 PASS",
+        "12 个 TC 全部 PASS",
         "测试可在 macOS bash 3.2 + Linux bash 5 上重复运行",
         "测试不污染仓库（所有产物在 tmp 或测试目录内）"
       ]

@@ -392,6 +392,48 @@ tc_09_large_transcript() {
   return $result
 }
 
+# TC-11: transcript 截断失败（worker tail -n 60 失败路径）
+# 期望：notes.md 末尾写入 "[hook-skipped: transcript-truncate-failed]"
+# 触发方式：直接调用 worker，传不存在的 transcript 路径（绕过主 Hook 的 -f 守门）
+# 边界含义：主 Hook 校验 transcript 后到 worker 启动间，文件被删除/不可读的极端时序
+tc_11_transcript_truncate_failed() {
+  local workdir="/tmp/req-experience-tc11-$$"
+  setup_fake_repo "$workdir" "feat/req-TEST-011" "TEST-011" "development"
+  local notes_file="$workdir/requirements/REQ-TEST-011/notes.md"
+  # 故意传一个不存在的 transcript 路径，让 worker tail 失败
+  local missing_transcript="/tmp/req-experience-tc11-$$-nonexistent.jsonl"
+
+  EXPERIENCE_HOOK_CLAUDE_BIN="$MOCK_CLAUDE" \
+    bash "$WORKER_HOOK" "$workdir" "$missing_transcript" "$notes_file"
+
+  local result=0
+  assert_contains "$notes_file" "hook-skipped: transcript-truncate-failed" "TC-11 应写入 transcript-truncate-failed 标记" || result=1
+
+  teardown "$workdir"
+  return $result
+}
+
+# TC-12: prompt 模板缺失（worker §4.2 步骤 3 失败路径）
+# 期望：notes.md 末尾写入 "[hook-skipped: prompt-template-missing]"
+# 触发方式：手工搭一个最小 workdir，故意不创建 .claude/hooks/extract-experience.prompt.md
+# 不能复用 setup_fake_repo（它把整个 .claude symlink 进 workdir，含 prompt 模板）
+tc_12_prompt_missing() {
+  local workdir="/tmp/req-experience-tc12-$$"
+  mkdir -p "$workdir/requirements/REQ-TEST-012"
+  printf '# REQ-TEST-012 Notes\n' > "$workdir/requirements/REQ-TEST-012/notes.md"
+  local notes_file="$workdir/requirements/REQ-TEST-012/notes.md"
+  # 注意：不创建 $workdir/.claude 目录，prompt 文件不存在
+
+  EXPERIENCE_HOOK_CLAUDE_BIN="$MOCK_CLAUDE" \
+    bash "$WORKER_HOOK" "$workdir" "$FIXTURE_NORMAL" "$notes_file"
+
+  local result=0
+  assert_contains "$notes_file" "hook-skipped: prompt-template-missing" "TC-12 应写入 prompt-template-missing 标记" || result=1
+
+  rm -rf "$workdir" 2>/dev/null
+  return $result
+}
+
 # TC-10: 并发写（两个 worker 同时运行）
 # 期望：两条"## 会话经验"都写入，无内容撕裂
 # 注意：stale-lock 探测机制下，并发时一方可能写 notes-busy；
@@ -491,6 +533,8 @@ main() {
   run_tc "TC-08" tc_08_timeout         "超时 watchdog (约 35s，请等待)"
   run_tc "TC-09" tc_09_large_transcript "大 transcript (100 行)"
   run_tc "TC-10" tc_10_concurrent_write "并发写 notes.md"
+  run_tc "TC-11" tc_11_transcript_truncate_failed "transcript 截断失败 (tail -n 60 失败路径)"
+  run_tc "TC-12" tc_12_prompt_missing "prompt 模板缺失"
 
   echo ""
   echo "=========================================="
@@ -510,7 +554,7 @@ main() {
   fi
 
   if [ "$FAIL_COUNT" -eq 0 ]; then
-    echo "结果: 全部 PASS (10/10)"
+    echo "结果: 全部 PASS (12/12)"
     echo "=========================================="
     exit 0
   else
