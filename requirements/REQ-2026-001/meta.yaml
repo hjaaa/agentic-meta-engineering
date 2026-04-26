@@ -1,7 +1,7 @@
 # ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-001                 # 例：REQ-2026-001
 title: 会话结束经验提取 Hook
-phase: detail-design
+phase: task-planning
 created_at: "2026-04-24 21:13:28"     # 格式 YYYY-MM-DD HH:MM:SS（Asia/Shanghai），见 context/team/engineering-spec/time-format.md
 branch: feat/req-2026-001             # 例：feat/req-2026-001
 base_branch: develop   # feat/* 派生的基点分支：develop / main / master
@@ -16,6 +16,8 @@ gates_passed:
     at: "2026-04-26 10:21:00"
   - phase: outline-design
     at: "2026-04-26 13:50:00"
+  - phase: detail-design
+    at: "2026-04-26 14:00:00"
 pr_url: ""                     # /requirement:submit 成功后回写
 pr_number: 0                   # /requirement:submit 成功后回写
 log_layout: split              # split（默认，工具日志→process.tool.log / 语义事件→process.txt） | legacy（老格式，全写 process.txt）

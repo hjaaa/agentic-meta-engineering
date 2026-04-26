@@ -7,3 +7,5 @@
 2026-04-26 13:45:44 [phase-transition] tech-research → outline-design
 2026-04-26 13:48:48 [gate:pass] outline-design.md 存在；reviewer pending
 2026-04-26 13:48:48 [phase-transition] outline-design → detail-design
+2026-04-26 13:53:27 [gate:pass] detailed-design.md + features.json (5 feats) 合法
+2026-04-26 13:53:27 [phase-transition] detail-design → task-planning
