@@ -42,4 +42,4 @@ tags:
 # ============ 结果组（completed 时才填） ============
 outcome: "shipped"                # shipped / abandoned / rolled-back
 completed_at: "2026-04-26 21:19:43"               # ISO8601，completed 时填
-lessons_extracted: false       # /knowledge:extract-experience 是否已跑
+lessons_extracted: true        # /knowledge:extract-experience 是否已跑
