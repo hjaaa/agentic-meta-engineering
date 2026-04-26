@@ -22,8 +22,8 @@ gates_passed:
     at: "2026-04-26 13:55:00"
   - phase: development
     at: "2026-04-26 18:28:18"
-pr_url: ""                     # /requirement:submit 成功后回写
-pr_number: 0                   # /requirement:submit 成功后回写
+pr_url: https://github.com/hjaaa/agentic-meta-engineering/pull/32                     # /requirement:submit 成功后回写
+pr_number: 32                   # /requirement:submit 成功后回写
 log_layout: split              # split（默认，工具日志→process.tool.log / 语义事件→process.txt） | legacy（老格式，全写 process.txt）
 
 # ============ 语义组（definition 阶段补齐，供跨需求检索） ============
