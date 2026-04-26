@@ -1,7 +1,7 @@
 # ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-001                 # 例：REQ-2026-001
 title: 会话结束经验提取 Hook
-phase: testing
+phase: completed
 created_at: "2026-04-24 21:13:28"     # 格式 YYYY-MM-DD HH:MM:SS（Asia/Shanghai），见 context/team/engineering-spec/time-format.md
 branch: feat/req-2026-001             # 例：feat/req-2026-001
 base_branch: develop   # feat/* 派生的基点分支：develop / main / master
@@ -22,6 +22,8 @@ gates_passed:
     at: "2026-04-26 13:55:00"
   - phase: development
     at: "2026-04-26 18:28:18"
+  - phase: testing
+    at: "2026-04-26 21:21:17"
 pr_url: https://github.com/hjaaa/agentic-meta-engineering/pull/32                     # /requirement:submit 成功后回写
 pr_number: 32                   # /requirement:submit 成功后回写
 log_layout: split              # split（默认，工具日志→process.tool.log / 语义事件→process.txt） | legacy（老格式，全写 process.txt）
@@ -38,6 +40,6 @@ tags:
   - notes-md
 
 # ============ 结果组（completed 时才填） ============
-outcome: ""                    # shipped / abandoned / rolled-back
-completed_at: ""               # ISO8601，completed 时填
+outcome: "shipped"                # shipped / abandoned / rolled-back
+completed_at: "2026-04-26 21:19:43"               # ISO8601，completed 时填
 lessons_extracted: false       # /knowledge:extract-experience 是否已跑
