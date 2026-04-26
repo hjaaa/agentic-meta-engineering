@@ -80,6 +80,16 @@
 
 前 6 阶段必修。走完即具备独立使用能力。
 
+## 自动机制
+
+### 自动经验提取（SessionEnd Hook）
+
+会话结束时（ctrl-d、关闭终端等），骨架自动分析对话并追加关键决策 / 踩坑 / 验证事实到 `requirements/<id>/notes.md`，便于跨会话复盘。
+
+- 仅在 `feat/req-*` 分支且需求目录存在时触发
+- 临时关闭：`export SKIP_EXPERIENCE_HOOK=1`
+- 已知限制：`/exit` 不触发（issue #17885）
+
 ## 哪里遇到问题
 
 1. 先运行 `/agentic:help` 看 FAQ
