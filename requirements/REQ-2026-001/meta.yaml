@@ -1,22 +1,29 @@
 # ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-001                 # 例：REQ-2026-001
 title: 会话结束经验提取 Hook
-phase: bootstrap
+phase: definition
 created_at: "2026-04-24 21:13:28"     # 格式 YYYY-MM-DD HH:MM:SS（Asia/Shanghai），见 context/team/engineering-spec/time-format.md
 branch: feat/req-2026-001             # 例：feat/req-2026-001
 base_branch: develop   # feat/* 派生的基点分支：develop / main / master
 project: agentic-meta-engineering     # 关联 context/project/<project>/
 services: []                   # 涉及的服务仓库
-gates_passed: []
+gates_passed:
+  - phase: bootstrap
+    at: "2026-04-24 21:30:00"
 pr_url: ""                     # /requirement:submit 成功后回写
 pr_number: 0                   # /requirement:submit 成功后回写
 log_layout: split              # split（默认，工具日志→process.tool.log / 语义事件→process.txt） | legacy（老格式，全写 process.txt）
 
 # ============ 语义组（definition 阶段补齐，供跨需求检索） ============
-feature_area: ""                         # definition 起必填；值必须在 context/project/<project>/areas.yaml 白名单内
-change_type: ""                          # definition 起必填；枚举：feature / bugfix / refactor / perf / security
-affected_modules: []                     # definition 起必填；自由词，建议与 services 子模块对齐
-tags: []                                 # 可选；长尾标签，不归一化
+feature_area: hooks                      # definition 起必填；值必须在 context/project/<project>/areas.yaml 白名单内
+change_type: feature                     # definition 起必填；枚举：feature / bugfix / refactor / perf / security
+affected_modules:                        # definition 起必填；自由词，建议与 services 子模块对齐
+  - .claude/settings.json
+  - scripts/hooks
+tags:
+  - session-end
+  - experience-extraction
+  - notes-md
 
 # ============ 结果组（completed 时才填） ============
 outcome: ""                    # shipped / abandoned / rolled-back

@@ -1,6 +1,12 @@
 # 项目级知识索引
 
-当前无任何业务项目知识入库。新项目的第一个需求开发过程中，Agent 会自动向 `context/project/<项目名>/` 沉淀架构、业务规则、接口约定等。
+## 已入库项目
+
+- [agentic-meta-engineering](agentic-meta-engineering/INDEX.md) — 骨架元仓库自身（含 `areas.yaml`）
+
+## 说明
+
+业务项目的第一个需求开发过程中，Agent 会自动向 `context/project/<项目名>/` 沉淀架构、业务规则、接口约定等。
 
 ## 如何创建新项目
 
