@@ -88,7 +88,7 @@
 
 - 仅在 `feat/req-*` 分支且需求目录存在时触发
 - 临时关闭：`export SKIP_EXPERIENCE_HOOK=1`
-- 已知限制：`/exit` 不触发（issue #17885）
+- 已知限制：`/exit` 命令不触发（Anthropic issue #17885）
 
 ## 哪里遇到问题
 
