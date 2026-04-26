@@ -19,7 +19,7 @@ parse_field() {
   echo "$HOOK_INPUT" | python3 -c "
 import json, sys
 try:
-    print(json.load(sys.stdin).get('$1', ''))
+    print(json.load(sys.stdin).get('${1:-}', ''))
 except Exception:
     pass
 " 2>/dev/null
@@ -37,10 +37,10 @@ BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
 [[ "$BRANCH" =~ ^feat/req- ]] || exit 0
 
 # === 6. 守门：对应 meta.yaml 必须存在 ===
-REQ_ID="$(echo "$BRANCH" | sed -E 's|^feat/req-||')"
+REQ_ID="${BRANCH#feat/req-}"
 META_FILE="$CWD/requirements/REQ-${REQ_ID}/meta.yaml"
 [[ -f "$META_FILE" ]] || {
-  # 符合 REQ-YYYY-NNN 格式的标准分支名已被 sed 处理
+  # meta.yaml 不存在，静默跳过
   exit 0
 }
 
