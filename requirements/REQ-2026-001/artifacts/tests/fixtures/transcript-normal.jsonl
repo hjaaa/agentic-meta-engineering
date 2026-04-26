@@ -1,0 +1,20 @@
+{"type":"user","content":"我需要实现一个 SessionEnd Hook，在会话结束时自动提取经验并写入 notes.md"}
+{"type":"assistant","content":"好的，我来帮你设计这个 Hook。核心流程是：读取 transcript → 调用 claude -p 提炼经验 → 追加到 notes.md。"}
+{"type":"user","content":"关键决策：需要在 macOS 和 Linux 两个平台都能运行，bash 版本不一致怎么处理？"}
+{"type":"assistant","content":"macOS 默认 bash 3.2，不支持 readarray/mapfile 和关联数组。我们约定只用 bash 3.2 兼容语法，避免 bash 4+ 特性。"}
+{"type":"user","content":"watchdog 机制怎么实现？claude -p 可能挂住导致 hook 无法退出"}
+{"type":"assistant","content":"使用子 shell: (sleep 30 && kill -9 $SELF_PID) & 后台启动 watchdog，worker 正常完成后 cleanup trap 会 kill watchdog。"}
+{"type":"user","content":"并发写 notes.md 怎么防止内容撕裂？"}
+{"type":"assistant","content":"使用 mkdir 原子锁：mkdir lock.dir 成功说明获得锁，写入 owner PID；失败则重试 5 次（每次 0.1s），全失败写 notes-busy 标记。"}
+{"type":"user","content":"stale lock 是什么场景？"}
+{"type":"assistant","content":"watchdog kill -9 会让 worker 来不及 cleanup，锁目录残留。探测方式：读 lock.dir/owner PID，若进程已死（kill -0 返回非零）则强制清锁。"}
+{"type":"user","content":"transcript 截断为什么是 60 行？"}
+{"type":"assistant","content":"依据 tech-feasibility.md:74，claude -p 的 context window 有限，60 行约等于 30 轮对话，足够覆盖关键决策点，同时避免超 token 限制。"}
+{"type":"user","content":"claude -p 空输出的 bug 是怎么回事？"}
+{"type":"assistant","content":"Issue #7263：当 stdin 大时 claude -p 可能 exit 0 但输出为空。规避方案：</dev/null 关闭 stdin。检测方案：-s 判断结果文件非空。"}
+{"type":"user","content":"EXPERIENCE_HOOK_CLAUDE_BIN 这个环境变量的作用是什么？"}
+{"type":"assistant","content":"允许测试注入 mock-claude.sh 代替真实 claude 二进制，实现端到端测试而不依赖真实 AI 调用。这是测试可注入性设计。"}
+{"type":"user","content":"已验证：nohup + disown 能脱离会话进程组，macOS 上 disown $! 语法正确"}
+{"type":"assistant","content":"正确。disown 是 bash 内建命令，绕开 Claude Code issue #41577（SessionEnd 时子进程被一起杀）。"}
+{"type":"user","content":"需要测试 10 个 TC，TC-08 超时用例需要等 30s，这个可以接受"}
+{"type":"assistant","content":"是的，TC-08 是集成测试必要的慢路径验证。建议在运行前给出明确提示，让用户有心理预期。"}
