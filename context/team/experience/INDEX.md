@@ -1,6 +1,13 @@
 # 跨项目经验索引
 
-初始为空。随团队开发经验积累，每条沉淀为一个 Markdown 文件。
+随团队开发经验积累，每条沉淀为一个 Markdown 文件。
+
+## 已沉淀
+
+- [`squash-merge-archive-needs-second-pr.md`](squash-merge-archive-needs-second-pr.md) — PR squash merge 后归档信息（phase=completed / completed_at）必须开二次 chore PR，因为 mergedAt 只能合并后取
+- [`traceability-gate-error-code-tc-coverage.md`](traceability-gate-error-code-tc-coverage.md) — `development → testing` 门禁易暴露错误码 TC 缺口；开发期同步加 TC 是主防线，门禁是兜底
+- [`spec-drift-consumer-aligns-with-producer.md`](spec-drift-consumer-aligns-with-producer.md) — 规范说 X 在路径 P 但工具写到 Q 时，改消费方对齐产出方，不反向搬位置
+- [`ai-skips-realtime-notes-during-flow.md`](ai-skips-realtime-notes-during-flow.md) — auto mode 下 AI 推进流程时易漏 `/note`，process.txt 流水给假阳性安心感；需流程嵌入 / hook 强校验 / SessionEnd 兜底
 
 ## 什么值得沉淀
 
