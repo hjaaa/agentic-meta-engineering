@@ -37,9 +37,9 @@
   - 已启用：`/requirement:submit --target develop` 显式指定，或修正 `meta.yaml.base_branch`
 
 ## 7. `/requirement:submit` 反复失败说 "无审查报告"
-- **症状**：预检报 `artifacts/code-review-reports/` 为空
+- **症状**：预检报 `artifacts/review-*.md` 为空
 - **原因**：尚未跑过 `/code-review`，或报告落在了其他路径
-- **修复**：先 `/code-review` 生成报告，确认路径为 `artifacts/code-review-reports/*.md`
+- **修复**：先 `/code-review` 生成报告，确认路径为 `artifacts/review-YYYYMMDD-HHMMSS.md`（直接在 artifacts/ 下，不在子目录）
 
 ## 8. 所有改动都走 `/requirement:new` 把小事拖重
 - **症状**：改 3 行代码或加一条注释也建了 `requirements/<id>/`，8 阶段门禁来回卡

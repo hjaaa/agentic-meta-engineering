@@ -54,7 +54,7 @@ git push -u origin <branch>
 | `__SERVICES__` | `meta.yaml.services`，join `, ` |
 | `__FILES_STAT__` | `git diff --stat origin/<base>..HEAD` |
 | `__TEST_STRATEGY__` | `artifacts/detailed-design.md` 的"测试策略"段（读不到则填 `见详细设计`） |
-| `__REVIEW_REPORTS__` | `artifacts/code-review-reports/*.md` 相对路径列表 |
+| `__REVIEW_REPORTS__` | `artifacts/review-*.md` 相对路径列表（由 `/code-review` 命令产出） |
 | `__RISK__` | `artifacts/requirement.md` 的"风险/回滚"段（读不到则填 `无已知风险`） |
 
 ### 6. 推断 PR 标题

@@ -18,7 +18,7 @@ argument-hint: [--draft] [--target <branch>] [--skip-rebase] [--reviewer <user>]
 2. 当前 phase ∈ {`development`, `testing`}
 3. `git status --porcelain` 为空
 4. 本地有领先 origin 的 commit
-5. `artifacts/code-review-reports/` 存在至少一份报告，无 `severity: blocker`（除非 `--force-with-blockers`）
+5. `artifacts/review-*.md` 至少一份报告（由 `/code-review` 命令产出），无 `severity: blocker`（除非 `--force-with-blockers`）
 6. `gh auth status` 成功
 7. base 分支在远端可用
 
