@@ -1351,13 +1351,11 @@ PR4 升 strict 时改为强制阻断。
 - [`review-schema.yaml`](review-schema.yaml) — `requirements/<id>/reviews/*.json` 的字段 schema / 枚举 / CR 规则
 ```
 
-- [ ] **Step 2: 在 plans/INDEX.md "进行中的 Plan" 表加一行**
+- [ ] **Step 2: 把 plans/INDEX.md 中本 plan 的状态从「📋 待启动」切到「🔄 执行中」**
 
-用 Edit 工具改 `context/team/engineering-spec/plans/INDEX.md` 的进行中表，加：
+`plans/INDEX.md` 中本 plan 的条目已在 docs PR #35 加入，状态为 `📋 待启动（待 docs PR #35 合入）`。本 step 改为：
 
-```markdown
-| 2026-04-27 | Reviewer verdict 结构化 PR1（基础设施） | [2026-04-27-reviewer-verdict-pr1-infra](2026-04-27-reviewer-verdict-pr1-infra.md) | `feat/reviewer-verdict-pr1-infra` | 🔄 执行中 |
-```
+用 Edit 工具把该行末两列改成 `feat/reviewer-verdict-pr1-infra | 🔄 执行中`（去掉「（待建）」与「待启动」备注）。
 
 - [ ] **Step 3: 跑 check-index.sh 验证 INDEX 完整**
 
