@@ -30,7 +30,7 @@
 | tech-research | 2026-04-28 | 2026-04-27（feasibility=high，27 人天，无 blocker） |
 | outline-design | 2026-04-29 | 2026-04-27（review-001 approved，score=86） |
 | detail-design | 2026-04-30 | 2026-04-27（review-002 approved，score=90） |
-| task-planning | 2026-04-30 | — |
+| task-planning | 2026-04-30 | 2026-04-27（features.json 4 个 feature → tasks/F-001~F-004.md，全 pending） |
 | development | 2026-05-07（4 个 PR 串行 / 部分并行） | — |
 | testing | 2026-05-08 | — |
 
@@ -129,3 +129,11 @@
   - 好：有可测量的业务价值锚点
   - 不好：粗估数字主观；首次新增门禁的人需如实记录工时
 - **时间**：2026-04-27 20:15:00
+
+### D-009 development 阶段 4 个 feature 严格串行推进
+- **Context**：features.json 中 F-002 / F-003 / F-004 都 depends_on 前序 feature，理论上 F-003 与 F-004 在某些子模块上有并行空间，但骨架未稳前并行风险高。
+- **Decision**：本轮严格按 F-001 → F-002 → F-003 → F-004 串行推进，每个 feature 完成（status=done）后才启动下一个；每个 feature 单独提 PR，merge 后再切下一个。
+- **Consequences**：
+  - 好：每个 PR blast radius 最小，CI 双跑可对齐 baseline；R-1 行为偏移问题逐 PR 验证
+  - 不好：总工期偏长（27 人天纯串行），无法压缩
+- **时间**：2026-04-27 22:10:00
