@@ -23,7 +23,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install pyyaml
+        run: pip install pyyaml ruamel.yaml
 
       - name: Check meta.yaml schema
         run: bash scripts/check-meta.sh --all --strict
