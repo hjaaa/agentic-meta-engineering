@@ -40,17 +40,28 @@
 
 - [ ] `artifacts/tech-feasibility.md` 存在
 - [ ] 风险评估段落非空
+- [ ] `bash scripts/check-reviews.sh --req <REQ-ID> --target-phase outline-design` 退出码 = 0
+  - 通过 `PHASE_REQUIREMENTS["outline-design"]=["definition"]` 复检 definition review
+  - 主要价值：R005 drift 兜底——若 requirement.md 在 tech-research 阶段被改动但未重审，立即报错
 
 ## outline-design → detail-design
 
 - [ ] `artifacts/outline-design.md` 存在
-- [ ] 概要设计评审结论 ≠ `rejected`
+- [ ] `bash scripts/check-reviews.sh --req <REQ-ID> --target-phase detail-design` 退出码 = 0
+  - R001：`reviews.outline-design.latest` 必须非空（reviewer 漏调 save-review.sh 在此卡住）
+  - R003：verdict.conclusion ≠ `rejected`
+  - R005：outline-design.md / requirement.md 自评审后未变更（drift 兜底）
+  - 替代旧版「概要设计评审结论 ≠ rejected」纯文本检查
 
 ## detail-design → task-planning
 
 - [ ] `artifacts/detailed-design.md` 存在
 - [ ] `artifacts/features.json` 合法 JSON + 每条 feature 有 `id`、`title`、`description`
-- [ ] 详细设计评审结论 ≠ `rejected`
+- [ ] `bash scripts/check-reviews.sh --req <REQ-ID> --target-phase task-planning` 退出码 = 0
+  - R001：`reviews.detail-design.latest` 必须非空
+  - R003：verdict.conclusion ≠ `rejected`
+  - R005：detailed-design.md / features.json / outline-design.md 自评审后未变更
+  - 替代旧版「详细设计评审结论 ≠ rejected」纯文本检查
 
 ## task-planning → development
 
@@ -61,6 +72,11 @@
 
 - [ ] 每个 feature_id 状态为 `done`（其转换已隐含 `post-dev-verify` 通过 + `/code-review` approved）
 - [ ] 每个 feature_id 有对应的代码审查报告（`artifacts/review-*.md` 提到）
+- [ ] `bash scripts/check-reviews.sh --req <REQ-ID> --target-phase testing` 退出码 = 0
+  - R001：`reviews.detail-design.latest` 非空（兜底——切 testing 应已过详设评审）
+  - R007：`reviews.code.by_feature` 必须覆盖 features.json 中所有 `status=done` 的 feature，且 conclusion ≠ rejected
+  - R005：detailed-design.md / features.json / 各 feature reviewed_artifacts 自评审后未变更
+  - 这条与 review-*.md 检查互补：review-*.md 是人读报告，reviews/code-*.json 是机读 verdict + drift 兜底
 - [ ] 所有代码已 commit（无 uncommitted changes）
 - [ ] `bash scripts/post-dev-verify.sh --requirement <REQ-ID>` 退出码 = 0（不指定 feature 时作为整体兜底）
 - [ ] `traceability-gate-checker` Skill PASS（追溯链完整性校验，见设计规范 §4.2）
