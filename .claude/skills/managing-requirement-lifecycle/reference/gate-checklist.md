@@ -28,7 +28,12 @@
   - `[待补充]` 必须含假设四要素（内容/依据/风险/验证时机）≥3 个
   - `（来源：path:line）` 的路径与行号必须真实存在
   - error 阻止阶段切换；warning 仅提示（strict 由 CI 把关）
-- [ ] 需求评审结论 ≠ `rejected`（由 `requirement-quality-reviewer` Agent 产生，Phase 2 可先跳过此校验，标记 "reviewer pending"）
+- [ ] `bash scripts/check-reviews.sh --req <REQ-ID> --target-phase tech-research` 退出码 = 0
+  - 依据 PR1 落地的 R001~R007 规则集（见 `context/team/engineering-spec/review-schema.yaml` 与 `context/team/engineering-spec/specs/2026-04-27-reviewer-verdict-structuring-design.md`）
+  - R001 兜底：phase=definition 之后切阶段必须有 `requirement-quality-reviewer` 的 latest verdict（reviewer 漏调 save-review.sh 在此卡住）
+  - R003：verdict.conclusion ≠ `rejected`（rejected 直接阻断切换）
+  - R005：requirement.md 自评审后未变更（drift 兜底，requirement.md 改了必须重审）
+  - 该校验取代旧版「需求评审结论 ≠ rejected（Phase 2 可先跳过）」——PR2 起不再允许"reviewer pending"逃生口
 - [ ] 所有"待用户确认"项已处理（无 `[待用户确认]` 遗留标记）
 
 ## tech-research → outline-design
