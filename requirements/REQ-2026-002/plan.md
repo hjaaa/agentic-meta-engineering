@@ -24,15 +24,26 @@
 
 ## 里程碑
 
-| 阶段 | 预期完成 |
-|---|---|
-| definition | 2026-04-28 |
-| tech-research | 2026-04-28 |
-| outline-design | 2026-04-29 |
-| detail-design | 2026-04-30 |
-| task-planning | 2026-04-30 |
-| development | 2026-05-07（4 个 PR 串行 / 部分并行） |
-| testing | 2026-05-08 |
+| 阶段 | 预期完成 | 实际完成 |
+|---|---|---|
+| definition | 2026-04-28 | 2026-04-27（review-003 approved，score=90） |
+| tech-research | 2026-04-28 | 2026-04-27（feasibility=high，27 人天，无 blocker） |
+| outline-design | 2026-04-29 | — |
+| detail-design | 2026-04-30 | — |
+| task-planning | 2026-04-30 | — |
+| development | 2026-05-07（4 个 PR 串行 / 部分并行） | — |
+| testing | 2026-05-08 | — |
+
+## tech-research 结论锚点
+
+- **可行性**：high（来源：requirements/REQ-2026-002/artifacts/tech-feasibility.md:11）
+- **总工作量**：27 人天（来源：requirements/REQ-2026-002/artifacts/tech-feasibility.md:127）
+  - F-001 骨架：9 天
+  - F-002 全量 adapter + CI 切换：9 天
+  - F-003 关闭 H1/H3/H4/H5：6.5 天
+  - F-004 渲染产物 + 删旧入口：2.5 天
+- **关键技术选型**：graphlib（拓扑） + shutil.copy2（事务） + 自写 normalize-stderr + 双轨进程链/env 白名单 + 裸 Python 渲染 + 手写 schema 校验，全部零新增依赖
+- **关键风险**：R-1 adapter 行为偏移（high/high，靠 snapshot 契约缓解）、R-2 Bash 写保护跨平台（medium/high，靠双轨白名单 + dry-run 缓解）
 
 ## 风险
 

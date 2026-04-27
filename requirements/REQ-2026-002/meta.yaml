@@ -1,7 +1,7 @@
 # ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-002                 # 例：REQ-2026-001
 title: 统一门禁系统
-phase: tech-research
+phase: outline-design
 created_at: "2026-04-27 19:50:15"     # 格式 YYYY-MM-DD HH:MM:SS（Asia/Shanghai），见 context/team/engineering-spec/time-format.md
 branch: feat/req-2026-002             # 例：feat/req-2026-001
 base_branch: develop   # feat/* 派生的基点分支：develop / main / master
@@ -14,6 +14,9 @@ gates_passed:
   - phase: tech-research
     at: "2026-04-27 20:20:00"
     gates: [check-meta, check-plan, check-sourcing, check-reviews(definition), no-pending-confirm]
+  - phase: outline-design
+    at: "2026-04-27 21:15:00"
+    gates: [tech-feasibility-exists, risks-non-empty, check-plan, check-meta, check-reviews(definition)]
 pr_url: ""                     # /requirement:submit 成功后回写
 pr_number: 0                   # /requirement:submit 成功后回写
 log_layout: split              # split（默认，工具日志→process.tool.log / 语义事件→process.txt） | legacy（老格式，全写 process.txt）
