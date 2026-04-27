@@ -23,6 +23,10 @@ import yaml
 
 from common import REPO_ROOT, Report, Severity, paint, rel
 
+# save_review 同目录，scripts/lib 已在 sys.path 中（脚本入口由 sh 启动）
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import save_review
+
 REQUIREMENTS_DIR = REPO_ROOT / "requirements"
 
 # target-phase → 必须存在的 review phase 列表
@@ -73,20 +77,25 @@ def _r003_not_rejected(meta: dict, target_phase: str, report: Report, label: str
 
 def _r002_schema_recheck(meta: dict, target_phase: str, report: Report, label: str, req: str) -> None:
     """R002: review JSON schema 合法（复用 save_review 的校验函数）"""
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    import save_review
-
     schema = save_review._load_schema()
     reviews = meta.get("reviews") or {}
     for phase in PHASE_REQUIREMENTS.get(target_phase, []):
         if phase == "code":
+            # PR1: code 类 review 文件的 schema 复检暂未实现；R007 只检查 existence/conclusion。
+            # 完整 schema 复检留待 PR3，届时 protect-branch 也会禁止主对话直接编辑 reviews/*.json。
             continue
         entry = reviews.get(phase) or {}
         latest_id = entry.get("latest")
         if not latest_id:
             continue
-        # 找到对应 JSON 文件
-        review_path = REQUIREMENTS_DIR / req / "reviews" / f"{phase}-{latest_id.rsplit('-', 1)[-1]}.json"
+        # 找到对应 JSON 文件：去掉 REV-<req>- 前缀，剩余即文件名（不含 .json）
+        prefix = f"REV-{req}-"
+        if not latest_id.startswith(prefix):
+            report.add(label, Severity.ERROR, "R002",
+                       f"reviews.{phase}.latest={latest_id} 不以 {prefix} 开头，格式异常")
+            continue
+        suffix = latest_id[len(prefix):]   # e.g. "outline-design-002"
+        review_path = REQUIREMENTS_DIR / req / "reviews" / f"{suffix}.json"
         if not review_path.exists():
             report.add(label, Severity.ERROR, "R002",
                        f"reviews.{phase}.latest={latest_id} 对应的文件 {rel(review_path)} 不存在")
@@ -101,7 +110,7 @@ def _r002_schema_recheck(meta: dict, target_phase: str, report: Report, label: s
         save_review._check_enums(verdict, schema, sub_report, str(review_path))
         save_review._check_format(verdict, schema, sub_report, str(review_path))
         save_review._check_cr_rules(verdict, sub_report, str(review_path))
-        for f, sev, code, msg in sub_report._findings:
+        for f, sev, code, msg in sub_report.findings():
             report.add(f, sev, f"R002/{code}", msg)
 
 
@@ -144,8 +153,6 @@ def _r005_hash_drift(meta: dict, target_phase: str, report: Report, label: str, 
             entry["stale"] = True
             meta_path = req_dir / "meta.yaml"
             # 用 ruamel.yaml 保留注释（与 save_review 一致）
-            sys.path.insert(0, str(Path(__file__).resolve().parent))
-            import save_review
             with meta_path.open("r", encoding="utf-8") as f:
                 meta_rt = save_review._meta_yaml.load(f)
             meta_rt.setdefault("reviews", {}).setdefault(phase, {})["stale"] = True
@@ -157,6 +164,7 @@ def _r005_hash_drift(meta: dict, target_phase: str, report: Report, label: str, 
 
 def _r006_supersedes_chain(meta: dict, target_phase: str, report: Report, label: str, req: str) -> None:
     """R006: supersedes 链无环、无悬挂引用"""
+    # target_phase 未使用：supersedes 链是全局检查，与切阶段方向无关，签名保留是为了与其他 R 函数一致
     req_dir = REQUIREMENTS_DIR / req
     reviews_dir = req_dir / "reviews"
     if not reviews_dir.exists():
@@ -199,7 +207,18 @@ def _r007_code_by_feature_coverage(meta: dict, target_phase: str, report: Report
     except json.JSONDecodeError as exc:
         report.add(label, Severity.ERROR, "R007", f"features.json 解析失败: {exc}")
         return
-    done_features = [f["id"] for f in features.get("features", []) if f.get("status") == "done"]
+    done_features: list[str] = []
+    for i, f in enumerate(features.get("features", [])):
+        if not isinstance(f, dict):
+            report.add(label, Severity.ERROR, "R007", f"features.json features[{i}] 不是 object")
+            continue
+        if f.get("status") != "done":
+            continue
+        fid = f.get("id")
+        if not isinstance(fid, str) or not fid:
+            report.add(label, Severity.ERROR, "R007", f"features.json features[{i}] status=done 但 id 缺失或非法")
+            continue
+        done_features.append(fid)
     code_seg = (meta.get("reviews") or {}).get("code") or {}
     by_feature = code_seg.get("by_feature") or {}
     for fid in done_features:

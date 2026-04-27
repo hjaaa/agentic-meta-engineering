@@ -75,6 +75,10 @@ class Report:
         lines.append(paint(summary, "cyan"))
         return "\n".join(lines)
 
+    def findings(self) -> list[tuple[str, str, str, str]]:
+        """返回当前所有 finding 的浅拷贝。供需要遍历 sub-report 的下游使用。"""
+        return list(self._findings)
+
     def exit_code(self, strict: bool) -> int:
         if self.errors:
             return 1
