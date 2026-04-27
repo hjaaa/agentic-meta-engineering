@@ -25,3 +25,7 @@ requirements/**/process.tool.log
 
 # /loop 调度运行时锁文件（非持久化状态，不入库）
 .claude/scheduled_tasks.lock
+
+# 统一门禁 audit 日志（运行时产出，仅保留目录占位）
+scripts/gates/audit/*
+!scripts/gates/audit/.gitkeep

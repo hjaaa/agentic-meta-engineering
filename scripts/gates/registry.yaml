@@ -1,0 +1,67 @@
+# 统一门禁 registry —— 唯一事实源（来源：requirements/REQ-2026-002/artifacts/detailed-design.md §1）
+#
+# 字段顺序约定（F-002/F-003 追加 gate 时严格遵守）：
+#   id → plugin → severity → triggers → applies_when → dependencies →
+#   side_effects → failure_message → escape_hatch（可选）→ tests
+#
+# 9 字段命名锁定：id / plugin / severity / triggers / applies_when / dependencies /
+#                   side_effects / failure_message / tests
+# escape_hatch 为 gate 级可选段，不计入"必填 9 字段"。
+#
+# Schema 校验规则 S1~S10：见 detailed-design.md §1 表格。
+
+schema_version: "1.0"
+
+gates:
+  - id: GATE-META-SCHEMA
+    plugin: meta_schema
+    severity: error
+    triggers:
+      - pre-commit
+      - phase-transition
+      - submit
+      - ci
+      - post-dev
+    applies_when:
+      changed_files:
+        - "requirements/*/meta.yaml"
+      target_phase: null
+      current_phase_in: []
+      transition: null
+      requires: []
+    dependencies: []
+    side_effects: none
+    failure_message: |
+      {gate_id} 失败：{message}
+      修复建议：{fix_hint}
+    tests:
+      fixtures: [pass, fail, skip]
+
+  - id: GATE-INDEX-INTEGRITY
+    plugin: index_integrity
+    severity: error
+    triggers:
+      - pre-commit
+      - phase-transition
+      - submit
+      - ci
+      - post-dev
+    applies_when:
+      changed_files:
+        - "context/**/*.md"
+        - "requirements/**/*.md"
+        - "**/INDEX.md"
+      target_phase: null
+      current_phase_in: []
+      transition: null
+      requires: []
+    dependencies: []
+    side_effects: none
+    failure_message: |
+      {gate_id} 失败：{message}
+      修复建议：{fix_hint}
+    tests:
+      fixtures: [pass, fail, skip]
+
+# 全局 escape 策略（流程级，非 gate 级）—— 本 PR 占位为空数组，F-002/F-003 按需追加。
+escape_hatches: []
