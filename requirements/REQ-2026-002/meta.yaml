@@ -17,11 +17,12 @@ gates_passed:
           no-pending-confirm]
   - phase: outline-design
     at: "2026-04-27 21:15:00"
-    gates: [tech-feasibility-exists, risks-non-empty, check-plan, check-meta,
+    gates: [tech-feasibility-exists, risks-non-empty, check-plan, check-meta, 
           check-reviews(definition)]
   - phase: detail-design
     at: "2026-04-27 21:30:00"
-    gates: [outline-design-exists, check-meta, check-plan, check-reviews(outline-design)]
+    gates: [outline-design-exists, check-meta, check-plan, 
+          check-reviews(outline-design)]
 pr_url: ""                     # /requirement:submit 成功后回写
 pr_number: 0                   # /requirement:submit 成功后回写
 log_layout: split              # split（默认，工具日志→process.tool.log / 语义事件→process.txt） | legacy（老格式，全写 process.txt）
@@ -66,4 +67,18 @@ reviews:
         33288eca3cb114ca277c38191d915dd66e9e80b66c5aa7add929d03a8860ff58
     history:
       - REV-REQ-2026-002-outline-design-001
+    stale: false
+  detail-design:
+    latest: REV-REQ-2026-002-detail-design-001
+    conclusion: needs_revision
+    reviewed_commit: b17ff31
+    artifact_hashes:
+      artifacts/detailed-design.md: 
+        7d6e694daf1ae2e2f31ab0f4e41530ec6dd1887eda0ac2ff8e8c2132f5d26efb
+      artifacts/features.json: 
+        cfdd361a3d899f96f7fd3d9ba088738219355d12d81e3ebe8e44d0a680efbd87
+      artifacts/outline-design.md: 
+        448d0e242f2a3c5f620762779987134caf7f51ff9d3840055c6eaab6a0440d47
+    history:
+      - REV-REQ-2026-002-detail-design-001
     stale: false

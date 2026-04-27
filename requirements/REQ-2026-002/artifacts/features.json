@@ -72,7 +72,8 @@
         "H1 单测三路径全过：drift→pass→commit / drift→fail→rollback / r005-only-fail→no-write",
         "H3：submit 与 next 在同输入下 Report.passed/failed 集合相同",
         "H4：PR 已 MERGED 时 submit 阻断并提示 /requirement:next；未 MERGED 时正常推进",
-        "H5：Bash cat>/tee/echo>/python3 -c 写 reviews/*.json 全部被拦；save-review.sh 子进程白名单放行；CLAUDE_GATES_BYPASS=1 缺 REASON 时拦截并提示"
+        "H5：Bash 写 reviews/*.json 全形态被拦——cat >/>>、tee/tee -a、mv、cp、python3 -c open(w)、heredoc（cat <<EOF >）、printf >、dd of= 至少 8 类",
+        "H5：save-review.sh 子进程经父进程链识别白名单放行；CLAUDE_GATES_BYPASS=1 缺 CLAUDE_GATES_BYPASS_REASON 时拦截并给清晰提示"
       ]
     },
     {

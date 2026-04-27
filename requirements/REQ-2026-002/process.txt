@@ -6,3 +6,4 @@
 2026-04-27 21:20:29 [phase-transition] tech-research → outline-design (gates: tech-feasibility-exists, risks-non-empty, check-plan, check-meta, check-reviews)
 [2026-04-27 21:24:27] [review:approved] outline-design-001.json by outline-design-quality-reviewer
 2026-04-27 21:25:16 [phase-transition] outline-design → detail-design (gates: outline-design-exists, check-meta, check-plan, check-reviews)
+2026-04-27 21:31:21 [review:needs_revision] detail-design-001
