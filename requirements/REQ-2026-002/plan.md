@@ -28,7 +28,7 @@
 |---|---|---|
 | definition | 2026-04-28 | 2026-04-27（review-003 approved，score=90） |
 | tech-research | 2026-04-28 | 2026-04-27（feasibility=high，27 人天，无 blocker） |
-| outline-design | 2026-04-29 | — |
+| outline-design | 2026-04-29 | 2026-04-27（review-001 approved，score=86） |
 | detail-design | 2026-04-30 | — |
 | task-planning | 2026-04-30 | — |
 | development | 2026-05-07（4 个 PR 串行 / 部分并行） | — |

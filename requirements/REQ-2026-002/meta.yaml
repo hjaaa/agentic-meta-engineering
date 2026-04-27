@@ -1,7 +1,7 @@
 # ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-002                 # 例：REQ-2026-001
 title: 统一门禁系统
-phase: outline-design
+phase: detail-design
 created_at: "2026-04-27 19:50:15"     # 格式 YYYY-MM-DD HH:MM:SS（Asia/Shanghai），见 context/team/engineering-spec/time-format.md
 branch: feat/req-2026-002             # 例：feat/req-2026-001
 base_branch: develop   # feat/* 派生的基点分支：develop / main / master
@@ -13,10 +13,15 @@ gates_passed:
     gates: [check-meta, check-plan, branch-match, plan-exists]
   - phase: tech-research
     at: "2026-04-27 20:20:00"
-    gates: [check-meta, check-plan, check-sourcing, check-reviews(definition), no-pending-confirm]
+    gates: [check-meta, check-plan, check-sourcing, check-reviews(definition), 
+          no-pending-confirm]
   - phase: outline-design
     at: "2026-04-27 21:15:00"
-    gates: [tech-feasibility-exists, risks-non-empty, check-plan, check-meta, check-reviews(definition)]
+    gates: [tech-feasibility-exists, risks-non-empty, check-plan, check-meta,
+          check-reviews(definition)]
+  - phase: detail-design
+    at: "2026-04-27 21:30:00"
+    gates: [outline-design-exists, check-meta, check-plan, check-reviews(outline-design)]
 pr_url: ""                     # /requirement:submit 成功后回写
 pr_number: 0                   # /requirement:submit 成功后回写
 log_layout: split              # split（默认，工具日志→process.tool.log / 语义事件→process.txt） | legacy（老格式，全写 process.txt）
@@ -49,4 +54,16 @@ reviews:
       - REV-REQ-2026-002-definition-001
       - REV-REQ-2026-002-definition-002
       - REV-REQ-2026-002-definition-003
+    stale: false
+  outline-design:
+    latest: REV-REQ-2026-002-outline-design-001
+    conclusion: approved
+    reviewed_commit: '6142790'
+    artifact_hashes:
+      artifacts/outline-design.md: 
+        448d0e242f2a3c5f620762779987134caf7f51ff9d3840055c6eaab6a0440d47
+      artifacts/requirement.md: 
+        33288eca3cb114ca277c38191d915dd66e9e80b66c5aa7add929d03a8860ff58
+    history:
+      - REV-REQ-2026-002-outline-design-001
     stale: false

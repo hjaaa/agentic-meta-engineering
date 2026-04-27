@@ -1,0 +1,110 @@
+{
+  "schema_version": "1.0",
+  "requirement_id": "REQ-2026-002",
+  "features": [
+    {
+      "id": "F-001",
+      "title": "Runner 骨架 + Gate 基类 + registry schema + 2 个 adapter",
+      "description": "搭建 scripts/gates/ 目录结构；实现 Gate 抽象基类 / GateContext / Report / Severity / Skip 数据类；实现 registry.yaml 加载器（含 S1~S8 schema 校验 + graphlib 依赖图无环校验）；实现 run.py 主入口（trigger 过滤 + 拓扑排序 + 事务包裹 + audit log 写入）；实现 plugins/meta_schema.py + plugins/index_integrity.py 两个 adapter（逻辑零改动，仅适配 Report API）；实现 migration/normalize-stderr.sh + make gates-validate 入口。旧 check-meta.sh / check-index.sh 暂不改动。",
+      "modules": [
+        "scripts/gates/registry.yaml",
+        "scripts/gates/run.py",
+        "scripts/gates/plugins/base.py",
+        "scripts/gates/plugins/meta_schema.py",
+        "scripts/gates/plugins/index_integrity.py",
+        "scripts/gates/migration/normalize-stderr.sh",
+        "Makefile"
+      ],
+      "depends_on": [],
+      "estimate_days": 9,
+      "acceptance": [
+        "make gates-validate 通过：registry schema + 依赖图 + 所有 plugin 加载",
+        "python scripts/gates/run.py --trigger=ci --dry-run 输出 Report 含 GATE-META-SCHEMA + GATE-INDEX-INTEGRITY",
+        "snapshot 对比：旧 check-meta.sh vs run.py --trigger=adapter --legacy=check-meta，归一化后 stderr 关键前缀行 diff 为空",
+        "覆盖 pass / fail / skip 三种用例的 plugin 测试全过"
+      ]
+    },
+    {
+      "id": "F-002",
+      "title": "全量 7 个 check 改造为 plugin + pre-commit / post-dev / CI 切到 runner",
+      "description": "为剩余 5 个 check 实现 plugin（sourcing / review_verdict / plan_freshness / workspace_clean / traceability）；review_verdict 内部实现 R001~R007 全规则（R005 仍按原行为，事务化在 F-003 做）；旧 7 个 .sh 改写为薄壳直接 exec runner（兼容期）；改写 scripts/git-hooks/pre-commit / scripts/post-dev-verify.sh / .github/workflows/quality-check.yml 切到 run.py。snapshot 行为契约对每个 adapter 抓基线。",
+      "modules": [
+        "scripts/gates/plugins/sourcing.py",
+        "scripts/gates/plugins/review_verdict.py",
+        "scripts/gates/plugins/plan_freshness.py",
+        "scripts/gates/plugins/workspace_clean.py",
+        "scripts/gates/plugins/traceability.py",
+        "scripts/gates/migration/capture-baseline.sh",
+        "scripts/check-meta.sh",
+        "scripts/check-index.sh",
+        "scripts/check-sourcing.sh",
+        "scripts/check-reviews.sh",
+        "scripts/check-plan.sh",
+        "scripts/post-dev-verify.sh",
+        "scripts/git-hooks/pre-commit",
+        ".github/workflows/quality-check.yml"
+      ],
+      "depends_on": ["F-001"],
+      "estimate_days": 9,
+      "acceptance": [
+        "7 个 adapter 各自的 snapshot 行为契约 diff 为空",
+        "CI workflow 简化为单一 step：python scripts/gates/run.py --trigger=ci --strict",
+        "pre-commit 切到 runner 后所有既有需求 commit 行为不变",
+        "post-dev-verify.sh 切到 runner 后退出码与 stderr 关键前缀行与基线一致"
+      ]
+    },
+    {
+      "id": "F-003",
+      "title": "关闭 H1/H3/H4/H5 四个高优先级缺口",
+      "description": "H1：review_verdict plugin 改造为 staged_writes 模式（drift 检测仅暂存，全过后由 runner 提交，失败时丢弃），覆盖三路径单测；H3：/requirement:submit 改写调 run.py --trigger=submit，复用 phase-transition gate 集合，确保与 next 同源；H4：实现 plugins/pr_state.py（gh pr view 查 MERGED 状态），加入 submit trigger；H5：实现 plugins/bash_write_protect.py（正则 + 双轨白名单：父进程链识别 save-review.sh + CLAUDE_GATES_BYPASS 环境变量 + reason 强制），改写 .claude/hooks/protect-branch.sh 切到 runner 的 pre-tool-use trigger。",
+      "modules": [
+        "scripts/gates/plugins/review_verdict.py",
+        "scripts/gates/plugins/pr_state.py",
+        "scripts/gates/plugins/bash_write_protect.py",
+        "scripts/gates/triggers/pre_tool_use.sh",
+        "scripts/gates/triggers/submit.py",
+        ".claude/skills/managing-requirement-lifecycle/reference/submit-rules.md",
+        ".claude/hooks/protect-branch.sh"
+      ],
+      "depends_on": ["F-001", "F-002"],
+      "estimate_days": 6.5,
+      "acceptance": [
+        "H1 单测三路径全过：drift→pass→commit / drift→fail→rollback / r005-only-fail→no-write",
+        "H3：submit 与 next 在同输入下 Report.passed/failed 集合相同",
+        "H4：PR 已 MERGED 时 submit 阻断并提示 /requirement:next；未 MERGED 时正常推进",
+        "H5：Bash cat>/tee/echo>/python3 -c 写 reviews/*.json 全部被拦；save-review.sh 子进程白名单放行；CLAUDE_GATES_BYPASS=1 缺 REASON 时拦截并提示"
+      ]
+    },
+    {
+      "id": "F-004",
+      "title": "gate-checklist.md 渲染产物化 + 旧入口删除",
+      "description": "实现 migration/render-docs.py（从 registry.yaml 渲染 gate-checklist.md，文件头自动加 generated 标记）；CI 加 render --check step（D-007 强校验，diff 非空即 PR 失败）；删除 7 个旧 check-*.sh 薄壳 + scripts/post-dev-verify.sh + scripts/lib/check_*.py（adapter 已复用其逻辑，仅留 save_review.py）；更新 README / onboarding 引用。",
+      "modules": [
+        "scripts/gates/migration/render-docs.py",
+        ".claude/skills/managing-requirement-lifecycle/reference/gate-checklist.md",
+        ".github/workflows/quality-check.yml",
+        "scripts/check-meta.sh",
+        "scripts/check-index.sh",
+        "scripts/check-sourcing.sh",
+        "scripts/check-reviews.sh",
+        "scripts/check-plan.sh",
+        "scripts/post-dev-verify.sh",
+        "scripts/lib/check_meta.py",
+        "scripts/lib/check_index.py",
+        "scripts/lib/check_sourcing.py",
+        "scripts/lib/check_reviews.py",
+        "scripts/lib/check_plan.py",
+        "context/team/onboarding/agentic-engineer-guide.md",
+        "README.md"
+      ],
+      "depends_on": ["F-001", "F-002", "F-003"],
+      "estimate_days": 2.5,
+      "acceptance": [
+        "make gates-render 重新生成 gate-checklist.md 与仓内产物 diff 为空",
+        "CI render --check 在手工改 gate-checklist.md 后立即报错",
+        "删除旧入口后 git grep 无残留引用",
+        "README / onboarding 引用更新到 scripts/gates/"
+      ]
+    }
+  ]
+}
