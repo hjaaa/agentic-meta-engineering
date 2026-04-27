@@ -36,9 +36,9 @@
 
 ## 风险
 
-- **R-1 双跑等价性回归**：adapter 化后行为偏移导致 CI 红。应对：每个 PR 内 CI 双跑（旧脚本 + 新 runner），diff 必须为空才合入。
+- **R-1 行为等价性回归**：adapter 化后行为偏移导致 CI 红。应对：每个 PR 合入前跑 snapshot 行为契约测试（`scripts/gates/migration/capture-baseline.sh` 抓基线，迁移后 normalize-stderr 后逐行 diff），归一化后 ERROR/WARNING/✗ 等关键前缀行 diff 必须为空。
 - **R-2 R005 事务化引入新 bug**：写回 stale 改成事务后可能错过本应触发的 stale 标记。应对：单测覆盖「中途失败回滚」「全过提交」「单独 R005 失败」三种路径。
-- **R-3 改造期 Hook 与 runner 行为不一致**：旧 Hook 还在跑、新 runner 也跑同一检查，结果矛盾。应对：每个 trigger 切换有"灰度期"，旧入口包薄壳转调 runner 而不是双跑。
+- **R-3 改造期实施路径**：旧入口与新 runner 同时存在导致结果矛盾。应对：旧入口在兼容期（F-001 ~ F-003）改造为**薄壳**直接 `exec` runner；不做"双跑"路径。验收依赖 R-1 的 snapshot 契约测试，不依赖 CI 双跑日志比对。
 - **R-4 Bash 写保护误伤**：拦 `requirements/*/reviews/*.json` 的 Bash 写命令时正则过严，挡住合法路径（如 `mv tmp/x.json requirements/...`）。应对：白名单允许 `save-review.sh` 启动的子进程，并在 dry-run 模式跑一周。
 - **R-5 文档渲染产物被误改**：`gate-checklist.md` 渲染后被人手改回。应对：文件头加 `<!-- generated, do not edit -->` 标记 + CI 校验渲染产物未被手工修改。
 
