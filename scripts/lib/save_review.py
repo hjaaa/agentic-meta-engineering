@@ -17,13 +17,17 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+# ruamel.yaml 用于 meta.yaml round-trip（保留注释）；PyYAML 仅用于 schema 读取
+from ruamel.yaml import YAML
 import yaml
 
 from common import REPO_ROOT, Report, Severity, paint, rel
@@ -31,8 +35,14 @@ from common import REPO_ROOT, Report, Severity, paint, rel
 SCHEMA_PATH = REPO_ROOT / "context" / "team" / "engineering-spec" / "review-schema.yaml"
 REQUIREMENTS_DIR = REPO_ROOT / "requirements"
 
+# meta.yaml 专用实例：round-trip 模式，保留注释和 key 顺序
+_meta_yaml = YAML(typ="rt")
+_meta_yaml.preserve_quotes = True
+_meta_yaml.indent(mapping=2, sequence=4, offset=2)
+
 
 def _load_schema() -> dict[str, Any]:
+    # schema 文件无需保留注释，使用 PyYAML safe_load 读取即可
     with SCHEMA_PATH.open("r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 
@@ -130,10 +140,41 @@ def _check_commit_matches_head(verdict: dict, report: Report, label: str) -> Non
     if head is None:
         report.add(label, Severity.WARNING, "commit", "无法获取 git HEAD（非 git 仓库或 git 不可用）")
         return
-    reviewed = verdict.get("reviewed_commit", "")
-    # 兼容 reviewed_commit 是 7+ 位 hash
+    reviewed = verdict.get("reviewed_commit", "") or ""
+    # 拒绝空或过短的 reviewed_commit（防止 head.startswith("") 隐式通过）
+    if len(reviewed) < 7:
+        report.add(label, Severity.ERROR, "commit", f"reviewed_commit={reviewed!r} 长度不足 7，无法与 HEAD 比对")
+        return
     if not reviewed.startswith(head) and not head.startswith(reviewed[:7]):
         report.add(label, Severity.ERROR, "commit", f"reviewed_commit={reviewed!r} 与当前 HEAD={head!r} 不匹配")
+
+
+def _check_scope_rules(verdict: dict, schema: dict, report: Report, label: str) -> None:
+    """强制执行 review-schema.yaml 中的 scope_rules 约束。"""
+    phase = verdict.get("phase")
+    scope = verdict.get("scope")
+    rules = schema.get("scope_rules", []) or []
+    for rule in rules:
+        when = rule.get("when") or {}
+        match = True
+        if "phase" in when and when["phase"] != phase:
+            match = False
+        if "phase_not" in when and phase in when["phase_not"]:
+            match = False
+        if not match:
+            continue
+        must = rule.get("must") or {}
+        if "scope" in must:
+            expected = must["scope"]
+            if expected is None and scope is not None:
+                report.add(label, Severity.ERROR, "scope", f"phase={phase!r} 时 scope 必须为 null，实际 {scope!r}")
+            elif expected == "object" and not isinstance(scope, dict):
+                report.add(label, Severity.ERROR, "scope", f"phase={phase!r} 时 scope 必须为 object，实际 {scope!r}")
+        if "scope.feature_id" in must and isinstance(scope, dict):
+            pat = must["scope.feature_id"]
+            fid = scope.get("feature_id")
+            if not isinstance(fid, str) or not re.match(pat, fid):
+                report.add(label, Severity.ERROR, "scope", f"scope.feature_id={fid!r} 不匹配 {pat}")
 
 
 def main() -> int:
@@ -150,6 +191,17 @@ def main() -> int:
         print(paint(f"❌ stdin JSON 解析失败: {exc}", "red"), file=sys.stderr)
         return 2
 
+    # Fix 5+6: 交叉校验 CLI 参数与 verdict 字段，防止文件与命令行不一致
+    if verdict.get("requirement_id") != args.req:
+        print(paint(f"❌ verdict.requirement_id={verdict.get('requirement_id')!r} 与 --req={args.req!r} 不一致", "red"), file=sys.stderr)
+        return 1
+    if verdict.get("phase") != args.phase:
+        print(paint(f"❌ verdict.phase={verdict.get('phase')!r} 与 --phase={args.phase!r} 不一致", "red"), file=sys.stderr)
+        return 1
+    if verdict.get("reviewer") != args.reviewer:
+        print(paint(f"❌ verdict.reviewer={verdict.get('reviewer')!r} 与 --reviewer={args.reviewer!r} 不一致", "red"), file=sys.stderr)
+        return 1
+
     schema = _load_schema()
     report = Report()
     label = f"<stdin>:{args.req}/{args.phase}"
@@ -159,6 +211,7 @@ def main() -> int:
     _check_format(verdict, schema, report, label)
     _check_cr_rules(verdict, report, label)
     _check_commit_matches_head(verdict, report, label)
+    _check_scope_rules(verdict, schema, report, label)
 
     print(report.render())
 
@@ -187,6 +240,7 @@ def main() -> int:
         if not args.scope or not args.scope.startswith("feature_id="):
             print(paint("❌ phase=code 必须有 --scope feature_id=F-XXX", "red"), file=sys.stderr)
             return 1
+        # Fix 7: feature_id 只提取一次，后续复用
         feature_id = args.scope.split("=", 1)[1]
         prefix = f"code-{feature_id}-"
     else:
@@ -209,9 +263,10 @@ def main() -> int:
     print(paint(f"✓ 已写入 {rel(out_path)}", "green"))
 
     # 更新 meta.yaml.reviews
+    # Fix 1+2: 使用 ruamel.yaml round-trip 模式读写，保留注释；写入改为 atomic（temp + rename）
     meta_path = req_dir / "meta.yaml"
     with meta_path.open("r", encoding="utf-8") as f:
-        meta = yaml.safe_load(f) or {}
+        meta = _meta_yaml.load(f) or {}
     reviews = meta.setdefault("reviews", {})
     artifact_hashes = {art["path"]: art["sha256"] for art in verdict["reviewed_artifacts"]}
     entry = {
@@ -223,7 +278,7 @@ def main() -> int:
         "stale": False,
     }
     if phase == "code":
-        feature_id = args.scope.split("=", 1)[1]
+        # feature_id 已在上方提取，直接复用（Fix 7）
         code_seg = reviews.setdefault("code", {}).setdefault("by_feature", {}).setdefault(feature_id, {"history": []})
         code_seg["history"] = (code_seg.get("history") or []) + [verdict["review_id"]]
         code_seg.update({k: v for k, v in entry.items() if k != "history"})
@@ -233,8 +288,11 @@ def main() -> int:
         entry["history"] = history
         reviews[phase] = entry
 
-    with meta_path.open("w", encoding="utf-8") as f:
-        yaml.safe_dump(meta, f, allow_unicode=True, sort_keys=False)
+    # atomic 写入：先写临时文件，再原子替换，防止中途崩溃导致 meta.yaml 损坏
+    tmp_path = meta_path.with_suffix(meta_path.suffix + ".tmp")
+    with tmp_path.open("w", encoding="utf-8") as f:
+        _meta_yaml.dump(meta, f)
+    tmp_path.replace(meta_path)  # POSIX 原子操作
     print(paint(f"✓ 已更新 {rel(meta_path)} 的 reviews.{phase}", "green"))
 
     return 0
