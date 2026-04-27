@@ -1,7 +1,7 @@
 # ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-002                 # 例：REQ-2026-001
 title: 统一门禁系统
-phase: detail-design
+phase: task-planning
 created_at: "2026-04-27 19:50:15"     # 格式 YYYY-MM-DD HH:MM:SS（Asia/Shanghai），见 context/team/engineering-spec/time-format.md
 branch: feat/req-2026-002             # 例：feat/req-2026-001
 base_branch: develop   # feat/* 派生的基点分支：develop / main / master
@@ -21,8 +21,12 @@ gates_passed:
           check-reviews(definition)]
   - phase: detail-design
     at: "2026-04-27 21:30:00"
-    gates: [outline-design-exists, check-meta, check-plan, 
+    gates: [outline-design-exists, check-meta, check-plan,
           check-reviews(outline-design)]
+  - phase: task-planning
+    at: "2026-04-27 21:45:00"
+    gates: [detailed-design-exists, features-json-valid, check-meta,
+          check-reviews(detail-design)]
 pr_url: ""                     # /requirement:submit 成功后回写
 pr_number: 0                   # /requirement:submit 成功后回写
 log_layout: split              # split（默认，工具日志→process.tool.log / 语义事件→process.txt） | legacy（老格式，全写 process.txt）
@@ -69,16 +73,17 @@ reviews:
       - REV-REQ-2026-002-outline-design-001
     stale: false
   detail-design:
-    latest: REV-REQ-2026-002-detail-design-001
-    conclusion: needs_revision
-    reviewed_commit: b17ff31
+    latest: REV-REQ-2026-002-detail-design-002
+    conclusion: approved
+    reviewed_commit: 932b90a
     artifact_hashes:
       artifacts/detailed-design.md: 
-        7d6e694daf1ae2e2f31ab0f4e41530ec6dd1887eda0ac2ff8e8c2132f5d26efb
+        81f3ac671f97228e65dfe31be87fbc9baf885cb455758ef29db8936907906dc6
       artifacts/features.json: 
-        cfdd361a3d899f96f7fd3d9ba088738219355d12d81e3ebe8e44d0a680efbd87
+        6c3a4c2adcbc958aecbed130c5f407f6f00d84d1380e88ef5e363090bbd4181a
       artifacts/outline-design.md: 
         448d0e242f2a3c5f620762779987134caf7f51ff9d3840055c6eaab6a0440d47
     history:
       - REV-REQ-2026-002-detail-design-001
+      - REV-REQ-2026-002-detail-design-002
     stale: false

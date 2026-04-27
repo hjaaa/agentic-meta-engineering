@@ -7,3 +7,5 @@
 [2026-04-27 21:24:27] [review:approved] outline-design-001.json by outline-design-quality-reviewer
 2026-04-27 21:25:16 [phase-transition] outline-design → detail-design (gates: outline-design-exists, check-meta, check-plan, check-reviews)
 2026-04-27 21:31:21 [review:needs_revision] detail-design-001
+2026-04-27 21:45:59 [review:approved] detail-design-002.json by detail-design-quality-reviewer (supersedes detail-design-001)
+2026-04-27 21:49:06 [phase-transition] detail-design → task-planning (gates: detailed-design-exists, features-json-valid, check-meta, check-reviews)
