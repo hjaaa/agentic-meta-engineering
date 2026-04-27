@@ -20,3 +20,4 @@
 |---|---|---|---|---|
 | PR1 | 基础设施（review-schema.yaml / save-review.sh / check-reviews.sh / meta-schema reviews 字段 / CI non-strict 接入） | [reviewer-verdict-pr1-infra](./2026-04-27-reviewer-verdict-pr1-infra.md) | `feat/reviewer-verdict-pr1-infra` | ✅ 已合入（PR #36） |
 | PR2 | 试点：requirement-quality-reviewer 切到 save-review.sh + gate-checklist `definition→tech-research` 切到 check-reviews.sh + next 执行体改造 + REQ-2099-001 sandbox 试点 5/5 通过 | [reviewer-verdict-pr2-pilot](./2026-04-27-reviewer-verdict-pr2-pilot.md) | `feat/reviewer-verdict-pr2-pilot` | ✅ 已合入（PR #38） |
+| PR3 | 全量切换：剩余 3 reviewer（outline / detail / code-quality 双输出）+ gate-checklist 余 4 段切到 check-reviews.sh + D7 写保护双层（protect-branch reviews/*.json 拦截 + pre-commit reviews 段 diff 双向校验）+ REQ-2099-200 sandbox 端到端 6/6 通过 | [reviewer-verdict-pr3-rollout](./2026-04-27-reviewer-verdict-pr3-rollout.md) | `feat/reviewer-verdict-pr3-rollout` | ✅ 已合入（PR #40） |
