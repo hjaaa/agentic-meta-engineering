@@ -1,0 +1,1 @@
+2026-04-27 19:56:48 [phase-transition] bootstrap → definition (gates passed: check-meta, check-plan, branch-match, plan-exists)
