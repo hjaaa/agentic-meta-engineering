@@ -33,15 +33,13 @@ completed_at: ""               # ISO8601，completed 时填
 lessons_extracted: false       # /knowledge:extract-experience 是否已跑
 reviews:
   definition:
-    latest: REV-REQ-2026-002-definition-001
-    conclusion: needs_revision
-    reviewed_commit: 4477a02
+    latest: REV-REQ-2026-002-definition-002
+    conclusion: approved
+    reviewed_commit: f8adc13
     artifact_hashes:
       artifacts/requirement.md: 
-        98a6fa9a6a7fd1ea865d50799d48b8a8d01e6394820012752a8082db1270e949
-      meta.yaml: 
-        22233ba59db3c97db1364395b31a82a5db3f242acc437769a395adb28b6d0e1a
-      plan.md: b08a5b89f94639ce18abbbb279d199e68551cf351c851207725fbc8bc83114b0
+        a5b98bafced8a330e8b10e59354e321452e3b3b27fb5266b00ed8baf196b9402
     history:
       - REV-REQ-2026-002-definition-001
-    stale: true
+      - REV-REQ-2026-002-definition-002
+    stale: false
