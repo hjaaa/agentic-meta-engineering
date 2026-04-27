@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2099-999-definition-002",
+  "requirement_id": "REQ-2099-999",
+  "phase": "definition",
+  "reviewer": "requirement-quality-reviewer",
+  "reviewed_at": "2026-04-27 10:30:00",
+  "reviewed_commit": "deadbee",
+  "reviewed_artifacts": [
+    {"path": "artifacts/requirement.md", "sha256": "0000000000000000000000000000000000000000000000000000000000000000"}
+  ],
+  "conclusion": "approved",
+  "score": 85,
+  "dimensions": {
+    "completeness": {"score": 90, "issues": []}
+  },
+  "required_fixes": [
+    {"description": "需求缺乏明确边界", "location": "artifacts/requirement.md:42", "severity": "major"}
+  ],
+  "suggestions": [],
+  "scope": null,
+  "supersedes": null
+}

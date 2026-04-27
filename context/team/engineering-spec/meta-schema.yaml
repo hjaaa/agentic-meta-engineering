@@ -99,3 +99,32 @@ project_scoped_enums:
   feature_area:
     source: "context/project/{project}/areas.yaml"
     key: areas
+
+# ---------- reviews 字段（v2 新增，PR1 阶段全为可选） ----------
+# 由 save-review.sh / check-reviews.sh 维护，禁止主对话 LLM 直接 Edit。
+# PR1 阶段不入 required_fields，也不入 conditional_required；
+# PR4 升 strict 时再加条件必填规则（phase 在 definition 之后）。
+#
+# 结构示例（不在此处声明 schema，由 review-schema.yaml 间接约束）：
+#   reviews:
+#     definition:
+#       latest: REV-REQ-2026-001-definition-002
+#       conclusion: approved
+#       reviewed_commit: 2fde52f
+#       artifact_hashes:
+#         "artifacts/requirement.md": "abc..."
+#       history: [REV-..., REV-...]
+#       stale: false
+#     outline-design: { latest: null }
+#     detail-design: { latest: null }
+#     code:
+#       by_feature:
+#         F-001:
+#           latest: REV-REQ-2026-001-code-F-001-001
+#           conclusion: approved
+#           reviewed_commit: ...
+#           artifact_hashes: {...}
+#           history: [...]
+#           stale: false
+optional_fields:
+  - reviews

@@ -1,0 +1,99 @@
+# review JSON 团队级 Schema 定义
+#
+# 用途：
+#   - save-review.sh 写入前的字段 / 枚举 / CR 规则唯一事实源
+#   - check-reviews.sh 读取时的 schema 复检
+#
+# 修改原则：
+#   - 字段增删或 CR 规则调整必须走 PR review（影响所有 reviewer Agent）
+#   - schema_version 升 2.0 必须迁移历史 review 文件
+#
+# 关联文档：
+#   - context/team/engineering-spec/specs/2026-04-27-reviewer-verdict-structuring-design.md
+
+schema_version: "1.0"
+
+# ---------- 必填字段 ----------
+required_fields:
+  - schema_version
+  - review_id
+  - requirement_id
+  - phase
+  - reviewer
+  - reviewed_at
+  - reviewed_commit
+  - reviewed_artifacts
+  - conclusion
+  - score
+  - dimensions
+  - required_fixes
+  - suggestions
+  - scope
+  - supersedes
+
+# ---------- 枚举 ----------
+enums:
+  phase:
+    - definition
+    - outline-design
+    - detail-design
+    - code           # 注：评审类别名，与生命周期 phase 不同；code 类按 feature_id 多次评审
+  reviewer:
+    - requirement-quality-reviewer
+    - outline-design-quality-reviewer
+    - detail-design-quality-reviewer
+    - code-quality-reviewer
+  conclusion:
+    - approved
+    - needs_revision
+    - rejected
+  severity:
+    - blocker
+    - major
+    - minor
+
+# ---------- 字段格式 ----------
+format:
+  schema_version: '^1\.0$'
+  review_id: '^REV-REQ-\d{4}-\d{3}-(definition|outline-design|detail-design|code(-F-\d{3})?)-\d{3}$'
+  requirement_id: '^REQ-\d{4}-\d{3}$'
+  reviewed_at: datetime          # YYYY-MM-DD HH:MM:SS（time-format.md）
+  reviewed_commit: '^[0-9a-f]{7,40}$'
+
+# ---------- 数值范围 ----------
+ranges:
+  score: [0, 100]
+  dimensions_score: [0, 100]    # 各维度 score 也走同一范围
+
+# ---------- CR 规则（C3，烧进 schema 的内部一致性约束） ----------
+# 违反任一条 → save-review.sh 拒收，返回 ERROR
+cr_rules:
+  CR-1:
+    description: "conclusion=approved 时 required_fixes 必须为空"
+    rule: "approved => required_fixes == []"
+  CR-2:
+    description: "required_fixes 非空时 conclusion 必须 ∈ {needs_revision, rejected}"
+    rule: "len(required_fixes) > 0 => conclusion in [needs_revision, rejected]"
+  CR-3:
+    description: "任一 dimensions.*.score < 60 时 conclusion 不能为 approved"
+    rule: "any dim.score < 60 => conclusion != approved"
+  CR-4:
+    description: "总评 score < 70 时 conclusion 不能为 approved"
+    rule: "score < 70 => conclusion != approved"
+  CR-5:
+    description: "dimensions.*.issues[] 每项必须有合法 severity 和非空 description"
+    rule: "for issue in dim.issues: issue.severity in enums.severity AND issue.description != ''"
+  CR-6:
+    description: "任一 issue.severity = blocker 时 conclusion 不能为 approved"
+    rule: "any issue.severity == blocker => conclusion != approved"
+
+# ---------- scope 约束 ----------
+# phase=code 必须有 scope.feature_id；其他 phase 必须 scope=null
+scope_rules:
+  - when: { phase: code }
+    must:
+      scope: object
+      scope.feature_id: '^F-\d{3}$'
+  - when: { phase_not: [code] }
+    must:
+      scope: null
