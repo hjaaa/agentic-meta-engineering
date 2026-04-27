@@ -19,3 +19,4 @@
 | PR | 范围 | Plan 文档 | 分支 | 状态 |
 |---|---|---|---|---|
 | PR1 | 基础设施（review-schema.yaml / save-review.sh / check-reviews.sh / meta-schema reviews 字段 / CI non-strict 接入） | [reviewer-verdict-pr1-infra](./2026-04-27-reviewer-verdict-pr1-infra.md) | `feat/reviewer-verdict-pr1-infra` | ✅ 已合入（PR #36） |
+| PR2 | 试点：requirement-quality-reviewer 切到 save-review.sh + gate-checklist `definition→tech-research` 切到 check-reviews.sh + next 执行体改造 + REQ-2099-001 sandbox 试点 5/5 通过 | [reviewer-verdict-pr2-pilot](./2026-04-27-reviewer-verdict-pr2-pilot.md) | `feat/reviewer-verdict-pr2-pilot` | ✅ 已合入（PR #38） |
