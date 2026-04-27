@@ -11,6 +11,7 @@
 | 日期 | 主题 | Plan 文档 | 对应分支 | 状态 |
 |---|---|---|---|---|
 | 2026-04-24 | 溢出区三文件重定义（process.txt / notes.md / plan.md 职责收敛 + 删两个 Hook） | [2026-04-24-spillover-redefine](2026-04-24-spillover-redefine.md) | `feature/spillover-redefine` | 🔄 执行中 |
+| 2026-04-27 | Reviewer verdict 结构化 PR4（CI 升 strict + 历史治理） | [2026-04-27-reviewer-verdict-pr4-strict-and-governance](2026-04-27-reviewer-verdict-pr4-strict-and-governance.md) | `feat/reviewer-verdict-pr4-strict-and-governance` | 🔄 执行中 |
 
 ## 历史
 

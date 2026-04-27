@@ -34,14 +34,13 @@ jobs:
       - name: Check sourcing (刨根问底三态)
         run: bash scripts/check-sourcing.sh --all --strict
 
-      - name: Check reviews (non-strict, PR1)
+      - name: Check reviews (strict, PR4)
         run: |
           for dir in requirements/*/; do
             req=$(basename "$dir")
             [ -f "$dir/meta.yaml" ] || continue
             phase=$(python3 -c "import yaml; print(yaml.safe_load(open('$dir/meta.yaml')).get('phase', ''))")
             [ -z "$phase" ] && continue
-            # PR1：不强制 strict；仅打日志，不挂 CI
-            bash scripts/check-reviews.sh --req "$req" --target-phase "$phase" || \
-              echo "::warning::check-reviews failed for $req (non-strict, PR1)"
+            # PR4：strict 模式真阻断；legacy=true 由 check-reviews.sh 内部短路（不在 shell 处理）
+            bash scripts/check-reviews.sh --req "$req" --target-phase "$phase" --strict
           done
