@@ -247,6 +247,12 @@ def main() -> int:
         print(paint(f"❌ {exc}", "red"), file=sys.stderr)
         return 2
 
+    # PR4: legacy=true 的需求豁免所有 review 校验（历史治理用）
+    # legacy 是 REQ 级硬豁免，--strict 也不互动
+    if meta.get("legacy") is True:
+        print(paint(f"ℹ️  {args.req} legacy=true，跳过 reviewer-verdict 校验（R001~R007）", "cyan"))
+        return 0
+
     _r001_review_exists(meta, args.target_phase, report, label)
     _r002_schema_recheck(meta, args.target_phase, report, label, args.req)
     _r003_not_rejected(meta, args.target_phase, report, label)

@@ -128,3 +128,14 @@ project_scoped_enums:
 #           stale: false
 optional_fields:
   - reviews
+  - legacy   # PR4 新增；boolean，true 表示豁免 reviewer-verdict 校验（仅 check_reviews 跳过）
+
+# ---------- legacy 字段（v2 新增，PR4 引入） ----------
+# 用途：标记历史需求豁免 reviewer-verdict 体系的 review 校验
+#   - 仅影响 scripts/lib/check_reviews.py 的入口短路
+#   - 不影响 check_meta / check_index / check_sourcing
+#   - 适用场景：completed 阶段的历史 REQ（PR3 之前产出，meta.yaml 无 reviews 字段）
+# 语义：
+#   - true：跳过所有 R001~R007 校验
+#   - false / 缺省：正常校验
+# 引入新字段后切忌泛滥使用；新增 REQ 必须走结构化 reviewer 通道。
