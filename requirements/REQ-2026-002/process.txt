@@ -1,3 +1,5 @@
 2026-04-27 19:56:48 [phase-transition] bootstrap → definition (gates passed: check-meta, check-plan, branch-match, plan-exists)
 2026-04-27 20:04:09 [review:needs_revision] requirement-quality-reviewer 完成 definition 评审，verdict=requirements/REQ-2026-002/reviews/definition-001.json，score=76
 2026-04-27 21:00:00 [review:approved] requirement-quality-reviewer 二次评审 verdict=requirements/REQ-2026-002/reviews/definition-002.json，score=88
+[2026-04-27 21:06:12] [review:approved] requirement-quality-reviewer 三次评审 supersedes definition-002，刷新 stale
+2026-04-27 21:07:04 [phase-transition] definition → tech-research (gates: check-meta, check-plan, check-sourcing, check-reviews, no-pending-confirm)

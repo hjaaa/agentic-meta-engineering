@@ -68,3 +68,53 @@
   - 好：plugin 易写易测；registry 易读易审
   - 不好：新增门禁仍然需要写 Python（不是纯配置）——但这是有意为之
 - **时间**：2026-04-27 19:55:00
+
+### D-003 runner 性能不立硬性 SLA，CI 时间作隐式上限
+- **Context**：requirement.md 性能段需明确"端到端 ≤ 现状"是否升级为 95p ≤ Xms 等硬指标。
+- **Decision**：本次不立硬性 SLA。tech-research 阶段抓现状基线（quality-check.yml 5 个 step 耗时）作为 runner 不可超过的隐式上限。如未来 CI 时间显著退化，再开 ADR 立硬指标。
+- **Consequences**：
+  - 好：避免在 definition 阶段拍脑袋数字；tech-research 用真实测量做依据
+  - 不好：runner 性能退化无显式断言，靠 CI 时间监控
+- **时间**：2026-04-27 20:15:00
+
+### D-004 audit log 保留 90 天，按月分目录
+- **Context**：每次 trigger 都写 audit JSON，长期会膨胀。需明确保留期与归档结构。
+- **Decision**：路径 `scripts/gates/audit/<YYYY-MM>/<event>-<timestamp>.json`（按月分目录，与原始设计中按日分目录的口径合并到月级），保留 90 天；超期由 governance 工具（下一轮迭代落地）自动清理。当前周期内由 PR review 关注 audit/ 目录大小。
+- **Consequences**：
+  - 好：检索与归档简单（按月 ls 即可）
+  - 不好：单月文件数仍可能上千；governance 工具补齐前需人工关注
+- **时间**：2026-04-27 20:15:00
+
+### D-005 escape_hatch 本轮不做 RBAC，仅强制 reason + audit
+- **Context**：`--force-with-blockers` 等逃生口当前只要 reason，是否需要"审批人字段"或权限分级。
+- **Decision**：本轮不做 RBAC。所有 escape 必须带 `reason` 字段，写入 audit log + process.txt。RBAC 列入下一轮迭代（与 H2 rollback 门禁等中优先级一并）。
+- **Consequences**：
+  - 好：避免本次范围爆炸；reason + audit 已足以追责
+  - 不好：滥用 escape 仍可能发生，依赖 PR review 把关
+- **时间**：2026-04-27 20:15:00
+
+### D-006 Bash 写 reviews/*.json 白名单双轨：进程链 + 环境变量
+- **Context**：H5 拦截 Bash 写 `reviews/*.json` 时如何识别合法调用方（如 save-review.sh 自身的子进程）。
+- **Decision**：双轨判定：
+  1. 识别父进程链（`ps -o ppid,comm`），命中 `save-review.sh` 即放行
+  2. 显式环境变量 `CLAUDE_GATES_BYPASS=1` + 必填 `CLAUDE_GATES_BYPASS_REASON` 才生效，每次写入 audit log
+- **Consequences**：
+  - 好：覆盖正常子进程 + 异常情况下的人工豁免
+  - 不好：父进程链识别在容器/沙箱环境可能失效，需 detail-design 验证
+- **时间**：2026-04-27 20:15:00
+
+### D-007 gate-checklist.md 渲染产物强约束：registry 改动必须附渲染 diff
+- **Context**：gate-checklist.md 改为渲染产物后，需防止"改 registry 但忘改产物"或"手工改产物绕过 registry"。
+- **Decision**：CI 强校验——`scripts/gates/render-docs.py --check` 重新渲染并 diff 当前产物，diff 非空即 PR 失败。任何改 `registry.yaml` 的 PR 必须同时 commit 重新渲染的 `gate-checklist.md`。
+- **Consequences**：
+  - 好：产物与 SoR 永不漂移；CI 自动把关
+  - 不好：开发者忘记重渲染会被 CI 拦，需 README 提示 `make gates-render`
+- **时间**：2026-04-27 20:15:00
+
+### D-008 新增门禁成本目标 ≤ 0.5 人天
+- **Context**：requirement.md 次要目标提到"成本基线对比"，需要锚定数字以便 testing 阶段做效果验收。
+- **Decision**：当前基线（粗估）= 1-2 人天（改 4 文件 + 跑通 3 套清单）；改造后目标 ≤ 0.5 人天（填 9 字段 + 写 1 个类 + 写 3 个测试）。testing 阶段以"实际新增一条门禁的工时"做验收。
+- **Consequences**：
+  - 好：有可测量的业务价值锚点
+  - 不好：粗估数字主观；首次新增门禁的人需如实记录工时
+- **时间**：2026-04-27 20:15:00

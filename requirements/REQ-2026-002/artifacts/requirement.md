@@ -35,7 +35,7 @@ refs-requirement: true
 - **主目标**：把 9 层门禁的"知识（哪些规则、何时生效、怎么失败）"沉淀到单一 registry，"流程（怎么执行、怎么回滚、怎么审计）"收敛到单一 runner；现有规则全部 adapter 接入，行为等价。
 - **次要目标**：
   - 关闭 4 个高优先级缺口：H1（R005 写回事务化，对应 scripts/lib/check_reviews.py:152 的副作用）、H3（submit 与 next 同源，对应上文 submit-rules.md:113 vs gate-checklist.md:71 的割裂——具体形态是 R007 验证 vs review-*.md 文本检查的双轨）、H4（PR 合并状态闭环，对应 submit-rules.md:75 缺反向校验）、H5（Bash 写 reviews/*.json 拦截，对应 protect-branch.sh:30 的绕过点）
-  - **新增门禁的成本降到"填 9 字段 + 写 1 个类 + 写 3 个测试"**——基线锚点（粗估）：当前新增一条门禁需改 4 个文件（CI yml + pre-commit + skill 清单 + check 脚本）+ 跑通 3 套清单约 1-2 人天；改造后目标 ≤ 0.5 人天 [待用户确认]
+  - **新增门禁的成本降到"填 9 字段 + 写 1 个类 + 写 3 个测试"**——基线 1-2 人天 → 目标 ≤ 0.5 人天，testing 阶段以实测工时验收（来源：requirements/REQ-2026-002/plan.md:114）
   - 门禁执行有结构化 audit log，可被未来的 governance 类工具消费
 
 ## 用户场景
@@ -116,7 +116,7 @@ refs-requirement: true
 
 ## 非功能需求
 
-- **性能**：runner 单次端到端执行不应显著高于现状（现状是 quality-check.yml 串跑 4 个 step，参见 .github/workflows/quality-check.yml:28）。SLA 硬指标在 tech-research 阶段抓现状基线后决定，不在 definition 阶段锁死 [待用户确认]
+- **性能**：runner 单次端到端执行不应显著高于现状（现状是 quality-check.yml 串跑 4 个 step，参见 .github/workflows/quality-check.yml:28）。本轮不立硬性 SLA，tech-research 阶段抓现状基线作为隐式上限（来源：requirements/REQ-2026-002/plan.md:72）
 - **兼容性**：旧入口（scripts/check-*.sh、post-dev-verify.sh）保留兼容期至 F-004；具体窗口 = 前 3 个 PR（F-001 ~ F-003）旧入口存在但实现为薄壳，F-004 删除（与 plan.md D-001 口径一致）。meta.yaml / review-schema.yaml / 既有 reviews/*.json 全部不变。
 - **行为契约等价（替换原"CI 双跑等价"）**：每个 PR 合入前必须通过 snapshot 行为契约测试。判据：
   1. 退出码完全一致
@@ -165,8 +165,17 @@ refs-requirement: true
 
 ## 待澄清清单
 
-1. runner 性能 SLA 是否要立硬指标——当前文档写"≤ 现状"，是否需要"95p ≤ 1s"或类似可断言的指标？倾向：不立硬指标，CI 时间作为隐式上限。
-2. audit log 保留期——每次 trigger 都写一份 JSON，长期会膨胀。是否需要按月归档 / 限定保留 90 天？
-3. escape_hatch 是否要做 RBAC——`--force-with-blockers` 当前只要 reason，不要求"谁有权限"。是否需要审批人字段？
-4. Bash 写保护白名单粒度——按"调用方进程名（save-review.sh）"还是"环境变量（CLAUDE_GATES_BYPASS=...）"？两种各有取舍。
-5. gate-checklist.md 渲染产物的强约束——`<!-- generated -->` 标记 + CI 校验是否还要加"任何人改 registry.yaml 必须 PR 同时附渲染产物 diff"？
+definition 阶段无遗留待用户确认项。原始 5 项 + reviewer suggestion 共 6 项已全部锁定为 ADR：
+
+1. 9 字段候选集合（场景 1 主流程 1，标记为 state 3 with 假设四要素，detail-design 定稿）——见 requirement.md 第 48 行的假设记录。
+
+历史决策映射：
+
+| 原始问题 | 已落地决策 | ADR |
+|---|---|---|
+| runner 性能 SLA | 不立硬指标，CI 时间作隐式上限 | requirements/REQ-2026-002/plan.md:72 D-003 |
+| audit log 保留期 | 90 天，按月分目录 | requirements/REQ-2026-002/plan.md:80 D-004 |
+| escape_hatch RBAC | 本轮不做，仅 reason + audit | requirements/REQ-2026-002/plan.md:88 D-005 |
+| Bash 写保护白名单 | 双轨（父进程链 + CLAUDE_GATES_BYPASS env） | requirements/REQ-2026-002/plan.md:96 D-006 |
+| 渲染产物强约束 | CI 校验 render --check diff 必空 | requirements/REQ-2026-002/plan.md:106 D-007 |
+| 成本基线锚点（reviewer suggestion） | 1-2 人天 → ≤ 0.5 人天 | requirements/REQ-2026-002/plan.md:114 D-008 |
