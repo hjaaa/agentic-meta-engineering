@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2099-999-definition-004",
+  "requirement_id": "REQ-2099-999",
+  "phase": "definition",
+  "reviewer": "requirement-quality-reviewer",
+  "reviewed_at": "2026-04-27 10:30:00",
+  "reviewed_artifacts": [
+    {"path": "artifacts/requirement.md", "sha256": "0000000000000000000000000000000000000000000000000000000000000000"}
+  ],
+  "conclusion": "approved",
+  "score": 85,
+  "dimensions": {
+    "completeness": {"score": 90, "issues": []}
+  },
+  "required_fixes": [],
+  "suggestions": [],
+  "scope": null,
+  "supersedes": null
+}
