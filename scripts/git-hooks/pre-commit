@@ -43,4 +43,45 @@ if echo "${STAGED}" | grep -qE '(INDEX\.md$|^context/.*\.md$|^requirements/.*\.m
     fi
 fi
 
+# D7-2: meta.yaml.reviews 段 diff 与 reviews/*.json 文件改动必须同步
+# 防止主对话 LLM 直接 Edit meta.yaml.reviews 段绕过 save-review.sh / check-reviews.sh
+META_CHANGED=$(echo "${STAGED}" | grep -E '^requirements/[^/]+/meta\.yaml$' || true)
+REVIEWS_CHANGED=$(echo "${STAGED}" | grep -E '^requirements/[^/]+/reviews/.*\.json$' || true)
+
+# 正向：meta.yaml.reviews 段被改 → 必须有 reviews/*.json 同步 staged
+if [ -n "$META_CHANGED" ]; then
+    while IFS= read -r meta_path; do
+        [ -n "$meta_path" ] || continue
+        # 取 meta.yaml diff 中 reviews: 段是否被改（含子键 latest / conclusion / reviewed_commit / artifact_hashes / history / stale / by_feature）
+        reviews_diff=$(git diff --cached -U0 -- "$meta_path" 2>/dev/null | grep -E '^[+-][[:space:]]*(reviews:|[[:space:]]+(latest|conclusion|reviewed_commit|artifact_hashes|history|stale|by_feature):)' || true)
+        if [ -n "$reviews_diff" ]; then
+            req_dir=$(dirname "$meta_path")
+            if ! echo "${REVIEWS_CHANGED}" | grep -qE "^${req_dir}/reviews/.*\.json$"; then
+                echo ""
+                echo "✗ pre-commit: $meta_path 的 reviews: 段被改，但 ${req_dir}/reviews/*.json 无对应改动" >&2
+                echo "  meta.yaml.reviews 必须由 save-review.sh / check-reviews.sh 自动维护，不允许手工 Edit" >&2
+                echo "  紧急绕过：git commit --no-verify（CI 兜底，PR4 升 strict 后会挂）" >&2
+                exit 1
+            fi
+        fi
+    done <<< "$META_CHANGED"
+fi
+
+# 反向：reviews/*.json 被改 → 对应 meta.yaml 必须同步 staged
+if [ -n "$REVIEWS_CHANGED" ]; then
+    while IFS= read -r r_path; do
+        [ -n "$r_path" ] || continue
+        # 路径形如 requirements/REQ-XXX/reviews/foo.json，取前两段
+        req_dir=$(echo "$r_path" | awk -F/ '{print $1"/"$2}')
+        meta_path="${req_dir}/meta.yaml"
+        if ! echo "${META_CHANGED}" | grep -qE "^${meta_path}$"; then
+            echo ""
+            echo "✗ pre-commit: $r_path 被改，但 $meta_path 未同步 staged" >&2
+            echo "  应通过 save-review.sh / check-reviews.sh 重新生成 meta.yaml.reviews 段后再 commit" >&2
+            echo "  紧急绕过：git commit --no-verify" >&2
+            exit 1
+        fi
+    done <<< "$REVIEWS_CHANGED"
+fi
+
 exit 0
