@@ -15,6 +15,7 @@ precheck：
 from __future__ import annotations
 
 import subprocess
+import sys
 from typing import Optional
 
 from .base import Decision, Gate, GateContext, Report, Severity, Skip
@@ -35,6 +36,14 @@ class ProtectBranchGate(Gate):
     side_effects = "none"
 
     def precheck(self, ctx: GateContext) -> Optional[Skip]:
+        """校验是否需要执行分支/路径保护检查。
+
+        仅对 pre-tool-use trigger 下的写工具（Edit/Write/MultiEdit）生效；
+        其他 trigger 或非写工具直接 Skip，避免误拦读操作（如 Read/Bash）。
+
+        参数：ctx.trigger — 触发器名称；ctx.extra["tool_name"] — 当前工具名。
+        返回：Skip（无需保护）或 None（继续执行 run）。
+        """
         # defense-in-depth：registry triggers=[pre-tool-use] 已保证，但 plugin 自身也校验（F-12）
         if ctx.trigger != "pre-tool-use":
             return Skip(f"trigger={ctx.trigger!r} 非 pre-tool-use；跳过 protect-branch")
@@ -45,6 +54,14 @@ class ProtectBranchGate(Gate):
         return None
 
     def run(self, ctx: GateContext) -> Report:
+        """执行分支级与路径级写操作拦截检查。
+
+        路径级（优先）：任意分支上对 reviews/*.json 的直接 Edit/Write/MultiEdit 均拒绝。
+        分支级：在受保护分支（main/master/develop）上的任意写工具调用均拒绝。
+
+        参数：ctx.extra["tool_name"] — 工具名；ctx.extra["file_path"] — 目标文件路径。
+        返回：FAIL（PROTECT-REVIEWS 或 PROTECT-BRANCH）或 PASS。
+        """
         tool_name = ctx.extra.get("tool_name", "")
         file_path = ctx.extra.get("file_path") or ctx.extra.get("path") or ""
 
@@ -109,7 +126,6 @@ def _is_reviews_json(file_path: str) -> bool:
         )
     except Exception as exc:  # noqa: BLE001
         # 纯字符串路径操作理论上不抛，保留此处用于未知边界情况的日志记录
-        import sys
         print(f"WARNING _is_reviews_json 路径解析异常 file_path={file_path!r}: {exc}", file=sys.stderr)
         return False
 
