@@ -49,23 +49,41 @@ class ReviewVerdictGate(Gate):
     side_effects = "write_state"
 
     def precheck(self, ctx: GateContext) -> Optional[Skip]:
+        """前置门控：判断是否跳过本 gate（F-014 round-2 加 docstring）。
+
+        参数：ctx — GateContext，含 trigger / requirement_id / to_phase / meta。
+        返回：Skip 跳过本 gate 并解释原因；None 继续 run。
+        分支：
+          - ci trigger：始终运行（扫全部 requirements/）
+          - phase-transition：缺 to_phase 时跳过（无目标 phase 无法判定 review 要求）
+          - legacy=true：历史治理需求豁免 R001~R007
+        """
         # ci trigger：扫全部需求，不需要 requirement_id 和 to_phase
         if ctx.trigger == "ci":
             return None
 
         if not ctx.requirement_id:
-            return Skip("no requirement_id in context; review-verdict check skipped")
+            # F-035 round-2：Skip reason 中文化
+            return Skip("ctx.requirement_id 缺失；跳过 review-verdict 校验")
 
         if ctx.trigger == "phase-transition" and not ctx.to_phase:
-            return Skip("phase-transition requires to_phase; review-verdict check skipped")
+            return Skip("phase-transition 缺 to_phase；跳过 review-verdict 校验")
 
         # legacy=true 豁免（历史治理用）
         if ctx.meta.get("legacy") is True:
-            return Skip(f"{ctx.requirement_id} legacy=true; review-verdict check skipped")
+            return Skip(f"{ctx.requirement_id} 标记 legacy=true；跳过 review-verdict 校验")
 
         return None
 
     def run(self, ctx: GateContext) -> Report:
+        """主流程：按 trigger 分流到 ci 全量扫描或单需求校验（F-014 round-2 加 docstring）。
+
+        参数：ctx — GateContext。
+        返回：Report —— PASS（含 warnings vars）或 FAIL（首个 error 为 message，
+              全集放 vars.errors / vars.warnings）。
+        H1：trigger ∈ {phase-transition, submit} 时走 staged_writes 暂存通道；
+            ci trigger 走 None 通道（仅扫描，不暂存写态）。
+        """
         if ctx.trigger == "ci":
             return self._run_all_requirements(ctx)
         return self._run_single_requirement(ctx, ctx.requirement_id, ctx.to_phase)

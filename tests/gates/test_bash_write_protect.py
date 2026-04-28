@@ -9,6 +9,7 @@
   4. 缺 reason 时 FAIL code=BYPASS-NO-REASON
   5. 非 Bash 工具 → SKIP
   6. 非保护路径 / 读操作 → PASS
+  7. SAVE_REVIEW_PID env 优先白名单
 """
 from __future__ import annotations
 
@@ -42,6 +43,8 @@ _PROTECTED = "requirements/REQ-2026-002/reviews/foo.json"
         ("mv",               f"mv tmp.json {_PROTECTED}"),
         ("cp",               f"cp tmp.json {_PROTECTED}"),
         ("python_open_w",    f"python3 -c \"open('{_PROTECTED}','w').write(x)\""),
+        ("python_open_a",    f"python3 -c \"open('{_PROTECTED}','a').write(x)\""),
+        ("python_open_wb",   f"python3 -c \"open('{_PROTECTED}','wb').write(x)\""),
         ("heredoc",          f"cat <<EOF > {_PROTECTED}\\nfoo\\nEOF"),
         ("printf_redirect",  f"printf '%s' data > {_PROTECTED}"),
         ("dd_of",            f"dd if=/dev/null of={_PROTECTED}"),
@@ -51,12 +54,13 @@ def test_should_fail_when_bash_command_writes_reviews_json(label, command, monke
     """given_8_shell_write_forms_when_run_then_fail_with_bash_write。
 
     mock 父进程链返回非白名单 comm，避免误中 save-review.sh 白名单。
+    F-005 round-2：_caller_is_save_review_sh 签名升级为 (self, ctx)。
     """
     # 强制父进程链识别失败（不是 save-review.sh）
     monkeypatch.setattr(
         plugin_mod.BashWriteProtectGate,
         "_caller_is_save_review_sh",
-        lambda self: False,
+        lambda self, ctx: False,
     )
     gate = plugin_mod.BashWriteProtectGate()
     ctx = _make_ctx(command=command)
@@ -73,7 +77,7 @@ def test_should_pass_when_caller_is_save_review_sh(monkeypatch):
     monkeypatch.setattr(
         plugin_mod.BashWriteProtectGate,
         "_caller_is_save_review_sh",
-        lambda self: True,
+        lambda self, ctx: True,
     )
     gate = plugin_mod.BashWriteProtectGate()
     ctx = _make_ctx(command=f"echo x > {_PROTECTED}")
@@ -86,57 +90,41 @@ def test_caller_chain_walks_up_to_save_review_sh(monkeypatch):
     """given_save_review_sh_in_grandparent_when_walk_then_match（端到端 mock subprocess）。
 
     模拟 ps 返回链：第一层非白名单 → 第二层 save-review.sh → 命中。
+    F-028 round-2：合并为单次 ps -o comm=,ppid=，每步 yield (comm, ppid)。
     """
-    calls = {"i": 0}
-    # ppid=100 第一次 comm=bash, ppid=200；第二次 comm=save-review.sh
-    fixtures = [
-        ("bash", "200"),
-        ("save-review.sh", "1"),
-    ]
+    # 单次 ps -o comm=,ppid= 输出形如 "comm   ppid"
+    fixtures_iter = iter([
+        b"bash 200\n",
+        b"save-review.sh 1\n",
+    ])
 
     def _fake_check_output(cmd, *args, **kwargs):
-        # cmd: ["ps", "-p", "<ppid>", "-o", "comm="] or "-o", "ppid="
-        flag = cmd[-1]
-        idx = calls["i"]
-        comm, ppid = fixtures[idx]
-        if flag == "comm=":
-            return (comm + "\n").encode()
-        if flag == "ppid=":
-            calls["i"] = idx + 1
-            return (ppid + "\n").encode()
-        return b""
+        return next(fixtures_iter)
 
     monkeypatch.setattr(plugin_mod.os, "getppid", lambda: 100)
     monkeypatch.setattr(plugin_mod.subprocess, "check_output", _fake_check_output)
 
     gate = plugin_mod.BashWriteProtectGate()
-    assert gate._caller_is_save_review_sh() is True
+    ctx = _make_ctx()
+    assert gate._caller_is_save_review_sh(ctx) is True
 
 
 def test_caller_chain_returns_false_when_not_in_chain(monkeypatch):
     """given_no_save_review_sh_in_chain_when_walk_then_false。"""
-    fixtures = [
-        ("bash", "200"),
-        ("zsh", "1"),
-    ]
-    calls = {"i": 0}
+    fixtures_iter = iter([
+        b"bash 200\n",
+        b"zsh 1\n",
+    ])
 
     def _fake_check_output(cmd, *args, **kwargs):
-        flag = cmd[-1]
-        idx = calls["i"]
-        comm, ppid = fixtures[idx]
-        if flag == "comm=":
-            return (comm + "\n").encode()
-        if flag == "ppid=":
-            calls["i"] = idx + 1
-            return (ppid + "\n").encode()
-        return b""
+        return next(fixtures_iter)
 
     monkeypatch.setattr(plugin_mod.os, "getppid", lambda: 100)
     monkeypatch.setattr(plugin_mod.subprocess, "check_output", _fake_check_output)
 
     gate = plugin_mod.BashWriteProtectGate()
-    assert gate._caller_is_save_review_sh() is False
+    ctx = _make_ctx()
+    assert gate._caller_is_save_review_sh(ctx) is False
 
 
 def test_caller_chain_swallows_subprocess_errors(monkeypatch):
@@ -149,7 +137,44 @@ def test_caller_chain_swallows_subprocess_errors(monkeypatch):
     monkeypatch.setattr(plugin_mod.os, "getppid", lambda: 100)
     monkeypatch.setattr(plugin_mod.subprocess, "check_output", _raise)
     gate = plugin_mod.BashWriteProtectGate()
-    assert gate._caller_is_save_review_sh() is False
+    ctx = _make_ctx()
+    assert gate._caller_is_save_review_sh(ctx) is False
+
+
+def test_caller_chain_pass_via_save_review_pid_env(monkeypatch):
+    """given_SAVE_REVIEW_PID_matches_chain_pid_when_walk_then_pass（F-005 round-2 优先源）。"""
+    # ppid 链：100 → 200 → 1，SAVE_REVIEW_PID=200 → 第二步命中
+    fixtures_iter = iter([
+        b"bash 200\n",
+        b"random-name 1\n",  # 即使 comm 不匹配，PID 比对也命中
+    ])
+
+    def _fake_check_output(cmd, *args, **kwargs):
+        return next(fixtures_iter)
+
+    monkeypatch.setattr(plugin_mod.os, "getppid", lambda: 100)
+    monkeypatch.setattr(plugin_mod.subprocess, "check_output", _fake_check_output)
+
+    gate = plugin_mod.BashWriteProtectGate()
+    ctx = _make_ctx(env={"SAVE_REVIEW_PID": "200"})
+    assert gate._caller_is_save_review_sh(ctx) is True
+
+
+def test_caller_chain_rejects_endswith_spoofing(monkeypatch):
+    """given_evil_save_review_sh_in_chain_when_walk_then_false（F-005 round-2 防伪造）。"""
+    fixtures_iter = iter([
+        b"evil-save-review.sh 1\n",
+    ])
+
+    def _fake_check_output(cmd, *args, **kwargs):
+        return next(fixtures_iter)
+
+    monkeypatch.setattr(plugin_mod.os, "getppid", lambda: 100)
+    monkeypatch.setattr(plugin_mod.subprocess, "check_output", _fake_check_output)
+    gate = plugin_mod.BashWriteProtectGate()
+    ctx = _make_ctx()
+    # endswith 时代会误判 True；现在严格 == 比对，必须 False
+    assert gate._caller_is_save_review_sh(ctx) is False
 
 
 # ====================== pass：env 双轨白名单 ======================
@@ -160,7 +185,7 @@ def test_should_pass_when_env_bypass_with_reason(monkeypatch):
     monkeypatch.setattr(
         plugin_mod.BashWriteProtectGate,
         "_caller_is_save_review_sh",
-        lambda self: False,
+        lambda self, ctx: False,
     )
     gate = plugin_mod.BashWriteProtectGate()
     ctx = _make_ctx(
@@ -181,7 +206,7 @@ def test_should_fail_when_env_bypass_without_reason(monkeypatch):
     monkeypatch.setattr(
         plugin_mod.BashWriteProtectGate,
         "_caller_is_save_review_sh",
-        lambda self: False,
+        lambda self, ctx: False,
     )
     gate = plugin_mod.BashWriteProtectGate()
     ctx = _make_ctx(
@@ -198,7 +223,7 @@ def test_should_fail_when_env_bypass_with_blank_reason(monkeypatch):
     monkeypatch.setattr(
         plugin_mod.BashWriteProtectGate,
         "_caller_is_save_review_sh",
-        lambda self: False,
+        lambda self, ctx: False,
     )
     gate = plugin_mod.BashWriteProtectGate()
     ctx = _make_ctx(
@@ -219,6 +244,7 @@ def test_should_skip_when_tool_is_not_bash():
     ctx = _make_ctx(tool_name="Edit", command="ignored")
     skip = gate.precheck(ctx)
     assert skip is not None
+    # F-034 round-2：Skip reason 中文化
     assert "Bash" in skip.reason
 
 

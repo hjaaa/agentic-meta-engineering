@@ -315,12 +315,14 @@ def build_context(args: argparse.Namespace) -> GateContext:
         changed_files = [f for f in gate_changed.splitlines() if f.strip()]
 
     # F-15：注入 env 白名单（plugin 通过 ctx.env 读取，避免隐式依赖 os.environ）
-    # 新增 H5 用到的两个 key：CLAUDE_GATES_BYPASS / CLAUDE_GATES_BYPASS_REASON
+    # 新增 H5 用到的 key：CLAUDE_GATES_BYPASS / CLAUDE_GATES_BYPASS_REASON / SAVE_REVIEW_PID
     _ENV_WHITELIST = (
         "CLAUDE_HOOK_BRANCH",
         "CLAUDE_PROTECTED_BRANCHES",
         "CLAUDE_GATES_BYPASS",
         "CLAUDE_GATES_BYPASS_REASON",
+        # F-005 round-2：save-review.sh 启动时 export 的 PID，bash_write_protect 用此比对 ppid
+        "SAVE_REVIEW_PID",
     )
     env = {k: os.environ[k] for k in _ENV_WHITELIST if k in os.environ}
 
@@ -588,11 +590,29 @@ def _cleanup_snapshots(snapshots: dict[str, Path]) -> None:
             )
 
 
-# ====================== audit log ======================
+# ====================== audit log（审计日志） ======================
 
 
 def _build_audit(ctx: GateContext, reports: list[Report], rollback_failed: bool) -> dict[str, Any]:
-    passed = [r.gate_id for r in reports if r.decision == Decision.PASS]
+    """构造 audit log dict。
+
+    F-008 round-2：env-bypass 路径的 PASS 单独记到 bypassed 字段，记录 reason，
+    保证 D-005「reason + audit 已足以追责」决策落地（普通 PASS 仍仅记 gate_id）。
+    """
+    passed: list[str] = []
+    bypassed: list[dict[str, Any]] = []
+    for r in reports:
+        if r.decision != Decision.PASS:
+            continue
+        vars_ = r.vars or {}
+        if vars_.get("whitelisted") == "env-bypass":
+            bypassed.append({
+                "gate_id": r.gate_id,
+                "reason": vars_.get("reason", ""),
+                "whitelisted": "env-bypass",
+            })
+        else:
+            passed.append(r.gate_id)
     failed = [
         {"gate_id": r.gate_id, "code": r.code, "message": r.message, "fix_hint": r.fix_hint}
         for r in reports if r.decision == Decision.FAIL
@@ -607,6 +627,7 @@ def _build_audit(ctx: GateContext, reports: list[Report], rollback_failed: bool)
         "from_phase": ctx.from_phase,
         "to_phase": ctx.to_phase,
         "passed": passed,
+        "bypassed": bypassed,
         "failed": failed,
         "skipped": skipped,
         "escape_used": None,
