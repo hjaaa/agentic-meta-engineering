@@ -265,6 +265,13 @@ def build_context(args: argparse.Namespace) -> GateContext:
         # adapter 模式下把 paths 透传给 plugin（meta_schema 取 meta_paths）
         extra["meta_paths"] = args.paths
 
+    # pre-commit hook 通过 GATE_CHANGED_FILES 环境变量传入 staged 文件列表（换行分隔）
+    import os
+    changed_files: list[str] = []
+    gate_changed = os.environ.get("GATE_CHANGED_FILES", "")
+    if gate_changed:
+        changed_files = [f for f in gate_changed.splitlines() if f.strip()]
+
     return GateContext(
         trigger=trigger,
         requirement_id=args.requirement_id,
@@ -273,6 +280,7 @@ def build_context(args: argparse.Namespace) -> GateContext:
         meta=meta,
         cli_flags={"strict": args.strict, "dry_run": args.dry_run, "legacy": args.legacy},
         extra=extra,
+        changed_files=changed_files,
     )
 
 
