@@ -430,7 +430,8 @@ Claude Code Hook (PreToolUse)
    ├─→ stdin: {"tool_name": "Bash", "tool_input": {"command": "..."}}
    │
    ├─→ scripts/gates/triggers/pre_tool_use.sh 解析 stdin
-   ├─→ python run.py --trigger=pre-tool-use --tool=$TOOL --command="$CMD"
+   ├─→ python run.py --trigger=pre-tool-use（tool / file_path / command 通过环境变量
+   │      CLAUDE_HOOK_TOOL_NAME / CLAUDE_HOOK_FILE_PATH / CLAUDE_HOOK_COMMAND 注入）
    │      │
    │      ├─→ 仅跑 GATE-PROTECT-BRANCH + GATE-BASH-WRITE-PROTECT
    │      └─→ 任一 fail → exit 2（Hook 拒绝）

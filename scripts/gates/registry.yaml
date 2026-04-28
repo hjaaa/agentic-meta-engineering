@@ -277,3 +277,11 @@ escape_hatches:
     triggers: [submit]
     requires_reason: true
     audit: true
+
+  # F-003 round-2：补全详设 §1 第三条 escape_hatch（bash_write_protect 的 env 双轨白名单）
+  - id: bypass-bash-write
+    env_var: CLAUDE_GATES_BYPASS
+    requires_reason_var: CLAUDE_GATES_BYPASS_REASON
+    skips_gates: [GATE-BASH-WRITE-PROTECT]
+    requires_reason: true
+    audit: true

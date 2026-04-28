@@ -166,3 +166,28 @@
 - **F-003 负责**：F-003 新增的任何需要读取环境变量的 plugin，必须通过 `ctx.env` 访问，
   不得直接调用 `os.environ`（保持可测试性，避免隐式依赖）。
   如需新增 env key，先补充 `build_context` 的白名单，再写 plugin 测试。
+
+---
+
+## F-004 follow-up（F-003 round 2 转交）
+
+F-003 round 2 review（code-F-003-001.json）识别但 critic 已转 follow-up nice-to-have，
+不修代码，登记给 F-004 评估：
+
+### F-026：needs_stash 静态判断在低 plugin 数下空转（minor）
+
+- **位置**：`scripts/gates/run.py:404-405`
+- **现象**：`needs_stash` 基于 plan entry 静态判断，precheck Skip 场景仍创建 `.bak` 快照，
+  IO 浪费。当前唯一 `write_state` plugin 是 `review_verdict`，且 `_cleanup_snapshots`
+  已兜底全 pass 路径清理，影响仅在 precheck Skip 路径残留 IO。
+- **F-004 评估时机**：plugin 数增长（>=3 个 write_state）后再做 lazy stash 优化，
+  比如把 stash 推迟到首次命中 write_state plugin run() 之后。
+
+### F-038：write_audit fsync 无量级数据（minor）
+
+- **位置**：`scripts/gates/run.py:556-558`
+- **现象**：`write_audit` 同步 `os.fsync` 在 pre-tool-use 高频路径上理论放大开销，
+  但本地 SSD 实测仅微秒级，无客户反馈。
+- **F-004 评估时机**：在机械盘 / NFS 部署场景做基准后，给 trigger 级 fsync 开关
+  （pre-tool-use 默认关，submit/ci 默认开），由 registry 配置。
+
