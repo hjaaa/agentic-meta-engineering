@@ -147,3 +147,57 @@ def test_traceability_does_not_skip_when_to_testing():
         to_phase="testing",
     )
     assert gate.precheck(ctx) is None
+
+
+# ====================== F-r2-03 拆分验证用例 ======================
+
+
+def test_check_features_file_returns_none_report_when_missing(tmp_path, monkeypatch):
+    """given_no_features_json_when_check_features_file_then_none_and_fail_report（T001）。
+
+    _check_features_file 直接返回 (None, FailReport) 而非抛异常。
+    """
+    monkeypatch.setattr(plugin_mod, "_REPO_ROOT", tmp_path)
+    req_dir = tmp_path / "requirements" / "REQ-2026-999"
+    req_dir.mkdir(parents=True, exist_ok=True)
+
+    done_features, fail_report = plugin_mod._check_features_file("GATE-TRACEABILITY", req_dir)
+
+    assert done_features is None
+    assert fail_report is not None
+    assert fail_report.code == "T001"
+
+
+def test_check_design_traceability_passes_when_all_mentioned(tmp_path):
+    """given_done_features_all_in_design_when_check_design_then_pass。
+
+    _check_design_traceability 独立可测试（已从 run() 中拆出）。
+    """
+    done_features = [{"id": "F-001", "status": "done"}, {"id": "F-002", "status": "done"}]
+    req_dir = tmp_path / "requirements" / "REQ-2026-999"
+    artifacts = req_dir / "artifacts"
+    artifacts.mkdir(parents=True, exist_ok=True)
+    (artifacts / "detailed-design.md").write_text(
+        "## F-001 章节\n内容\n## F-002 章节\n内容\n", encoding="utf-8"
+    )
+
+    from plugins.base import Decision
+    report = plugin_mod._check_design_traceability("GATE-TRACEABILITY", req_dir, done_features)
+
+    assert report.decision == Decision.PASS
+
+
+def test_check_design_traceability_fails_when_missing(tmp_path):
+    """given_done_feature_not_in_design_when_check_design_then_fail_T002。"""
+    done_features = [{"id": "F-001", "status": "done"}]
+    req_dir = tmp_path / "requirements" / "REQ-2026-999"
+    artifacts = req_dir / "artifacts"
+    artifacts.mkdir(parents=True, exist_ok=True)
+    (artifacts / "detailed-design.md").write_text("## 其他章节\n内容\n", encoding="utf-8")
+
+    from plugins.base import Decision
+    report = plugin_mod._check_design_traceability("GATE-TRACEABILITY", req_dir, done_features)
+
+    assert report.decision == Decision.FAIL
+    assert report.code == "T002"
+    assert "F-001" in (report.message or "")

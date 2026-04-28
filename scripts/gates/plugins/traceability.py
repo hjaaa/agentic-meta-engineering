@@ -49,85 +49,112 @@ class TraceabilityGate(Gate):
         return None
 
     def run(self, ctx: GateContext) -> Report:
-        """检查 features.json 完整性与 done feature 在 detailed-design.md 中的追溯。
+        """串调私有检查方法：features.json 读取 → design 追溯检查。
 
-        错误场景：features.json 不存在（T001）或 done feature 未在设计文档中出现（T002）。
-        参数：ctx.requirement_id — 目标需求 ID。
+        参数：ctx.requirement_id — 目标需求 ID（precheck 已保证非空）。
+        失败场景：T001（features.json 缺失/解析失败）/ T002（done feature 未在设计中）。
         """
         req_id = ctx.requirement_id
         assert req_id is not None  # precheck 已保证
-
         req_dir = _REPO_ROOT / "requirements" / req_id
-        features_path = req_dir / "artifacts" / "features.json"
 
-        # E001：features.json 必须存在
-        if not features_path.exists():
-            return Report(
-                gate_id=self.id,
-                decision=Decision.FAIL,
-                code="T001",
-                message=f"features.json 不存在: {features_path.relative_to(_REPO_ROOT)}",
-                fix_hint="切到 testing 阶段需要 features.json 列出所有 feature",
-            )
+        done_features, fail_report = _check_features_file(self.id, req_dir)
+        if fail_report is not None:
+            return fail_report
+        assert done_features is not None
+        return _check_design_traceability(self.id, req_dir, done_features)
 
-        try:
-            features_data = json.loads(features_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError) as exc:
-            return Report(
-                gate_id=self.id,
-                decision=Decision.FAIL,
-                code="T001",
-                message=f"features.json 解析失败: {exc}",
-                fix_hint="确认 features.json 为合法 JSON",
-            )
 
-        features = features_data.get("features", [])
-        done_features = [
-            f for f in features
-            if isinstance(f, dict) and f.get("status") == "done" and f.get("id")
-        ]
+def _check_features_file(
+    gate_id: str, req_dir: Path
+) -> tuple[Optional[list[dict]], Optional[Report]]:
+    """读取并解析 features.json，过滤出 status=done 的 feature 列表。
 
-        if not done_features:
-            # 没有 done 的 feature，不阻断
-            return Report(
-                gate_id=self.id,
-                decision=Decision.PASS,
-                message="no done features to trace",
-            )
+    参数：
+      gate_id  — 用于构造 Report 的 gate 标识符。
+      req_dir  — 需求目录（如 requirements/REQ-2026-002/）。
 
-        # 结构化追溯：检查 detailed-design.md 中是否包含每个 done feature 的 id
-        design_path = req_dir / "artifacts" / "detailed-design.md"
-        missing_in_design: list[str] = []
-        if design_path.exists():
-            design_text = design_path.read_text(encoding="utf-8")
-            for f in done_features:
-                fid = f["id"]
-                if not _feature_mentioned(fid, design_text):
-                    missing_in_design.append(fid)
-        else:
-            missing_in_design = [f["id"] for f in done_features]
+    返回：
+      (done_features, None)       — 成功：done_features 为过滤后列表（可为空）。
+      (None, FailReport)          — features.json 不存在或解析失败，含 T001 Report。
+    """
+    features_path = req_dir / "artifacts" / "features.json"
 
-        if missing_in_design:
-            return Report(
-                gate_id=self.id,
-                decision=Decision.FAIL,
-                code="T002",
-                message=(
-                    f"以下 done feature 未在 detailed-design.md 中找到追溯: "
-                    f"{', '.join(missing_in_design)}"
-                ),
-                fix_hint=(
-                    "在 detailed-design.md 中为每个 feature 添加对应章节；"
-                    "完整追溯链校验由 /requirement:next 调用 traceability-gate-checker Skill 完成"
-                ),
-                vars={"missing_in_design": missing_in_design},
-            )
-
-        return Report(
-            gate_id=self.id,
-            decision=Decision.PASS,
-            vars={"done_features": [f["id"] for f in done_features]},
+    if not features_path.exists():
+        return None, Report(
+            gate_id=gate_id,
+            decision=Decision.FAIL,
+            code="T001",
+            message=f"features.json 不存在: {features_path.relative_to(_REPO_ROOT)}",
+            fix_hint="切到 testing 阶段需要 features.json 列出所有 feature",
         )
+
+    try:
+        features_data = json.loads(features_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        return None, Report(
+            gate_id=gate_id,
+            decision=Decision.FAIL,
+            code="T001",
+            message=f"features.json 解析失败: {exc}",
+            fix_hint="确认 features.json 为合法 JSON",
+        )
+
+    features = features_data.get("features", [])
+    done_features = [
+        f for f in features
+        if isinstance(f, dict) and f.get("status") == "done" and f.get("id")
+    ]
+    return done_features, None
+
+
+def _check_design_traceability(
+    gate_id: str, req_dir: Path, done_features: list[dict]
+) -> Report:
+    """检查每个 done feature 是否在 detailed-design.md 中有对应追溯章节。
+
+    参数：
+      gate_id       — 用于构造 Report 的 gate 标识符。
+      req_dir       — 需求目录。
+      done_features — 已过滤的 done feature 列表（_check_features_file 的输出）。
+
+    返回：PASS（全部追溯）/ FAIL T002（存在 missing）/ PASS（无 done feature）。
+    """
+    if not done_features:
+        return Report(gate_id=gate_id, decision=Decision.PASS, message="no done features to trace")
+
+    design_path = req_dir / "artifacts" / "detailed-design.md"
+    missing_in_design: list[str] = []
+    if design_path.exists():
+        design_text = design_path.read_text(encoding="utf-8")
+        for f in done_features:
+            fid = f["id"]
+            if not _feature_mentioned(fid, design_text):
+                missing_in_design.append(fid)
+    else:
+        missing_in_design = [f["id"] for f in done_features]
+
+    if missing_in_design:
+        return Report(
+            gate_id=gate_id,
+            decision=Decision.FAIL,
+            code="T002",
+            message=(
+                f"以下 done feature 未在 detailed-design.md 中找到追溯: "
+                f"{', '.join(missing_in_design)}"
+            ),
+            fix_hint=(
+                "在 detailed-design.md 中为每个 feature 添加对应章节；"
+                "完整追溯链校验由 /requirement:next 调用 traceability-gate-checker Skill 完成"
+            ),
+            vars={"missing_in_design": missing_in_design},
+        )
+
+    return Report(
+        gate_id=gate_id,
+        decision=Decision.PASS,
+        vars={"done_features": [f["id"] for f in done_features]},
+    )
 
 
 def _feature_mentioned(feature_id: str, text: str) -> bool:
