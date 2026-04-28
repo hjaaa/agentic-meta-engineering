@@ -129,12 +129,27 @@ class PrMergedStateGate(Gate):
         )
 
 
+def _cache_miss(pr_num: str, reason: str, detail: object = "") -> None:
+    """打 WARNING + 写失败缓存的统一 helper（F-016 round-3 抽出）。
+
+    4 个异常 handler 各缩短为 2 行（_cache_miss + return None），新增异常类型时
+    不再有遗漏「set cache=None」的风险（之前 4 处重复三步模式：print + cache + return）。
+    """
+    suffix = f": {detail}" if detail != "" else ""
+    print(
+        f"WARNING GATE-PR-MERGED-STATE {reason} pr={pr_num}{suffix}",
+        file=sys.stderr,
+    )
+    _PR_STATE_CACHE[pr_num] = None
+
+
 def _fetch_pr_state(pr_num: str) -> Optional[dict]:
     """调 gh CLI 查询 PR 状态；任一异常返回 None 让上层走降级路径。
 
     F-025 round-2：
       - subprocess.run timeout=30 + TimeoutExpired 兜底，避免网络挂起
       - 模块级 _PR_STATE_CACHE：同进程多次调用复用首次结果（含失败缓存为 None）
+    F-016 round-3：4 类异常 handler 抽 _cache_miss helper（print + cache + return None）。
 
     返回：{"state": "MERGED"|"OPEN"|...,"mergedAt": "..."|None} 或 None。
     """
@@ -150,35 +165,22 @@ def _fetch_pr_state(pr_num: str) -> Optional[dict]:
             timeout=_GH_TIMEOUT_SEC,
         )
     except subprocess.TimeoutExpired:
-        print(
-            f"WARNING GATE-PR-MERGED-STATE gh 超时 pr={pr_num} timeout={_GH_TIMEOUT_SEC}s",
-            file=sys.stderr,
-        )
-        _PR_STATE_CACHE[pr_num] = None
+        _cache_miss(pr_num, "gh 超时", f"timeout={_GH_TIMEOUT_SEC}s")
         return None
     except (FileNotFoundError, OSError) as exc:
-        print(
-            f"WARNING GATE-PR-MERGED-STATE gh 调用失败 pr={pr_num}: {exc}",
-            file=sys.stderr,
-        )
-        _PR_STATE_CACHE[pr_num] = None
+        _cache_miss(pr_num, "gh 调用失败", exc)
         return None
     if result.returncode != 0:
-        print(
-            f"WARNING GATE-PR-MERGED-STATE gh 返回非零 pr={pr_num} "
+        _cache_miss(
+            pr_num,
+            "gh 返回非零",
             f"rc={result.returncode} stderr={result.stderr.strip()[:200]}",
-            file=sys.stderr,
         )
-        _PR_STATE_CACHE[pr_num] = None
         return None
     try:
         data = json.loads(result.stdout) or {}
     except json.JSONDecodeError as exc:
-        print(
-            f"WARNING GATE-PR-MERGED-STATE gh 输出非 JSON pr={pr_num}: {exc}",
-            file=sys.stderr,
-        )
-        _PR_STATE_CACHE[pr_num] = None
+        _cache_miss(pr_num, "gh 输出非 JSON", exc)
         return None
     _PR_STATE_CACHE[pr_num] = data
     return data
