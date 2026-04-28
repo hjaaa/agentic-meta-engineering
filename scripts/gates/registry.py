@@ -86,33 +86,53 @@ def _validate_registry_schema(
 
     validate_only_ids 非 None 时，S2 import + S7 rollback 检查跳过白名单外 gate；
     其他校验（S1/S3/S4/S5/S6/S8/S9/S10）仍跑全量，保证依赖图与字段完整性。
+
+    F-014 round-3：把内部 4 段长循环拆为 _validate_s1_ids / _validate_s5_deps /
+    _validate_s6_no_cycles / _validate_s7_rollback 子例程，CC 18 → 各 ≤ 4。
+    """
+    id_to_entry = _validate_s1_ids(gates, validate_only_ids)
+    _validate_s5_deps(id_to_entry)
+    _validate_s6_no_cycles(id_to_entry)
+    _validate_s7_rollback(id_to_entry, validate_only_ids)
+
+
+def _validate_s1_ids(
+    gates: list[dict[str, Any]],
+    validate_only_ids: Optional[set[str]],
+) -> dict[str, dict[str, Any]]:
+    """S1：每条 entry 的 id 必须符合 ID_PATTERN 且全局唯一；同时驱动 _validate_one_entry。
+
+    返回：{gid: entry} 映射，供 S5/S6/S7 直接复用，避免重复扫描 gates 列表。
     """
     seen_ids: set[str] = set()
     id_to_entry: dict[str, dict[str, Any]] = {}
-
     for entry in gates:
         if not isinstance(entry, dict):
             raise RegistryError(f"gate entry 必须是 mapping，实际: {type(entry).__name__}")
         gid = entry.get("id")
-        # S1：id 正则 + 全局唯一（全量跑）
         if not isinstance(gid, str) or not re.match(ID_PATTERN, gid):
             raise RegistryError(f"S1 违反：id={gid!r} 不符合 {ID_PATTERN}")
         if gid in seen_ids:
             raise RegistryError(f"S1 违反：id={gid!r} 重复")
         seen_ids.add(gid)
         id_to_entry[gid] = entry
-
-        # F-018：S2 import 是冷启动开销大头，pre-tool-use 路径只 import 候选 gate
+        # F-018：S2 import 冷启动开销大，pre-tool-use 路径只 import 候选 gate
         skip_import = validate_only_ids is not None and gid not in validate_only_ids
         _validate_one_entry(entry, skip_import=skip_import)
+    return id_to_entry
 
-    # S5：dependencies 引用必须存在（全量跑，避免悬挂依赖）
+
+def _validate_s5_deps(id_to_entry: dict[str, dict[str, Any]]) -> None:
+    """S5：dependencies 引用必须存在于 gates 列表（全量跑，避免悬挂依赖）。"""
+    seen_ids = set(id_to_entry)
     for gid, entry in id_to_entry.items():
         for dep in entry.get("dependencies") or []:
             if dep not in seen_ids:
                 raise RegistryError(f"S5 违反：{gid} 的依赖 {dep!r} 不存在于 gates")
 
-    # S6：dependencies 拓扑无环（全量跑，环检测需要完整图）
+
+def _validate_s6_no_cycles(id_to_entry: dict[str, dict[str, Any]]) -> None:
+    """S6：dependencies 拓扑无环（全量跑，环检测需要完整图）。"""
     graph = {gid: set(entry.get("dependencies") or []) for gid, entry in id_to_entry.items()}
     sorter = TopologicalSorter(graph)
     try:
@@ -120,13 +140,18 @@ def _validate_registry_schema(
     except CycleError as exc:
         raise RegistryError(f"S6 违反：dependencies 拓扑出现环 {exc.args[1]}") from exc
 
-    # S7：side_effects=write_state 必须实现 rollback —— 同步遵循 validate_only_ids 白名单
-    # （白名单外 plugin 跳过 import，避免触发 plugin 模块加载）
+
+def _validate_s7_rollback(
+    id_to_entry: dict[str, dict[str, Any]],
+    validate_only_ids: Optional[set[str]],
+) -> None:
+    """S7：side_effects=write_state 必须实现 rollback；遵循 validate_only_ids 白名单。"""
     for gid, entry in id_to_entry.items():
-        if entry.get("side_effects") == "write_state":
-            if validate_only_ids is not None and gid not in validate_only_ids:
-                continue
-            _validate_write_state_plugin(gid, entry["plugin"])
+        if entry.get("side_effects") != "write_state":
+            continue
+        if validate_only_ids is not None and gid not in validate_only_ids:
+            continue
+        _validate_write_state_plugin(gid, entry["plugin"])
 
 
 def _validate_one_entry(entry: dict[str, Any], skip_import: bool = False) -> None:
@@ -135,61 +160,84 @@ def _validate_one_entry(entry: dict[str, Any], skip_import: bool = False) -> Non
     skip_import=True 时跳过 S2 的 importlib.import_module + GATE_CLASS 检查，
     仅做纯字符串字段校验（plugin 必填 + plugin_path 文件存在）。
     用于 pre-tool-use 高频路径冷启动优化（F-018），白名单外 gate 不触发模块加载。
+
+    F-013 round-3：把 6 段独立 if 链拆为 _validate_s2_plugin / _validate_s3_triggers /
+    _validate_s4_severity / _validate_s8_fixtures / _validate_s9_requires /
+    _validate_s10_escape_hatch 六个私有函数，CC 28 → 各 ≤ 5；每条规则可独立测试。
     """
     gid = entry["id"]
-    plugin_name = entry.get("plugin")
+    _validate_s2_plugin(gid, entry, skip_import)
+    triggers = _validate_s3_triggers(gid, entry)
+    _validate_s4_severity(gid, entry)
+    _validate_s8_fixtures(gid, entry)
+    _validate_s9_requires(gid, entry)
+    _validate_s10_escape_hatch(gid, entry, triggers)
 
-    # S2：plugin 模块存在且可导入（导出 Gate 子类）
+
+def _validate_s2_plugin(gid: str, entry: dict[str, Any], skip_import: bool) -> None:
+    """S2：plugin 字段必填、plugin_path 文件存在；非 skip_import 还要 import + GATE_CLASS 校验。"""
+    plugin_name = entry.get("plugin")
     if not isinstance(plugin_name, str) or not plugin_name:
         raise RegistryError(f"S2 违反：{gid} 的 plugin 字段必填且为字符串")
     plugin_path = _PKG_ROOT / "plugins" / f"{plugin_name}.py"
     if not plugin_path.exists():
         raise RegistryError(f"S2 违反：{gid} 的 plugins/{plugin_name}.py 不存在")
-    if not skip_import:
-        try:
-            mod = importlib.import_module(f"plugins.{plugin_name}")
-        except Exception as exc:  # noqa: BLE001
-            raise RegistryError(f"S2 违反：plugins.{plugin_name} import 失败: {exc}") from exc
-        cls = getattr(mod, "GATE_CLASS", None)
-        if cls is None or not isinstance(cls, type) or not issubclass(cls, Gate):
-            raise RegistryError(f"S2 违反：plugins/{plugin_name}.py 未导出 GATE_CLASS（Gate 子类）")
+    if skip_import:
+        return
+    try:
+        mod = importlib.import_module(f"plugins.{plugin_name}")
+    except Exception as exc:  # noqa: BLE001
+        raise RegistryError(f"S2 违反：plugins.{plugin_name} import 失败: {exc}") from exc
+    cls = getattr(mod, "GATE_CLASS", None)
+    if cls is None or not isinstance(cls, type) or not issubclass(cls, Gate):
+        raise RegistryError(f"S2 违反：plugins/{plugin_name}.py 未导出 GATE_CLASS（Gate 子类）")
 
-    # S3：triggers 白名单
+
+def _validate_s3_triggers(gid: str, entry: dict[str, Any]) -> list[str]:
+    """S3：triggers 必须是非空 list，每个元素必须在 TRIGGERS 白名单内。返回 triggers 给 S10 复用。"""
     triggers = entry.get("triggers") or []
     if not isinstance(triggers, list) or not triggers:
         raise RegistryError(f"S3 违反：{gid} triggers 必须是非空 list")
     for t in triggers:
         if t not in TRIGGERS:
             raise RegistryError(f"S3 违反：{gid} 含未知 trigger={t!r}（白名单 {sorted(TRIGGERS)}）")
+    return triggers
 
-    # S4：severity 枚举
+
+def _validate_s4_severity(gid: str, entry: dict[str, Any]) -> None:
+    """S4：severity 枚举 + side_effects 枚举（同函数维护，因都是顶层枚举字段）。"""
     if entry.get("severity") not in SEVERITY_VALUES:
         raise RegistryError(f"S4 违反：{gid} severity 必须 ∈ {sorted(SEVERITY_VALUES)}")
-
-    # side_effects 枚举
     if entry.get("side_effects", "none") not in SIDE_EFFECTS_VALUES:
         raise RegistryError(f"{gid} side_effects 必须 ∈ {sorted(SIDE_EFFECTS_VALUES)}")
 
-    # S8：tests.fixtures 至少 [pass, fail, skip]
+
+def _validate_s8_fixtures(gid: str, entry: dict[str, Any]) -> None:
+    """S8：tests.fixtures 至少包含 pass / fail / skip 三个用例名。"""
     fixtures = ((entry.get("tests") or {}).get("fixtures")) or []
     if not {"pass", "fail", "skip"}.issubset(set(fixtures)):
         raise RegistryError(f"S8 违反：{gid} tests.fixtures 必须至少包含 [pass, fail, skip]")
 
-    # S9：applies_when.requires 必须以 meta. 前缀
+
+def _validate_s9_requires(gid: str, entry: dict[str, Any]) -> None:
+    """S9：applies_when.requires 每项必须是字符串且以 'meta.' 前缀。"""
     requires = ((entry.get("applies_when") or {}).get("requires")) or []
     for item in requires:
         if not isinstance(item, str) or not item.startswith("meta."):
             raise RegistryError(f"S9 违反：{gid} applies_when.requires 项 {item!r} 必须以 'meta.' 开头")
 
-    # S10：escape_hatch.cli_flag 限定 trigger
+
+def _validate_s10_escape_hatch(gid: str, entry: dict[str, Any], triggers: list[str]) -> None:
+    """S10：escape_hatch.cli_flag 仅 submit / phase-transition trigger 接受。"""
     eh = entry.get("escape_hatch") or {}
     cli_flag = eh.get("cli_flag")
-    if cli_flag is not None:
-        allowed = {"submit", "phase-transition"}
-        if not (set(triggers) & allowed):
-            raise RegistryError(
-                f"S10 违反：{gid} escape_hatch.cli_flag={cli_flag!r} 仅 submit/phase-transition trigger 接受"
-            )
+    if cli_flag is None:
+        return
+    allowed = {"submit", "phase-transition"}
+    if not (set(triggers) & allowed):
+        raise RegistryError(
+            f"S10 违反：{gid} escape_hatch.cli_flag={cli_flag!r} 仅 submit/phase-transition trigger 接受"
+        )
 
 
 def _validate_write_state_plugin(gid: str, plugin_name: str) -> None:
