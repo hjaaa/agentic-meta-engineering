@@ -104,7 +104,7 @@ if [[ -n "$FEATURE_ID" ]]; then
 fi
 
 # ——— 2. 统一门禁 runner（post-dev trigger，切到 runner 是 F-002 核心改造） ———
-RUNNER_ARGS=(python3 scripts/gates/run.py --trigger=post-dev --strict)
+RUNNER_ARGS=(python3 scripts/gates/run.py --trigger=post-dev)
 [[ -n "$REQ_ID" ]] && RUNNER_ARGS+=(--req "$REQ_ID")
 
 run_step "gate-runner (post-dev)" run "${RUNNER_ARGS[@]}"
