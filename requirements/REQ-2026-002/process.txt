@@ -12,3 +12,5 @@
 2026-04-27 22:04:27 [save] task-planning 末端 — 4 个 task 文件 status=pending；下次 /requirement:continue → /requirement:next 切 development，从 F-001 起串行推进（depends_on 链：F-001 → F-002 → F-003 → F-004，27 人天）
 2026-04-27 22:28:53 [phase-transition] task-planning → development (gates: check-meta, check-plan, tasks-exist-per-feature, tasks-status-pending)
 2026-04-27 22:30:50 [development] F-001 派发（model=opus，complexity=high）
+2026-04-28 08:19:00 [gate:pass] post-dev-verify F-001 5 passed/0 failed，F-001 status→done（review: code-F-001-001.json approved score=88）
+2026-04-28 08:22:47 [development] F-002 派发（model=sonnet，complexity=medium）
