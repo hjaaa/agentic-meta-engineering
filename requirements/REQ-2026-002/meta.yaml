@@ -108,9 +108,10 @@ reviews:
       F-002:
         history:
           - REV-REQ-2026-002-code-F-002-001
-        latest: REV-REQ-2026-002-code-F-002-001
-        conclusion: rejected
-        reviewed_commit: cf0e802
+          - REV-REQ-2026-002-code-F-002-002
+        latest: REV-REQ-2026-002-code-F-002-002
+        conclusion: needs_revision
+        reviewed_commit: 9931fb5
         artifact_hashes:
           artifacts/features.json: 
             6c3a4c2adcbc958aecbed130c5f407f6f00d84d1380e88ef5e363090bbd4181a
