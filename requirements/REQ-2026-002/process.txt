@@ -14,3 +14,4 @@
 2026-04-27 22:30:50 [development] F-001 派发（model=opus，complexity=high）
 2026-04-28 08:19:00 [gate:pass] post-dev-verify F-001 5 passed/0 failed，F-001 status→done（review: code-F-001-001.json approved score=88）
 2026-04-28 08:22:47 [development] F-002 派发（model=sonnet，complexity=medium）
+2026-04-28 09:19:36 [review:rejected] code-F-002-001.json by code-quality-reviewer，score=68，1 critical (F-02 D7-2 安全回归) + 8 major + 19 minor，F-002 status 保持 in-progress
