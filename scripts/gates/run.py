@@ -377,7 +377,9 @@ def _print_dry_run(ctx: GateContext, plan: list[dict[str, Any]]) -> int:
 
 def _execute_plan(ctx: GateContext, plan: list[dict[str, Any]], strict: bool) -> int:
     """执行 plan：precheck → run → 暂存事务化 commit / fail 路径 rollback + restore。"""
-    snapshots = _stash_state(ctx)
+    # 仅当存在 write_state plugin 时才创建快照，避免污染工作区
+    needs_stash = any(e.get("side_effects") == "write_state" for e in plan)
+    snapshots = _stash_state(ctx) if needs_stash else {}
     executed: list[Gate] = []
     reports: list[Report] = []
     rollback_failed = False
