@@ -90,7 +90,7 @@ reviews:
     history:
       - REV-REQ-2026-002-detail-design-001
       - REV-REQ-2026-002-detail-design-002
-    stale: false
+    stale: true
   code:
     by_feature:
       F-001:
