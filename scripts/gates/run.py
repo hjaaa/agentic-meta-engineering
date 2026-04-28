@@ -271,6 +271,12 @@ def build_context(args: argparse.Namespace) -> GateContext:
     if args.legacy and args.paths:
         # adapter 模式下把 paths 透传给 plugin（meta_schema 取 meta_paths）
         extra["meta_paths"] = args.paths
+    # pre-tool-use trigger：从环境变量取 tool_name / file_path / command
+    # （由 triggers/pre_tool_use.sh 解析 stdin 后注入；不让 plugin 自己读 os.environ）
+    if trigger == "pre-tool-use":
+        extra.setdefault("tool_name", os.environ.get("CLAUDE_HOOK_TOOL_NAME", ""))
+        extra.setdefault("file_path", os.environ.get("CLAUDE_HOOK_FILE_PATH", ""))
+        extra.setdefault("command", os.environ.get("CLAUDE_HOOK_COMMAND", ""))
 
     # pre-commit hook 通过 GATE_CHANGED_FILES 环境变量传入 staged 文件列表（换行分隔）
     changed_files: list[str] = []
@@ -278,8 +284,15 @@ def build_context(args: argparse.Namespace) -> GateContext:
     if gate_changed:
         changed_files = [f for f in gate_changed.splitlines() if f.strip()]
 
-    # F-15：注入 env 白名单（protect_branch 等 plugin 通过 ctx.env 读取，避免隐式依赖 os.environ）
-    env = {k: os.environ[k] for k in ("CLAUDE_HOOK_BRANCH", "CLAUDE_PROTECTED_BRANCHES") if k in os.environ}
+    # F-15：注入 env 白名单（plugin 通过 ctx.env 读取，避免隐式依赖 os.environ）
+    # 新增 H5 用到的两个 key：CLAUDE_GATES_BYPASS / CLAUDE_GATES_BYPASS_REASON
+    _ENV_WHITELIST = (
+        "CLAUDE_HOOK_BRANCH",
+        "CLAUDE_PROTECTED_BRANCHES",
+        "CLAUDE_GATES_BYPASS",
+        "CLAUDE_GATES_BYPASS_REASON",
+    )
+    env = {k: os.environ[k] for k in _ENV_WHITELIST if k in os.environ}
 
     return GateContext(
         trigger=trigger,

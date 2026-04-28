@@ -245,6 +245,25 @@ gates:
     tests:
       fixtures: [pass, fail, skip]
 
+  - id: GATE-BASH-WRITE-PROTECT
+    plugin: bash_write_protect
+    severity: error
+    triggers:
+      - pre-tool-use
+    applies_when:
+      changed_files: []
+      target_phase: null
+      current_phase_in: []
+      transition: null
+      requires: []
+    dependencies: []
+    side_effects: none
+    failure_message: |
+      {gate_id} 失败：{message}
+      修复建议：{fix_hint}
+    tests:
+      fixtures: [pass, fail, skip]
+
 # 全局 escape 策略（流程级，非 gate 级）—— F-002 补全
 escape_hatches:
   - id: legacy-requirement
