@@ -4,9 +4,7 @@
 """
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 from plugins.base import Decision, GateContext
 from plugins import protect_branch as plugin_mod

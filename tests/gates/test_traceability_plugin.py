@@ -7,8 +7,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from plugins.base import Decision, GateContext
 from plugins import traceability as plugin_mod
 

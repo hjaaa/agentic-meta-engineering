@@ -13,7 +13,7 @@
 # 注意：reviews/*.json / meta.yaml.reviews 段的保护由 GATE-PROTECT-BRANCH
 #       在 pre-tool-use trigger 处理；pre-commit hook 不重复实现。
 
-set -euo pipefail
+set -uo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "${REPO_ROOT}"
@@ -30,9 +30,12 @@ fi
 export GATE_CHANGED_FILES="${STAGED}"
 
 # 执行统一门禁 runner（pre-commit trigger，不加 --strict，只拦 error）
+# 注意：关闭 set -e 以捕获 runner 的非零退出码（让友好提示生效，不被 set -e 截断）
+set +e
 python3 scripts/gates/run.py --trigger=pre-commit
-
 EXIT_CODE=$?
+set -e
+
 if [ $EXIT_CODE -ne 0 ]; then
     echo "" >&2
     echo "✗ pre-commit 门禁失败，commit 被阻止" >&2

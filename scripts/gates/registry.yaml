@@ -185,6 +185,27 @@ gates:
     tests:
       fixtures: [pass, fail, skip]
 
+  - id: GATE-REVIEWS-CONSISTENCY
+    plugin: reviews_consistency
+    severity: error
+    triggers:
+      - pre-commit
+    applies_when:
+      changed_files:
+        - "requirements/*/meta.yaml"
+        - "requirements/*/reviews/*.json"
+      target_phase: null
+      current_phase_in: []
+      transition: null
+      requires: []
+    dependencies: []
+    side_effects: none
+    failure_message: |
+      {gate_id} 失败：{message}
+      修复建议：{fix_hint}
+    tests:
+      fixtures: [pass, fail, skip]
+
   - id: GATE-PROTECT-BRANCH
     plugin: protect_branch
     severity: error

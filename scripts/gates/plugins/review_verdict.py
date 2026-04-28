@@ -25,6 +25,7 @@ if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
 # noqa: E402 —— sys.path 注入后才能 import
+import yaml  # noqa: E402（F-022：提至模块顶层）
 from common import Report as LegacyReport  # noqa: E402
 from common import Severity as LegacySeverity  # noqa: E402
 import check_reviews  # noqa: E402
@@ -70,7 +71,11 @@ class ReviewVerdictGate(Gate):
         return self._run_single_requirement(ctx, ctx.requirement_id, ctx.to_phase)
 
     def _run_all_requirements(self, ctx: GateContext) -> Report:
-        """ci trigger：扫全部 requirements/ 下的需求，汇总 findings。"""
+        """ci trigger：扫全部 requirements/ 下的需求，汇总 findings。
+
+        调用链：_load_req_meta → _should_skip_req → 主循环聚合。
+        CC 保持 ≤ 6（来源：F-005 重构）。
+        """
         req_root = _REPO_ROOT / "requirements"
         if not req_root.exists():
             return Report(gate_id=self.id, decision=Decision.PASS, message="no requirements dir")
@@ -81,55 +86,15 @@ class ReviewVerdictGate(Gate):
         for req_dir in sorted(req_root.iterdir()):
             if not req_dir.is_dir() or req_dir.name.startswith("."):
                 continue
-            meta_path = req_dir / "meta.yaml"
-            if not meta_path.exists():
-                continue
-
             req_id = req_dir.name
-            try:
-                import yaml
-                with meta_path.open("r", encoding="utf-8") as f:
-                    meta = yaml.safe_load(f) or {}
-            except Exception as exc:  # noqa: BLE001
-                # 解析失败按 warning 处理，不阻断其他需求
-                all_warnings.append((req_id, "WARNING", "REVIEW-META-PARSE", f"meta.yaml 解析失败: {exc}"))
+            meta = _load_req_meta(req_dir, all_warnings)
+            if meta is None:
                 continue
-
-            if meta.get("legacy") is True:
+            if _should_skip_req(meta):
                 continue
+            _collect_findings(meta, req_id, all_errors, all_warnings)
 
-            target_phase = meta.get("phase", "")
-            if not target_phase or target_phase not in _PHASE_REQUIREMENTS:
-                continue
-
-            legacy_report = LegacyReport()
-            _run_r_rules(legacy_report, meta, target_phase, req_id, req_id)
-
-            for finding in legacy_report.findings():
-                if finding[1] == LegacySeverity.ERROR:
-                    all_errors.append(finding)
-                else:
-                    all_warnings.append(finding)
-
-        if all_errors:
-            first = all_errors[0]
-            return Report(
-                gate_id=self.id,
-                decision=Decision.FAIL,
-                code=first[2],
-                message=f"{first[0]}: {first[3]}",
-                fix_hint="对照 check-reviews.sh 规则修正对应 review 状态",
-                vars={
-                    "errors": [list(f) for f in all_errors],
-                    "warnings": [list(f) for f in all_warnings],
-                },
-            )
-
-        return Report(
-            gate_id=self.id,
-            decision=Decision.PASS,
-            vars={"warnings": [list(f) for f in all_warnings]} if all_warnings else {},
-        )
+        return _build_ci_report(self.id, all_errors, all_warnings)
 
     def _run_single_requirement(
         self, ctx: GateContext, req_id: Optional[str], target_phase: Optional[str]
@@ -173,6 +138,90 @@ class ReviewVerdictGate(Gate):
             print(legacy_report.render())
 
         return _legacy_to_report(self.id, legacy_report)
+
+
+def _load_req_meta(req_dir: "Path", all_warnings: list[tuple]) -> "Optional[dict]":
+    """读取 req_dir/meta.yaml；解析失败追加 warning 并返回 None。
+
+    参数：
+      req_dir      — 需求目录 Path（必须存在）
+      all_warnings — 收集 warning 的列表（原地追加）
+    """
+    meta_path = req_dir / "meta.yaml"
+    if not meta_path.exists():
+        return None
+    req_id = req_dir.name
+    try:
+        with meta_path.open("r", encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+    except Exception as exc:  # noqa: BLE001
+        print(
+            f"WARNING GATE-REVIEW-VERDICT req={req_id} meta.yaml 解析失败: {exc}",
+            file=sys.stderr,
+        )
+        all_warnings.append((req_id, "WARNING", "REVIEW-META-PARSE", f"meta.yaml 解析失败: {exc}"))
+        return None
+
+
+def _should_skip_req(meta: dict) -> bool:
+    """判断是否应跳过当前需求（legacy 或 phase 无对应 review 要求）。
+
+    参数：meta — meta.yaml 解析结果 dict。
+    返回：True = 跳过；False = 继续校验。
+    """
+    if meta.get("legacy") is True:
+        return True
+    target_phase = meta.get("phase", "")
+    return not target_phase or target_phase not in _PHASE_REQUIREMENTS
+
+
+def _collect_findings(
+    meta: dict,
+    req_id: str,
+    all_errors: list[tuple],
+    all_warnings: list[tuple],
+) -> None:
+    """对单个需求跑 R001~R007，结果分类追加到 all_errors / all_warnings。
+
+    参数：
+      meta         — meta.yaml 解析结果
+      req_id       — 需求 ID（用于日志 label）
+      all_errors   — 收集 error 的列表（原地追加）
+      all_warnings — 收集 warning 的列表（原地追加）
+    """
+    target_phase = meta.get("phase", "")
+    legacy_report = LegacyReport()
+    _run_r_rules(legacy_report, meta, target_phase, req_id, req_id)
+    for finding in legacy_report.findings():
+        if finding[1] == LegacySeverity.ERROR:
+            all_errors.append(finding)
+        else:
+            all_warnings.append(finding)
+
+
+def _build_ci_report(gate_id: str, all_errors: list[tuple], all_warnings: list[tuple]) -> Report:
+    """根据 ci trigger 汇总结果构造 Report。
+
+    有 error → FAIL（first error 为主信息）；否则 PASS（warnings 附带）。
+    """
+    if all_errors:
+        first = all_errors[0]
+        return Report(
+            gate_id=gate_id,
+            decision=Decision.FAIL,
+            code=first[2],
+            message=f"{first[0]}: {first[3]}",
+            fix_hint="对照 check-reviews.sh 规则修正对应 review 状态",
+            vars={
+                "errors": [list(f) for f in all_errors],
+                "warnings": [list(f) for f in all_warnings],
+            },
+        )
+    return Report(
+        gate_id=gate_id,
+        decision=Decision.PASS,
+        vars={"warnings": [list(f) for f in all_warnings]} if all_warnings else {},
+    )
 
 
 def _run_r_rules(

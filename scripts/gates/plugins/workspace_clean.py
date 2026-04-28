@@ -28,12 +28,18 @@ class WorkspaceCleanGate(Gate):
     side_effects = "none"
 
     def precheck(self, ctx: GateContext) -> Optional[Skip]:
-        # CI checkout 出来始终干净，跳过检查避免误报
-        if ctx.trigger == "ci":
-            return Skip("ci environment is always clean after checkout")
+        """始终继续执行（registry triggers 不含 ci，ci 守卫已无意义）。
+
+        参数：ctx — 当前执行上下文（registry 已保证 trigger ∈ triggers 白名单）。
+        返回：None（继续执行 run）。
+        """
         return None
 
     def run(self, ctx: GateContext) -> Report:
+        """执行 git status --porcelain，非空输出视为工作区不干净，返回 FAIL。
+
+        错误场景：工作区有未提交的改动（未 staged / staged 未 commit）时 FAIL。
+        """
         try:
             result = subprocess.run(
                 ["git", "status", "--porcelain"],

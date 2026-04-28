@@ -5,10 +5,7 @@
 from __future__ import annotations
 
 import subprocess
-from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from plugins.base import Decision, GateContext
 from plugins import workspace_clean as plugin_mod
@@ -64,14 +61,16 @@ def test_workspace_clean_fails_when_git_not_found():
 # ====================== skip 用例 ======================
 
 
-def test_workspace_clean_skips_on_ci_trigger():
-    """given_ci_trigger_when_precheck_then_skip（skip fixture）."""
-    gate = plugin_mod.WorkspaceCleanGate()
-    ctx = GateContext(trigger="ci")
-    skip = gate.precheck(ctx)
+def test_workspace_clean_precheck_always_returns_none():
+    """given_any_trigger_when_precheck_then_no_skip（skip fixture：registry 层过滤，precheck 恒 None）。
 
-    assert skip is not None
-    assert "ci" in skip.reason.lower()
+    F-031：ci 守卫已从 precheck 中删除（registry triggers 不含 ci，属死代码）。
+    skip 路径由 runner 的 filter_gates 在 trigger 不命中时保证，precheck 本身恒返回 None。
+    """
+    gate = plugin_mod.WorkspaceCleanGate()
+    for trigger in ("pre-commit", "phase-transition", "submit", "post-dev", "ci"):
+        ctx = GateContext(trigger=trigger)
+        assert gate.precheck(ctx) is None, f"precheck should return None for trigger={trigger}"
 
 
 def test_workspace_clean_does_not_skip_on_post_dev():

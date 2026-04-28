@@ -4,11 +4,9 @@
 """
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
 
-import pytest
 import yaml
 
 from plugins.base import Decision, GateContext

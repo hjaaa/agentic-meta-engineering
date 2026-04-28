@@ -22,6 +22,8 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
+import os
+import re
 import shutil
 import sys
 import traceback
@@ -119,8 +121,6 @@ def load_registry(path: Optional[Path] = None) -> dict[str, Any]:
 
 def _validate_registry_schema(gates: list[dict[str, Any]]) -> None:
     """跑 S1~S10 schema 校验，违反即抛 RegistryError。"""
-    import re
-
     seen_ids: set[str] = set()
     id_to_entry: dict[str, dict[str, Any]] = {}
 
@@ -233,7 +233,6 @@ def _validate_requirement_id(req_id: str) -> bool:
 
     只接受 REQ-YYYY-NNN 格式（4 位年份 + 3 位序号），拒绝含 .. / / 等路径穿越字符的输入。
     """
-    import re
     return bool(re.match(_REQ_ID_PATTERN, req_id))
 
 
@@ -242,6 +241,10 @@ def build_context(args: argparse.Namespace) -> GateContext:
     # adapter 模式：CLI 标志，不进 ctx.trigger 枚举（fallback 到 ci 以便复用 plugin 主流程）
     if trigger == "adapter":
         trigger = "ci"
+    elif trigger not in (*TRIGGERS, "adapter"):
+        # F-11：trigger 白名单校验，防止写 audit 到 AUDIT_DIR 之外（来源：F-002 review F-11）
+        print(f"ERROR --trigger 非法：{trigger!r}，合法值 {sorted(TRIGGERS)}", file=sys.stderr)
+        raise SystemExit(2)
 
     meta: dict[str, Any] = {}
     if args.requirement_id:
@@ -257,8 +260,12 @@ def build_context(args: argparse.Namespace) -> GateContext:
             try:
                 with meta_path.open("r", encoding="utf-8") as f:
                     meta = yaml.safe_load(f) or {}
-            except yaml.YAMLError as exc:
-                print(f"WARNING 读取 meta.yaml 失败：{exc}", file=sys.stderr)
+            except (yaml.YAMLError, OSError) as exc:
+                print(
+                    f"WARNING 读取 meta.yaml 失败 req={args.requirement_id}：{exc}",
+                    file=sys.stderr,
+                )
+                meta = {}
 
     extra: dict[str, Any] = {}
     if args.legacy and args.paths:
@@ -266,11 +273,13 @@ def build_context(args: argparse.Namespace) -> GateContext:
         extra["meta_paths"] = args.paths
 
     # pre-commit hook 通过 GATE_CHANGED_FILES 环境变量传入 staged 文件列表（换行分隔）
-    import os
     changed_files: list[str] = []
     gate_changed = os.environ.get("GATE_CHANGED_FILES", "")
     if gate_changed:
         changed_files = [f for f in gate_changed.splitlines() if f.strip()]
+
+    # F-15：注入 env 白名单（protect_branch 等 plugin 通过 ctx.env 读取，避免隐式依赖 os.environ）
+    env = {k: os.environ[k] for k in ("CLAUDE_HOOK_BRANCH", "CLAUDE_PROTECTED_BRANCHES") if k in os.environ}
 
     return GateContext(
         trigger=trigger,
@@ -281,6 +290,7 @@ def build_context(args: argparse.Namespace) -> GateContext:
         cli_flags={"strict": args.strict, "dry_run": args.dry_run, "legacy": args.legacy},
         extra=extra,
         changed_files=changed_files,
+        env=env,
     )
 
 
@@ -308,7 +318,7 @@ def filter_gates(registry: dict[str, Any], ctx: GateContext) -> list[dict[str, A
 
 
 # 旧入口名 → plugin 名的映射（adapter 模式用；snapshot 行为契约用）
-# F-002：补全全部 7 个旧入口（来源：requirements/REQ-2026-002/artifacts/detailed-design.md §5）
+# F-002：补全全部 6 个旧入口（来源：requirements/REQ-2026-002/artifacts/detailed-design.md §5）
 LEGACY_TO_PLUGIN: dict[str, str] = {
     "check-meta": "meta_schema",
     "check-index": "index_integrity",
@@ -423,7 +433,10 @@ def _execute_plan(ctx: GateContext, plan: list[dict[str, Any]], strict: bool) ->
             f"trigger={ctx.trigger} req={ctx.requirement_id or '-'}: {exc}",
             file=sys.stderr,
         )
-        traceback.print_exc(file=sys.stderr)
+        if not os.environ.get("CI"):
+            # 本地调试：完整堆栈有助于排查
+            traceback.print_exc(file=sys.stderr)
+        # CI 路径：堆栈已通过 audit log 结构化保存（TODO：待 F-003 audit log 增强后写入）
         _restore_state(ctx, snapshots)
         return 2
 
@@ -467,8 +480,11 @@ def _restore_state(ctx: GateContext, snapshots: dict[str, Path]) -> None:
             print(f"ERROR restore_state failed: {original}: {exc}", file=sys.stderr)
         try:
             backup.unlink(missing_ok=True)
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            print(
+                f"WARNING restore_state .bak 清理失败 backup={backup}: {exc}",
+                file=sys.stderr,
+            )
 
 
 # ====================== audit log ======================
@@ -507,6 +523,8 @@ def write_audit(audit: dict[str, Any]) -> Path:
     path = sub / fname
     with path.open("w", encoding="utf-8") as f:
         json.dump(audit, f, ensure_ascii=False, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
     return path
 
 

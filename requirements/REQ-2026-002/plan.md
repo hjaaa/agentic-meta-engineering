@@ -137,3 +137,32 @@
   - 好：每个 PR blast radius 最小，CI 双跑可对齐 baseline；R-1 行为偏移问题逐 PR 验证
   - 不好：总工期偏长（27 人天纯串行），无法压缩
 - **时间**：2026-04-27 22:10:00
+
+---
+
+## F-003 必修清单（F-002 PR 登记，F-003 实现）
+
+本段记录在 F-002 代码审查（code-F-002-001.json, conclusion=rejected）中识别出的
+属于 F-003 责任范围的 follow-up 条目，由 F-003 implementer 负责实现。
+
+### F-13：.bak 全 pass 路径不清（F-003 负责）
+
+- **来源**：F-002 review finding F-13（concurrency 维度 minor）
+- **现状**：`scripts/gates/run.py` 的 `_stash_state` 在全 pass 路径下创建 `.bak` 备份，
+  但全 pass 成功时未触发 `_restore_state`（清理 .bak），导致 .bak 文件残留工作区。
+  F-002 当前 `needs_stash=False`（无 `write_state` plugin），故不触发此路径，暂不影响用户。
+- **激活时机**：F-003 引入第一个 `side_effects=write_state` plugin 后立即激活。
+- **F-003 实现要求**：
+  1. 在 `_execute_plan` 的全 pass 路径（try 块成功结束、commit_staged_writes 完成后）
+     调用 `_cleanup_snapshots(snapshots)` 清理所有 .bak 文件。
+  2. `_cleanup_snapshots` 应对每个 backup 调 `backup.unlink(missing_ok=True)`，
+     失败时打 `WARNING` 而非静默吞错（与 _restore_state 保持一致）。
+  3. 补单测：全 pass 路径后 .bak 应被清理（tmp_path 验证）。
+
+### F-15（剩余部分）：ctx.env 在 F-003 新增 plugin 中的使用（F-003 负责）
+
+- **来源**：F-002 review finding F-15（concurrency 维度 minor）
+- **F-002 已完成**：`build_context` 注入 `CLAUDE_HOOK_BRANCH / CLAUDE_PROTECTED_BRANCHES` 到 `ctx.env`。
+- **F-003 负责**：F-003 新增的任何需要读取环境变量的 plugin，必须通过 `ctx.env` 访问，
+  不得直接调用 `os.environ`（保持可测试性，避免隐式依赖）。
+  如需新增 env key，先补充 `build_context` 的白名单，再写 plugin 测试。

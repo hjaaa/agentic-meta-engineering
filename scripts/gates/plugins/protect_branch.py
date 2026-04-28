@@ -35,6 +35,9 @@ class ProtectBranchGate(Gate):
     side_effects = "none"
 
     def precheck(self, ctx: GateContext) -> Optional[Skip]:
+        # defense-in-depth：registry triggers=[pre-tool-use] 已保证，但 plugin 自身也校验（F-12）
+        if ctx.trigger != "pre-tool-use":
+            return Skip(f"trigger={ctx.trigger!r} 非 pre-tool-use；跳过 protect-branch")
         tool_name = ctx.extra.get("tool_name", "")
         # 非写工具（如 Bash / Read）直接放行
         if tool_name not in WRITE_TOOLS:
@@ -104,7 +107,10 @@ def _is_reviews_json(file_path: str) -> bool:
             and rel_parts[2] == "reviews"
             and rel_parts[-1].endswith(".json")
         )
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        # 纯字符串路径操作理论上不抛，保留此处用于未知边界情况的日志记录
+        import sys
+        print(f"WARNING _is_reviews_json 路径解析异常 file_path={file_path!r}: {exc}", file=sys.stderr)
         return False
 
 

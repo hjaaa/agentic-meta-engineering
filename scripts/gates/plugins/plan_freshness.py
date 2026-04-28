@@ -31,6 +31,7 @@ from common import Severity as LegacySeverity  # noqa: E402
 import check_plan  # noqa: E402
 
 from .base import Decision, Gate, GateContext, Report, Severity, Skip
+from ._helpers import _changed_req_dirs
 
 
 class PlanFreshnessGate(Gate):
@@ -42,13 +43,22 @@ class PlanFreshnessGate(Gate):
     side_effects = "none"
 
     def precheck(self, ctx: GateContext) -> Optional[Skip]:
-        # pre-commit 时若无 plan.md 改动，跳过；其他 trigger 一律继续
+        """pre-commit 时若无 plan.md 改动则跳过；其他 trigger 一律继续。
+
+        参数：ctx.changed_files — staged 文件列表（pre-commit 由 runner 注入）。
+        返回：Skip（无需检查）或 None（继续执行 run）。
+        """
         if ctx.trigger == "pre-commit":
             if not _has_plan_change(ctx.changed_files):
                 return Skip("no plan.md changes in this commit")
         return None
 
     def run(self, ctx: GateContext) -> Report:
+        """检查目标需求的 plan.md 新鲜度与占位符完整性，返回聚合结果。
+
+        错误场景：plan.md 不存在（E001）时 FAIL；W 类软警告在 strict 模式才阻断。
+        参数：ctx — 包含 requirement_id / trigger / changed_files。
+        """
         targets = _resolve_req_dirs(ctx)
         if not targets:
             return Report(
@@ -102,11 +112,7 @@ def _resolve_req_dirs(ctx: GateContext) -> list[Path]:
         return [Path(p) for p in explicit]
 
     if ctx.trigger == "pre-commit":
-        dirs: set[Path] = set()
-        for f in ctx.changed_files:
-            parts = Path(f).parts
-            if len(parts) >= 2 and parts[0] == "requirements":
-                dirs.add(_REPO_ROOT / parts[0] / parts[1])
+        dirs = _changed_req_dirs(ctx.changed_files, _REPO_ROOT)
         if dirs:
             return sorted(dirs)
 

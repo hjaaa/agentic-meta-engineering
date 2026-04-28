@@ -25,7 +25,6 @@ from typing import Optional
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
-
 from .base import Decision, Gate, GateContext, Report, Severity, Skip
 
 
@@ -38,7 +37,11 @@ class TraceabilityGate(Gate):
     side_effects = "none"
 
     def precheck(self, ctx: GateContext) -> Optional[Skip]:
-        # 只在切 testing 阶段时真跑；其他情况直接跳过
+        """仅 to_phase=testing 时真跑追溯链校验；其他情况直接跳过。
+
+        参数：ctx.to_phase — 目标阶段；ctx.requirement_id — 需求 ID（必须非空）。
+        返回：Skip（无需检查）或 None（继续执行 run）。
+        """
         if ctx.to_phase != "testing":
             return Skip(f"traceability check only required when to_phase=testing (got {ctx.to_phase!r})")
         if not ctx.requirement_id:
@@ -46,6 +49,11 @@ class TraceabilityGate(Gate):
         return None
 
     def run(self, ctx: GateContext) -> Report:
+        """检查 features.json 完整性与 done feature 在 detailed-design.md 中的追溯。
+
+        错误场景：features.json 不存在（T001）或 done feature 未在设计文档中出现（T002）。
+        参数：ctx.requirement_id — 目标需求 ID。
+        """
         req_id = ctx.requirement_id
         assert req_id is not None  # precheck 已保证
 

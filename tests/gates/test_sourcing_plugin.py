@@ -6,8 +6,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from plugins.base import Decision, GateContext
 from plugins import sourcing as plugin_mod
 

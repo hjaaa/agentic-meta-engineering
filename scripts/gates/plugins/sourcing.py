@@ -27,6 +27,7 @@ from common import Severity as LegacySeverity  # noqa: E402
 import check_sourcing  # noqa: E402
 
 from .base import Decision, Gate, GateContext, Report, Severity, Skip
+from ._helpers import _changed_artifact_paths
 
 
 class SourcingGate(Gate):
@@ -38,13 +39,22 @@ class SourcingGate(Gate):
     side_effects = "none"
 
     def precheck(self, ctx: GateContext) -> Optional[Skip]:
-        # pre-commit 时若无 artifacts/*.md 改动，跳过；其他 trigger 一律继续
+        """pre-commit 时若无 artifacts/*.md 改动则跳过；其他 trigger 一律继续。
+
+        参数：ctx.changed_files — staged 文件列表（pre-commit 由 runner 注入）。
+        返回：Skip（无需检查）或 None（继续执行 run）。
+        """
         if ctx.trigger == "pre-commit":
             if not _has_artifact_md_change(ctx.changed_files):
                 return Skip("no artifacts/*.md changes in this commit")
         return None
 
     def run(self, ctx: GateContext) -> Report:
+        """对所有目标 artifacts/*.md 执行三态校验，返回聚合结果。
+
+        错误场景：文件缺三态标记（来源/待用户确认/待补充）时 FAIL。
+        参数：ctx — 包含 requirement_id / trigger / changed_files / extra["sourcing_paths"]。
+        """
         targets = _resolve_targets(ctx)
         if not targets:
             return Report(
@@ -77,16 +87,7 @@ class SourcingGate(Gate):
 
 def _has_artifact_md_change(changed_files: list[str]) -> bool:
     """changed_files 命中 requirements/*/artifacts/**/*.md → True。"""
-    for f in changed_files:
-        parts = Path(f).parts
-        if (
-            len(parts) >= 4
-            and parts[0] == "requirements"
-            and parts[2] == "artifacts"
-            and f.endswith(".md")
-        ):
-            return True
-    return False
+    return bool(_changed_artifact_paths(changed_files))
 
 
 def _resolve_targets(ctx: GateContext) -> list[Path]:
@@ -103,15 +104,7 @@ def _resolve_targets(ctx: GateContext) -> list[Path]:
         return [Path(p) for p in explicit]
 
     if ctx.trigger == "pre-commit":
-        hits = [
-            Path(f) for f in ctx.changed_files
-            if (
-                len(Path(f).parts) >= 4
-                and Path(f).parts[0] == "requirements"
-                and Path(f).parts[2] == "artifacts"
-                and f.endswith(".md")
-            )
-        ]
+        hits = _changed_artifact_paths(ctx.changed_files)
         if hits:
             return hits
 

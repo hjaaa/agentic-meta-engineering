@@ -45,13 +45,22 @@ class MetaSchemaGate(Gate):
     side_effects = "none"
 
     def precheck(self, ctx: GateContext) -> Optional[Skip]:
-        # pre-commit 时若没有任何 meta.yaml 改动，直接跳过；其他 trigger 一律继续。
+        """pre-commit 时若无 meta.yaml 改动则跳过；其他 trigger 一律继续。
+
+        参数：ctx.changed_files — staged 文件列表（pre-commit 由 runner 注入）。
+        返回：Skip（无需检查）或 None（继续执行 run）。
+        """
         if ctx.trigger == "pre-commit":
             if not _has_meta_yaml_change(ctx.changed_files):
                 return Skip("no meta.yaml changes in this commit")
         return None
 
     def run(self, ctx: GateContext) -> Report:
+        """对所有目标 meta.yaml 做 schema 校验，返回聚合结果。
+
+        错误场景：meta.yaml 不符合 meta-schema.yaml 约束时 FAIL。
+        参数：ctx — 包含 requirement_id / trigger / changed_files / extra["meta_paths"]。
+        """
         meta_paths = _resolve_meta_paths(ctx)
         if not meta_paths:
             # 没有目标 meta.yaml 可校验：以 PASS 报告（registry 应通过 applies_when 避免到此）

@@ -34,7 +34,7 @@
 #   - 必须在 git 仓库根目录运行（或设置 REPO_ROOT 环境变量）
 #   - normalize-stderr.sh 需要在 PATH 可到或本脚本同目录
 
-set -uo pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NORMALIZE="${SCRIPT_DIR}/normalize-stderr.sh"
@@ -57,12 +57,22 @@ if [[ ! -f "$NORMALIZE" ]]; then
   exit 2
 fi
 
-# 运行旧入口，合并 stdout+stderr，捕获 exit code
-COMBINED_OUT=$(bash "$OLD_ENTRY" "$@" 2>&1) || true
+# 运行旧入口，合并 stdout+stderr，捕获 exit code（关闭 set -e 以免 RC!=0 中断）
+set +e
+COMBINED_OUT=$(bash "$OLD_ENTRY" "$@" 2>&1)
 RC=$?
+set -e
 
 # 输出 exit code
 echo "exit=${RC}"
 
 # 把合并输出经 normalize 后只保留关键前缀行
-echo "$COMBINED_OUT" | bash "$NORMALIZE"
+NORMALIZED=$(echo "$COMBINED_OUT" | bash "$NORMALIZE")
+
+# 基线行数校验：至少 1 行有效输出（exit= 行本身已算 1 行）
+LINE_COUNT=$(echo "$NORMALIZED" | grep -c . || true)
+if [[ $LINE_COUNT -lt 1 ]]; then
+  echo "WARNING: normalize 输出为空，基线可能无效" >&2
+fi
+
+echo "$NORMALIZED"

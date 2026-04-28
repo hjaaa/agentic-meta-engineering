@@ -24,5 +24,9 @@ jobs:
       - name: Install dependencies
         run: pip install pyyaml ruamel.yaml
 
+      # 该 step 通过 scripts/gates/run.py --trigger=ci --strict 收敛旧 5 step。
+      # 如需临时放行 INDEX warning，应优先加 scripts/lib/index-config.yaml 的 ignore 白名单
+      # （需 PR review）而非关 strict；legacy review escape_hatch 见 registry.yaml。
+      # 新增 gate：在 registry.yaml 注册后自动参与 CI 扫描，无需修改本 workflow。
       - name: Run unified gate runner
         run: python scripts/gates/run.py --trigger=ci --strict

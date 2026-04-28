@@ -40,13 +40,21 @@ class IndexIntegrityGate(Gate):
     side_effects = "none"
 
     def precheck(self, ctx: GateContext) -> Optional[Skip]:
-        # pre-commit 仅在 INDEX.md 或 context/、requirements/ 下 md 改动时才跑
+        """pre-commit 时若无 INDEX.md / context/*.md / requirements/*.md 改动则跳过。
+
+        参数：ctx.changed_files — staged 文件列表（pre-commit 由 runner 注入）。
+        返回：Skip（无需检查）或 None（继续执行 run）。
+        """
         if ctx.trigger == "pre-commit":
             if not _has_index_relevant_change(ctx.changed_files):
                 return Skip("no INDEX.md or scanned md changes in this commit")
         return None
 
     def run(self, ctx: GateContext) -> Report:
+        """检查所有 context/ + requirements/ 下的 md 是否都在对应 INDEX.md 中登记。
+
+        错误场景：新增 md 但未挂 INDEX 时 FAIL（strict 模式为 warning → error）。
+        """
         try:
             config = check_index._load_config()
         except Exception as exc:  # noqa: BLE001
