@@ -21,15 +21,16 @@ gates_passed:
           check-reviews(definition)]
   - phase: detail-design
     at: "2026-04-27 21:30:00"
-    gates: [outline-design-exists, check-meta, check-plan,
+    gates: [outline-design-exists, check-meta, check-plan, 
           check-reviews(outline-design)]
   - phase: task-planning
     at: "2026-04-27 21:45:00"
-    gates: [detailed-design-exists, features-json-valid, check-meta,
+    gates: [detailed-design-exists, features-json-valid, check-meta, 
           check-reviews(detail-design)]
   - phase: development
     at: "2026-04-27 22:12:00"
-    gates: [check-meta, check-plan, tasks-exist-per-feature, tasks-status-pending]
+    gates: [check-meta, check-plan, tasks-exist-per-feature, 
+          tasks-status-pending]
 pr_url: ""                     # /requirement:submit 成功后回写
 pr_number: 0                   # /requirement:submit 成功后回写
 log_layout: split              # split（默认，工具日志→process.tool.log / 语义事件→process.txt） | legacy（老格式，全写 process.txt）
@@ -90,3 +91,17 @@ reviews:
       - REV-REQ-2026-002-detail-design-001
       - REV-REQ-2026-002-detail-design-002
     stale: false
+  code:
+    by_feature:
+      F-001:
+        history:
+          - REV-REQ-2026-002-code-F-001-001
+        latest: REV-REQ-2026-002-code-F-001-001
+        conclusion: approved
+        reviewed_commit: fe1af29
+        artifact_hashes:
+          artifacts/features.json: 
+            6c3a4c2adcbc958aecbed130c5f407f6f00d84d1380e88ef5e363090bbd4181a
+          artifacts/tasks/F-001.md: 
+            e36bc179d3146f42fb34823d5b8035c643fc2df6878c82bfcb12e959b9b68453
+        stale: false
