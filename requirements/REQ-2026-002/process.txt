@@ -24,3 +24,6 @@
 2026-04-28 14:08:04 [development] F-003 派发（model=opus，complexity=high）
 2026-04-28 14:34:03 [blocker] H5 改造踩引导陷阱：先 commit 薄壳 hook + 半成品 plugin 致 PreToolUse 锁死，工具全拒
 2026-04-28 14:34:04 [blocker-resolved] 用户终端 rm bash_write_protect.py + git restore registry.yaml；H1/H4 commit 完整，run.py/triggers/hook 改动保留待 H5 收尾
+2026-04-28 15:10:00 [review:rejected] code-F-003-001.json by code-quality-reviewer，score=55，2 critical (F-001 H5 exit 协议 / F-002 H1 事务化失守) + 13 major + 19 minor，F-003 status 保持 in-progress
+2026-04-28 15:12:58 [development] F-003 round 2 派发（model=opus，修 32 条 keep finding）
+2026-04-28 15:31:04 [development] F-003 round 2 接续派发（C1 partial 状态 / 应用新硬规则：先本体后调用 + 每改必验）
