@@ -1,0 +1,73 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-002-outline-design-001",
+  "requirement_id": "REQ-2026-002",
+  "phase": "outline-design",
+  "reviewer": "outline-design-quality-reviewer",
+  "reviewed_at": "2026-04-27 21:23:27",
+  "reviewed_commit": "6142790",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "448d0e242f2a3c5f620762779987134caf7f51ff9d3840055c6eaab6a0440d47"
+    },
+    {
+      "path": "artifacts/requirement.md",
+      "sha256": "33288eca3cb114ca277c38191d915dd66e9e80b66c5aa7add929d03a8860ff58"
+    }
+  ],
+  "conclusion": "approved",
+  "score": 86,
+  "dimensions": {
+    "alignment_with_requirement": {
+      "score": 92,
+      "issues": []
+    },
+    "module_decomposition": {
+      "score": 84,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 36-39 行：migration/ 子目录列出了 capture-baseline.sh / normalize-stderr.sh / render-docs.py 三项，但第 141 行场景 1 表格提到 scaffold.py 也在 migration/ 下，模块图中缺少该条目，建议补齐以保持模块清单与场景对应表一致"
+        }
+      ]
+    },
+    "tech_choice_rationale": {
+      "score": 90,
+      "issues": []
+    },
+    "scalability": {
+      "score": 85,
+      "issues": []
+    },
+    "integration_with_existing": {
+      "score": 78,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "第 173-176 行：兼容期薄壳调用 `--trigger=adapter --legacy=check-meta`，但第 29-35 行 triggers/ 子模块只列了 6 类（pre_tool_use / pre_commit / phase_transition / submit / ci / post_dev），'adapter' 这个第 7 类 trigger 在模块图与第 162 行 triggers 枚举处都未出现，registry.yaml 的 triggers 字段语义与 run.py dispatch 分支边界含糊，需在 detail-design 明确 adapter trigger 是 6 类之外的独立枚举值还是仅 CLI 层别名"
+        },
+        {
+          "severity": "minor",
+          "description": "第 84-86 行 + 第 184 行：F-004 删除 scripts/lib/check_*.py，但兼容期内 plugins/<name>.py 的 adapter 是 `import scripts.lib.check_meta` 直接复用，还是把逻辑搬到 plugins/ 下，文档未明说。这影响 F-001~F-003 期间是否存在'双源代码'与谁是 SoR 的判定，建议补一句集成方式"
+        },
+        {
+          "severity": "minor",
+          "description": "第 28 行 + 7.1 节：场景 6 用新 triggers/pre_tool_use.sh 替换 .claude/hooks/protect-branch.sh，但 7.1 兼容期路径只示范了 scripts/check-*.sh 类薄壳，未说明 .claude/hooks/protect-branch.sh 是否也走薄壳（路径前缀 .claude/hooks/ 不同于 scripts/），F-003 关闭 H5 时该 hook 的处理方式建议明确"
+        }
+      ]
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "建议在 detail-design 阶段把 'adapter' 是否作为独立 trigger 枚举值明确写入 registry.yaml schema，以闭合本次发现的边界含糊点",
+    "建议在 7.1 兼容期路径节补充一行：plugins/<name>.py 是 'import 旧 check_*.py' 还是 '搬代码'，明确兼容期 SoR",
+    "建议把 .claude/hooks/protect-branch.sh 在场景 6 / 7.1 节的兼容期处理路径单列一段（与 scripts/check-*.sh 路径前缀不同，部署位置敏感）"
+  ],
+  "scope": null,
+  "supersedes": null,
+  "architectural_concerns": [
+    "兼容期薄壳转调引入额外一次 fork+exec，9 类 trigger 频繁触发场景（如 pre-commit / pre-tool-use）下累积延迟需在 testing 阶段实测",
+    "registry.yaml 既承载元数据又承载 escape_hatches 治理段，长期可能膨胀为隐式 DSL，未来若引入 governance trigger 需评估是否拆分为 registry.yaml + escape-hatches.yaml"
+  ]
+}

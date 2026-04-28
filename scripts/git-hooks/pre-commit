@@ -1,87 +1,46 @@
 #!/usr/bin/env bash
-# 本地 pre-commit 校验 —— check-meta + check-index
+# 本地 pre-commit 校验 —— 统一门禁 runner（F-002 改写）
 #
 # 启用方式（项目级，一次性）：
 #   git config core.hooksPath scripts/git-hooks
 #
 # 策略：
-#   - 只拦 error，不拦 warning（warning 是腐化信号，由人工治理）
-#   - 只在相关文件被 staged 时触发，不增加无关 commit 耗时
+#   - 切到 python3 scripts/gates/run.py --trigger=pre-commit
+#   - runner 内部按各 plugin 的 precheck 决定是否真跑（避免无关 commit 耗时）
+#   - 只拦 error，不拦 warning（--strict 不加，warning 由人工治理）
 #   - 绕过：`git commit --no-verify`（紧急 hotfix 时允许，但 CI 兜底）
+#
+# 注意：reviews/*.json / meta.yaml.reviews 段的保护由 GATE-PROTECT-BRANCH
+#       在 pre-tool-use trigger 处理；pre-commit hook 不重复实现。
 
-set -euo pipefail
+set -uo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "${REPO_ROOT}"
 
-# 取本次 staged 的文件列表
+# 取本次 staged 的文件列表（用于传给 runner 做 precheck 过滤）
 STAGED="$(git diff --cached --name-only --diff-filter=ACMR)"
 if [ -z "${STAGED}" ]; then
     exit 0
 fi
 
-# 是否需要跑 check-meta
-if echo "${STAGED}" | grep -qE '^requirements/[^/]+/meta\.yaml$'; then
-    echo "→ 检测到 meta.yaml 变更，运行 check-meta..."
-    if ! bash scripts/check-meta.sh --all; then
-        echo ""
-        echo "✗ meta.yaml 校验失败，commit 被阻止"
-        echo "  修复后重新 git add && git commit"
-        echo "  紧急情况可用 \`git commit --no-verify\`，但 CI 仍会拦"
-        exit 1
-    fi
+# 把 staged 文件列表传给 runner 做 changed_files 过滤（runner 通过 stdin 接收）
+# 当前版本 run.py 的 build_context 不直接读 stdin，changed_files 由 filter_gates 处理；
+# 此处把 staged 列表透传给 runner 的 extra.changed_files 通过环境变量。
+export GATE_CHANGED_FILES="${STAGED}"
+
+# 执行统一门禁 runner（pre-commit trigger，不加 --strict，只拦 error）
+# 注意：关闭 set -e 以捕获 runner 的非零退出码（让友好提示生效，不被 set -e 截断）
+set +e
+python3 scripts/gates/run.py --trigger=pre-commit
+EXIT_CODE=$?
+set -e
+
+if [ $EXIT_CODE -ne 0 ]; then
+    echo "" >&2
+    echo "✗ pre-commit 门禁失败，commit 被阻止" >&2
+    echo "  修复后重新 git add && git commit" >&2
+    echo "  紧急情况可用 \`git commit --no-verify\`，但 CI 仍会拦" >&2
 fi
 
-# 是否需要跑 check-index
-if echo "${STAGED}" | grep -qE '(INDEX\.md$|^context/.*\.md$|^requirements/.*\.md$)'; then
-    echo "→ 检测到 INDEX.md 或内容 md 变更，运行 check-index..."
-    if ! bash scripts/check-index.sh; then
-        echo ""
-        echo "✗ INDEX 校验失败，commit 被阻止"
-        echo "  修复 INDEX 条目或移除失效链接后重试"
-        exit 1
-    fi
-fi
-
-# D7-2: meta.yaml.reviews 段 diff 与 reviews/*.json 文件改动必须同步
-# 防止主对话 LLM 直接 Edit meta.yaml.reviews 段绕过 save-review.sh / check-reviews.sh
-META_CHANGED=$(echo "${STAGED}" | grep -E '^requirements/[^/]+/meta\.yaml$' || true)
-REVIEWS_CHANGED=$(echo "${STAGED}" | grep -E '^requirements/[^/]+/reviews/.*\.json$' || true)
-
-# 正向：meta.yaml.reviews 段被改 → 必须有 reviews/*.json 同步 staged
-if [ -n "$META_CHANGED" ]; then
-    while IFS= read -r meta_path; do
-        [ -n "$meta_path" ] || continue
-        # 取 meta.yaml diff 中 reviews: 段是否被改（含子键 latest / conclusion / reviewed_commit / artifact_hashes / history / stale / by_feature）
-        reviews_diff=$(git diff --cached -U0 -- "$meta_path" 2>/dev/null | grep -E '^[+-][[:space:]]*(reviews:|[[:space:]]+(latest|conclusion|reviewed_commit|artifact_hashes|history|stale|by_feature):)' || true)
-        if [ -n "$reviews_diff" ]; then
-            req_dir=$(dirname "$meta_path")
-            if ! echo "${REVIEWS_CHANGED}" | grep -qE "^${req_dir}/reviews/.*\.json$"; then
-                echo ""
-                echo "✗ pre-commit: $meta_path 的 reviews: 段被改，但 ${req_dir}/reviews/*.json 无对应改动" >&2
-                echo "  meta.yaml.reviews 必须由 save-review.sh / check-reviews.sh 自动维护，不允许手工 Edit" >&2
-                echo "  紧急绕过：git commit --no-verify（CI 兜底，PR4 升 strict 后会挂）" >&2
-                exit 1
-            fi
-        fi
-    done <<< "$META_CHANGED"
-fi
-
-# 反向：reviews/*.json 被改 → 对应 meta.yaml 必须同步 staged
-if [ -n "$REVIEWS_CHANGED" ]; then
-    while IFS= read -r r_path; do
-        [ -n "$r_path" ] || continue
-        # 路径形如 requirements/REQ-XXX/reviews/foo.json，取前两段
-        req_dir=$(echo "$r_path" | awk -F/ '{print $1"/"$2}')
-        meta_path="${req_dir}/meta.yaml"
-        if ! echo "${META_CHANGED}" | grep -qE "^${meta_path}$"; then
-            echo ""
-            echo "✗ pre-commit: $r_path 被改，但 $meta_path 未同步 staged" >&2
-            echo "  应通过 save-review.sh / check-reviews.sh 重新生成 meta.yaml.reviews 段后再 commit" >&2
-            echo "  紧急绕过：git commit --no-verify" >&2
-            exit 1
-        fi
-    done <<< "$REVIEWS_CHANGED"
-fi
-
-exit 0
+exit $EXIT_CODE

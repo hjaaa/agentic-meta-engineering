@@ -19,6 +19,7 @@ areas:
   - knowledge        # 知识管理（managing-knowledge / context/team/experience/）
   - review           # 代码审查管道（checker / critic / judge）
   - ci               # CI 工作流与门禁（.github/workflows/）
+  - gate-system      # 跨层门禁体系（scripts/gates registry + runner + plugins，跨 hooks/ci/scripts/skills）
   - onboarding       # 入门指南与学习路径
   - engineering-spec # 体系自身规范（设计指导 / 工具规范 / 迭代 SOP）
   - docs             # 顶层文档（README / CLAUDE.md / context/team/*）

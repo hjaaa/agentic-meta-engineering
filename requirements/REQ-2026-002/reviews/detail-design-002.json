@@ -1,0 +1,83 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-002-detail-design-002",
+  "requirement_id": "REQ-2026-002",
+  "phase": "detail-design",
+  "reviewer": "detail-design-quality-reviewer",
+  "reviewed_at": "2026-04-27 21:45:29",
+  "reviewed_commit": "932b90a",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/detailed-design.md",
+      "sha256": "81f3ac671f97228e65dfe31be87fbc9baf885cb455758ef29db8936907906dc6"
+    },
+    {
+      "path": "artifacts/features.json",
+      "sha256": "6c3a4c2adcbc958aecbed130c5f407f6f00d84d1380e88ef5e363090bbd4181a"
+    },
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "448d0e242f2a3c5f620762779987134caf7f51ff9d3840055c6eaab6a0440d47"
+    }
+  ],
+  "conclusion": "approved",
+  "score": 90,
+  "dimensions": {
+    "consistency_with_outline": {
+      "score": 92,
+      "issues": []
+    },
+    "interface_completeness": {
+      "score": 90,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 159-161 行：commit_staged_writes 默认实现为 pass，建议在 Gate 基类 docstring 注明 side_effects=write_state 时为必须 override，便于子类静态检查或运行期 assert"
+        }
+      ]
+    },
+    "data_model_soundness": {
+      "score": 90,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 117 行：staged_writes 的元素采用三元组 (path, dot_key, value)，建议未来拆为 dataclass StagedWrite 以减少阅读 tuple 索引时的心智负担（非阻塞）"
+        }
+      ]
+    },
+    "sequence_correctness": {
+      "score": 92,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 198-208 行：except 路径已 clear staged_writes 并 restore meta.yaml；建议 audit 字段额外记录 'staged_writes_dropped' 计数以便事后追因（非阻塞）"
+        }
+      ]
+    },
+    "feature_granularity": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "features.json F-003 第 75 行 acceptance 已枚举 8 类形态，覆盖完整；建议补 complexity: high 和 interfaces_frozen: true 以便阶段 7 派发器精确路由"
+        }
+      ]
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "F-001/F-002/F-003/F-004 建议补 complexity 与 interfaces_frozen 字段以利阶段 7 派发"
+  ],
+  "scope": null,
+  "supersedes": "REV-REQ-2026-002-detail-design-001",
+  "features_json_validation": {
+    "valid": true,
+    "issues": [],
+    "enhancement_suggestions": [
+      "F-001 estimate_days=9 建议补 complexity: high",
+      "F-002 建议补 complexity: high + interfaces_frozen: true（接口已在 §2.1/§2.2 完整冻结）",
+      "F-003 建议补 complexity: high + touches: scripts/gates/plugins/ + interfaces_frozen: true",
+      "F-004 建议补 complexity: low（仅渲染脚本 + 删除旧入口）"
+    ]
+  }
+}

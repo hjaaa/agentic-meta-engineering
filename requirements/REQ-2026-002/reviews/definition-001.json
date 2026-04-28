@@ -1,0 +1,132 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-002-definition-001",
+  "requirement_id": "REQ-2026-002",
+  "phase": "definition",
+  "reviewer": "requirement-quality-reviewer",
+  "reviewed_at": "2026-04-27 20:02:19",
+  "reviewed_commit": "4477a02",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/requirement.md",
+      "sha256": "98a6fa9a6a7fd1ea865d50799d48b8a8d01e6394820012752a8082db1270e949"
+    },
+    {
+      "path": "meta.yaml",
+      "sha256": "22233ba59db3c97db1364395b31a82a5db3f242acc437769a395adb28b6d0e1a"
+    },
+    {
+      "path": "plan.md",
+      "sha256": "b08a5b89f94639ce18abbbb279d199e68551cf351c851207725fbc8bc83114b0"
+    }
+  ],
+  "conclusion": "needs_revision",
+  "score": 76,
+  "dimensions": {
+    "completeness": {
+      "score": 72,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "第 55-65 行（场景 2 next 主流程）：未描述 plan.md R-3 提到的『改造期 Hook 与 runner 灰度切换』流程；4 PR 拆分中 F-001~F-004 任一 PR 合入后，旧 Hook 与新 runner 同时存在的具体路径（旧入口包薄壳还是双跑）在场景里没有可执行步骤。"
+        },
+        {
+          "severity": "major",
+          "description": "第 102 行（范围-包含）声明要『关闭 H5（Bash 写 reviews/*.json 拦截，对应 protect-branch.sh:30）』，但 4 个用户场景里都没有描述拦截发生时的用户路径（Bash 命令被拒后的提示、白名单调用方如何识别），下游 outline-design 缺乏入口。"
+        },
+        {
+          "severity": "minor",
+          "description": "第 62-63 行（场景 2 主流程 3）：『任一 error 触发已运行 gate 的 rollback』未说明 rollback 自身失败时的兜底（写入 process.txt? 转人工?），与 plan.md R-2 的『中途失败回滚』测试路径互文不全。"
+        }
+      ]
+    },
+    "consistency": {
+      "score": 65,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "第 91 行 requirement.md 写明『每个 PR 内旧脚本与 runner 对相同输入产生相同退出码 + 相同 stderr 关键行；diff 必须为空才合入』（双跑等价为合入门槛），但 plan.md 第 41 行 R-3 应对策略却是『旧入口包薄壳转调 runner 而不是双跑』。两者就『兼容期内旧入口究竟是独立运行还是仅作转调薄壳』给出的实施路径互斥，下游设计阶段会出现路线分歧。"
+        },
+        {
+          "severity": "minor",
+          "description": "第 90 行『至少跨两个 PR 周期』与 plan.md D-001（4 PR 增量）描述的『前 3 个 PR 保留旧入口转调 runner，F-004 才删旧入口』口径不一致——『两个 PR 周期』vs『前 3 个 PR』需统一。"
+        }
+      ]
+    },
+    "traceability": {
+      "score": 90,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 37 行：H1/H3/H4/H5 全部带具体行号（check_reviews.py:152、submit-rules.md:113、submit-rules.md:75、protect-branch.sh:30），追溯链清晰。仅小瑕疵：H3 引用了两处来源但未点明『割裂』指 R007 与 review-*.md 双轨这一具体形态——可在后续设计阶段补足，不阻塞。"
+        }
+      ]
+    },
+    "clarity": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 48 行场景 1 主流程 1：『9 字段』是关键契约，但具体是哪 9 字段（id / trigger / phase 适配条件 / severity / fix_hint / dependencies / ...）未给出占位列表。definition 阶段可标 [待补充]，但完全省略会让 detail-design 失去对齐基准。"
+        },
+        {
+          "severity": "minor",
+          "description": "第 73 行场景 3 主流程 2：『runner 自行扫描所有 requirements/* 并按各自 phase 跑相应 gate 集合』描述抽象，未交代『扫描范围、并发度、单需求失败是否中断全量』等可执行细节，影响 outline-design 对 CI runtime 的判断。"
+        },
+        {
+          "severity": "minor",
+          "description": "第 85 行场景 4 期望结果『结果一致』含义不明：是『退出码一致 + stderr 关键行一致 + audit JSON 字段一致』中的哪几条？建议参考第 91 行的措辞统一表述。"
+        }
+      ]
+    },
+    "testability": {
+      "score": 75,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "第 91 行『相同 stderr 关键行』未定义『关键』的判定边界（是逐行 diff 还是只比对 ERROR 级前缀？）。作为 PR 合入门槛却缺少客观判据，会导致『diff 是否为空』在评审中主观化。"
+        },
+        {
+          "severity": "minor",
+          "description": "第 53 行场景 1 期望结果『不需要改 CI yml / pre-commit / Hook / Skill 任何文件』可断言，但缺『有意例外』的描述（如新增门禁需要新触发器时是否允许动 trigger 配置），建议显式列举允许变更的边界。"
+        },
+        {
+          "severity": "minor",
+          "description": "第 89 行性能段标 [待用户确认]，合法；但建议写明 definition 阶段决策时机（如『tech-research 出基线再决定 SLA』）以便在阶段切换时可断言已澄清。"
+        }
+      ]
+    },
+    "business_rationale": {
+      "score": 82,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 97-103 行『范围-包含』把 F-001~F-004 四个 PR 的全部产物列在一起，但未在 requirement.md 中说明每个 PR 的合入价值（独立可上线 vs 仅作中间态）。plan.md D-001 提到了『每个 PR 都可独立回滚』，建议把该判据回灌到 requirement.md 范围段，避免 task-planning 阶段重新评估时来源缺失。"
+        },
+        {
+          "severity": "minor",
+          "description": "第 38 行次要目标『新增门禁的成本降到填 9 字段 + 写 1 个类 + 写 3 个测试』是核心业务价值，但缺一个『成本基线对比』的量化锚点（当前新增一条门禁的工时估算 vs 改造后估算），不影响 approve 但影响后续效果验收。"
+        }
+      ]
+    }
+  },
+  "required_fixes": [
+    "修复一致性 major：第 91 行（双跑等价 diff 为空才合入）与 plan.md 第 41 行 R-3 应对（旧入口包薄壳转调 runner 而非双跑）的路径冲突。建议二选一并在两份文档中表述统一——若选『双跑』则 plan.md R-3 应对改为『双跑期 diff 监控』；若选『包薄壳』则 requirement.md 第 91 行的 CI 双跑条款需改为『薄壳路径 + 行为契约测试』。",
+    "补全完整性 major：在场景 2（第 55-65 行）或新增独立场景中描述 4 PR 增量切换的灰度路径——明确每个 PR 合入后旧 Hook / 旧 check 与新 runner 共存的执行顺序与决议规则；并在场景中体现 H5（Bash 写 reviews/*.json）拦截命中时的用户提示与白名单识别机制（第 102 行声明关闭 H5 但场景未覆盖）。",
+    "明确可测性 major：第 91 行『相同 stderr 关键行』需给出客观判据（如 diff 范围限定为 ^(ERROR|WARNING) 前缀行 / 完全逐行 diff / 用 stderr-normalize.sh 归一化后 diff），避免合入门槛主观化。",
+    "对齐第 90 行『至少跨两个 PR 周期』与 plan.md D-001『前 3 个 PR 保留』的口径——definition 阶段需把『兼容期窗口』固定为可断言的 PR 数（如 F-001 ~ F-003）。"
+  ],
+  "suggestions": [
+    "在场景 1 主流程 1（第 48 行）以 [待补充] 占位列出 9 字段的初步集合（id / trigger / phase / severity / fix_hint / dependencies / escape_hatch / owner / since_version），让 detail-design 有对齐基准。",
+    "第 62-63 行 rollback 描述补一句『rollback 自身失败时降级为 process.txt 标记 + 转人工』，与 plan.md R-2 单测路径互文。",
+    "第 38 行次要目标加一个量化锚点（如『当前新增一条门禁约 2-3 人天，改造后目标 0.5 人天』），便于 testing 阶段做效果验收。",
+    "第 73 行场景 3 主流程 2 补充扫描范围与单需求失败的中断策略（建议：单需求失败不中断，最终汇总报告统一退出码非零）。",
+    "项目索引补充：context/project/agentic-meta-engineering/areas.yaml 已声明 gate-system 为跨 hooks/ci/scripts/skills 的功能区，建议在 requirement.md 范围段引用这一定位以强化跨触面共识。"
+  ],
+  "scope": null,
+  "supersedes": null,
+  "project_specific_issues": [
+    "context/project/agentic-meta-engineering/areas.yaml 已声明 gate-system 跨 hooks/ci/scripts/skills/lifecycle 多个功能区，因此 requirement.md 中『行为等价』必须显式覆盖这五类触发面的等价判据，本次评审已在 testability/consistency 维度提示。",
+    "项目 INDEX.md 表明本仓库为骨架元仓库无业务域约束，因此本评审未叠加业务合规/PII/审计等行业维度。"
+  ]
+}

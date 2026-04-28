@@ -22,3 +22,10 @@ __pycache__/
 # 需求运行态：工具级日志（auto-progress-log Hook 写入，高频噪音）
 # 语义事件仍在 process.txt，入 git；此处仅排除工具日志
 requirements/**/process.tool.log
+
+# /loop 调度运行时锁文件（非持久化状态，不入库）
+.claude/scheduled_tasks.lock
+
+# 统一门禁 audit 日志（运行时产出，仅保留目录占位）
+scripts/gates/audit/*
+!scripts/gates/audit/.gitkeep

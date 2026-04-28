@@ -1,0 +1,121 @@
+# ============ 流程组（bootstrap 时填） ============
+id: REQ-2026-002                 # 例：REQ-2026-001
+title: 统一门禁系统
+phase: development
+created_at: "2026-04-27 19:50:15"     # 格式 YYYY-MM-DD HH:MM:SS（Asia/Shanghai），见 context/team/engineering-spec/time-format.md
+branch: feat/req-2026-002             # 例：feat/req-2026-001
+base_branch: develop   # feat/* 派生的基点分支：develop / main / master
+project: agentic-meta-engineering     # 关联 context/project/<project>/
+services: [agentic-meta-engineering]   # 涉及的服务仓库
+gates_passed:
+  - phase: definition
+    at: "2026-04-27 19:58:00"
+    gates: [check-meta, check-plan, branch-match, plan-exists]
+  - phase: tech-research
+    at: "2026-04-27 20:20:00"
+    gates: [check-meta, check-plan, check-sourcing, check-reviews(definition), 
+          no-pending-confirm]
+  - phase: outline-design
+    at: "2026-04-27 21:15:00"
+    gates: [tech-feasibility-exists, risks-non-empty, check-plan, check-meta, 
+          check-reviews(definition)]
+  - phase: detail-design
+    at: "2026-04-27 21:30:00"
+    gates: [outline-design-exists, check-meta, check-plan, 
+          check-reviews(outline-design)]
+  - phase: task-planning
+    at: "2026-04-27 21:45:00"
+    gates: [detailed-design-exists, features-json-valid, check-meta, 
+          check-reviews(detail-design)]
+  - phase: development
+    at: "2026-04-27 22:12:00"
+    gates: [check-meta, check-plan, tasks-exist-per-feature, 
+          tasks-status-pending]
+pr_url: https://github.com/hjaaa/agentic-meta-engineering/pull/44
+pr_number: 44
+log_layout: split              # split（默认，工具日志→process.tool.log / 语义事件→process.txt） | legacy（老格式，全写 process.txt）
+
+# ============ 语义组（definition 阶段补齐，供跨需求检索） ============
+feature_area: gate-system                # definition 起必填；值必须在 context/project/<project>/areas.yaml 白名单内
+change_type: refactor                    # definition 起必填；枚举：feature / bugfix / refactor / perf / security
+affected_modules:                        # definition 起必填；自由词，建议与 services 子模块对齐
+  - scripts/gates
+  - scripts/lib
+  - scripts/git-hooks
+  - .claude/hooks
+  - .github/workflows
+  - .claude/skills/managing-requirement-lifecycle
+tags: [gate, registry-driven, dogfooding]   # 可选；长尾标签，不归一化
+
+# ============ 结果组（completed 时才填） ============
+outcome: ""                    # shipped / abandoned / rolled-back
+completed_at: ""               # ISO8601，completed 时填
+lessons_extracted: false       # /knowledge:extract-experience 是否已跑
+reviews:
+  definition:
+    latest: REV-REQ-2026-002-definition-003
+    conclusion: approved
+    reviewed_commit: dde2826
+    artifact_hashes:
+      artifacts/requirement.md: 
+        33288eca3cb114ca277c38191d915dd66e9e80b66c5aa7add929d03a8860ff58
+    history:
+      - REV-REQ-2026-002-definition-001
+      - REV-REQ-2026-002-definition-002
+      - REV-REQ-2026-002-definition-003
+    stale: false
+  outline-design:
+    latest: REV-REQ-2026-002-outline-design-001
+    conclusion: approved
+    reviewed_commit: '6142790'
+    artifact_hashes:
+      artifacts/outline-design.md: 
+        448d0e242f2a3c5f620762779987134caf7f51ff9d3840055c6eaab6a0440d47
+      artifacts/requirement.md: 
+        33288eca3cb114ca277c38191d915dd66e9e80b66c5aa7add929d03a8860ff58
+    history:
+      - REV-REQ-2026-002-outline-design-001
+    stale: false
+  detail-design:
+    latest: REV-REQ-2026-002-detail-design-002
+    conclusion: approved
+    reviewed_commit: 932b90a
+    artifact_hashes:
+      artifacts/detailed-design.md: 
+        81f3ac671f97228e65dfe31be87fbc9baf885cb455758ef29db8936907906dc6
+      artifacts/features.json: 
+        6c3a4c2adcbc958aecbed130c5f407f6f00d84d1380e88ef5e363090bbd4181a
+      artifacts/outline-design.md: 
+        448d0e242f2a3c5f620762779987134caf7f51ff9d3840055c6eaab6a0440d47
+    history:
+      - REV-REQ-2026-002-detail-design-001
+      - REV-REQ-2026-002-detail-design-002
+    stale: false
+  code:
+    by_feature:
+      F-001:
+        history:
+          - REV-REQ-2026-002-code-F-001-001
+        latest: REV-REQ-2026-002-code-F-001-001
+        conclusion: approved
+        reviewed_commit: fe1af29
+        artifact_hashes:
+          artifacts/features.json: 
+            6c3a4c2adcbc958aecbed130c5f407f6f00d84d1380e88ef5e363090bbd4181a
+          artifacts/tasks/F-001.md: 
+            e36bc179d3146f42fb34823d5b8035c643fc2df6878c82bfcb12e959b9b68453
+        stale: false
+      F-002:
+        history:
+          - REV-REQ-2026-002-code-F-002-001
+          - REV-REQ-2026-002-code-F-002-002
+          - REV-REQ-2026-002-code-F-002-003
+        latest: REV-REQ-2026-002-code-F-002-003
+        conclusion: approved
+        reviewed_commit: d888547
+        artifact_hashes:
+          artifacts/features.json: 
+            6c3a4c2adcbc958aecbed130c5f407f6f00d84d1380e88ef5e363090bbd4181a
+          artifacts/tasks/F-002.md: 
+            0fa0a081accbfea989a06e37863b1c15f88278550e78787c8bbc7b6d40256dc6
+        stale: false

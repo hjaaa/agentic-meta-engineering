@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# post-dev-verify.sh —— 开发后总门禁：feature done 前必跑
+# post-dev-verify.sh —— 开发后总门禁：feature done 前必跑（薄壳兼容层）
+#
+# 注意：本脚本已由 F-002 改写，核心逻辑切到统一门禁 runner。
+#       兼容期保留旧参数格式，F-004 阶段才重构。
 #
 # 用法：
 #   bash scripts/post-dev-verify.sh --requirement <REQ-ID> --feature <F-XXX>
@@ -12,13 +15,9 @@
 #   - 任一 error → exit 1
 #   - "feature 完成"的定义 = 此脚本通过 + /code-review approved
 #
-# 内部按序调用：
-#   1. 工作区必须干净（git status --porcelain 为空）
-#   2. 指定 feature 的 task.md 存在（若传 --feature）
-#   3. check-meta.sh --all
-#   4. check-index.sh
-#   5. check-sourcing.sh（传了 --requirement 就 scoped，否则 --all）
-#   6. scripts/project-verify.sh（若存在：下游项目扩展点，--skeleton-only 时跳过）
+# 内部调用：
+#   python3 scripts/gates/run.py --trigger=post-dev [--req=REQ-ID] --strict
+#   （兼容旧行为：逐步迁移，task file exists 校验保留在本脚本）
 #
 # 退出码：
 #   0 — 全过
@@ -58,8 +57,6 @@ SKIPPED=0
 FAILURES=()
 
 # run_step <name> <skip|run> <cmd...>
-#   skip 模式：参数位置是 `<name> skip <reason>`，打印 skipped
-#   run  模式：执行 cmd，捕获 rc；失败打印前 20 行 stderr 辅助诊断
 run_step() {
   local name="$1"; shift
   local mode="$1"; shift
@@ -96,10 +93,7 @@ printf "%s%s%s\n\n" "$BOLD" "$header" "$RESET"
 
 cd "$REPO_ROOT"
 
-# ——— 1. 工作区干净 ———
-run_step "workspace clean" run bash -c '[[ -z "$(git status --porcelain)" ]]'
-
-# ——— 2. feature task.md 存在 ———
+# ——— 1. feature task.md 存在校验（保留旧行为；runner 的 workspace_clean 处理工作区） ———
 if [[ -n "$FEATURE_ID" ]]; then
   if [[ -n "$REQ_ID" ]]; then
     task_file="requirements/${REQ_ID}/artifacts/tasks/${FEATURE_ID}.md"
@@ -109,17 +103,13 @@ if [[ -n "$FEATURE_ID" ]]; then
   fi
 fi
 
-# ——— 3. 骨架层 checker ———
-run_step "check-meta"    run bash scripts/check-meta.sh --all
-run_step "check-index"   run bash scripts/check-index.sh
+# ——— 2. 统一门禁 runner（post-dev trigger，切到 runner 是 F-002 核心改造） ———
+RUNNER_ARGS=(python3 scripts/gates/run.py --trigger=post-dev)
+[[ -n "$REQ_ID" ]] && RUNNER_ARGS+=(--req "$REQ_ID")
 
-if [[ -n "$REQ_ID" ]]; then
-  run_step "check-sourcing" run bash scripts/check-sourcing.sh --requirement "$REQ_ID"
-else
-  run_step "check-sourcing" run bash scripts/check-sourcing.sh --all
-fi
+run_step "gate-runner (post-dev)" run "${RUNNER_ARGS[@]}"
 
-# ——— 4. 下游项目扩展点 ———
+# ——— 3. 下游项目扩展点 ———
 if [[ $SKELETON_ONLY -eq 0 ]]; then
   if [[ -x scripts/project-verify.sh ]]; then
     run_step "project-verify" run bash scripts/project-verify.sh

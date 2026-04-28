@@ -1,0 +1,112 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-002-detail-design-001",
+  "requirement_id": "REQ-2026-002",
+  "phase": "detail-design",
+  "reviewer": "detail-design-quality-reviewer",
+  "reviewed_at": "2026-04-27 21:29:35",
+  "reviewed_commit": "b17ff31",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/detailed-design.md",
+      "sha256": "7d6e694daf1ae2e2f31ab0f4e41530ec6dd1887eda0ac2ff8e8c2132f5d26efb"
+    },
+    {
+      "path": "artifacts/features.json",
+      "sha256": "cfdd361a3d899f96f7fd3d9ba088738219355d12d81e3ebe8e44d0a680efbd87"
+    },
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "448d0e242f2a3c5f620762779987134caf7f51ff9d3840055c6eaab6a0440d47"
+    }
+  ],
+  "conclusion": "needs_revision",
+  "score": 82,
+  "dimensions": {
+    "consistency_with_outline": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 132-149 行：base.py 的 Gate 类签名未声明 applies_when / dependencies 字段，与 outline-design.md §2.3 第 67-79 行的契约不一致。开发者无法判断这两个字段由 plugin 类承载还是仅由 registry.yaml 承载，建议显式注明（推荐：仅 registry 承载，Gate 类不重复声明，并在 base.py 注释说明）"
+        }
+      ]
+    },
+    "interface_completeness": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "第 162-189 行：run.py 主流程伪代码缺少 commit_staged_writes 的调用时机。§3.1 第 237-244 行声明『runner 在所有 gate pass 后调 commit_staged_writes』，但 §2.2 主入口 try 块结束后未显式列出这一步——读者无法确认是在 except 之后、write_audit 之前调，还是其他位置。建议在伪代码 try 块退出后、build_audit 前加一行 commit_all_staged_writes(executed, ctx) 并补 docstring"
+        },
+        {
+          "severity": "minor",
+          "description": "第 102-114 行：GateContext.staged_writes 字段未在 dataclass 中声明，但 §3.1 第 234 行使用 ctx.staged_writes.append(...)。建议在 GateContext 加 staged_writes: list[tuple] = field(default_factory=list)"
+        }
+      ]
+    },
+    "data_model_soundness": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 31-32 行：registry.yaml 的 requires 字段语义模糊（『路径或字段非空』）。是 file path glob 还是 meta.yaml 的 dot path？建议明确为 dot path（如 meta.pr_number）并在 S1~S8 加规则 S9：requires 中每项必须以 meta. 前缀引用 meta.yaml 已知字段"
+        },
+        {
+          "severity": "minor",
+          "description": "第 39-43 行：escape_hatch.cli_flag『只有 submit/phase-transition 接受』是 YAML 注释而非 Schema 校验规则，未在 S1~S8 中列出。建议补 S10：若 escape_hatch.cli_flag != null，则 gate.triggers 必须包含 submit 或 phase-transition"
+        }
+      ]
+    },
+    "sequence_correctness": {
+      "score": 78,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "第 166-188 行：try/except 事务结构中，commit_staged_writes 的调用点未呈现，导致 H1 staged_writes 模式的时序闭环缺一环（暂存→何时落盘→失败丢弃）。建议在伪代码 try 块的最后一行（for 循环之后）加 for g in executed: g.commit_staged_writes(ctx)，并在 except 块明确说明 staged_writes 直接丢弃（无需额外 rollback）"
+        },
+        {
+          "severity": "minor",
+          "description": "第 393-407 行：pre-tool-use 时序仅列了 GATE-PROTECT-BRANCH + GATE-BASH-WRITE-PROTECT，但 §1 registry.yaml 示例的 triggers 枚举未给出 GATE-PROTECT-BRANCH 的 plugin 名（detail-design.md 全文未定义 protect_branch.py 插件）。建议补 §3.4 表行：protect_branch | .claude/hooks/protect-branch.sh | 拆出独立 plugin"
+        }
+      ]
+    },
+    "feature_granularity": {
+      "score": 82,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "features.json F-002（9 天，5 个 plugin + 7 个旧入口改造 + CI workflow + pre-commit）粒度偏大且工时偏紧。建议拆分为 F-002a『5 plugin 适配 + snapshot 基线』(5d) 与 F-002b『pre-commit / post-dev / CI workflow 切换』(4d)，两者可并行（F-002b 仅依赖 F-002a 的 plugin import 入口稳定）"
+        },
+        {
+          "severity": "minor",
+          "description": "features.json F-003 acceptance 第 4 条 H5 列举的 shell 写法仅覆盖 cat>/tee/echo>/python3 -c，未覆盖 detailed-design.md §3.3 第 287-292 行正则未涵盖的 heredoc（cat <<EOF > file.json）和 printf 重定向。建议在 acceptance 补『heredoc 与 printf 重定向写 reviews/*.json 同样被拦』，强制 F-003 实现期补全正则"
+        }
+      ]
+    }
+  },
+  "required_fixes": [
+    "detailed-design.md §2.2 第 162-189 行：run.py 主入口伪代码补 commit_staged_writes 的调用时机，否则 H1 staged_writes 时序闭环缺失",
+    "detailed-design.md §2.1 第 102-114 行：GateContext dataclass 补 staged_writes 字段，与 §3.1 使用一致",
+    "detailed-design.md §3.3 第 287-292 行：bash_write_protect 正则补 heredoc（cat <<EOF >）与 printf 重定向，并在 features.json F-003 acceptance 同步补充验证用例"
+  ],
+  "suggestions": [
+    "detailed-design.md §1：registry.yaml 的 requires 字段补 dot path 语义说明，并在 S1~S8 加 S9 规则",
+    "detailed-design.md §1：escape_hatch.cli_flag 的 trigger 限制升级为 Schema 校验 S10",
+    "detailed-design.md §3.4：补 protect_branch plugin 行（detail 文中 §4.3 引用了 GATE-PROTECT-BRANCH 但未列入 plugin 表）",
+    "detailed-design.md §2.1：在 Gate 基类注释明确 applies_when / dependencies 仅由 registry 承载，避免与 outline §2.3 的契约混淆",
+    "features.json F-002 建议拆为 F-002a / F-002b 以缓解 9 天紧度并支持并行"
+  ],
+  "scope": null,
+  "supersedes": null,
+  "features_json_validation": {
+    "valid": true,
+    "issues": [],
+    "enhancement_suggestions": [
+      "F-001 建议补 complexity: high（涉及 runner + 抽象基类 + schema 校验，阶段 7 派发用机读字段）",
+      "F-002 建议补 complexity: medium 与 touches: ['scripts/gates/plugins/', 'scripts/check-*.sh', '.github/workflows/quality-check.yml']",
+      "F-003 建议补 complexity: high 与 interfaces_frozen: true（detail-design 已冻结 staged_writes / pr_state / bash_write_protect 三个 plugin 接口）",
+      "F-004 建议补 complexity: low 与 depends_on_features 已显式（F-001/F-002/F-003），可加 touches: ['scripts/gates/migration/render-docs.py', '.claude/skills/managing-requirement-lifecycle/reference/gate-checklist.md']"
+    ]
+  }
+}

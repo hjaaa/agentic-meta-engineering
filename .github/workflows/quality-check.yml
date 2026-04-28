@@ -2,8 +2,7 @@ name: quality-check
 
 # 对 PR + 推到主干兜底。本地 pre-commit 可被 --no-verify 绕过，这里是强制墙。
 # 策略：strict 模式拒绝任何 error 与 warning；
-# 新 warning 一出现立刻红 CI，避免 INDEX 腐化增量复发。
-# 如需临时放行，应优先加 scripts/lib/index-config.yaml 的 ignore 白名单（需 PR review）而非关 strict。
+# F-002：从 5 个独立 step 简化为单一 runner step（来源：detailed-design.md §4.4）
 
 on:
   pull_request:
@@ -13,7 +12,7 @@ on:
       - develop
 
 jobs:
-  schema-and-index:
+  quality-check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,22 +24,9 @@ jobs:
       - name: Install dependencies
         run: pip install pyyaml ruamel.yaml
 
-      - name: Check meta.yaml schema
-        run: bash scripts/check-meta.sh --all --strict
-
-      - name: Check INDEX.md integrity
-        run: bash scripts/check-index.sh --strict
-
-      - name: Check sourcing (刨根问底三态)
-        run: bash scripts/check-sourcing.sh --all --strict
-
-      - name: Check reviews (strict, PR4)
-        run: |
-          for dir in requirements/*/; do
-            req=$(basename "$dir")
-            [ -f "$dir/meta.yaml" ] || continue
-            phase=$(python3 -c "import yaml; print(yaml.safe_load(open('$dir/meta.yaml')).get('phase', ''))")
-            [ -z "$phase" ] && continue
-            # PR4：strict 模式真阻断；legacy=true 由 check-reviews.sh 内部短路（不在 shell 处理）
-            bash scripts/check-reviews.sh --req "$req" --target-phase "$phase" --strict
-          done
+      # 该 step 通过 scripts/gates/run.py --trigger=ci --strict 收敛旧 5 step。
+      # 如需临时放行 INDEX warning，应优先加 scripts/lib/index-config.yaml 的 ignore 白名单
+      # （需 PR review）而非关 strict；legacy review escape_hatch 见 registry.yaml。
+      # 新增 gate：在 registry.yaml 注册后自动参与 CI 扫描，无需修改本 workflow。
+      - name: Run unified gate runner
+        run: python scripts/gates/run.py --trigger=ci --strict

@@ -1,0 +1,192 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-002-code-F-002-001",
+  "requirement_id": "REQ-2026-002",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-04-28 09:10:23",
+  "reviewed_commit": "cf0e802",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "6c3a4c2adcbc958aecbed130c5f407f6f00d84d1380e88ef5e363090bbd4181a"
+    },
+    {
+      "path": "artifacts/tasks/F-002.md",
+      "sha256": "0fa0a081accbfea989a06e37863b1c15f88278550e78787c8bbc7b6d40256dc6"
+    }
+  ],
+  "conclusion": "rejected",
+  "score": 68,
+  "dimensions": {
+    "design_consistency": {
+      "score": 60,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/check-meta.sh:24 / check-index.sh:23 / check-sourcing.sh:27 / check-reviews.sh:19 / check-plan.sh:27 末行 exec lib/check_xxx.py 未走 runner，与 features.json F-002.description + plan.md R-3/D-001 直接冲突；注释声称薄壳 exec runner 与代码不符（F-04）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/gates/plugins/workspace_clean.py:17 precheck 含 ci 守卫但 registry triggers 不含 ci，是死代码（F-31）"
+        }
+      ]
+    },
+    "security": {
+      "score": 55,
+      "issues": [
+        {
+          "severity": "blocker",
+          "description": "scripts/git-hooks/pre-commit:13-14 删除 PR3(27af77f) D7-2 reviews/*.json↔meta.yaml.reviews 双向校验 52 行；注释声称由 GATE-PROTECT-BRANCH 覆盖但 registry.yaml:188-205 显示其 triggers=[pre-tool-use] 仅拦 AI 写工具，且 protect_branch.py:101-106 只识别 reviews/*.json 路径不识别 meta.yaml.reviews 段；GATE-REVIEW-VERDICT triggers=[phase-transition,submit,ci] 不含 pre-commit；保护被实质性削弱（F-02）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/gates/run.py build_context --trigger 参数未做白名单校验，可写 audit 到 AUDIT_DIR 之外（F-11）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/gates/plugins/protect_branch.py:37-42 precheck 缺 trigger 防御（F-12，defense-in-depth）"
+        }
+      ]
+    },
+    "concurrency": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/gates/run.py:446-458 .bak 快照在全 pass 路径下未清理；F-002 当前 needs_stash=False 不触发，F-003 引入 write_state plugin 后立即激活（F-13）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/gates/run.py:275-283 build_context 未注入 ctx.env，CLAUDE_HOOK_BRANCH/CLAUDE_PROTECTED_BRANCHES 在 CLI 路径无效（F-15）"
+        }
+      ]
+    },
+    "complexity": {
+      "score": 70,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/gates/plugins/review_verdict.py:72 _run_all_requirements 圈复杂度 18 (阈值 10) / 51 行（F-05）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/gates/plugins/traceability.py:48 run() 64 行 / CC=14 双超阈值（F-16）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/gates/plugins/sourcing.py:92 _resolve_targets CC=12 与 plan_freshness 同构（F-17）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/gates/plugins/plan_freshness.py:91 _resolve_req_dirs CC=14（F-18）"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 65,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/git-hooks/pre-commit:32-40 set -euo pipefail + python3 ... 直接调用导致 line 33 EXIT_CODE=$? 与友好提示死代码；阻断仍生效但 UX 退化（F-01）"
+        },
+        {
+          "severity": "major",
+          "description": "scripts/gates/run.py:260-261 build_context 读 meta.yaml 仅捕获 yaml.YAMLError 不捕获 OSError，traceback 暴露无 req_id（F-06）"
+        },
+        {
+          "severity": "major",
+          "description": "scripts/gates/run.py:470 _restore_state 清理 .bak 时 bare except Exception: pass 静默吞错（F-07）"
+        },
+        {
+          "severity": "major",
+          "description": "scripts/gates/plugins/review_verdict.py:89-96 meta.yaml 解析失败 warning 仅入 vars 不打 stderr，CI log 无 req_id（F-08）"
+        },
+        {
+          "severity": "major",
+          "description": "scripts/gates/run.py:426 traceback.print_exc 暴露内部实现到 CI stderr，违反 §9 安全规范（F-09）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/gates/plugins/protect_branch.py:107 _is_reviews_json bare except 静默；纯字符串操作不需要 try（F-19）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/gates/migration/capture-baseline.sh:37 set -uo pipefail 缺 -e；normalize 失败基线可能为空（F-20）"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "tests/gates/test_*_plugin.py:9-11 共 6 文件含未使用 import pytest 及多余 mock/Path 引用（F-21）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/gates/plugins/review_verdict.py:90 import yaml 写在 _run_all_requirements 函数内（F-22）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/gates/run.py:122,236,269 import re/os 写在函数体内（F-23）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/gates/plugins/traceability.py:27-28 本地 import 前 2 个连续空行风格不一致（F-24）"
+        },
+        {
+          "severity": "minor",
+          "description": "6 个 plugin 的 precheck/run 缺简短中文 docstring 说明 skip 条件 + fail 含义（F-25）"
+        }
+      ]
+    },
+    "performance": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/gates/run.py:501 write_audit 无 fsync；崩溃可能丢 audit（F-28）"
+        }
+      ]
+    },
+    "history_context": {
+      "score": 70,
+      "issues": [
+        {
+          "severity": "blocker",
+          "description": "scripts/git-hooks/pre-commit:13-14 PR3(27af77f) D7-2 双向校验被删；同 F-02 安全回归（来自 history-context HC-1）"
+        },
+        {
+          "severity": "major",
+          "description": ".github/workflows/quality-check.yml:5,28 删除 ecfbb74 注释（index-config.yaml 白名单合规规程 + legacy 短路注释），合规规程在 workflow 不再可发现；功能上 runner 内部仍尊重 index-config.yaml（F-03）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/gates/run.py:310-319 LEGACY_TO_PLUGIN 注释称 7 个但实际 6 条（F-10）"
+        },
+        {
+          "severity": "minor",
+          "description": ".github/workflows/quality-check.yml 高频变更热点（90 天 6 次/30 天 2 次），结构性重写需 CI gate 等价覆盖证据（F-30）"
+        }
+      ]
+    }
+  },
+  "required_fixes": [
+    {
+      "description": "复活 PR3 D7-2 双向校验：在 pre-commit trigger 新增 GATE-REVIEWS-CONSISTENCY plugin 或在 review_verdict pre-commit 路径检查 staged meta.yaml.reviews diff 与 reviews/*.json 是否同步。GATE-PROTECT-BRANCH (triggers=[pre-tool-use]) 不覆盖人 git commit 场景；GATE-REVIEW-VERDICT triggers 不含 pre-commit。",
+      "location": "scripts/git-hooks/pre-commit + scripts/gates/registry.yaml + scripts/gates/plugins/review_verdict.py",
+      "severity": "blocker"
+    }
+  ],
+  "suggestions": [
+    "F-04（5 个 .sh 末行未改 runner）+ F-02（D7-2 删除）+ F-03（workflow 注释删除）三者叠加暴露同一模式：F-002 把'切到 runner'部分实施却保留旧入口/旧文件原状未改，且用注释声称已切——构成迁移半成品 + 注释欺骗，后续 reviewer 与 maintainer 易被误导",
+    "F-01（pre-commit set -e 吞死友好提示）+ F-08/F-09（错误日志缺 req_id 与 stderr 暴露 traceback）叠加：runner 失败时用户与 CI 都拿不到清晰修复路径，违反 CLAUDE.md §3.2 日志规范（业务主键必填 + 不暴露内部）",
+    "F-05（review_verdict CC=18）+ F-16/F-17/F-18（traceability/sourcing/plan_freshness 三 plugin _resolve_xxx CC>10 同构）暴露：plugin 内 changed_files 解析逻辑未抽公共工具，复杂度集中且重复——建议在 plugins/base.py 或 plugins/_helpers.py 抽 _changed_artifact_paths / _changed_req_dirs",
+    "F-13（.bak 不清）+ F-15（ctx.env 不注入）显式记录在 F-002 范围内不修，但 F-003 起会立即被激活——必须在 F-003 plan 与 detailed-design 中明确登记为 F-003 范围必修项，避免遗忘"
+  ],
+  "scope": {
+    "feature_id": "F-002"
+  },
+  "supersedes": null
+}
