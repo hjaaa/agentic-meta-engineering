@@ -25,7 +25,13 @@
 
 ### 2. 前置门禁
 
-全部通过方可继续。清单见 `gate-checklist.md` 的"`/requirement:submit` 前置门禁"小节。任一失败立即终止，不污染任何文件。
+全部通过方可继续。统一调度入口（F-003 H3 改造后唯一通道）：
+
+```bash
+python scripts/gates/run.py --trigger=submit --req=<id>
+```
+
+具体 gate 由 `scripts/gates/registry.yaml` 定义（与 `phase-transition` 同源 + 多出 `GATE-PR-MERGED-STATE` 等 submit-only gate）；渲染产物与失败处置见 `gate-checklist.md`（F-004 落地）。任一失败立即终止，不污染任何文件。
 
 ### 3. 同步 base
 
