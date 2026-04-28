@@ -436,7 +436,12 @@ def _print_dry_run(ctx: GateContext, plan: list[dict[str, Any]]) -> int:
 
 
 def _execute_plan(ctx: GateContext, plan: list[dict[str, Any]], strict: bool) -> int:
-    """执行 plan：precheck → run → 暂存事务化 commit / fail 路径 rollback + restore。"""
+    """执行 plan：precheck → run → 暂存事务化 commit / fail 路径 rollback + restore。
+
+    H1 事务化（F-002 round-2 修复）：
+      commit_staged_writes 抛异常时统一走 GateFailed 路径——回滚已 commit 的 plugin、
+      恢复 meta.yaml 磁盘快照、清空 staged_writes，避免 partial-commit 持久化。
+    """
     # 仅当存在 write_state plugin 时才创建快照，避免污染工作区
     needs_stash = any(e.get("side_effects") == "write_state" for e in plan)
     snapshots = _stash_state(ctx) if needs_stash else {}
@@ -462,10 +467,27 @@ def _execute_plan(ctx: GateContext, plan: list[dict[str, Any]], strict: bool) ->
             if r.decision == Decision.FAIL and sev == Severity.ERROR:
                 raise GateFailed(r)
         # 全部 pass：commit 暂存写
+        # F-002：commit 阶段任意异常 → 转 GateFailed 走 rollback + restore，承诺事务原子性
         for g in executed:
             if getattr(g, "side_effects", "none") == "write_state":
                 _current_plugin[0] = g.id
-                g.commit_staged_writes(ctx)
+                try:
+                    g.commit_staged_writes(ctx)
+                except Exception as commit_exc:  # noqa: BLE001
+                    print(
+                        f"ERROR gate-commit-failed plugin={g.id} "
+                        f"trigger={ctx.trigger} req={ctx.requirement_id or '-'}: {commit_exc}",
+                        file=sys.stderr,
+                    )
+                    raise GateFailed(
+                        Report(
+                            gate_id=g.id,
+                            decision=Decision.FAIL,
+                            code="GATE-COMMIT-FAILED",
+                            message=f"commit_staged_writes 抛异常: {commit_exc}",
+                            fix_hint="检查 meta.yaml 写权限、磁盘空间、并发锁竞争；可重试该 trigger",
+                        )
+                    ) from commit_exc
         # F-13 carry-over：commit 完成后清理 .bak 备份（避免污染工作区）
         _cleanup_snapshots(snapshots)
     except GateFailed:
@@ -479,7 +501,7 @@ def _execute_plan(ctx: GateContext, plan: list[dict[str, Any]], strict: bool) ->
         ctx.staged_writes.clear()
     except Exception as exc:  # noqa: BLE001
         # plugin 内部未捕获异常：当作 runner 自身异常退出 2
-        # 补充 plugin 名到日志上下文，便于排查（F-001 review 建议，run.py:380-385）
+        # F-033：写 audit log 后再退，避免审计黑洞（partial-commit 也需留痕）
         print(
             f"ERROR plugin 执行异常 plugin={_current_plugin[0]} "
             f"trigger={ctx.trigger} req={ctx.requirement_id or '-'}: {exc}",
@@ -488,8 +510,19 @@ def _execute_plan(ctx: GateContext, plan: list[dict[str, Any]], strict: bool) ->
         if not os.environ.get("CI"):
             # 本地调试：完整堆栈有助于排查
             traceback.print_exc(file=sys.stderr)
-        # CI 路径：堆栈已通过 audit log 结构化保存（TODO：待 F-003 audit log 增强后写入）
         _restore_state(ctx, snapshots)
+        ctx.staged_writes.clear()
+        # F-033：异常路径补 audit log，含 RUNNER-PLUGIN-EXCEPTION 占位条目
+        try:
+            err_report = Report(
+                gate_id=_current_plugin[0],
+                decision=Decision.FAIL,
+                code="RUNNER-PLUGIN-EXCEPTION",
+                message=f"plugin 抛未捕获异常: {exc}",
+            )
+            write_audit(_build_audit(ctx, reports + [err_report], rollback_failed=False))
+        except Exception as audit_exc:  # noqa: BLE001
+            print(f"ERROR audit log 异常路径写入失败: {audit_exc}", file=sys.stderr)
         return 2
 
     write_audit(_build_audit(ctx, reports, rollback_failed))

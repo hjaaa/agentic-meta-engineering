@@ -334,20 +334,32 @@ def _commit_meta_writes(meta_path: "Path", writes: list[tuple[str, str, object]]
 
     使用 ruamel.yaml round-trip 保留注释（与 save_review.py 保持一致）。
     先写 .tmp 再 replace 保证原子性。
+
+    F-010 round-2 加固：用 fcntl.lockf 对一个 sidecar lock 文件加排他锁，
+    避免 commit-staged-writes 与 save_review CLI / 其他并发 runner 同时改同一份
+    meta.yaml 触发 read-modify-write 数据竞争。锁随 with 块自动释放。
     """
     # 复用 save_review 的 ruamel 实例，避免依赖漂移
+    import fcntl  # noqa: PLC0415
     import save_review as _save_review  # noqa: PLC0415
 
-    with meta_path.open("r", encoding="utf-8") as f:
-        meta_rt = _save_review._meta_yaml.load(f) or {}
+    lock_path = meta_path.with_suffix(meta_path.suffix + ".lock")
+    # 'a' 模式确保锁文件存在；fcntl.lockf 在 fd 上加 LOCK_EX，关闭即释放
+    with lock_path.open("a") as lock_f:
+        fcntl.lockf(lock_f.fileno(), fcntl.LOCK_EX)
+        try:
+            with meta_path.open("r", encoding="utf-8") as f:
+                meta_rt = _save_review._meta_yaml.load(f) or {}
 
-    for _path, dot_key, value in writes:
-        _set_dot_path(meta_rt, dot_key, value)
+            for _path, dot_key, value in writes:
+                _set_dot_path(meta_rt, dot_key, value)
 
-    tmp_path = meta_path.with_suffix(meta_path.suffix + ".tmp")
-    with tmp_path.open("w", encoding="utf-8") as f:
-        _save_review._meta_yaml.dump(meta_rt, f)
-    tmp_path.replace(meta_path)
+            tmp_path = meta_path.with_suffix(meta_path.suffix + ".tmp")
+            with tmp_path.open("w", encoding="utf-8") as f:
+                _save_review._meta_yaml.dump(meta_rt, f)
+            tmp_path.replace(meta_path)
+        finally:
+            fcntl.lockf(lock_f.fileno(), fcntl.LOCK_UN)
 
 
 def _set_dot_path(target: dict, dot_key: str, value: object) -> None:
