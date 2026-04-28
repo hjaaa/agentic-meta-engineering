@@ -20,3 +20,7 @@
 2026-04-28 10:03:00 [development] F-002 完成（review: code-F-002-003.json approved score=90，3 轮迭代修 1 critical→0 / 8 major→0 / 28 minor→4 carry-over）
 2026-04-28 10:04:25 [save] F-001/F-002 done（F-002 review-003 approved score=90），下次：提 F-002 PR 或派 F-003（4 carry-over 已登记 plan.md）
 2026-04-28 10:10:36 [submit] submitted PR #44 → develop (https://github.com/hjaaa/agentic-meta-engineering/pull/44)
+2026-04-28 10:14:17 [pr-merged] PR #44 merged into develop (squash, commit 73c1922)
+2026-04-28 14:08:04 [development] F-003 派发（model=opus，complexity=high）
+2026-04-28 14:34:03 [blocker] H5 改造踩引导陷阱：先 commit 薄壳 hook + 半成品 plugin 致 PreToolUse 锁死，工具全拒
+2026-04-28 14:34:04 [blocker-resolved] 用户终端 rm bash_write_protect.py + git restore registry.yaml；H1/H4 commit 完整，run.py/triggers/hook 改动保留待 H5 收尾

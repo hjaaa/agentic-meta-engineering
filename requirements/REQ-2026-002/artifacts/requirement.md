@@ -24,7 +24,7 @@ refs-requirement: true
 每层独立维护"哪些规则、何时跑、怎么报错、怎么处理副作用"，由此暴露的具体腐化点：
 
 - **半成品状态**：R005 在切阶段中途把 `stale=true` 写回 meta.yaml，后续 R 失败时 phase 没切但 meta 已部分修改（来源：scripts/lib/check_reviews.py:152）。
-- **绕过点**：`protect-branch.sh` 仅拦 Edit/Write 工具，Bash 直接 `cat > requirements/.../reviews/x.json` 完全绕过（来源：.claude/hooks/protect-branch.sh:30）。
+- **绕过点**：`protect-branch.sh` 仅拦 Edit/Write 工具，Bash 直接 `cat > requirements/.../reviews/x.json` 完全绕过（来源：.claude/hooks/protect-branch.sh:1）[H5 已修复，闭合方案见 commit 56e7a43]。
 - **submit 与 next 校验割裂**：submit 只查 review-*.md 文本无 blocker（来源：.claude/skills/managing-requirement-lifecycle/reference/submit-rules.md:113），next development→testing 用 R007 + review-*.md 双轨（来源：.claude/skills/managing-requirement-lifecycle/reference/gate-checklist.md:71）。
 - **PR 状态无回环**：submit 写 `pr_url` / `pr_number` 后不再回访（来源：.claude/skills/managing-requirement-lifecycle/reference/submit-rules.md:75）。
 
@@ -90,7 +90,7 @@ refs-requirement: true
   2. 命中且**调用方不在白名单**（白名单：`save-review.sh` 启动的子进程、显式带 `CLAUDE_GATES_BYPASS=1` 的环境变量）→ 拒绝，stderr 提示"reviews/*.json 是 save-review.sh 唯一通道，请让 reviewer Agent 重新评审"
   3. 拒绝事件写 audit log，标记 `escape_used=false / blocked=true / reason=bash-write`
   4. 命中且**调用方在白名单** → 放行，但 audit log 标记 `whitelisted=<调用方>`
-- **期望结果**：覆盖 `protect-branch.sh` 现状只拦 Edit/Write 工具的盲区（来源：.claude/hooks/protect-branch.sh:30）；用户/Agent 看到清晰拒绝原因和替代路径
+- **期望结果**：覆盖 `protect-branch.sh` 现状只拦 Edit/Write 工具的盲区（来源：.claude/hooks/protect-branch.sh:1）[H5 已修复，闭合方案见 commit 56e7a43]；用户/Agent 看到清晰拒绝原因和替代路径
 
 ### 场景 3：CI 跑全量门禁
 

@@ -39,7 +39,7 @@ refs-tech-feasibility: true
 
 ### 1.3 Bash 写保护 / 进程链识别（跨平台）
 
-当前 protect-branch.sh 对 Bash 工具直接放行——`Bash` case 分支执行 `exit 0`（来源：.claude/hooks/protect-branch.sh:32）。H5 修复需要在 PreToolUse Hook 解析 Bash 的 `command` 字段，正则匹配写 `requirements/*/reviews/*.json` 的操作（来源：requirements/REQ-2026-002/artifacts/requirement.md:89）。
+当前 protect-branch.sh 对 Bash 工具直接放行——`Bash` case 分支执行 `exit 0`（来源：.claude/hooks/protect-branch.sh:1）[H5 已修复，闭合方案见 commit 56e7a43]。H5 修复需要在 PreToolUse Hook 解析 Bash 的 `command` 字段，正则匹配写 `requirements/*/reviews/*.json` 的操作（来源：requirements/REQ-2026-002/artifacts/requirement.md:89）。
 
 **跨平台进程链识别**：`ps -p $PPID -o comm=` 在 macOS 和 Linux 均可用，但 macOS 的 `comm` 字段会被截断（`save-review.sh` 长度处于安全区间，但需在 F-003 集成测试实测，详见下方"假设记录"块）
 
