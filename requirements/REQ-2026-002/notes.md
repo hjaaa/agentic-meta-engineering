@@ -50,3 +50,24 @@ runner 同时是「被改对象」与「看门人」。runner 启动期可见的
 ## 会话经验（2026-04-28 16:04）
 
 _[hook-skipped: claude-exit-1]_
+
+
+## 会话经验（2026-04-28 20:30）— F-003 round-3 修 spec 触发 R005 stale 的治理缺口
+
+### 现象
+F-003 round-3 13 条 must_fix 中 4 条要求改 detailed-design.md（F-001 audit schema 增字段、F-003 RE_WRITE_OPS 同步、F-004 _caller_is_save_review_sh 签名、F-022 GateContext.env 注释）。改完后 check-reviews 跑 R005 hash drift，记录的 sha256 != 当前 sha256 → ERROR + 自动写盘 stale=true。
+
+### 根因
+- detail-design 阶段已切到 development，按规范 spec 不该再变；但 review 报告本身要求"修 spec"，矛盾
+- R005 不读 stale 状态，每次都比对 hash → 无法靠 stale=true 静音 ERROR
+- subagent 不能自行调 save-review.sh 重审 detail-design（reviewer agent 才是正确入口）
+- 这导致「round-3 修完 must_fix → check-reviews fail，但 fail 不是 round-3 引入的回归，是规范缺口」
+
+### 处置
+1. round-3 commit stale=true 自动写盘结果
+2. 把"重审 detail-design 至 round-3 head"登记 F-004 carry-over
+3. round-3 reviewer 跑 code-review F-003 后，主 Agent 触发 detail-design 重审（reviewer agent + save-review.sh），更新 reviewed_commit 与 artifact_hashes，降 stale=false
+
+### 防御补强（F-004 候选）
+- check-reviews R005 增 `--allow-stale` 或 ctx.cli_flags 旁路：development 阶段允许 stale=true 时降级 ERROR → WARNING（不阻断当前阶段流程）
+- 或 reviewer agent 接到「修 spec」类 must_fix 时自动跟 detail-design 重审任务，避免 round-3 留 R005 残留
