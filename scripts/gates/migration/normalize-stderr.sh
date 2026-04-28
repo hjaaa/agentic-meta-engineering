@@ -14,7 +14,8 @@
 
 set -euo pipefail
 
-REPO_ROOT="${REPO_ROOT:-$(git rev-parse --show-toplevel)}"
+# 非 git 仓库（CI 沙箱）fallback 到 PWD，避免 set -e 立即终止（F-001 review 建议）
+REPO_ROOT="${REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")}"
 
 # 关键前缀正则：见上方设计权威
 KEY_PATTERN='(ERROR|WARNING|✗|❌|E[0-9]+|W[0-9]+|R[0-9]+|CR-[0-9]+)'

@@ -56,6 +56,9 @@ ID_PATTERN = r"^GATE-[A-Z][A-Z0-9-]+$"
 SEVERITY_VALUES = {"error", "warning", "info"}
 SIDE_EFFECTS_VALUES = {"none", "write_state"}
 
+# 安全校验：requirement_id 白名单正则，防止路径穿越（F-001 review 建议，来源：code-F-001-001.json）
+_REQ_ID_PATTERN = r"^REQ-\d{4}-\d{3}$"
+
 
 class GateFailed(Exception):
     """某个 severity=error gate 的 Decision.FAIL 触发的中断信号。"""
@@ -225,6 +228,15 @@ def _validate_write_state_plugin(gid: str, plugin_name: str) -> None:
 # ====================== context 构造 ======================
 
 
+def _validate_requirement_id(req_id: str) -> bool:
+    """校验 requirement_id 格式，防止路径穿越（F-001 review 安全建议）。
+
+    只接受 REQ-YYYY-NNN 格式（4 位年份 + 3 位序号），拒绝含 .. / / 等路径穿越字符的输入。
+    """
+    import re
+    return bool(re.match(_REQ_ID_PATTERN, req_id))
+
+
 def build_context(args: argparse.Namespace) -> GateContext:
     trigger = args.trigger
     # adapter 模式：CLI 标志，不进 ctx.trigger 枚举（fallback 到 ci 以便复用 plugin 主流程）
@@ -233,6 +245,13 @@ def build_context(args: argparse.Namespace) -> GateContext:
 
     meta: dict[str, Any] = {}
     if args.requirement_id:
+        # 路径穿越防御：校验 requirement_id 格式（F-001 review 安全建议，run.py:236）
+        if not _validate_requirement_id(args.requirement_id):
+            print(
+                f"ERROR requirement_id={args.requirement_id!r} 格式非法，必须匹配 REQ-YYYY-NNN",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
         meta_path = _REPO_ROOT / "requirements" / args.requirement_id / "meta.yaml"
         if meta_path.exists():
             try:
@@ -349,9 +368,12 @@ def _execute_plan(ctx: GateContext, plan: list[dict[str, Any]], strict: bool) ->
     executed: list[Gate] = []
     reports: list[Report] = []
     rollback_failed = False
+    # 记录当前正在执行的 plugin 名，用于 generic Exception 日志上下文（F-001 review 建议）
+    _current_plugin: list[str] = ["<unknown>"]
 
     try:
         for entry in plan:
+            _current_plugin[0] = entry.get("plugin", "<unknown>")
             gate = instantiate(entry)
             _log_gate_start(ctx, gate.id)
             skip = gate.precheck(ctx)
@@ -367,6 +389,7 @@ def _execute_plan(ctx: GateContext, plan: list[dict[str, Any]], strict: bool) ->
         # 全部 pass：commit 暂存写
         for g in executed:
             if getattr(g, "side_effects", "none") == "write_state":
+                _current_plugin[0] = g.id
                 g.commit_staged_writes(ctx)
     except GateFailed:
         for g in reversed(executed):
@@ -379,7 +402,12 @@ def _execute_plan(ctx: GateContext, plan: list[dict[str, Any]], strict: bool) ->
         ctx.staged_writes.clear()
     except Exception as exc:  # noqa: BLE001
         # plugin 内部未捕获异常：当作 runner 自身异常退出 2
-        print(f"ERROR plugin 执行异常：{exc}", file=sys.stderr)
+        # 补充 plugin 名到日志上下文，便于排查（F-001 review 建议，run.py:380-385）
+        print(
+            f"ERROR plugin 执行异常 plugin={_current_plugin[0]} "
+            f"trigger={ctx.trigger} req={ctx.requirement_id or '-'}: {exc}",
+            file=sys.stderr,
+        )
         traceback.print_exc(file=sys.stderr)
         _restore_state(ctx, snapshots)
         return 2
@@ -401,7 +429,10 @@ def _log_gate_start(ctx: GateContext, gate_id: str) -> None:
 
 
 def _stash_state(ctx: GateContext) -> dict[str, Path]:
-    """对受保护文件做快照备份（本 PR 仅备份 meta.yaml；F-002 起按 plugin 写态扩展）。"""
+    """对受保护文件做快照备份（本 PR 仅备份 meta.yaml；F-002 起按 plugin 写态扩展）。
+
+    requirement_id 在 build_context 阶段已校验，此处直接使用。
+    """
     snapshots: dict[str, Path] = {}
     if ctx.requirement_id:
         meta_path = _REPO_ROOT / "requirements" / ctx.requirement_id / "meta.yaml"
