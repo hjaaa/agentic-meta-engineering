@@ -206,6 +206,26 @@ gates:
     tests:
       fixtures: [pass, fail, skip]
 
+  - id: GATE-PR-MERGED-STATE
+    plugin: pr_state
+    severity: error
+    triggers:
+      - submit
+    applies_when:
+      changed_files: []
+      target_phase: null
+      current_phase_in: []
+      transition: null
+      requires:
+        - meta.pr_number
+    dependencies: []
+    side_effects: none
+    failure_message: |
+      {gate_id} 失败：{message}
+      修复建议：{fix_hint}
+    tests:
+      fixtures: [pass, fail, skip]
+
   - id: GATE-PROTECT-BRANCH
     plugin: protect_branch
     severity: error
