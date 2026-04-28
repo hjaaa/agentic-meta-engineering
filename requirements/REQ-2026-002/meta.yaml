@@ -31,8 +31,8 @@ gates_passed:
     at: "2026-04-27 22:12:00"
     gates: [check-meta, check-plan, tasks-exist-per-feature, 
           tasks-status-pending]
-pr_url: ""                     # /requirement:submit 成功后回写
-pr_number: 0                   # /requirement:submit 成功后回写
+pr_url: https://github.com/hjaaa/agentic-meta-engineering/pull/44
+pr_number: 44
 log_layout: split              # split（默认，工具日志→process.tool.log / 语义事件→process.txt） | legacy（老格式，全写 process.txt）
 
 # ============ 语义组（definition 阶段补齐，供跨需求检索） ============
