@@ -48,6 +48,12 @@ _PROTECTED = "requirements/REQ-2026-002/reviews/foo.json"
         ("heredoc",          f"cat <<EOF > {_PROTECTED}\\nfoo\\nEOF"),
         ("printf_redirect",  f"printf '%s' data > {_PROTECTED}"),
         ("dd_of",            f"dd if=/dev/null of={_PROTECTED}"),
+        # F-005 round-3 新增 4 条 alt（关闭 round-2 实测遗漏形态）
+        ("sponge",           f"echo x | sponge {_PROTECTED}"),
+        ("rsync",            f"rsync --inplace tmp.json {_PROTECTED}"),
+        ("install",          f"install -m 644 tmp.json {_PROTECTED}"),
+        ("pathlib_write_text", f"python3 -c \"from pathlib import Path; Path('{_PROTECTED}').write_text('x')\""),
+        ("pathlib_write_bytes", f"python3 -c \"from pathlib import Path; Path('{_PROTECTED}').write_bytes(b'x')\""),
     ],
 )
 def test_should_fail_when_bash_command_writes_reviews_json(label, command, monkeypatch):
@@ -86,31 +92,27 @@ def test_should_pass_when_caller_is_save_review_sh(monkeypatch):
     assert report.vars["whitelisted"] == "save-review.sh"
 
 
-def test_caller_chain_walks_up_to_save_review_sh(monkeypatch):
-    """given_save_review_sh_in_grandparent_when_walk_then_match（端到端 mock subprocess）。
+def test_should_return_false_when_save_review_pid_missing(monkeypatch):
+    """given_no_save_review_pid_env_when_caller_check_then_false。
 
-    模拟 ps 返回链：第一层非白名单 → 第二层 save-review.sh → 命中。
-    F-028 round-2：合并为单次 ps -o comm=,ppid=，每步 yield (comm, ppid)。
+    F-012 round-3：comm 字符串 fallback 已删除，SAVE_REVIEW_PID 缺失即直接 false，
+    不再尝试遍历父进程链匹配 comm == 'save-review.sh'。
     """
-    # 单次 ps -o comm=,ppid= 输出形如 "comm   ppid"
-    fixtures_iter = iter([
-        b"bash 200\n",
-        b"save-review.sh 1\n",
-    ])
 
-    def _fake_check_output(cmd, *args, **kwargs):
-        return next(fixtures_iter)
+    # 即使 ps 链返回 save-review.sh 也不命中，因为 SAVE_REVIEW_PID 没设
+    def _should_not_be_called(*args, **kwargs):
+        raise AssertionError("SAVE_REVIEW_PID 缺失时不应调用 ps")
 
     monkeypatch.setattr(plugin_mod.os, "getppid", lambda: 100)
-    monkeypatch.setattr(plugin_mod.subprocess, "check_output", _fake_check_output)
+    monkeypatch.setattr(plugin_mod.subprocess, "check_output", _should_not_be_called)
 
     gate = plugin_mod.BashWriteProtectGate()
-    ctx = _make_ctx()
-    assert gate._caller_is_save_review_sh(ctx) is True
+    ctx = _make_ctx()  # env={} → SAVE_REVIEW_PID 未设
+    assert gate._caller_is_save_review_sh(ctx) is False
 
 
 def test_caller_chain_returns_false_when_not_in_chain(monkeypatch):
-    """given_no_save_review_sh_in_chain_when_walk_then_false。"""
+    """given_save_review_pid_set_but_no_match_in_chain_when_walk_then_false。"""
     fixtures_iter = iter([
         b"bash 200\n",
         b"zsh 1\n",
@@ -123,7 +125,8 @@ def test_caller_chain_returns_false_when_not_in_chain(monkeypatch):
     monkeypatch.setattr(plugin_mod.subprocess, "check_output", _fake_check_output)
 
     gate = plugin_mod.BashWriteProtectGate()
-    ctx = _make_ctx()
+    # SAVE_REVIEW_PID=999（链中 200 / 1 都不匹配）
+    ctx = _make_ctx(env={"SAVE_REVIEW_PID": "999"})
     assert gate._caller_is_save_review_sh(ctx) is False
 
 
@@ -137,7 +140,8 @@ def test_caller_chain_swallows_subprocess_errors(monkeypatch):
     monkeypatch.setattr(plugin_mod.os, "getppid", lambda: 100)
     monkeypatch.setattr(plugin_mod.subprocess, "check_output", _raise)
     gate = plugin_mod.BashWriteProtectGate()
-    ctx = _make_ctx()
+    # 必须设 SAVE_REVIEW_PID 才会进入 _walk_ppid_chain，否则 short-circuit return False
+    ctx = _make_ctx(env={"SAVE_REVIEW_PID": "200"})
     assert gate._caller_is_save_review_sh(ctx) is False
 
 
@@ -161,7 +165,11 @@ def test_caller_chain_pass_via_save_review_pid_env(monkeypatch):
 
 
 def test_caller_chain_rejects_endswith_spoofing(monkeypatch):
-    """given_evil_save_review_sh_in_chain_when_walk_then_false（F-005 round-2 防伪造）。"""
+    """given_evil_save_review_sh_in_chain_when_walk_then_false（F-005 round-2 防伪造，F-012 round-3 仍生效）。
+
+    F-012 round-3 删除 comm 字符串 fallback 后，evil-save-review.sh 仍无法绕过：
+    SAVE_REVIEW_PID 才是唯一通道，外部进程伪造 comm 字符串完全无效。
+    """
     fixtures_iter = iter([
         b"evil-save-review.sh 1\n",
     ])
@@ -172,8 +180,8 @@ def test_caller_chain_rejects_endswith_spoofing(monkeypatch):
     monkeypatch.setattr(plugin_mod.os, "getppid", lambda: 100)
     monkeypatch.setattr(plugin_mod.subprocess, "check_output", _fake_check_output)
     gate = plugin_mod.BashWriteProtectGate()
-    ctx = _make_ctx()
-    # endswith 时代会误判 True；现在严格 == 比对，必须 False
+    # SAVE_REVIEW_PID 设为 999（链中 1 不匹配）→ 必为 False；伪造 comm 完全无效
+    ctx = _make_ctx(env={"SAVE_REVIEW_PID": "999"})
     assert gate._caller_is_save_review_sh(ctx) is False
 
 

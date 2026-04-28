@@ -4,10 +4,25 @@
 
 职责：
   - 仅在 pre-tool-use trigger + tool_name=Bash 时生效
-  - 识别 8+ 类 shell 写法（>、>>、tee、tee -a、mv、cp、python -c open（'w'/'a'/'wb'/'ab'）、
-    heredoc、printf >、dd of=）对 requirements/<req>/reviews/<file>.json 的直接写入
+  - 识别 12 类 shell 写法（F-005 round-3 在 round-2 的 8 类基础上补 4 条）对
+    requirements/<req>/reviews/<file>.json 的直接写入：
+      1) > / >>            重定向
+      2) tee / tee -a      管道写入
+      3) mv                移动覆盖
+      4) cp                复制覆盖
+      5) python3 -c "...open(<path>, 'w'/'a'/'wb'/'ab')..."
+      6) heredoc           cat <<EOF > / cat <<-EOF >>
+      7) printf >          格式化重定向
+      8) dd of=            块复制
+      9) sponge            moreutils stdin 吸入后整体写入（绕过 noclobber）
+     10) rsync             含 --inplace 覆盖写
+     11) install           coreutils 默认 cp+chmod 覆盖
+     12) python3 -c "...Path(<path>).write_text|write_bytes(...)..."  pathlib 通道（不走 open()）
   - 双轨白名单：
-      1) 父进程链含 save-review.sh（通过 SAVE_REVIEW_PID env 优先比对 / fallback 完整 comm 匹配）
+      1) 父进程链含 save-review.sh：**仅** 通过 SAVE_REVIEW_PID env 比对（唯一通道）。
+         save-review.sh:18 启动时 export SAVE_REVIEW_PID=$$，:19 用 exec 替换为 python3
+         进程，导致子进程 comm 不再是 save-review.sh，原 comm 字符串 fallback 永远到不了
+         （F-012 round-3 删除死代码，简化为单一 PID 通道）。
       2) 显式 env：CLAUDE_GATES_BYPASS=1 + CLAUDE_GATES_BYPASS_REASON=<原因> → PASS
   - 其他情况一律 FAIL（code=BASH-WRITE）
 
@@ -36,12 +51,14 @@ from .base import Decision, Gate, GateContext, Report, Severity, Skip
 # 受保护路径（与 detailed-design.md §3.3 锁定的字面量保持一致）
 _PATH = r"requirements/[^/]+/reviews/[^/]+\.json"
 
-# 8 类 shell 写法的正则替代项 —— 每条单独一行，便于审阅与新增
+# 12 类 shell 写法的正则替代项 —— 每条单独一行，便于审阅与新增
 # 安全写法约束：用 tuple + "|".join() 构造，禁止多行 raw 字符串拼接 + 行间注释
+# F-005 round-3 补 4 条 alt（sponge / rsync / install / pathlib.write_text|write_bytes），
+# 关闭 F-003 H5 acceptance "至少 8 类" 在实测中遗漏的形态。
 _ALTS = (
-    # 1) 重定向：> / >>
+    # 1) 重定向：> / >>（含目标在引号中的常见变体）
     rf">>?\s*['\"]?[^|;&]*?{_PATH}",
-    # 2) tee / tee -a
+    # 2) tee / tee -a（管道写入；-a 为追加，不带 -a 是覆盖，两种都拦）
     rf"tee\s+(?:-a\s+)?['\"]?[^|;&]*?{_PATH}",
     # 3) mv（任意源 → reviews/*.json）
     rf"mv\s+\S+\s+['\"]?[^|;&]*?{_PATH}",
@@ -51,10 +68,20 @@ _ALTS = (
     rf"python3?\s+-c\s+['\"].*open\(.*?{_PATH}.*?['\"](?:w|a|wb|ab)['\"]",
     # 6) heredoc：cat <<EOF > / cat <<-EOF >>
     rf"cat\s+<<-?\s*['\"]?\w+['\"]?\s+>>?\s*['\"]?[^|;&]*?{_PATH}",
-    # 7) printf 重定向
+    # 7) printf 重定向（含 -- / 多 % 占位符的变体）
     rf"printf\s+.*?>\s*['\"]?[^|;&]*?{_PATH}",
-    # 8) dd of=
+    # 8) dd of=（块复制 / 二进制写入兜底）
     rf"dd\s+.*?of=['\"]?[^|;&]*?{_PATH}",
+    # 9) sponge（moreutils；从 stdin 吸入后整体写入目标，绕过 > 直接重定向时的 -noclobber）
+    rf"sponge\s+['\"]?[^|;&]*?{_PATH}",
+    # 10) rsync（任意源 → reviews/*.json，含 --inplace 覆盖写）
+    rf"rsync\s+(?:-\S+\s+)*\S+\s+['\"]?[^|;&]*?{_PATH}",
+    # 11) install（coreutils install 命令默认是 cp + chmod，会覆盖目标）
+    rf"install\s+(?:-\S+\s+)*\S+\s+['\"]?[^|;&]*?{_PATH}",
+    # 12) pathlib.Path(...).write_text / write_bytes（Python 内建写入，不走 open()）
+    #     形式：python3 -c "...Path('<path>').write_text(...)..."；
+    #     _PATH 出现在 write_text/write_bytes 之前，正则按 .*write_text|write_bytes 锚后向前匹配
+    rf"python3?\s+-c\s+['\"].*{_PATH}.*?\.write_(?:text|bytes)\(",
 )
 
 RE_WRITE_OPS = re.compile("(" + "|".join(_ALTS) + ")")
@@ -144,31 +171,33 @@ class BashWriteProtectGate(Gate):
     def _caller_is_save_review_sh(self, ctx: GateContext) -> bool:
         """父进程链识别：判断当前调用者是否为 save-review.sh。
 
-        优先级（F-005/F-007/F-028 round-2 加固）：
-          1. SAVE_REVIEW_PID env 比对：save-review.sh 启动时 export SAVE_REVIEW_PID=$$，
-             若 ppid 链中任一层 == 该 PID，立即放行（最快、不易伪造）
-          2. fallback 完整 comm 匹配：要求 comm 严格 == "save-review.sh"（防止
-             evil-save-review.sh / xsave-review.sh 等命名伪造）
+        通道（F-012 round-3 简化）：
+          - **SAVE_REVIEW_PID env 比对（唯一通道）**：save-review.sh:18 启动时 export
+            SAVE_REVIEW_PID=$$，本函数比对 ppid 链中任一层 PID 与该值是否相等。
+          - **不再尝试 comm 字符串匹配**：save-review.sh:19 用 `exec python3 ...` 直接替换
+            shell 进程，子进程 comm 是 python3 而非 save-review.sh，原 comm == "save-review.sh"
+            分支永远到不了（死代码）。F-012 round-3 删除该 fallback，仅保留 PID 通道。
 
-        实现细节（F-024/F-028 round-2）：
+        实现细节（F-024/F-028 round-2 沿用）：
           - subprocess.check_output(timeout=1)：避免僵尸进程下挂死
           - 单次 ps -o comm=,ppid= 同时取两字段，从 5×2 次降到 5 次 ps 调用
           - _walk_ppid_chain 生成器把链遍历逻辑抽出，便于读和测
+            （comm 字段仍 yield 出来，留给将来 macOS 截断诊断用，但不参与白名单判定）
 
-        异常路径（F-030 round-2）：
+        异常路径（F-030 round-2 沿用）：
           - 任意 OSError/CalledProcessError/TimeoutExpired/ValueError → 打 WARNING
             log 后保守拒绝（return False），让用户能区分"白名单识别故障"vs"真不在白名单"
-          - 容器场景（PPID=1）下白名单 1 必然 false，需走白名单 2 或 SAVE_REVIEW_PID
+          - 容器场景（PPID=1）下白名单 1 必然 false，需走白名单 2（CLAUDE_GATES_BYPASS）
+          - SAVE_REVIEW_PID 缺失 → target_pid=None → 链遍历全部不命中 → 走白名单 2 或 FAIL
         """
         target_pid_str = ctx.env.get("SAVE_REVIEW_PID")
         target_pid = int(target_pid_str) if (target_pid_str and target_pid_str.isdigit()) else None
+        if target_pid is None:
+            # SAVE_REVIEW_PID 未设置：白名单 1 全无意义，直接 false 让上层走白名单 2
+            return False
         try:
-            for comm, ppid in _walk_ppid_chain(os.getppid(), max_depth=5):
-                # 优先：SAVE_REVIEW_PID env 比对
-                if target_pid is not None and ppid == target_pid:
-                    return True
-                # fallback：完整 comm 匹配（防止 endswith 命名伪造）
-                if comm == "save-review.sh":
+            for _comm, ppid in _walk_ppid_chain(os.getppid(), max_depth=5):
+                if ppid == target_pid:
                     return True
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ValueError, OSError) as exc:
             print(
