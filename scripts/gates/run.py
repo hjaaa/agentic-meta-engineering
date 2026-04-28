@@ -4,12 +4,15 @@
 
 主要职责：
   1. 解析 CLI 参数 → 构造 GateContext（含 meta.yaml 解析）
-  2. 加载 registry.yaml + S1~S10 schema 校验 + 拓扑无环
+  2. 加载 registry.yaml + S1~S10 schema 校验 + 拓扑无环（实现在 registry.py）
   3. 按 trigger + applies_when 过滤 gate
   4. 拓扑排序后顺序执行；side_effects=write_state 的 plugin 通过
      ctx.staged_writes 暂存，全 pass 后由 runner 调 commit_staged_writes 落盘
-  5. 写 audit log 到 audit/<YYYY-MM>/<trigger>-<timestamp>.json
+  5. 写 audit log 到 audit/<YYYY-MM>/<trigger>-<timestamp>.json（实现在 audit.py）
   6. 计算 exit code 返回（0 通过 / 1 存在 error / 2 自身异常）
+
+F-012 round-2：registry / audit / schema 校验拆到独立模块（registry.py / audit.py），
+本文件保留 re-export 以保持测试与外部代码的向后兼容。
 
 使用：
   python scripts/gates/run.py --trigger=ci --dry-run
@@ -21,14 +24,11 @@ from __future__ import annotations
 
 import argparse
 import importlib
-import json
 import os
 import re
-import shutil
 import sys
 import traceback
-from datetime import datetime
-from graphlib import CycleError, TopologicalSorter
+from graphlib import TopologicalSorter
 from pathlib import Path
 from typing import Any, Optional
 
@@ -49,16 +49,49 @@ from plugins.base import (  # noqa: E402
     Severity,
 )
 
+# F-012 round-2：registry / audit / state_io 拆分为独立模块；本文件 re-export 保持向后兼容
+import registry as _registry  # noqa: E402
+import audit as _audit  # noqa: E402
+import state_io as _state_io  # noqa: E402
 
-REGISTRY_PATH = _PKG_ROOT / "registry.yaml"
-AUDIT_DIR = _PKG_ROOT / "audit"
-SCHEMA_VERSION = "1.0"
+# Re-export：测试和 triggers/submit.py 通过 `import run as runner_mod` 访问以下符号
+RegistryError = _registry.RegistryError
+_validate_registry_schema = _registry._validate_registry_schema
+_validate_one_entry = _registry._validate_one_entry
+_validate_write_state_plugin = _registry._validate_write_state_plugin
+ID_PATTERN = _registry.ID_PATTERN
+SEVERITY_VALUES = _registry.SEVERITY_VALUES
+SIDE_EFFECTS_VALUES = _registry.SIDE_EFFECTS_VALUES
+REGISTRY_PATH = _registry.REGISTRY_PATH
 
-ID_PATTERN = r"^GATE-[A-Z][A-Z0-9-]+$"
-SEVERITY_VALUES = {"error", "warning", "info"}
-SIDE_EFFECTS_VALUES = {"none", "write_state"}
 
-# 安全校验：requirement_id 白名单正则，防止路径穿越（F-001 review 建议，来源：code-F-001-001.json）
+def load_registry(
+    path: Optional[Path] = None,
+    validate_only_ids: Optional[set[str]] = None,
+) -> dict[str, Any]:
+    """re-export 包装：把 run 模块级 REGISTRY_PATH（被测试 monkeypatch 的入口）
+    传给底层 registry.load_registry。
+
+    F-012 round-2：测试代码通过 `monkeypatch.setattr(runner_mod, "REGISTRY_PATH", x)`
+    改路径；本包装确保 monkeypatch 真正生效（否则 registry.py 模块级 REGISTRY_PATH
+    保持原值，覆盖被忽略）。
+    """
+    return _registry.load_registry(
+        path=path if path is not None else REGISTRY_PATH,
+        validate_only_ids=validate_only_ids,
+    )
+
+write_audit = _audit.write_audit
+_build_audit = _audit.build_audit
+_calc_exit_code = _audit.calc_exit_code
+AUDIT_DIR = _audit.AUDIT_DIR
+SCHEMA_VERSION = _audit.SCHEMA_VERSION
+
+_stash_state = _state_io.stash_state
+_restore_state = _state_io.restore_state
+_cleanup_snapshots = _state_io.cleanup_snapshots
+
+# 安全校验：requirement_id 白名单正则，防止路径穿越（F-001 review 建议）
 _REQ_ID_PATTERN = r"^REQ-\d{4}-\d{3}$"
 
 
@@ -68,10 +101,6 @@ class GateFailed(Exception):
     def __init__(self, report: Report) -> None:
         super().__init__(f"{report.gate_id} failed: {report.message}")
         self.report = report
-
-
-class RegistryError(Exception):
-    """registry.yaml 加载或 schema 校验失败。退出码 2。"""
 
 
 # ====================== CLI ======================
@@ -91,171 +120,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     return p.parse_args(argv)
 
 
-# ====================== registry 加载 + schema 校验 ======================
-
-
-def load_registry(
-    path: Optional[Path] = None,
-    validate_only_ids: Optional[set[str]] = None,
-) -> dict[str, Any]:
-    """加载 registry.yaml，跑 S1~S10 校验，返回 dict（含 gates / escape_hatches）。
-
-    参数：
-      path              — registry.yaml 路径；None 时回退到模块级 REGISTRY_PATH（保证测试期 monkeypatch 生效）。
-      validate_only_ids — 仅对这些 gate id 跑 S2 import 校验（pre-tool-use 高频路径冷启动优化，
-                          F-018 review 建议）；None 表示全量校验。S1/S5/S6/S7 仍跑全量，
-                          保证依赖图与 schema 完整性不被绕过。
-
-    场景：
-      - make gates-validate / ci 路径：validate_only_ids=None → 全量 12 个 plugin import + 拓扑
-      - pre-tool-use Hook 路径：validate_only_ids={GATE-PROTECT-BRANCH, GATE-BASH-WRITE-PROTECT}
-        → 仅 import 这两个 plugin，省去 ~12ms 冷启动开销
-    """
-    if path is None:
-        path = REGISTRY_PATH
-    if not path.exists():
-        raise RegistryError(f"registry.yaml 不存在: {path}")
-    try:
-        with path.open("r", encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
-    except yaml.YAMLError as exc:
-        raise RegistryError(f"registry.yaml YAML 解析失败: {exc}") from exc
-
-    if not isinstance(data, dict):
-        raise RegistryError("registry.yaml 顶层必须是 mapping")
-    gates = data.get("gates") or []
-    if not isinstance(gates, list):
-        raise RegistryError("registry.yaml gates 字段必须是 list")
-
-    _validate_registry_schema(gates, validate_only_ids=validate_only_ids)
-    return data
-
-
-def _validate_registry_schema(
-    gates: list[dict[str, Any]],
-    validate_only_ids: Optional[set[str]] = None,
-) -> None:
-    """跑 S1~S10 schema 校验，违反即抛 RegistryError。
-
-    validate_only_ids 非 None 时，S2 import + S7 rollback 检查跳过白名单外 gate；
-    其他校验（S1/S3/S4/S5/S6/S8/S9/S10）仍跑全量，保证依赖图与字段完整性。
-    """
-    seen_ids: set[str] = set()
-    id_to_entry: dict[str, dict[str, Any]] = {}
-
-    for entry in gates:
-        if not isinstance(entry, dict):
-            raise RegistryError(f"gate entry 必须是 mapping，实际: {type(entry).__name__}")
-        gid = entry.get("id")
-        # S1：id 正则 + 全局唯一（全量跑）
-        if not isinstance(gid, str) or not re.match(ID_PATTERN, gid):
-            raise RegistryError(f"S1 违反：id={gid!r} 不符合 {ID_PATTERN}")
-        if gid in seen_ids:
-            raise RegistryError(f"S1 违反：id={gid!r} 重复")
-        seen_ids.add(gid)
-        id_to_entry[gid] = entry
-
-        # F-018：S2 import 是冷启动开销大头，pre-tool-use 路径只 import 候选 gate
-        skip_import = validate_only_ids is not None and gid not in validate_only_ids
-        _validate_one_entry(entry, skip_import=skip_import)
-
-    # S5：dependencies 引用必须存在（全量跑，避免悬挂依赖）
-    for gid, entry in id_to_entry.items():
-        for dep in entry.get("dependencies") or []:
-            if dep not in seen_ids:
-                raise RegistryError(f"S5 违反：{gid} 的依赖 {dep!r} 不存在于 gates")
-
-    # S6：dependencies 拓扑无环（全量跑，环检测需要完整图）
-    graph = {gid: set(entry.get("dependencies") or []) for gid, entry in id_to_entry.items()}
-    sorter = TopologicalSorter(graph)
-    try:
-        sorter.prepare()
-    except CycleError as exc:
-        raise RegistryError(f"S6 违反：dependencies 拓扑出现环 {exc.args[1]}") from exc
-
-    # S7：side_effects=write_state 必须实现 rollback —— 同步遵循 validate_only_ids 白名单
-    # （白名单外 plugin 跳过 import，避免触发 plugin 模块加载）
-    for gid, entry in id_to_entry.items():
-        if entry.get("side_effects") == "write_state":
-            if validate_only_ids is not None and gid not in validate_only_ids:
-                continue
-            _validate_write_state_plugin(gid, entry["plugin"])
-
-
-def _validate_one_entry(entry: dict[str, Any], skip_import: bool = False) -> None:
-    """单 gate 条目的 S2/S3/S4/S8/S9/S10 校验。
-
-    skip_import=True 时跳过 S2 的 importlib.import_module + GATE_CLASS 检查，
-    仅做纯字符串字段校验（plugin 必填 + plugin_path 文件存在）。
-    用于 pre-tool-use 高频路径冷启动优化（F-018），白名单外 gate 不触发模块加载。
-    """
-    gid = entry["id"]
-    plugin_name = entry.get("plugin")
-
-    # S2：plugin 模块存在且可导入（导出 Gate 子类）
-    if not isinstance(plugin_name, str) or not plugin_name:
-        raise RegistryError(f"S2 违反：{gid} 的 plugin 字段必填且为字符串")
-    plugin_path = _PKG_ROOT / "plugins" / f"{plugin_name}.py"
-    if not plugin_path.exists():
-        raise RegistryError(f"S2 违反：{gid} 的 plugins/{plugin_name}.py 不存在")
-    if not skip_import:
-        try:
-            mod = importlib.import_module(f"plugins.{plugin_name}")
-        except Exception as exc:  # noqa: BLE001
-            raise RegistryError(f"S2 违反：plugins.{plugin_name} import 失败: {exc}") from exc
-        cls = getattr(mod, "GATE_CLASS", None)
-        if cls is None or not isinstance(cls, type) or not issubclass(cls, Gate):
-            raise RegistryError(f"S2 违反：plugins/{plugin_name}.py 未导出 GATE_CLASS（Gate 子类）")
-
-    # S3：triggers 白名单
-    triggers = entry.get("triggers") or []
-    if not isinstance(triggers, list) or not triggers:
-        raise RegistryError(f"S3 违反：{gid} triggers 必须是非空 list")
-    for t in triggers:
-        if t not in TRIGGERS:
-            raise RegistryError(f"S3 违反：{gid} 含未知 trigger={t!r}（白名单 {sorted(TRIGGERS)}）")
-
-    # S4：severity 枚举
-    if entry.get("severity") not in SEVERITY_VALUES:
-        raise RegistryError(f"S4 违反：{gid} severity 必须 ∈ {sorted(SEVERITY_VALUES)}")
-
-    # side_effects 枚举
-    if entry.get("side_effects", "none") not in SIDE_EFFECTS_VALUES:
-        raise RegistryError(f"{gid} side_effects 必须 ∈ {sorted(SIDE_EFFECTS_VALUES)}")
-
-    # S8：tests.fixtures 至少 [pass, fail, skip]
-    fixtures = ((entry.get("tests") or {}).get("fixtures")) or []
-    if not {"pass", "fail", "skip"}.issubset(set(fixtures)):
-        raise RegistryError(f"S8 违反：{gid} tests.fixtures 必须至少包含 [pass, fail, skip]")
-
-    # S9：applies_when.requires 必须以 meta. 前缀
-    requires = ((entry.get("applies_when") or {}).get("requires")) or []
-    for item in requires:
-        if not isinstance(item, str) or not item.startswith("meta."):
-            raise RegistryError(f"S9 违反：{gid} applies_when.requires 项 {item!r} 必须以 'meta.' 开头")
-
-    # S10：escape_hatch.cli_flag 限定 trigger
-    eh = entry.get("escape_hatch") or {}
-    cli_flag = eh.get("cli_flag")
-    if cli_flag is not None:
-        allowed = {"submit", "phase-transition"}
-        if not (set(triggers) & allowed):
-            raise RegistryError(
-                f"S10 违反：{gid} escape_hatch.cli_flag={cli_flag!r} 仅 submit/phase-transition trigger 接受"
-            )
-
-
-def _validate_write_state_plugin(gid: str, plugin_name: str) -> None:
-    """S7：side_effects=write_state 的 plugin 必须重写 rollback。"""
-    mod = importlib.import_module(f"plugins.{plugin_name}")
-    cls = mod.GATE_CLASS
-    if cls.rollback is Gate.rollback:
-        raise RegistryError(
-            f"S7 违反：{gid} side_effects=write_state 但 plugins/{plugin_name}.py 未实现 rollback()"
-        )
-
-
-# ====================== context 构造 ======================
+# ====================== context 构造（F-011 round-2 拆分） ======================
 
 
 def _validate_requirement_id(req_id: str) -> bool:
@@ -266,40 +131,48 @@ def _validate_requirement_id(req_id: str) -> bool:
     return bool(re.match(_REQ_ID_PATTERN, req_id))
 
 
-def build_context(args: argparse.Namespace) -> GateContext:
-    trigger = args.trigger
-    # adapter 模式：CLI 标志，不进 ctx.trigger 枚举（fallback 到 ci 以便复用 plugin 主流程）
+def _resolve_trigger(trigger: Optional[str]) -> str:
+    """trigger 白名单校验 + adapter 模式归一化（F-011 round-2 抽出）。
+
+    返回归一化后的 trigger（adapter → 'ci'）；非法 trigger 直接 SystemExit(2)。
+    """
     if trigger == "adapter":
-        trigger = "ci"
-    elif trigger not in (*TRIGGERS, "adapter"):
-        # F-11：trigger 白名单校验，防止写 audit 到 AUDIT_DIR 之外（来源：F-002 review F-11）
+        return "ci"
+    if trigger not in (*TRIGGERS, "adapter"):
+        # F-11：trigger 白名单校验，防止写 audit 到 AUDIT_DIR 之外
         print(f"ERROR --trigger 非法：{trigger!r}，合法值 {sorted(TRIGGERS)}", file=sys.stderr)
         raise SystemExit(2)
+    return trigger
 
-    meta: dict[str, Any] = {}
-    if args.requirement_id:
-        # 路径穿越防御：校验 requirement_id 格式（F-001 review 安全建议，run.py:236）
-        if not _validate_requirement_id(args.requirement_id):
-            print(
-                f"ERROR requirement_id={args.requirement_id!r} 格式非法，必须匹配 REQ-YYYY-NNN",
-                file=sys.stderr,
-            )
-            raise SystemExit(2)
-        meta_path = _REPO_ROOT / "requirements" / args.requirement_id / "meta.yaml"
-        if meta_path.exists():
-            try:
-                with meta_path.open("r", encoding="utf-8") as f:
-                    meta = yaml.safe_load(f) or {}
-            except (yaml.YAMLError, OSError) as exc:
-                print(
-                    f"WARNING 读取 meta.yaml 失败 req={args.requirement_id}：{exc}",
-                    file=sys.stderr,
-                )
-                meta = {}
 
+def _load_meta_for_req(req_id: Optional[str]) -> dict[str, Any]:
+    """按 requirement_id 加载 meta.yaml（含路径穿越防御 + 解析失败降级）。"""
+    if not req_id:
+        return {}
+    if not _validate_requirement_id(req_id):
+        print(
+            f"ERROR requirement_id={req_id!r} 格式非法，必须匹配 REQ-YYYY-NNN",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    meta_path = _REPO_ROOT / "requirements" / req_id / "meta.yaml"
+    if not meta_path.exists():
+        return {}
+    try:
+        with meta_path.open("r", encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+    except (yaml.YAMLError, OSError) as exc:
+        print(f"WARNING 读取 meta.yaml 失败 req={req_id}：{exc}", file=sys.stderr)
+        return {}
+
+
+def _build_extra(args: argparse.Namespace, trigger: str) -> dict[str, Any]:
+    """构造 ctx.extra（F-011 round-2 抽出）。
+
+    包含 adapter 模式的 meta_paths + pre-tool-use 的 tool_name/file_path/command。
+    """
     extra: dict[str, Any] = {}
     if args.legacy and args.paths:
-        # adapter 模式下把 paths 透传给 plugin（meta_schema 取 meta_paths）
         extra["meta_paths"] = args.paths
     # pre-tool-use trigger：从环境变量取 tool_name / file_path / command
     # （由 triggers/pre_tool_use.sh 解析 stdin 后注入；不让 plugin 自己读 os.environ）
@@ -307,24 +180,39 @@ def build_context(args: argparse.Namespace) -> GateContext:
         extra.setdefault("tool_name", os.environ.get("CLAUDE_HOOK_TOOL_NAME", ""))
         extra.setdefault("file_path", os.environ.get("CLAUDE_HOOK_FILE_PATH", ""))
         extra.setdefault("command", os.environ.get("CLAUDE_HOOK_COMMAND", ""))
+    return extra
 
-    # pre-commit hook 通过 GATE_CHANGED_FILES 环境变量传入 staged 文件列表（换行分隔）
-    changed_files: list[str] = []
+
+# F-15 / F-005 round-2：env 白名单常量（plugin 通过 ctx.env 读取，禁止直接 os.environ）
+_ENV_WHITELIST = (
+    "CLAUDE_HOOK_BRANCH",
+    "CLAUDE_PROTECTED_BRANCHES",
+    "CLAUDE_GATES_BYPASS",
+    "CLAUDE_GATES_BYPASS_REASON",
+    "SAVE_REVIEW_PID",  # F-005 round-2：save-review.sh 启动时 export 的 PID
+)
+
+
+def _build_env_whitelist() -> dict[str, str]:
+    """从 os.environ 抽取白名单 key（F-011 round-2 抽出）。"""
+    return {k: os.environ[k] for k in _ENV_WHITELIST if k in os.environ}
+
+
+def _build_changed_files() -> list[str]:
+    """pre-commit hook 通过 GATE_CHANGED_FILES 环境变量传入 staged 文件列表（换行分隔）。"""
     gate_changed = os.environ.get("GATE_CHANGED_FILES", "")
-    if gate_changed:
-        changed_files = [f for f in gate_changed.splitlines() if f.strip()]
+    if not gate_changed:
+        return []
+    return [f for f in gate_changed.splitlines() if f.strip()]
 
-    # F-15：注入 env 白名单（plugin 通过 ctx.env 读取，避免隐式依赖 os.environ）
-    # 新增 H5 用到的 key：CLAUDE_GATES_BYPASS / CLAUDE_GATES_BYPASS_REASON / SAVE_REVIEW_PID
-    _ENV_WHITELIST = (
-        "CLAUDE_HOOK_BRANCH",
-        "CLAUDE_PROTECTED_BRANCHES",
-        "CLAUDE_GATES_BYPASS",
-        "CLAUDE_GATES_BYPASS_REASON",
-        # F-005 round-2：save-review.sh 启动时 export 的 PID，bash_write_protect 用此比对 ppid
-        "SAVE_REVIEW_PID",
-    )
-    env = {k: os.environ[k] for k in _ENV_WHITELIST if k in os.environ}
+
+def build_context(args: argparse.Namespace) -> GateContext:
+    """构造 GateContext（F-011 round-2 拆分：trigger / meta / extra / env / changed_files 子例程）。"""
+    trigger = _resolve_trigger(args.trigger)
+    meta = _load_meta_for_req(args.requirement_id)
+    extra = _build_extra(args, trigger)
+    changed_files = _build_changed_files()
+    env = _build_env_whitelist()
 
     return GateContext(
         trigger=trigger,
@@ -342,7 +230,7 @@ def build_context(args: argparse.Namespace) -> GateContext:
 # ====================== 过滤 + 拓扑 ======================
 
 
-def filter_gates(registry: dict[str, Any], ctx: GateContext) -> list[dict[str, Any]]:
+def filter_gates(registry_data: dict[str, Any], ctx: GateContext) -> list[dict[str, Any]]:
     """根据 ctx.trigger 过滤 gate（applies_when 内更精细的条件留给 F-002 实现）。
 
     adapter 模式：用 ctx.cli_flags['legacy'] 指定旧入口名（如 check-meta），
@@ -351,7 +239,7 @@ def filter_gates(registry: dict[str, Any], ctx: GateContext) -> list[dict[str, A
     out: list[dict[str, Any]] = []
     legacy = ctx.cli_flags.get("legacy")
     legacy_plugin = LEGACY_TO_PLUGIN.get(legacy) if legacy else None
-    for entry in registry.get("gates", []):
+    for entry in registry_data.get("gates", []):
         if legacy:
             if entry["plugin"] == legacy_plugin:
                 out.append(entry)
@@ -398,20 +286,18 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = parse_args(argv if argv is not None else sys.argv[1:])
 
     # F-018：pre-tool-use 高频路径冷启动优化
-    # 仅 import 该 trigger 真正会执行的 plugin（GATE-PROTECT-BRANCH / GATE-BASH-WRITE-PROTECT），
-    # 跳过其他 9+ 个 plugin 的 importlib.import_module；全量 schema/拓扑校验仍跑
     validate_only_ids: Optional[set[str]] = None
     if args.trigger == "pre-tool-use":
         validate_only_ids = {"GATE-PROTECT-BRANCH", "GATE-BASH-WRITE-PROTECT"}
 
     try:
-        registry = load_registry(validate_only_ids=validate_only_ids)
+        registry_data = load_registry(validate_only_ids=validate_only_ids)
     except RegistryError as exc:
         print(f"ERROR registry 加载失败：{exc}", file=sys.stderr)
         return 2
 
     if args.validate_registry:
-        gate_count = len(registry.get("gates", []))
+        gate_count = len(registry_data.get("gates", []))
         print(f"OK registry 校验通过，共 {gate_count} 条 gate")
         return 0
 
@@ -420,7 +306,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         return 2
 
     ctx = build_context(args)
-    candidates = filter_gates(registry, ctx)
+    candidates = filter_gates(registry_data, ctx)
     plan = topological_sort(candidates)
 
     if args.dry_run:
@@ -437,98 +323,133 @@ def _print_dry_run(ctx: GateContext, plan: list[dict[str, Any]]) -> int:
     return 0
 
 
+# ====================== 执行 plan（F-011 round-2 拆分） ======================
+
+
 def _execute_plan(ctx: GateContext, plan: list[dict[str, Any]], strict: bool) -> int:
     """执行 plan：precheck → run → 暂存事务化 commit / fail 路径 rollback + restore。
 
     H1 事务化（F-002 round-2 修复）：
       commit_staged_writes 抛异常时统一走 GateFailed 路径——回滚已 commit 的 plugin、
       恢复 meta.yaml 磁盘快照、清空 staged_writes，避免 partial-commit 持久化。
+
+    F-011 round-2：把"跑 gate / commit 写态 / GateFailed 处理"三段抽到子例程。
     """
-    # 仅当存在 write_state plugin 时才创建快照，避免污染工作区
     needs_stash = any(e.get("side_effects") == "write_state" for e in plan)
     snapshots = _stash_state(ctx) if needs_stash else {}
     executed: list[Gate] = []
     reports: list[Report] = []
     rollback_failed = False
-    # 记录当前正在执行的 plugin 名，用于 generic Exception 日志上下文（F-001 review 建议）
     _current_plugin: list[str] = ["<unknown>"]
 
     try:
-        for entry in plan:
-            _current_plugin[0] = entry.get("plugin", "<unknown>")
-            gate = instantiate(entry)
-            _log_gate_start(ctx, gate.id)
-            skip = gate.precheck(ctx)
-            if skip:
-                reports.append(Report(gate.id, Decision.SKIP, message=skip.reason))
-                continue
-            executed.append(gate)
-            r = gate.run(ctx)
-            reports.append(r)
-            sev = Severity(entry["severity"])
-            if r.decision == Decision.FAIL and sev == Severity.ERROR:
-                raise GateFailed(r)
-        # 全部 pass：commit 暂存写
-        # F-002：commit 阶段任意异常 → 转 GateFailed 走 rollback + restore，承诺事务原子性
-        for g in executed:
-            if getattr(g, "side_effects", "none") == "write_state":
-                _current_plugin[0] = g.id
-                try:
-                    g.commit_staged_writes(ctx)
-                except Exception as commit_exc:  # noqa: BLE001
-                    print(
-                        f"ERROR gate-commit-failed plugin={g.id} "
-                        f"trigger={ctx.trigger} req={ctx.requirement_id or '-'}: {commit_exc}",
-                        file=sys.stderr,
-                    )
-                    raise GateFailed(
-                        Report(
-                            gate_id=g.id,
-                            decision=Decision.FAIL,
-                            code="GATE-COMMIT-FAILED",
-                            message=f"commit_staged_writes 抛异常: {commit_exc}",
-                            fix_hint="检查 meta.yaml 写权限、磁盘空间、并发锁竞争；可重试该 trigger",
-                        )
-                    ) from commit_exc
-        # F-13 carry-over：commit 完成后清理 .bak 备份（避免污染工作区）
+        _run_gates(ctx, plan, executed, reports, _current_plugin)
+        _commit_write_state(ctx, executed, _current_plugin)
         _cleanup_snapshots(snapshots)
     except GateFailed:
-        for g in reversed(executed):
-            try:
-                g.rollback(ctx)
-            except Exception as ex:  # noqa: BLE001
-                rollback_failed = True
-                print(f"ERROR gate-rollback-failed: {g.id}: {ex}", file=sys.stderr)
-        _restore_state(ctx, snapshots)
-        ctx.staged_writes.clear()
+        rollback_failed = _handle_gate_failed(ctx, executed, snapshots)
     except Exception as exc:  # noqa: BLE001
-        # plugin 内部未捕获异常：当作 runner 自身异常退出 2
-        # F-033：写 audit log 后再退，避免审计黑洞（partial-commit 也需留痕）
-        print(
-            f"ERROR plugin 执行异常 plugin={_current_plugin[0]} "
-            f"trigger={ctx.trigger} req={ctx.requirement_id or '-'}: {exc}",
-            file=sys.stderr,
-        )
-        if not os.environ.get("CI"):
-            # 本地调试：完整堆栈有助于排查
-            traceback.print_exc(file=sys.stderr)
-        _restore_state(ctx, snapshots)
-        ctx.staged_writes.clear()
-        # F-033：异常路径补 audit log，含 RUNNER-PLUGIN-EXCEPTION 占位条目
-        try:
-            err_report = Report(
-                gate_id=_current_plugin[0],
-                decision=Decision.FAIL,
-                code="RUNNER-PLUGIN-EXCEPTION",
-                message=f"plugin 抛未捕获异常: {exc}",
-            )
-            write_audit(_build_audit(ctx, reports + [err_report], rollback_failed=False))
-        except Exception as audit_exc:  # noqa: BLE001
-            print(f"ERROR audit log 异常路径写入失败: {audit_exc}", file=sys.stderr)
-        return 2
+        return _handle_runner_exception(ctx, snapshots, reports, _current_plugin[0], exc)
 
     write_audit(_build_audit(ctx, reports, rollback_failed))
     return _calc_exit_code(reports, plan, strict)
+
+
+def _run_gates(
+    ctx: GateContext,
+    plan: list[dict[str, Any]],
+    executed: list[Gate],
+    reports: list[Report],
+    current_plugin: list[str],
+) -> None:
+    """跑每个 gate 的 precheck + run；任一 error 级 FAIL 抛 GateFailed（F-011 round-2 抽出）。"""
+    for entry in plan:
+        current_plugin[0] = entry.get("plugin", "<unknown>")
+        gate = instantiate(entry)
+        _log_gate_start(ctx, gate.id)
+        skip = gate.precheck(ctx)
+        if skip:
+            reports.append(Report(gate.id, Decision.SKIP, message=skip.reason))
+            continue
+        executed.append(gate)
+        r = gate.run(ctx)
+        reports.append(r)
+        sev = Severity(entry["severity"])
+        if r.decision == Decision.FAIL and sev == Severity.ERROR:
+            raise GateFailed(r)
+
+
+def _commit_write_state(ctx: GateContext, executed: list[Gate], current_plugin: list[str]) -> None:
+    """全 pass 后 commit 各 write_state plugin；任一异常转 GateFailed（F-011 round-2 抽出）。"""
+    for g in executed:
+        if getattr(g, "side_effects", "none") != "write_state":
+            continue
+        current_plugin[0] = g.id
+        try:
+            g.commit_staged_writes(ctx)
+        except Exception as commit_exc:  # noqa: BLE001
+            print(
+                f"ERROR gate-commit-failed plugin={g.id} "
+                f"trigger={ctx.trigger} req={ctx.requirement_id or '-'}: {commit_exc}",
+                file=sys.stderr,
+            )
+            raise GateFailed(
+                Report(
+                    gate_id=g.id,
+                    decision=Decision.FAIL,
+                    code="GATE-COMMIT-FAILED",
+                    message=f"commit_staged_writes 抛异常: {commit_exc}",
+                    fix_hint="检查 meta.yaml 写权限、磁盘空间、并发锁竞争；可重试该 trigger",
+                )
+            ) from commit_exc
+
+
+def _handle_gate_failed(ctx: GateContext, executed: list[Gate], snapshots: dict[str, Path]) -> bool:
+    """GateFailed 路径：逆序 rollback + 恢复磁盘快照 + 清空 staged_writes（F-011 round-2 抽出）。
+
+    返回：rollback_failed 标志（用于 audit log）。
+    """
+    rollback_failed = False
+    for g in reversed(executed):
+        try:
+            g.rollback(ctx)
+        except Exception as ex:  # noqa: BLE001
+            rollback_failed = True
+            print(f"ERROR gate-rollback-failed: {g.id}: {ex}", file=sys.stderr)
+    _restore_state(ctx, snapshots)
+    ctx.staged_writes.clear()
+    return rollback_failed
+
+
+def _handle_runner_exception(
+    ctx: GateContext,
+    snapshots: dict[str, Path],
+    reports: list[Report],
+    plugin_name: str,
+    exc: Exception,
+) -> int:
+    """plugin 抛未捕获异常：恢复磁盘 + 写 audit 后返 2（F-011/F-033 round-2）。"""
+    print(
+        f"ERROR plugin 执行异常 plugin={plugin_name} "
+        f"trigger={ctx.trigger} req={ctx.requirement_id or '-'}: {exc}",
+        file=sys.stderr,
+    )
+    if not os.environ.get("CI"):
+        traceback.print_exc(file=sys.stderr)
+    _restore_state(ctx, snapshots)
+    ctx.staged_writes.clear()
+    # F-033：异常路径补 audit log，含 RUNNER-PLUGIN-EXCEPTION 占位条目，避免审计黑洞
+    try:
+        err_report = Report(
+            gate_id=plugin_name,
+            decision=Decision.FAIL,
+            code="RUNNER-PLUGIN-EXCEPTION",
+            message=f"plugin 抛未捕获异常: {exc}",
+        )
+        write_audit(_build_audit(ctx, reports + [err_report], rollback_failed=False))
+    except Exception as audit_exc:  # noqa: BLE001
+        print(f"ERROR audit log 异常路径写入失败: {audit_exc}", file=sys.stderr)
+    return 2
 
 
 def _log_gate_start(ctx: GateContext, gate_id: str) -> None:
@@ -538,139 +459,6 @@ def _log_gate_start(ctx: GateContext, gate_id: str) -> None:
         f"requirement_id={ctx.requirement_id or '-'}",
         file=sys.stderr,
     )
-
-
-# ====================== 状态快照（事务化基础） ======================
-
-
-def _stash_state(ctx: GateContext) -> dict[str, Path]:
-    """对受保护文件做快照备份（本 PR 仅备份 meta.yaml；F-002 起按 plugin 写态扩展）。
-
-    requirement_id 在 build_context 阶段已校验，此处直接使用。
-    """
-    snapshots: dict[str, Path] = {}
-    if ctx.requirement_id:
-        meta_path = _REPO_ROOT / "requirements" / ctx.requirement_id / "meta.yaml"
-        if meta_path.exists():
-            backup = meta_path.with_suffix(".yaml.bak")
-            shutil.copy2(meta_path, backup)
-            snapshots[str(meta_path)] = backup
-    return snapshots
-
-
-def _restore_state(ctx: GateContext, snapshots: dict[str, Path]) -> None:
-    """fail 路径恢复快照；restore 后清理 .bak。"""
-    for original, backup in snapshots.items():
-        try:
-            shutil.copy2(backup, original)
-        except Exception as exc:  # noqa: BLE001
-            print(f"ERROR restore_state failed: {original}: {exc}", file=sys.stderr)
-        try:
-            backup.unlink(missing_ok=True)
-        except Exception as exc:  # noqa: BLE001
-            print(
-                f"WARNING restore_state .bak 清理失败 backup={backup}: {exc}",
-                file=sys.stderr,
-            )
-
-
-def _cleanup_snapshots(snapshots: dict[str, Path]) -> None:
-    """F-13 carry-over：全 pass 路径下清理 .bak 备份（避免污染工作区）。
-
-    与 _restore_state 区别：本函数只清理，不恢复。
-    每个 backup 单独处理；失败打 WARNING 不静默（来源：F-002 review-003 经验）。
-    """
-    for original, backup in snapshots.items():
-        try:
-            backup.unlink(missing_ok=True)
-        except Exception as exc:  # noqa: BLE001
-            print(
-                f"WARNING gate-cleanup-snapshot 失败 original={original} backup={backup}: {exc}",
-                file=sys.stderr,
-            )
-
-
-# ====================== audit log（审计日志） ======================
-
-
-def _build_audit(ctx: GateContext, reports: list[Report], rollback_failed: bool) -> dict[str, Any]:
-    """构造 audit log dict。
-
-    F-008 round-2：env-bypass 路径的 PASS 单独记到 bypassed 字段，记录 reason，
-    保证 D-005「reason + audit 已足以追责」决策落地（普通 PASS 仍仅记 gate_id）。
-    """
-    passed: list[str] = []
-    bypassed: list[dict[str, Any]] = []
-    for r in reports:
-        if r.decision != Decision.PASS:
-            continue
-        vars_ = r.vars or {}
-        if vars_.get("whitelisted") == "env-bypass":
-            bypassed.append({
-                "gate_id": r.gate_id,
-                "reason": vars_.get("reason", ""),
-                "whitelisted": "env-bypass",
-            })
-        else:
-            passed.append(r.gate_id)
-    failed = [
-        {"gate_id": r.gate_id, "code": r.code, "message": r.message, "fix_hint": r.fix_hint}
-        for r in reports if r.decision == Decision.FAIL
-    ]
-    skipped = [{"gate_id": r.gate_id, "reason": r.message} for r in reports if r.decision == Decision.SKIP]
-    return {
-        "schema_version": SCHEMA_VERSION,
-        "trigger": ctx.trigger,
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "actor": ctx.actor,
-        "requirement_id": ctx.requirement_id,
-        "from_phase": ctx.from_phase,
-        "to_phase": ctx.to_phase,
-        "passed": passed,
-        "bypassed": bypassed,
-        "failed": failed,
-        "skipped": skipped,
-        "escape_used": None,
-        "rollback_failed": rollback_failed,
-        "exit_code": 1 if failed else 0,
-    }
-
-
-def write_audit(audit: dict[str, Any]) -> Path:
-    """写 audit JSON 到 audit/<YYYY-MM>/<trigger>-<timestamp>.json。"""
-    ts = datetime.now()
-    sub = AUDIT_DIR / ts.strftime("%Y-%m")
-    sub.mkdir(parents=True, exist_ok=True)
-    fname = f"{audit['trigger']}-{ts.strftime('%Y%m%d-%H%M%S-%f')}.json"
-    path = sub / fname
-    with path.open("w", encoding="utf-8") as f:
-        json.dump(audit, f, ensure_ascii=False, indent=2)
-        f.flush()
-        os.fsync(f.fileno())
-    return path
-
-
-# ====================== exit code 计算 ======================
-
-
-def _calc_exit_code(reports: list[Report], plan: list[dict[str, Any]], strict: bool) -> int:
-    """0 通过 / 1 存在 error 级 fail（或 strict 下含 warning fail）。"""
-    sev_by_id = {e["id"]: e["severity"] for e in plan}
-    has_error_fail = False
-    has_warning_fail = False
-    for r in reports:
-        if r.decision != Decision.FAIL:
-            continue
-        sev = sev_by_id.get(r.gate_id, "error")
-        if sev == "error":
-            has_error_fail = True
-        elif sev == "warning":
-            has_warning_fail = True
-    if has_error_fail:
-        return 1
-    if strict and has_warning_fail:
-        return 1
-    return 0
 
 
 if __name__ == "__main__":

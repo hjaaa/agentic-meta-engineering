@@ -238,6 +238,42 @@ def test_should_not_partial_write_when_r005_alone_fails(tmp_path, monkeypatch):
     assert any(p == "meta.yaml" for (p, _k, _v) in ctx.staged_writes)
 
 
+# ====================== F-027 round-2：retry 幂等约束 ======================
+
+
+def test_should_not_accumulate_stale_when_retried(tmp_path, monkeypatch):
+    """given_drift_rollback_then_rerun_when_run_again_then_staged_writes_size_eq_1。
+
+    F-027 round-2：覆盖 retry 场景——drift→rollback→重新 run 后 staged_writes 应仍是
+    每个 stale 暂存项一条，不累积重复。当前实现（rollback 清空 + R005 每次重新计算）
+    天然满足，但缺测试约束；本用例固化此幂等行为，避免未来重构悄破坏。
+    """
+    req_id, req_dir, meta = _setup_drift(tmp_path, monkeypatch)
+    gate = plugin_mod.ReviewVerdictGate()
+
+    # 第一次 run：drift 触发，staged_writes 暂存 1 条
+    ctx = GateContext(
+        trigger="phase-transition",
+        requirement_id=req_id,
+        to_phase="task-planning",
+        meta=meta,
+    )
+    gate.run(ctx)
+    first_count = len([s for s in ctx.staged_writes if s[0] == "meta.yaml"])
+    assert first_count == 1, f"首次 run 应只暂存 1 条 stale，实际 {first_count}"
+
+    # 模拟 runner fail 路径：rollback 清空暂存
+    gate.rollback(ctx)
+    assert len(ctx.staged_writes) == 0, "rollback 后 staged_writes 应空"
+
+    # 第二次 run：重新触发 drift（meta.yaml 未落盘 → drift 仍存在）
+    gate.run(ctx)
+    second_count = len([s for s in ctx.staged_writes if s[0] == "meta.yaml"])
+    assert second_count == 1, (
+        f"retry 后 staged_writes 应仍是 1 条（不累积），实际 {second_count}"
+    )
+
+
 # ====================== F-13 carry-over：全 pass 后 .bak 清理 ======================
 
 
