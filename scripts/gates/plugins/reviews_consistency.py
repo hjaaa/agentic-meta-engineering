@@ -17,11 +17,15 @@ precheck：
   - changed_files 中无 meta.yaml / reviews/*.json 时直接 Skip
 
 side_effects：none（只做读检查，不写文件）
+
+注意：本 gate 仅在 pre-commit 路径生效（registry triggers=[pre-commit]）。
+CI 路径（--trigger=ci）不运行本 gate；绕过 --no-verify 后不会有 CI 兜底。
 """
 from __future__ import annotations
 
 import re
 import subprocess
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -68,10 +72,27 @@ class ReviewsConsistencyGate(Gate):
         反向：reviews/*.json 被改     → 同目录 meta.yaml 必须同步 staged。
 
         失败场景：
+          REVIEWS-GIT-FAIL   — git 命令失败，无法获取 staged 文件列表
           REVIEWS-META-ONLY  — 只改了 meta.yaml.reviews 但无对应 reviews/*.json
           REVIEWS-JSON-ONLY  — 只改了 reviews/*.json 但无对应 meta.yaml
         """
-        staged = _get_staged_files()
+        # 优先复用 precheck 中已解析的 ctx.changed_files，避免二次调 git（数据源统一）
+        staged: Optional[list[str]]
+        if ctx.changed_files:
+            staged = list(ctx.changed_files)
+        else:
+            staged = _get_staged_files()
+
+        # git 命令失败时 _get_staged_files 返回 None，转 FAIL 报告
+        if staged is None:
+            return Report(
+                gate_id=self.id,
+                decision=Decision.FAIL,
+                code="REVIEWS-GIT-FAIL",
+                message="无法获取 staged 文件列表（git 命令失败）",
+                fix_hint="确认 git 已安装且在仓库根目录运行",
+            )
+
         meta_changed = [f for f in staged if _META_PATTERN.match(f)]
         reviews_changed = [f for f in staged if _REVIEWS_JSON_PATTERN.match(f)]
 
@@ -97,7 +118,7 @@ class ReviewsConsistencyGate(Gate):
                     fix_hint=(
                         "meta.yaml.reviews 必须由 save-review.sh 自动维护，不允许手工 Edit。\n"
                         "如确实需要更新 review 记录，请让 reviewer Agent 重新评审（supersedes 链）；\n"
-                        "紧急绕过：git commit --no-verify（CI 仍会拦截）"
+                        "紧急绕过：git commit --no-verify（仅本地跳过；CI 不再兜底，请确认变更安全）"
                     ),
                     vars={"meta_path": meta_path, "req_dir": req_dir},
                 )
@@ -130,10 +151,11 @@ class ReviewsConsistencyGate(Gate):
         )
 
 
-def _get_staged_files() -> list[str]:
+def _get_staged_files() -> Optional[list[str]]:
     """获取 staged 文件列表（git diff --cached --name-only）。
 
-    失败时返回空列表，不抛出（让调用方做 skip 处理）。
+    返回 None 表示 git 命令失败（FileNotFoundError/OSError），调用方须转 FAIL Report。
+    正常时返回文件路径列表（可为空列表）。
     """
     try:
         result = subprocess.run(
@@ -143,14 +165,19 @@ def _get_staged_files() -> list[str]:
             check=False,
         )
         return [f for f in result.stdout.splitlines() if f.strip()]
-    except (FileNotFoundError, OSError):
-        return []
+    except (FileNotFoundError, OSError) as exc:
+        print(
+            f"WARNING GATE-REVIEWS-CONSISTENCY _get_staged_files git diff --cached 失败: {exc}",
+            file=sys.stderr,
+        )
+        return None  # None = 失败信号，区别于空列表（无 staged 文件）
 
 
 def _has_reviews_diff(meta_path: str) -> bool:
     """检查 meta.yaml 的 staged diff 中是否含 reviews: 段改动。
 
     扫描 git diff --cached -U0 输出，匹配 reviews 子键白名单。
+    git 命令失败时保守返回 True（触发后续一致性校验，避免假 PASS）。
     """
     try:
         result = subprocess.run(
@@ -159,8 +186,21 @@ def _has_reviews_diff(meta_path: str) -> bool:
             text=True,
             check=False,
         )
-    except (FileNotFoundError, OSError):
-        return False
+    except (FileNotFoundError, OSError) as exc:
+        print(
+            f"WARNING GATE-REVIEWS-CONSISTENCY _has_reviews_diff subprocess 启动失败: {exc}",
+            file=sys.stderr,
+        )
+        return True  # 保守：触发后续校验
+
+    # returncode != 0 表示 git 命令本身失败（如非 git 仓库），保守触发后续校验
+    if result.returncode != 0:
+        print(
+            f"WARNING GATE-REVIEWS-CONSISTENCY _has_reviews_diff returncode={result.returncode}"
+            f" stderr={result.stderr.strip()[:200]}",
+            file=sys.stderr,
+        )
+        return True  # 保守：触发后续校验
 
     for line in result.stdout.splitlines():
         if _REVIEWS_SUBKEYS.match(line):

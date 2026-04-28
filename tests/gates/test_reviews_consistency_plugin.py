@@ -4,7 +4,7 @@
 """
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from plugins.base import Decision, GateContext
 from plugins import reviews_consistency as plugin_mod
@@ -186,3 +186,72 @@ def test_reviews_consistency_different_req_dirs_are_checked_independently():
         report = gate.run(ctx)
     # REQ-001 正向失败（无对应 reviews json）或 REQ-002 反向失败（无对应 meta）
     assert report.decision == Decision.FAIL
+
+
+# ====================== F-r2-01/02/06 补充用例 ======================
+
+
+def test_run_returns_fail_when_get_staged_files_returns_none():
+    """given_get_staged_files_returns_none_when_run_then_fail_with_git_fail_code。
+
+    _get_staged_files 返回 None（git 命令失败）时，run() 应返回 REVIEWS-GIT-FAIL。
+    ctx.changed_files 为空，迫使 run() 调用 _get_staged_files。
+    """
+    gate = plugin_mod.ReviewsConsistencyGate()
+    # 包含相关文件，让 precheck 不 skip；ctx.changed_files 用于 precheck，run 内用 _get_staged_files
+    ctx = _make_ctx(changed_files=["requirements/REQ-2026-002/meta.yaml"])
+    # ctx.changed_files 非空时 run() 优先使用它，需清空以走 _get_staged_files 路径
+    ctx_empty = _make_ctx(changed_files=[])
+    with patch.object(plugin_mod, "_get_staged_files", return_value=None):
+        report = gate.run(ctx_empty)
+    assert report.decision == Decision.FAIL
+    assert report.code == "REVIEWS-GIT-FAIL"
+    assert "git" in (report.fix_hint or "").lower() or "git" in (report.message or "").lower()
+
+
+def test_run_uses_ctx_changed_files_when_available():
+    """given_ctx_changed_files_set_when_run_then_no_git_call。
+
+    ctx.changed_files 非空时，run() 直接使用而不调 git，
+    确保数据源与 precheck 统一（F-r2-02 修复验证）。
+    """
+    gate = plugin_mod.ReviewsConsistencyGate()
+    staged = [
+        "requirements/REQ-2026-002/meta.yaml",
+        "requirements/REQ-2026-002/reviews/code-F-001-001.json",
+    ]
+    ctx = _make_ctx(staged)
+    # _get_staged_files 不应被调用
+    with patch.object(plugin_mod, "_get_staged_files") as mock_git, \
+         _mock_reviews_diff(True):
+        report = gate.run(ctx)
+    mock_git.assert_not_called()
+    assert report.decision == Decision.PASS
+
+
+def test_has_reviews_diff_returns_true_on_nonzero_returncode():
+    """given_git_returns_nonzero_when_has_reviews_diff_then_return_true_conservatively。
+
+    git diff 非零退出时，_has_reviews_diff 应保守返回 True 触发后续校验（F-r2-06 修复验证）。
+    """
+    mock_result = MagicMock()
+    mock_result.returncode = 128  # git 错误码（如非 git 仓库）
+    mock_result.stderr = "fatal: not a git repository"
+    with patch("subprocess.run", return_value=mock_result):
+        result = plugin_mod._has_reviews_diff("requirements/REQ-2026-002/meta.yaml")
+    assert result is True
+
+
+def test_fix_hint_does_not_claim_ci_will_intercept():
+    """given_meta_reviews_only_staged_when_fail_then_fix_hint_no_ci_intercept_claim。
+
+    fix_hint 不应声称'CI 仍会拦截'——本 gate 仅 pre-commit 触发，CI 不兜底（F-r2-01 修复验证）。
+    """
+    gate = plugin_mod.ReviewsConsistencyGate()
+    staged = ["requirements/REQ-2026-002/meta.yaml"]
+    ctx = _make_ctx(staged)
+    with _mock_staged(staged), _mock_reviews_diff(True):
+        report = gate.run(ctx)
+    assert report.decision == Decision.FAIL
+    # 确认 fix_hint 不再包含"CI 仍会拦截"的矛盾承诺
+    assert "CI 仍会拦截" not in (report.fix_hint or "")
