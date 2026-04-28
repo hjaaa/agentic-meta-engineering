@@ -63,5 +63,157 @@ gates:
     tests:
       fixtures: [pass, fail, skip]
 
-# 全局 escape 策略（流程级，非 gate 级）—— 本 PR 占位为空数组，F-002/F-003 按需追加。
-escape_hatches: []
+  - id: GATE-SOURCING
+    plugin: sourcing
+    severity: error
+    triggers:
+      - pre-commit
+      - phase-transition
+      - submit
+      - ci
+      - post-dev
+    applies_when:
+      changed_files:
+        - "requirements/*/artifacts/**/*.md"
+      target_phase: null
+      current_phase_in: []
+      transition: null
+      requires: []
+    dependencies: []
+    side_effects: none
+    failure_message: |
+      {gate_id} 失败：{message}
+      修复建议：{fix_hint}
+    tests:
+      fixtures: [pass, fail, skip]
+
+  - id: GATE-PLAN-FRESHNESS
+    plugin: plan_freshness
+    severity: warning
+    triggers:
+      - pre-commit
+      - phase-transition
+      - submit
+      - ci
+      - post-dev
+    applies_when:
+      changed_files:
+        - "requirements/*/plan.md"
+      target_phase: null
+      current_phase_in: []
+      transition: null
+      requires: []
+    dependencies: []
+    side_effects: none
+    failure_message: |
+      {gate_id} 失败：{message}
+      修复建议：{fix_hint}
+    tests:
+      fixtures: [pass, fail, skip]
+
+  - id: GATE-WORKSPACE-CLEAN
+    plugin: workspace_clean
+    severity: error
+    triggers:
+      - pre-commit
+      - phase-transition
+      - submit
+      - post-dev
+    applies_when:
+      changed_files: []
+      target_phase: null
+      current_phase_in: []
+      transition: null
+      requires: []
+    dependencies: []
+    side_effects: none
+    failure_message: |
+      {gate_id} 失败：{message}
+      修复建议：{fix_hint}
+    tests:
+      fixtures: [pass, fail, skip]
+
+  - id: GATE-REVIEW-VERDICT
+    plugin: review_verdict
+    severity: error
+    triggers:
+      - phase-transition
+      - submit
+      - ci
+    applies_when:
+      changed_files: []
+      target_phase: null
+      current_phase_in: []
+      transition: null
+      requires: []
+    dependencies: []
+    # F-002 阶段：R005 仍保留旧行为（直接写 meta.yaml），F-003 改造为 write_state
+    side_effects: none
+    failure_message: |
+      {gate_id} 失败：{message}
+      修复建议：{fix_hint}
+    escape_hatch:
+      cli_flag: --skip-review-verdict
+      env_var: null
+      requires_reason: true
+      audit: true
+    tests:
+      fixtures: [pass, fail, skip]
+
+  - id: GATE-TRACEABILITY
+    plugin: traceability
+    severity: error
+    triggers:
+      - phase-transition
+      - submit
+    applies_when:
+      changed_files: []
+      target_phase: null
+      current_phase_in: []
+      transition: null
+      requires: []
+    dependencies: []
+    side_effects: none
+    failure_message: |
+      {gate_id} 失败：{message}
+      修复建议：{fix_hint}
+    escape_hatch:
+      cli_flag: --skip-traceability
+      env_var: null
+      requires_reason: true
+      audit: true
+    tests:
+      fixtures: [pass, fail, skip]
+
+  - id: GATE-PROTECT-BRANCH
+    plugin: protect_branch
+    severity: error
+    triggers:
+      - pre-tool-use
+    applies_when:
+      changed_files: []
+      target_phase: null
+      current_phase_in: []
+      transition: null
+      requires: []
+    dependencies: []
+    side_effects: none
+    failure_message: |
+      {gate_id} 失败：{message}
+      修复建议：{fix_hint}
+    tests:
+      fixtures: [pass, fail, skip]
+
+# 全局 escape 策略（流程级，非 gate 级）—— F-002 补全
+escape_hatches:
+  - id: legacy-requirement
+    field: meta.legacy
+    skips_gates_with_tag: [review-verdict]
+    requires_reason: true
+    audit: true
+
+  - id: force-with-blockers
+    cli_flag: --force-with-blockers
+    triggers: [submit]
+    requires_reason: true
+    audit: true
