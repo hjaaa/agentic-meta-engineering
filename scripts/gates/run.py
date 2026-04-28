@@ -416,6 +416,8 @@ def _execute_plan(ctx: GateContext, plan: list[dict[str, Any]], strict: bool) ->
             if getattr(g, "side_effects", "none") == "write_state":
                 _current_plugin[0] = g.id
                 g.commit_staged_writes(ctx)
+        # F-13 carry-over：commit 完成后清理 .bak 备份（避免污染工作区）
+        _cleanup_snapshots(snapshots)
     except GateFailed:
         for g in reversed(executed):
             try:
@@ -483,6 +485,22 @@ def _restore_state(ctx: GateContext, snapshots: dict[str, Path]) -> None:
         except Exception as exc:  # noqa: BLE001
             print(
                 f"WARNING restore_state .bak 清理失败 backup={backup}: {exc}",
+                file=sys.stderr,
+            )
+
+
+def _cleanup_snapshots(snapshots: dict[str, Path]) -> None:
+    """F-13 carry-over：全 pass 路径下清理 .bak 备份（避免污染工作区）。
+
+    与 _restore_state 区别：本函数只清理，不恢复。
+    每个 backup 单独处理；失败打 WARNING 不静默（来源：F-002 review-003 经验）。
+    """
+    for original, backup in snapshots.items():
+        try:
+            backup.unlink(missing_ok=True)
+        except Exception as exc:  # noqa: BLE001
+            print(
+                f"WARNING gate-cleanup-snapshot 失败 original={original} backup={backup}: {exc}",
                 file=sys.stderr,
             )
 

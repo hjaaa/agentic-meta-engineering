@@ -147,8 +147,8 @@ gates:
       transition: null
       requires: []
     dependencies: []
-    # F-002 阶段：R005 仍保留旧行为（直接写 meta.yaml），F-003 改造为 write_state
-    side_effects: none
+    # F-003 H1：R005 改为事务化（staged_writes），全 gate pass 后由 runner 统一 commit
+    side_effects: write_state
     failure_message: |
       {gate_id} 失败：{message}
       修复建议：{fix_hint}

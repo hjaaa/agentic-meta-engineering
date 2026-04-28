@@ -126,8 +126,23 @@ def _r004_needs_revision(meta: dict, target_phase: str, report: Report, label: s
                        f"reviews.{phase}.conclusion=needs_revision，建议先修后切阶段")
 
 
-def _r005_hash_drift(meta: dict, target_phase: str, report: Report, label: str, req: str) -> None:
-    """R005: reviewed_artifacts 中所有文件当前 sha256 必须匹配"""
+def _r005_hash_drift(
+    meta: dict,
+    target_phase: str,
+    report: Report,
+    label: str,
+    req: str,
+    staged_writes: list | None = None,
+) -> None:
+    """R005: reviewed_artifacts 中所有文件当前 sha256 必须匹配。
+
+    H1 改造（来源：detailed-design.md §3.1）：
+      - 旧行为（CLI 直跑）：drift 命中后立即写盘 meta.yaml.reviews.<phase>.stale=true
+      - 新行为（runner 事务化）：传入 staged_writes 时只 append 暂存项，不写盘
+        （格式：("meta.yaml", f"reviews.{phase}.stale", True)），
+        由 review_verdict plugin 的 commit_staged_writes 在所有 gate pass 后落盘。
+      - staged_writes 为 None ⇒ 维持旧行为，CLI 入口（scripts/lib/check_reviews.py main）走此路径。
+    """
     req_dir = REQUIREMENTS_DIR / req
     reviews = meta.get("reviews") or {}
     for phase in PHASE_REQUIREMENTS.get(target_phase, []):
@@ -149,8 +164,13 @@ def _r005_hash_drift(meta: dict, target_phase: str, report: Report, label: str, 
             for path_str, was, now in drifted:
                 report.add(label, Severity.ERROR, "R005",
                            f"reviews.{phase}: {path_str} 已变更（was {was[:8]}..., now {now[:8] if now != '<missing>' else now}），review 已 stale，请重审")
-            # 写回 stale=true
+            # 同进程 meta dict 也回填 stale=true，方便后续规则读到一致视图
             entry["stale"] = True
+            if staged_writes is not None:
+                # H1 事务化路径：只暂存待写，不立即落盘
+                staged_writes.append(("meta.yaml", f"reviews.{phase}.stale", True))
+                continue
+            # 旧行为：直接写回 stale=true（CLI 入口保留兼容）
             meta_path = req_dir / "meta.yaml"
             # 用 ruamel.yaml 保留注释（与 save_review 一致）
             with meta_path.open("r", encoding="utf-8") as f:

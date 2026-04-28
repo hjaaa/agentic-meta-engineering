@@ -3,10 +3,11 @@
 设计说明（来源：detailed-design.md §3.1 + detailed-design.md §3.4）：
   承载 R001~R007 全部规则，复用 scripts/lib/check_reviews.py 中的各 _rXXX 函数。
 
-  注意 R005 约束（来源：detailed-design.md §3.1）：
-    - F-002 阶段：R005 仍按原行为（check_reviews._r005_hash_drift 直接写 meta.yaml stale=true）
-    - F-003 阶段：改造为事务化 staged_writes 模式（side_effects=write_state）
-    - 因此本 plugin 的 side_effects=none；commit_staged_writes/rollback 均为基类空实现
+  R005 事务化（H1 改造，来源：detailed-design.md §3.1，行 246-273）：
+    - side_effects = "write_state"
+    - run() 调用 _r005_hash_drift 时传入 ctx.staged_writes，只 append (path, dot_key, value)
+    - commit_staged_writes() 在所有 gate pass 后由 runner 调用，原子写 meta.yaml
+    - rollback() 清空 ctx.staged_writes（fail 路径丢弃暂存）
 
 precheck：
   - 需要 ctx.requirement_id + ctx.to_phase 才能跑（缺失任一直接 Skip）
@@ -44,9 +45,8 @@ class ReviewVerdictGate(Gate):
     severity = Severity.ERROR
     # phase-transition 和 submit 时必须检查；ci 时扫全部需求
     triggers = {"phase-transition", "submit", "ci"}
-    # F-002 阶段：R005 仍保留直接写 meta.yaml 的旧行为，side_effects=none
-    # F-003 阶段：改造为 write_state（staged_writes 事务化）
-    side_effects = "none"
+    # H1 改造：R005 hash drift 命中 → ctx.staged_writes 暂存 → runner 全 pass 后 commit
+    side_effects = "write_state"
 
     def precheck(self, ctx: GateContext) -> Optional[Skip]:
         # ci trigger：扫全部需求，不需要 requirement_id 和 to_phase
@@ -131,13 +131,63 @@ class ReviewVerdictGate(Gate):
 
         legacy_report = LegacyReport()
         label = req_id
-        _run_r_rules(legacy_report, meta, effective_phase, label, req_id)
+        _run_r_rules(legacy_report, meta, effective_phase, label, req_id, ctx.staged_writes)
 
         # 行为契约：把 legacy 完整 render 输出到 stdout
         if legacy_report.findings():
             print(legacy_report.render())
 
         return _legacy_to_report(self.id, legacy_report)
+
+    def commit_staged_writes(self, ctx: GateContext) -> None:
+        """H1 事务化：runner 全 pass 后调用，把 ctx.staged_writes 原子写入 meta.yaml。
+
+        仅处理 path == "meta.yaml" 的暂存条目；其他 path 由对应 plugin 自己处理。
+        多个 dot_key 一次性合并写入，减少 IO。
+        """
+        if not ctx.requirement_id or not ctx.staged_writes:
+            return
+        my_writes = [(p, k, v) for (p, k, v) in ctx.staged_writes if p == "meta.yaml"]
+        if not my_writes:
+            return
+        meta_path = _REPO_ROOT / "requirements" / ctx.requirement_id / "meta.yaml"
+        if not meta_path.exists():
+            print(
+                f"WARNING GATE-REVIEW-VERDICT commit 跳过 req={ctx.requirement_id} "
+                f"meta.yaml 不存在 path={meta_path}",
+                file=sys.stderr,
+            )
+            return
+        try:
+            _commit_meta_writes(meta_path, my_writes)
+        except (OSError, yaml.YAMLError) as exc:
+            # 写盘失败：保留 staged_writes 让 runner 走 rollback 路径恢复
+            print(
+                f"ERROR GATE-REVIEW-VERDICT commit 失败 req={ctx.requirement_id} "
+                f"path={meta_path}: {exc}",
+                file=sys.stderr,
+            )
+            raise
+        # 成功后清空，避免被其他 plugin 重复消费
+        ctx.staged_writes[:] = [
+            (p, k, v) for (p, k, v) in ctx.staged_writes if p != "meta.yaml"
+        ]
+
+    def rollback(self, ctx: GateContext) -> None:
+        """H1 事务化：fail 路径丢弃 meta.yaml 暂存（runner 还会 _restore_state 恢复磁盘备份）。
+
+        异常不静默，按 F-002 review-003 经验需要 WARNING 上抛 runner 处理。
+        """
+        try:
+            ctx.staged_writes[:] = [
+                (p, k, v) for (p, k, v) in ctx.staged_writes if p != "meta.yaml"
+            ]
+        except Exception as exc:  # noqa: BLE001
+            print(
+                f"WARNING GATE-REVIEW-VERDICT rollback 异常 req={ctx.requirement_id}: {exc}",
+                file=sys.stderr,
+            )
+            raise
 
 
 def _load_req_meta(req_dir: "Path", all_warnings: list[tuple]) -> "Optional[dict]":
@@ -188,10 +238,13 @@ def _collect_findings(
       req_id       — 需求 ID（用于日志 label）
       all_errors   — 收集 error 的列表（原地追加）
       all_warnings — 收集 warning 的列表（原地追加）
+
+    ci trigger 走 _collect_findings 路径，不接 staged_writes（ci 是只读全量扫描）。
     """
     target_phase = meta.get("phase", "")
     legacy_report = LegacyReport()
-    _run_r_rules(legacy_report, meta, target_phase, req_id, req_id)
+    # ci 模式 staged_writes=None 让 _r005 走旧 CLI 行为（直接写盘 stale=true 也是历史可接受语义）
+    _run_r_rules(legacy_report, meta, target_phase, req_id, req_id, None)
     for finding in legacy_report.findings():
         if finding[1] == LegacySeverity.ERROR:
             all_errors.append(finding)
@@ -225,18 +278,25 @@ def _build_ci_report(gate_id: str, all_errors: list[tuple], all_warnings: list[t
 
 
 def _run_r_rules(
-    report: LegacyReport, meta: dict, target_phase: str, label: str, req_id: str
+    report: LegacyReport,
+    meta: dict,
+    target_phase: str,
+    label: str,
+    req_id: str,
+    staged_writes: list | None,
 ) -> None:
     """运行 R001~R007 全部规则，结果写入 report。
 
-    R005 在 F-002 阶段保留旧行为（直接写 meta.yaml stale=true），F-003 再改造为事务化。
+    H1 事务化（来源：detailed-design.md §3.1）：
+      staged_writes 非 None 时，R005 命中 drift 只 append 到暂存通道；
+      为 None 时（如 ci trigger）走 CLI 旧行为（直接写盘 stale=true）。
     """
     check_reviews._r001_review_exists(meta, target_phase, report, label)
     check_reviews._r002_schema_recheck(meta, target_phase, report, label, req_id)
     check_reviews._r003_not_rejected(meta, target_phase, report, label)
     check_reviews._r004_needs_revision(meta, target_phase, report, label)
-    # R005：F-002 阶段保留原行为（直接写 stale=true），事务化在 F-003 改造
-    check_reviews._r005_hash_drift(meta, target_phase, report, label, req_id)
+    # H1：传 staged_writes 让 R005 走事务化通道
+    check_reviews._r005_hash_drift(meta, target_phase, report, label, req_id, staged_writes)
     check_reviews._r006_supersedes_chain(meta, target_phase, report, label, req_id)
     check_reviews._r007_code_by_feature_coverage(meta, target_phase, report, label, req_id)
 
@@ -267,6 +327,40 @@ def _legacy_to_report(gate_id: str, legacy: LegacyReport) -> Report:
         decision=Decision.PASS,
         vars={"warnings": [list(f) for f in warnings]} if warnings else {},
     )
+
+
+def _commit_meta_writes(meta_path: "Path", writes: list[tuple[str, str, object]]) -> None:
+    """把多个 (path="meta.yaml", dot_key, value) 一次性原子写入 meta.yaml。
+
+    使用 ruamel.yaml round-trip 保留注释（与 save_review.py 保持一致）。
+    先写 .tmp 再 replace 保证原子性。
+    """
+    # 复用 save_review 的 ruamel 实例，避免依赖漂移
+    import save_review as _save_review  # noqa: PLC0415
+
+    with meta_path.open("r", encoding="utf-8") as f:
+        meta_rt = _save_review._meta_yaml.load(f) or {}
+
+    for _path, dot_key, value in writes:
+        _set_dot_path(meta_rt, dot_key, value)
+
+    tmp_path = meta_path.with_suffix(meta_path.suffix + ".tmp")
+    with tmp_path.open("w", encoding="utf-8") as f:
+        _save_review._meta_yaml.dump(meta_rt, f)
+    tmp_path.replace(meta_path)
+
+
+def _set_dot_path(target: dict, dot_key: str, value: object) -> None:
+    """按 dot path 在 target dict 中递归设置 value，缺失节点自动建空 dict。"""
+    parts = dot_key.split(".")
+    node: dict = target
+    for part in parts[:-1]:
+        nxt = node.get(part)
+        if not isinstance(nxt, dict):
+            nxt = {}
+            node[part] = nxt
+        node = nxt
+    node[parts[-1]] = value
 
 
 # 模块级导出
