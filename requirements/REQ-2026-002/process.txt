@@ -27,3 +27,6 @@
 2026-04-28 15:10:00 [review:rejected] code-F-003-001.json by code-quality-reviewer，score=55，2 critical (F-001 H5 exit 协议 / F-002 H1 事务化失守) + 13 major + 19 minor，F-003 status 保持 in-progress
 2026-04-28 15:12:58 [development] F-003 round 2 派发（model=opus，修 32 条 keep finding）
 2026-04-28 15:31:04 [development] F-003 round 2 接续派发（C1 partial 状态 / 应用新硬规则：先本体后调用 + 每改必验）
+2026-04-28 15:57:26 [development] F-003 round 2 完成（6 commit + 1 chore），post-dev-verify 全过，触发 round 2 /code-review
+2026-04-28 19:35:57 [review:needs_revision] code-F-003-002.json by code-quality-reviewer，score=78，supersedes -001，0 critical（F-013 降 major）+ 10 major + 24 minor；round-1 32 keep findings 全 fixed；round-3 must_fix 13 条（spec sync 4 / 复杂度拆 4 / try 边界 2 / docstring 1 / 历史索引 1 / 死代码 1 / 缺写法 1）
+2026-04-28 19:56:00 [development] F-003 round 3 派发（model=opus，修 13 条 must_fix：spec sync 4 / 复杂度拆 4 / try 边界 2 / docstring 1 / 缺写法 1 / 死代码 1 / 历史索引 1）

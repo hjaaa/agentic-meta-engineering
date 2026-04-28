@@ -45,3 +45,8 @@ runner 同时是「被改对象」与「看门人」。runner 启动期可见的
 - **shell 层逃生口**：`protect-branch.sh` / `pre_tool_use.sh` 入口判定 `[ -n "$CLAUDE_GATES_HOOK_DISABLED" ] && exit 0`，让用户在 runner 自身坏掉时不依赖 plugin/runner 解锁
 - **runner self-test 模式**：`run.py --self-check`，纯 import 不跑 plugin 主体，给 subagent 在 commit 前一个独立 dry-run 闸门
 - 否则 H5 把 hook 链路统一通道化的好处会被「自指系统死锁风险」抵消
+
+
+## 会话经验（2026-04-28 16:04）
+
+_[hook-skipped: claude-exit-1]_

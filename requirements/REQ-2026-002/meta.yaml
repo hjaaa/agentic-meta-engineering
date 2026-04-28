@@ -122,12 +122,15 @@ reviews:
       F-003:
         history:
           - REV-REQ-2026-002-code-F-003-001
-        latest: REV-REQ-2026-002-code-F-003-001
-        conclusion: rejected
-        reviewed_commit: b5df0fe
+          - REV-REQ-2026-002-code-F-003-002
+        latest: REV-REQ-2026-002-code-F-003-002
+        conclusion: needs_revision
+        reviewed_commit: f771d76
         artifact_hashes:
           artifacts/features.json: 
-            6c3a4c2adcbc958aecbed130c5f407f6f00d84d1380e88ef5e363090bbd4181a
+            dc9ad4ac66657b91e78946b99f07e1630ef04d6de9707fe7b45f923524afe6eb
           artifacts/tasks/F-003.md: 
-            0baf48700a23d71be4415216ed242e2a3b7c4a2f9f8e6c6c1f58f6835c7031dd
+            52e9d5eecfb6bc953316812c71d6ef5de512e5ae9677984d4cf35b1010034ff6
+          artifacts/detailed-design.md: 
+            32a51c9be363f2488941044390edfa5ffb889e396cd31bd774e96a2c0cad37f9
         stale: false

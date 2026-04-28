@@ -111,7 +111,7 @@ class GateContext:
     changed_files: list[str] = field(default_factory=list)
     cli_flags: dict = field(default_factory=dict)
     env: dict = field(default_factory=dict)        # 显式注入需要的环境变量；
-    # 当前白名单 key（来源：scripts/gates/run.py:_ENV_WHITELIST）：
+    # 当前白名单 key（来源：scripts/gates/run.py），常量 _ENV_WHITELIST：
     #   - CLAUDE_HOOK_BRANCH         protect-branch 用：当前分支名（pre-tool-use trigger）
     #   - CLAUDE_PROTECTED_BRANCHES  protect-branch 用：受保护分支名集合（: 分隔）
     #   - CLAUDE_GATES_BYPASS        bash_write_protect 双轨白名单 2 主开关
@@ -255,7 +255,7 @@ def main(argv: list[str]) -> int:
 }
 ```
 
-字段语义（来源：scripts/gates/audit.py:28-73 实现）：
+字段语义（来源：scripts/gates/audit.py），实现行 28-73：
 
 - `passed` — 普通 PASS 的 gate_id 列表（不含 env-bypass 白名单放行）。
 - `bypassed` — 走「白名单 2：CLAUDE_GATES_BYPASS=1 + REASON」放行的 gate；每条含 `gate_id` /
