@@ -300,9 +300,14 @@ def filter_gates(registry: dict[str, Any], ctx: GateContext) -> list[dict[str, A
 
 
 # 旧入口名 → plugin 名的映射（adapter 模式用；snapshot 行为契约用）
+# F-002：补全全部 7 个旧入口（来源：requirements/REQ-2026-002/artifacts/detailed-design.md §5）
 LEGACY_TO_PLUGIN: dict[str, str] = {
     "check-meta": "meta_schema",
     "check-index": "index_integrity",
+    "check-sourcing": "sourcing",
+    "check-reviews": "review_verdict",
+    "check-plan": "plan_freshness",
+    "workspace-clean": "workspace_clean",
 }
 
 

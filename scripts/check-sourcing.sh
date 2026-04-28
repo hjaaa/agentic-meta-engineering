@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-# check-sourcing.sh —— 刨根问底（Source-or-Mark）三态校验入口
+# check-sourcing.sh —— 刨根问底（Source-or-Mark）三态校验入口（薄壳兼容层）
 #
-# 用法：
+# 注意：本脚本已由 F-002 改写为薄壳，直接 exec 统一门禁 runner（adapter 模式）。
+#       兼容期保留，F-004 阶段才删除旧入口。
+#
+# 用法（不变）：
 #   bash scripts/check-sourcing.sh requirements/<REQ-ID>/artifacts/requirement.md
 #   bash scripts/check-sourcing.sh --requirement <REQ-ID>
 #   bash scripts/check-sourcing.sh --all
@@ -19,4 +22,6 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# 薄壳 exec runner（adapter 模式）：保持与旧入口行为等价
 exec python3 "${SCRIPT_DIR}/lib/check_sourcing.py" "$@"
