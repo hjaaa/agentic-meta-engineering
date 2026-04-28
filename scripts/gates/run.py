@@ -94,10 +94,22 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 # ====================== registry 加载 + schema 校验 ======================
 
 
-def load_registry(path: Optional[Path] = None) -> dict[str, Any]:
+def load_registry(
+    path: Optional[Path] = None,
+    validate_only_ids: Optional[set[str]] = None,
+) -> dict[str, Any]:
     """加载 registry.yaml，跑 S1~S10 校验，返回 dict（含 gates / escape_hatches）。
 
-    path=None 时回退到模块级 REGISTRY_PATH，保证测试期 monkeypatch 生效。
+    参数：
+      path              — registry.yaml 路径；None 时回退到模块级 REGISTRY_PATH（保证测试期 monkeypatch 生效）。
+      validate_only_ids — 仅对这些 gate id 跑 S2 import 校验（pre-tool-use 高频路径冷启动优化，
+                          F-018 review 建议）；None 表示全量校验。S1/S5/S6/S7 仍跑全量，
+                          保证依赖图与 schema 完整性不被绕过。
+
+    场景：
+      - make gates-validate / ci 路径：validate_only_ids=None → 全量 12 个 plugin import + 拓扑
+      - pre-tool-use Hook 路径：validate_only_ids={GATE-PROTECT-BRANCH, GATE-BASH-WRITE-PROTECT}
+        → 仅 import 这两个 plugin，省去 ~12ms 冷启动开销
     """
     if path is None:
         path = REGISTRY_PATH
@@ -115,12 +127,19 @@ def load_registry(path: Optional[Path] = None) -> dict[str, Any]:
     if not isinstance(gates, list):
         raise RegistryError("registry.yaml gates 字段必须是 list")
 
-    _validate_registry_schema(gates)
+    _validate_registry_schema(gates, validate_only_ids=validate_only_ids)
     return data
 
 
-def _validate_registry_schema(gates: list[dict[str, Any]]) -> None:
-    """跑 S1~S10 schema 校验，违反即抛 RegistryError。"""
+def _validate_registry_schema(
+    gates: list[dict[str, Any]],
+    validate_only_ids: Optional[set[str]] = None,
+) -> None:
+    """跑 S1~S10 schema 校验，违反即抛 RegistryError。
+
+    validate_only_ids 非 None 时，S2 import + S7 rollback 检查跳过白名单外 gate；
+    其他校验（S1/S3/S4/S5/S6/S8/S9/S10）仍跑全量，保证依赖图与字段完整性。
+    """
     seen_ids: set[str] = set()
     id_to_entry: dict[str, dict[str, Any]] = {}
 
@@ -128,7 +147,7 @@ def _validate_registry_schema(gates: list[dict[str, Any]]) -> None:
         if not isinstance(entry, dict):
             raise RegistryError(f"gate entry 必须是 mapping，实际: {type(entry).__name__}")
         gid = entry.get("id")
-        # S1：id 正则 + 全局唯一
+        # S1：id 正则 + 全局唯一（全量跑）
         if not isinstance(gid, str) or not re.match(ID_PATTERN, gid):
             raise RegistryError(f"S1 违反：id={gid!r} 不符合 {ID_PATTERN}")
         if gid in seen_ids:
@@ -136,15 +155,17 @@ def _validate_registry_schema(gates: list[dict[str, Any]]) -> None:
         seen_ids.add(gid)
         id_to_entry[gid] = entry
 
-        _validate_one_entry(entry)
+        # F-018：S2 import 是冷启动开销大头，pre-tool-use 路径只 import 候选 gate
+        skip_import = validate_only_ids is not None and gid not in validate_only_ids
+        _validate_one_entry(entry, skip_import=skip_import)
 
-    # S5：dependencies 引用必须存在
+    # S5：dependencies 引用必须存在（全量跑，避免悬挂依赖）
     for gid, entry in id_to_entry.items():
         for dep in entry.get("dependencies") or []:
             if dep not in seen_ids:
                 raise RegistryError(f"S5 违反：{gid} 的依赖 {dep!r} 不存在于 gates")
 
-    # S6：dependencies 拓扑无环
+    # S6：dependencies 拓扑无环（全量跑，环检测需要完整图）
     graph = {gid: set(entry.get("dependencies") or []) for gid, entry in id_to_entry.items()}
     sorter = TopologicalSorter(graph)
     try:
@@ -152,14 +173,22 @@ def _validate_registry_schema(gates: list[dict[str, Any]]) -> None:
     except CycleError as exc:
         raise RegistryError(f"S6 违反：dependencies 拓扑出现环 {exc.args[1]}") from exc
 
-    # S7：side_effects=write_state 必须实现 rollback —— 用 hasattr+不为基类原方法判断
+    # S7：side_effects=write_state 必须实现 rollback —— 同步遵循 validate_only_ids 白名单
+    # （白名单外 plugin 跳过 import，避免触发 plugin 模块加载）
     for gid, entry in id_to_entry.items():
         if entry.get("side_effects") == "write_state":
+            if validate_only_ids is not None and gid not in validate_only_ids:
+                continue
             _validate_write_state_plugin(gid, entry["plugin"])
 
 
-def _validate_one_entry(entry: dict[str, Any]) -> None:
-    """单 gate 条目的 S2/S3/S4/S8/S9/S10 校验。"""
+def _validate_one_entry(entry: dict[str, Any], skip_import: bool = False) -> None:
+    """单 gate 条目的 S2/S3/S4/S8/S9/S10 校验。
+
+    skip_import=True 时跳过 S2 的 importlib.import_module + GATE_CLASS 检查，
+    仅做纯字符串字段校验（plugin 必填 + plugin_path 文件存在）。
+    用于 pre-tool-use 高频路径冷启动优化（F-018），白名单外 gate 不触发模块加载。
+    """
     gid = entry["id"]
     plugin_name = entry.get("plugin")
 
@@ -169,13 +198,14 @@ def _validate_one_entry(entry: dict[str, Any]) -> None:
     plugin_path = _PKG_ROOT / "plugins" / f"{plugin_name}.py"
     if not plugin_path.exists():
         raise RegistryError(f"S2 违反：{gid} 的 plugins/{plugin_name}.py 不存在")
-    try:
-        mod = importlib.import_module(f"plugins.{plugin_name}")
-    except Exception as exc:  # noqa: BLE001
-        raise RegistryError(f"S2 违反：plugins.{plugin_name} import 失败: {exc}") from exc
-    cls = getattr(mod, "GATE_CLASS", None)
-    if cls is None or not isinstance(cls, type) or not issubclass(cls, Gate):
-        raise RegistryError(f"S2 违反：plugins/{plugin_name}.py 未导出 GATE_CLASS（Gate 子类）")
+    if not skip_import:
+        try:
+            mod = importlib.import_module(f"plugins.{plugin_name}")
+        except Exception as exc:  # noqa: BLE001
+            raise RegistryError(f"S2 违反：plugins.{plugin_name} import 失败: {exc}") from exc
+        cls = getattr(mod, "GATE_CLASS", None)
+        if cls is None or not isinstance(cls, type) or not issubclass(cls, Gate):
+            raise RegistryError(f"S2 违反：plugins/{plugin_name}.py 未导出 GATE_CLASS（Gate 子类）")
 
     # S3：triggers 白名单
     triggers = entry.get("triggers") or []
@@ -365,8 +395,15 @@ def instantiate(entry: dict[str, Any]) -> Gate:
 def main(argv: Optional[list[str]] = None) -> int:
     args = parse_args(argv if argv is not None else sys.argv[1:])
 
+    # F-018：pre-tool-use 高频路径冷启动优化
+    # 仅 import 该 trigger 真正会执行的 plugin（GATE-PROTECT-BRANCH / GATE-BASH-WRITE-PROTECT），
+    # 跳过其他 9+ 个 plugin 的 importlib.import_module；全量 schema/拓扑校验仍跑
+    validate_only_ids: Optional[set[str]] = None
+    if args.trigger == "pre-tool-use":
+        validate_only_ids = {"GATE-PROTECT-BRANCH", "GATE-BASH-WRITE-PROTECT"}
+
     try:
-        registry = load_registry()
+        registry = load_registry(validate_only_ids=validate_only_ids)
     except RegistryError as exc:
         print(f"ERROR registry 加载失败：{exc}", file=sys.stderr)
         return 2

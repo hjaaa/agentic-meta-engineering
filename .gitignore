@@ -6,6 +6,8 @@
 
 # 代码审查运行态临时文件（每次 /code-review 会重写）
 .review-scope.json
+.review-findings.json
+.review-critic-verdicts.json
 
 # macOS
 .DS_Store
