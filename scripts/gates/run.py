@@ -380,7 +380,21 @@ def _execute_plan(ctx: GateContext, plan: list[dict[str, Any]], strict: bool) ->
     F-011 round-2：把"跑 gate / commit 写态 / GateFailed 处理"三段抽到子例程。
     """
     needs_stash = any(e.get("side_effects") == "write_state" for e in plan)
-    snapshots = _stash_state(ctx) if needs_stash else {}
+    # F-020 round-3：stash_state 单独包裹 try/except，shutil.copy2 PermissionError /
+    # 磁盘满 / 路径异常时降级为 snapshots={} 跳过事务化保护，但不中断 runner，
+    # 让 plugin 仍能跑（write_state plugin 自己有 staged_writes 暂存兜底）。
+    if needs_stash:
+        try:
+            snapshots = _stash_state(ctx)
+        except Exception as stash_exc:  # noqa: BLE001
+            print(
+                f"ERROR stash_state 失败 req={ctx.requirement_id or '-'} "
+                f"trigger={ctx.trigger}: {stash_exc}；跳过事务化保护继续执行",
+                file=sys.stderr,
+            )
+            snapshots = {}
+    else:
+        snapshots = {}
     executed: list[Gate] = []
     reports: list[Report] = []
     rollback_failed = False
@@ -395,7 +409,17 @@ def _execute_plan(ctx: GateContext, plan: list[dict[str, Any]], strict: bool) ->
     except Exception as exc:  # noqa: BLE001
         return _handle_runner_exception(ctx, snapshots, reports, _current_plugin[0], exc)
 
-    write_audit(_build_audit(ctx, reports, rollback_failed))
+    # F-019 round-3：write_audit 单独包裹 try/except，避免 audit 落盘故障
+    # （磁盘满 / 目录无写权限 / fsync 失败）冒泡为 exit 2 阻断 Claude；
+    # audit 是基础设施级失败，绝不能升级为 gate 全崩。
+    try:
+        write_audit(_build_audit(ctx, reports, rollback_failed))
+    except Exception as audit_exc:  # noqa: BLE001
+        print(
+            f"ERROR audit 落盘失败 req={ctx.requirement_id or '-'} "
+            f"trigger={ctx.trigger}: {audit_exc}；跳过 audit 不阻断 gate 结果",
+            file=sys.stderr,
+        )
     return _calc_exit_code(reports, plan, strict)
 
 

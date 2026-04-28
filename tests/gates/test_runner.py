@@ -279,3 +279,84 @@ def test_dry_run_returns_zero(monkeypatch, capsys):
 def test_main_returns_two_when_no_trigger_and_no_validate(capsys):
     rc = runner_mod.main([])
     assert rc == 2
+
+
+# ====================== F-019 / F-020 round-3：基础设施健壮性边界 ======================
+
+
+def _make_plan_ctx(side_effects: str = "none"):
+    """构造最小 plan + ctx，供基础设施异常测试复用。"""
+    plan = [{
+        "id": "GATE-META-SCHEMA",
+        "plugin": "meta_schema",
+        "severity": "error",
+        "triggers": ["ci"],
+        "applies_when": {"requires": []},
+        "dependencies": [],
+        "side_effects": side_effects,
+        "tests": {"fixtures": ["pass", "fail", "skip"]},
+    }]
+    ctx = GateContext(trigger="ci", requirement_id="REQ-2099-001")
+    return plan, ctx
+
+
+def test_should_not_crash_when_stash_state_raises_oserror(monkeypatch, capsys):
+    """given_stash_state_raises_permissionerror_when_execute_then_continue_no_crash（F-020 round-3）。
+
+    PermissionError / 磁盘满等 OSError 时降级为 snapshots={} 跳过事务化保护，
+    runner 继续跑 gate；绝不冒泡 traceback 触发 exit 2 阻断 Claude。
+    """
+
+    def _raise_perm(*args, **kwargs):
+        raise PermissionError("Read-only file system")
+
+    # write_state plugin 才会触发 needs_stash=True；用 review_verdict 的 plan 模拟
+    plan = [{
+        "id": "GATE-REVIEW-VERDICT",
+        "plugin": "review_verdict",
+        "severity": "error",
+        "triggers": ["ci"],
+        "applies_when": {"requires": []},
+        "dependencies": [],
+        "side_effects": "write_state",
+        "tests": {"fixtures": ["pass", "fail", "skip"]},
+    }]
+    ctx = GateContext(trigger="ci", requirement_id="REQ-2099-001")
+
+    monkeypatch.setattr(runner_mod, "_stash_state", _raise_perm)
+    # mock _run_gates 避免真跑 review_verdict；也 mock write_audit 隔离落盘
+    monkeypatch.setattr(runner_mod, "_run_gates", lambda *a, **kw: None)
+    monkeypatch.setattr(runner_mod, "_commit_write_state", lambda *a, **kw: None)
+    monkeypatch.setattr(runner_mod, "_cleanup_snapshots", lambda *a, **kw: None)
+    monkeypatch.setattr(runner_mod, "write_audit", lambda *a, **kw: None)
+
+    # 不应抛异常
+    rc = runner_mod._execute_plan(ctx, plan, strict=False)
+    assert rc == 0, "stash 失败时应降级为 snapshots={} 继续，最终 exit 0"
+    err = capsys.readouterr().err
+    assert "ERROR stash_state" in err
+    assert "PermissionError" in err or "Read-only" in err
+
+
+def test_should_not_crash_when_write_audit_raises_oserror(monkeypatch, capsys):
+    """given_write_audit_raises_oserror_when_execute_then_return_calc_exit_code（F-019 round-3）。
+
+    audit 落盘异常（OSError 系：磁盘满 / 目录无写权限 / fsync 失败）必须打 ERROR 后继续，
+    不能让 audit 故障升级为 gate 全崩。
+    """
+    plan, ctx = _make_plan_ctx(side_effects="none")
+
+    def _raise_disk_full(*args, **kwargs):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(runner_mod, "_run_gates", lambda *a, **kw: None)
+    monkeypatch.setattr(runner_mod, "_commit_write_state", lambda *a, **kw: None)
+    monkeypatch.setattr(runner_mod, "_cleanup_snapshots", lambda *a, **kw: None)
+    monkeypatch.setattr(runner_mod, "write_audit", _raise_disk_full)
+
+    rc = runner_mod._execute_plan(ctx, plan, strict=False)
+    # 0：因为 reports 为空（_run_gates 被 mock），无任何 fail
+    assert rc == 0, "audit 失败时应继续走 _calc_exit_code，不冒泡 OSError"
+    err = capsys.readouterr().err
+    assert "ERROR audit 落盘失败" in err
+    assert "No space left" in err
