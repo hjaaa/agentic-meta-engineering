@@ -176,7 +176,7 @@ F-003 round 2 review（code-F-003-001.json）识别但 critic 已转 follow-up n
 
 ### F-026：needs_stash 静态判断在低 plugin 数下空转（minor）
 
-- **位置**：`scripts/gates/run.py:404-405`
+- **位置**：`scripts/gates/run.py:338-339`（83099b2 拆分后由原 run.py:404-405 迁至此处；F-033 round-3 同步）
 - **现象**：`needs_stash` 基于 plan entry 静态判断，precheck Skip 场景仍创建 `.bak` 快照，
   IO 浪费。当前唯一 `write_state` plugin 是 `review_verdict`，且 `_cleanup_snapshots`
   已兜底全 pass 路径清理，影响仅在 precheck Skip 路径残留 IO。
@@ -185,7 +185,7 @@ F-003 round 2 review（code-F-003-001.json）识别但 critic 已转 follow-up n
 
 ### F-038：write_audit fsync 无量级数据（minor）
 
-- **位置**：`scripts/gates/run.py:556-558`
+- **位置**：`scripts/gates/audit.py:86`（83099b2 拆分后 fsync 由原 run.py:556-558 迁至 audit.py；F-033 round-3 同步）
 - **现象**：`write_audit` 同步 `os.fsync` 在 pre-tool-use 高频路径上理论放大开销，
   但本地 SSD 实测仅微秒级，无客户反馈。
 - **F-004 评估时机**：在机械盘 / NFS 部署场景做基准后，给 trigger 级 fsync 开关

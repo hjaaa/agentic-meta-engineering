@@ -107,6 +107,31 @@ class GateFailed(Exception):
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
+    """解析 runner 的 CLI 参数（F-022 round-3 补 docstring，与 submit.py:36 风格一致）。
+
+    参数：argv — argparse 入参列表（不含程序名）。
+    返回：argparse.Namespace，含 trigger / requirement_id / from_phase / to_phase /
+          strict / dry_run / validate_registry / legacy / paths 字段。
+
+    支持的 flag：
+      --trigger             触发器名，白名单 ∈ {pre-tool-use, pre-commit, phase-transition,
+                            submit, ci, post-dev, adapter}（adapter 在 _resolve_trigger 归一化为 ci）。
+                            未给且未带 --validate-registry 时 main 退 2。
+      --req                 需求 ID，必须匹配 ^REQ-\\d{4}-\\d{3}$（防路径穿越；非法格式直接 SystemExit(2)）。
+      --from / --to         phase-transition 专用：源 phase / 目标 phase（其他 trigger 忽略）。
+      --strict              warning 级 Decision.FAIL 也升为进程退出 1（默认仅 error 级失败升 1）。
+      --dry-run             不执行 gate.run，仅打印执行计划后退 0。
+      --validate-registry   仅跑 S1~S10 schema 校验后退 0；--trigger 缺失时也允许该路径单跑。
+      --legacy              adapter 模式专用：旧入口名（白名单见 LEGACY_TO_PLUGIN：check-meta /
+                            check-index / check-sourcing / check-reviews / check-plan / workspace-clean），
+                            过滤 plan 后只保留对应 plugin。
+      paths                 adapter 模式位置参数：旧入口要处理的目标文件（如 meta.yaml 路径）。
+
+    退出码语义（main 返回 → triggers/pre_tool_use.sh 透传给 hook）：
+      0  全部 gate 通过（含 SKIP / PASS）
+      1  存在 severity=error 的 Decision.FAIL；strict 下 warning 级 fail 也升 1
+      2  runner 自身异常 / 非法 trigger / 非法 requirement_id / registry 加载失败
+    """
     p = argparse.ArgumentParser(description="统一门禁 runner")
     p.add_argument("--trigger", help="触发器：pre-tool-use|pre-commit|phase-transition|submit|ci|post-dev|adapter")
     p.add_argument("--req", dest="requirement_id", help="目标需求 ID，如 REQ-2026-002")
@@ -283,6 +308,25 @@ def instantiate(entry: dict[str, Any]) -> Gate:
 
 
 def main(argv: Optional[list[str]] = None) -> int:
+    """runner 主入口（F-022 round-3 补 docstring，与 submit.py:60 风格一致）。
+
+    参数：argv — CLI 参数列表；None 时取 sys.argv[1:]（CLI 直跑场景）。
+    返回：进程退出码（0 通过 / 1 含 error 级失败 / 2 自身异常）。
+
+    流程：
+      1. parse_args → trigger 白名单 / req-id 路径穿越校验在 build_context 内做
+      2. load_registry：S1~S10 schema 校验；pre-tool-use 触发器开 validate_only_ids
+         冷启动优化（只 import 候选 plugin，节省 ~12ms）
+      3. --validate-registry：仅跑 S 校验，打印 OK 行后退 0
+      4. dry-run：不执行 gate.run，按拓扑序打印执行计划后退 0
+      5. 真实执行：进入 _execute_plan，含事务化 stash / commit_staged_writes / rollback /
+         restore + audit 落盘
+
+    异常路径：
+      - RegistryError → 打 ERROR 后退 2（registry/plugin 自身故障）
+      - 缺 trigger 且未带 --validate-registry → 打 ERROR 后退 2
+      - plugin 抛未捕获异常 → 由 _handle_runner_exception 兜底退 2 + 写 audit
+    """
     args = parse_args(argv if argv is not None else sys.argv[1:])
 
     # F-018：pre-tool-use 高频路径冷启动优化

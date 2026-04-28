@@ -110,7 +110,14 @@ class GateContext:
     to_phase: Optional[str] = None
     changed_files: list[str] = field(default_factory=list)
     cli_flags: dict = field(default_factory=dict)
-    env: dict = field(default_factory=dict)        # 显式注入需要的环境变量
+    env: dict = field(default_factory=dict)        # 显式注入需要的环境变量；
+    # 当前白名单 key（来源：scripts/gates/run.py:_ENV_WHITELIST）：
+    #   - CLAUDE_HOOK_BRANCH         protect-branch 用：当前分支名（pre-tool-use trigger）
+    #   - CLAUDE_PROTECTED_BRANCHES  protect-branch 用：受保护分支名集合（: 分隔）
+    #   - CLAUDE_GATES_BYPASS        bash_write_protect 双轨白名单 2 主开关
+    #   - CLAUDE_GATES_BYPASS_REASON bash_write_protect 双轨白名单 2 必填原因
+    #   - SAVE_REVIEW_PID            save-review.sh 启动时 export $$，bash_write_protect 双轨
+    #                                白名单 1 主源（PID 比对，优先于 comm 匹配，容器场景必备）
     actor: Literal["claude-code", "human", "ci"] = "claude-code"
     meta: dict = field(default_factory=dict)       # meta.yaml 解析结果
     extra: dict = field(default_factory=dict)      # trigger 特定字段：tool_name / file_path / command
@@ -226,6 +233,13 @@ def main(argv: list[str]) -> int:
   "from_phase": "outline-design",
   "to_phase": "detail-design",
   "passed": ["GATE-META-SCHEMA", "GATE-PLAN-FRESH"],
+  "bypassed": [
+    {
+      "gate_id": "GATE-BASH-WRITE-PROTECT",
+      "reason": "hotfix-2026-04-28 紧急修复 reviews/*.json 错位",
+      "whitelisted": "env-bypass"
+    }
+  ],
   "failed": [
     {
       "gate_id": "GATE-REVIEW-VERDICT-R005",
@@ -240,6 +254,21 @@ def main(argv: list[str]) -> int:
   "exit_code": 1
 }
 ```
+
+字段语义（来源：scripts/gates/audit.py:28-73 实现）：
+
+- `passed` — 普通 PASS 的 gate_id 列表（不含 env-bypass 白名单放行）。
+- `bypassed` — 走「白名单 2：CLAUDE_GATES_BYPASS=1 + REASON」放行的 gate；每条含 `gate_id` /
+  `reason`（用户填写的原因，全文留存以便追溯）/ `whitelisted="env-bypass"`。决策依据 D-005
+  「reason + audit 已足以追责」：放行不静默吞，必须留 reason。
+- `rollback_failed` — fail 路径中至少一个已 commit 的 write_state plugin 的 `rollback()` 抛
+  异常时为 true；正常 / 无 write_state plugin / rollback 全部成功时为 false。runner 在
+  `_handle_gate_failed` 收集后写入 audit。
+- `escape_used` — `--force-with-blockers` 等流程级 escape_hatch 命中时记 cli_flag 名；F-004
+  落地。本 round 占位为 null。
+- `exit_code` — audit log 自身的描述性字段（1=有 failed / 0=无 failed）；进程实际退出码以
+  runner `_calc_exit_code` 为准（strict 下 warning fail 也升 1）。审计日志字段是「用户视角的快照」，
+  不与进程退出码 100% 同步。
 
 ## 3. Plugin 详细规格
 
@@ -316,7 +345,7 @@ RE_WRITE_OPS = re.compile(
     r"|tee\s+(-a\s+)?['\"]?[^|;&]*?requirements/.+/reviews/.+\.json"  # tee / tee -a
     r"|mv\s+\S+\s+['\"]?[^|;&]*?requirements/.+/reviews/.+\.json"     # mv
     r"|cp\s+\S+\s+['\"]?[^|;&]*?requirements/.+/reviews/.+\.json"     # cp
-    r"|python3?\s+-c\s+['\"].*open\(.*?requirements/.+/reviews/.+\.json.*?['\"]w['\"]"
+    r"|python3?\s+-c\s+['\"].*open\(.*?requirements/.+/reviews/.+\.json.*?['\"](?:w|a|wb|ab)['\"]"  # F-006 round-2 补 'a'/'ab'/'wb'
     r"|cat\s+<<-?\s*['\"]?\w+['\"]?\s+>>?\s*['\"]?[^|;&]*?requirements/.+/reviews/.+\.json"  # heredoc
     r"|printf\s+.*?>\s*['\"]?[^|;&]*?requirements/.+/reviews/.+\.json"  # printf >
     r"|dd\s+.*?of=['\"]?[^|;&]*?requirements/.+/reviews/.+\.json"       # dd of=
@@ -356,24 +385,22 @@ class BashWriteProtectGate(Gate):
             fix_hint="reviews/*.json 由 save-review.sh 唯一通道维护；如需修订评审，请让 reviewer Agent 重审",
         )
 
-    def _caller_is_save_review_sh(self) -> bool:
-        # 父进程链识别：ps -p $PPID -o comm=
+    def _caller_is_save_review_sh(self, ctx: GateContext) -> bool:
+        # 父进程链识别（双轨）：
+        #   1) SAVE_REVIEW_PID env 比对：save-review.sh 启动时 export SAVE_REVIEW_PID=$$，
+        #      若 ppid 链中任一层 == 该 PID，立即放行（最快、不易伪造）
+        #   2) fallback 完整 comm 严格匹配 == "save-review.sh"
+        #      （endswith 会被 evil-save-review.sh / xsave-review.sh 命名伪造，禁用）
         # macOS comm 字段截断风险见 tech-feasibility.md 1.3 节
+        target_pid_str = ctx.env.get("SAVE_REVIEW_PID")
+        target_pid = int(target_pid_str) if (target_pid_str and target_pid_str.isdigit()) else None
         try:
-            ppid = os.getppid()
-            for _ in range(5):                           # 向上追溯 5 层
-                comm = subprocess.check_output(
-                    ["ps", "-p", str(ppid), "-o", "comm="]
-                ).decode().strip()
-                if comm.endswith("save-review.sh"):
+            for comm, ppid in _walk_ppid_chain(os.getppid(), max_depth=5):
+                if target_pid is not None and ppid == target_pid:
                     return True
-                ppid_out = subprocess.check_output(
-                    ["ps", "-p", str(ppid), "-o", "ppid="]
-                ).decode().strip()
-                ppid = int(ppid_out)
-                if ppid <= 1:
-                    break
-        except (subprocess.CalledProcessError, ValueError):
+                if comm == "save-review.sh":
+                    return True
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ValueError, OSError):
             return False
         return False
 ```
