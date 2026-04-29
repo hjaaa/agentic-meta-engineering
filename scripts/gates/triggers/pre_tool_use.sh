@@ -61,13 +61,49 @@ export CLAUDE_HOOK_FILE_PATH="$TARGET_PATH"
 export CLAUDE_HOOK_COMMAND="$COMMAND"
 
 cd "$REPO_ROOT"
-# F-001：修正 Hook 阻断协议
-# Claude Code PreToolUse Hook 协议：exit 0 = 放行；exit 2 = 阻断；其他 = non-blocking 警告
-# run.py 在 gate fail 时返回 1（非阻断），需翻译为 exit 2 才能真正拦截 Bash 写入
-python3 scripts/gates/run.py --trigger=pre-tool-use
-rc=$?
-if [ "$rc" -eq 0 ]; then
+# F-004 round-4：runner syntax 自检 —— 在调用前用 py_compile 静态检查 run.py，
+# merge 冲突 marker / 半成品 commit / 误删 import 等"语法级损坏"在此被捕获并 fail-open，
+# 避免 chicken-and-egg 死锁（hook 自身依赖 import 中的文件）。开销 ~50ms / Bash 调用。
+SYNTAX_ERR=$(mktemp -t gate-runner-syntax.XXXXXX)
+if ! python3 -m py_compile scripts/gates/run.py 2>"$SYNTAX_ERR"; then
+    echo "WARNING pre-tool-use runner py_compile 失败，fail-open 放行避免锁死工具链（典型场景：merge 冲突 marker / 半成品 commit）：" >&2
+    cat "$SYNTAX_ERR" >&2
+    rm -f "$SYNTAX_ERR"
     exit 0
-else
-    exit 2
 fi
+rm -f "$SYNTAX_ERR"
+
+# Hook 阻断协议（F-001 立 / F-004 round-4 fail-open 加固）：
+# Claude Code PreToolUse Hook 协议：exit 0 = 放行；exit 2 = 阻断；其他 = non-blocking 警告。
+# run.py 退出码语义（F-004 round-3 G-5 统一）：
+#   0 → 全过 / SKIP / PASS                  → hook exit 0（放行）
+#   1 → 业务级 gate FAIL（含 strict warn）  → hook exit 2（阻断，正确语义）
+#   2 → runner 自身异常（SyntaxError / registry 加载失败 / 非法 trigger /
+#         非法 reason / plugin 抛未捕获异常）→ hook exit 0 + WARNING
+#         （fail-open on infra-failure：避免门禁系统反向 brick 工具链——
+#          典型场景：merge 冲突期 run.py 含 marker → SyntaxError → 任何工具调用
+#          都触发 hook → hook 自身崩溃 → 死锁，无法解冲突。详见
+#          context/team/engineering-spec/design-guidance/hook-fail-open.md）
+#   其他（130/137 等信号终止）→ 同 rc=2，fail-open
+RUNNER_ERR=$(mktemp -t gate-runner-err.XXXXXX)
+python3 scripts/gates/run.py --trigger=pre-tool-use 2>"$RUNNER_ERR"
+rc=$?
+case "$rc" in
+    0)
+        rm -f "$RUNNER_ERR"
+        exit 0
+        ;;
+    1)
+        # 业务级失败：透传 stderr 后阻断
+        cat "$RUNNER_ERR" >&2
+        rm -f "$RUNNER_ERR"
+        exit 2
+        ;;
+    *)
+        # runner 自身异常：fail-open + WARNING
+        echo "WARNING pre-tool-use runner 自身故障 (rc=$rc)，fail-open 放行避免锁死工具链；详见 stderr：" >&2
+        cat "$RUNNER_ERR" >&2
+        rm -f "$RUNNER_ERR"
+        exit 0
+        ;;
+esac

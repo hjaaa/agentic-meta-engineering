@@ -234,4 +234,5 @@ F-003 round 2 review（code-F-003-001.json）识别但 critic 已转 follow-up n
 | C-006 | architecture | scripts/gates/run.py 总长 726 行 > 500 阈值；建议在新需求评估前先做 cli.py / plan_executor.py 拆分架构 RFC | F-005 启动前 |
 | C-007 | governance | scripts/gates/run.py 30 天 22 commits 高频热区；建议合并 develop 后进入 ≥ 1 周稳定化窗口再接 F-005 / F-006 | 软约定，feature-lifecycle-manager Skill 可加 soft check |
 | C-008 | governance | 同 feature 连续 round 的 12h 静默期约定（F-004 同日内连续 round-2/3 节奏过紧） | feature-lifecycle-manager Skill soft check |
+| ~~C-009~~ | ~~hook-deadlock~~ | ~~PreToolUse hook 自身 import run.py，merge 冲突 / 半成品 commit 时 hook 崩溃锁死所有工具调用~~ | **已修 F-004 round-4**：pre_tool_use.sh 加 py_compile pre-check + 区分业务 fail (rc=1 → exit 2) 与 infra-failure (rc≠0/1 → exit 0 + WARNING)；落规范 context/team/engineering-spec/design-guidance/hook-fail-open.md |
 
