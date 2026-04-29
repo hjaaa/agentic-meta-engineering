@@ -1,1 +1,3 @@
 2026-04-29 17:06:39 [phase-transition] bootstrap → 需求骨架初始化完成
+2026-04-29 17:07:36 [phase-transition] bootstrap → definition（gates: META-SCHEMA/INDEX-INTEGRITY/SOURCING/WORKSPACE-CLEAN/REVIEW-VERDICT/TRACEABILITY 全部通过；PLAN-FRESHNESS W003 待补）
+2026-04-29 17:09:00 [phase-task] definition：起草 plan.md / artifacts/requirement.md，补 meta.yaml 语义组（feature_area=review, change_type=feature）
