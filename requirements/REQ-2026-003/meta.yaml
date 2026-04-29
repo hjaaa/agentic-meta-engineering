@@ -10,14 +10,14 @@ services: [agentic-meta-engineering]   # 涉及的服务仓库
 gates_passed:
   - phase: definition
     at: "2026-04-29 17:07:36"
-    gates: [GATE-META-SCHEMA, GATE-INDEX-INTEGRITY, GATE-SOURCING,
+    gates: [GATE-META-SCHEMA, GATE-INDEX-INTEGRITY, GATE-SOURCING, 
           GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY]
     warnings:
       - "GATE-PLAN-FRESHNESS W003: plan.md 范围段 '不包含' 无子条目（待 definition 阶段补）"
   - phase: tech-research
     at: "2026-04-29 21:14:27"
-    gates: [GATE-META-SCHEMA, GATE-INDEX-INTEGRITY, GATE-SOURCING,
-          GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY,
+    gates: [GATE-META-SCHEMA, GATE-INDEX-INTEGRITY, GATE-SOURCING, 
+          GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY, 
           GATE-PLAN-FRESHNESS]
     warnings: []
 pr_url: ""                             # /requirement:submit 成功后回写
@@ -43,16 +43,17 @@ completed_at: ""               # ISO8601，completed 时填
 lessons_extracted: false       # /knowledge:extract-experience 是否已跑
 reviews:
   definition:
-    latest: REV-REQ-2026-003-definition-005
+    latest: REV-REQ-2026-003-definition-006
     conclusion: approved
-    reviewed_commit: 87d8c72
+    reviewed_commit: cb55ea0
     artifact_hashes:
-      artifacts/requirement.md:
-        c606c2e54ab9f58b96c76bd7fe04bcabc542bb33cc7608d2c7896badf49a8622
+      artifacts/requirement.md: 
+        f7d7b713eedb70645cb9b24d5178083979200d9362f870a07a32942f3c3c9406
     history:
       - REV-REQ-2026-003-definition-001
       - REV-REQ-2026-003-definition-002
       - REV-REQ-2026-003-definition-003
       - REV-REQ-2026-003-definition-004
       - REV-REQ-2026-003-definition-005
+      - REV-REQ-2026-003-definition-006
     stale: false

@@ -96,6 +96,7 @@ refs-requirement: true
   - **`signoff --trivial` 快速通道**：`save-review.sh signoff --trivial` 允许跳过交互式 sign-off，**仅当** diff 文件全部命中白名单（`*.md` / `docs/**` / `*.txt`）时放行
     - 失败侧：退出码 = 3 + stderr 含 `trivial: non-doc files detected`
     - 成功侧：退出码 = 0 + verdict.human_signoff = `{ by: <git_user_email>, at: <ISO8601>, decision: "approved-trivial" }`（`by` 仍取 git 用户邮箱，便于事后审计是谁触发；与人类签字 `approved` 通过 decision 取值区分）
+  - **删除 `.claude/commands/code-review.md` 的"零 finding 快速路径"**：当前 `/code-review` 编排在 8 checker 全部空 issues 时直接输出 `approved` 报告（来源：.claude/commands/code-review.md:40），绕过 `code-quality-reviewer` 与 `human_signoff`——本需求必须移除该旁路，所有 review 必须经 judge + sign-off（tech-research R-3 发现，详见 requirements/REQ-2026-003/plan.md:103）
   - `context/team/engineering-spec/specs/2026-04-29-code-review-human-checkpoints.md` 留档
 - **不包含**：
   - 8 个 checker（complexity / security / concurrency / ...）的内部检查规则改造（plan.md:范围/不包含 第 1 条）

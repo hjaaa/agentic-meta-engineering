@@ -85,7 +85,7 @@ refs-tech-feasibility: true
 
 ### 1.6 feature-lifecycle-manager / requirement:submit 三处门禁升级
 
-**feature-lifecycle-manager**：当前转 done 逻辑看 `conclusion`（来源：requirements/REQ-2026-003/artifacts/requirement.md:16），改为查 `human_signoff.decision ∈ {approved, approved-trivial}`。改动在 Skill 文件和对应判定规则中（具体路径见 5 节假设记录 1）。
+**feature-lifecycle-manager**：当前转 done 逻辑看 `conclusion`（来源：requirements/REQ-2026-003/artifacts/requirement.md:16），改为查 `human_signoff.decision ∈ {approved, approved-trivial}`。改动位于 `.claude/skills/feature-lifecycle-manager/SKILL.md`（已确认存在，假设记录 1 闭合）。
 
 **requirement:submit**：`submit-rules.md` 的预检条件当前看"artifacts/review-*.md 至少一份报告且无 severity: blocker"（来源：.claude/skills/managing-requirement-lifecycle/reference/submit-rules.md），升级后额外要求 verdict 中 `human_signoff.decision ∈ {approved, approved-trivial}`。改动在 `submit-rules.md` 和 `gate-checklist.md`（渲染产物需同步更新）。
 
@@ -99,12 +99,12 @@ refs-tech-feasibility: true
 
 | # | 类别 | 描述 | 可能性 | 影响 | 缓解策略 |
 |---|---|---|---|---|---|
-| R-1 | tech | `conclusion` 枚举改名波及所有历史 verdict 文件：所有已落盘的 review JSON 含旧枚举值，`check_reviews.py _r002_schema_recheck` 会批量失败（来源：scripts/lib/check_reviews.py:82） | high | high | 迁移策略：schema 升级时同步改 enum 校验为宽容模式（旧值视为等价新值）；历史 verdict 文件的 conclusion 字段做 in-place 批量替换（`approved→looks_clean, needs_revision→needs_attention, rejected→blocked`），PR 合入前跑一遍，CI 红绿验证 |
+| R-1 | tech | `conclusion` 枚举改名波及所有历史 verdict 文件：所有已落盘的 review JSON 含旧枚举值，`check_reviews.py _r002_schema_recheck` 会批量失败（来源：scripts/lib/check_reviews.py:82） | high | high | **迁移脚本细化方案**：(1) 新建 `scripts/lib/migrate_verdict_v2.py`，扫描对象 = `requirements/*/reviews/*.json` + `requirements/*/meta.yaml.reviews.*.conclusion`；(2) 替换映射 `approved→looks_clean / needs_revision→needs_attention / rejected→blocked`，python json.load + json.dump 保字段顺序；(3) 加 dry-run 标志，输出受影响文件清单；(4) 与 M-001 PR 同 commit 提交并执行；(5) 回滚方式 = `git revert M-001 commit` 自动恢复（脚本只处理本仓库 tracked 文件）；(6) CI 验证点 = M-001 commit 前后跑 `python3 scripts/lib/check_reviews.py --target-phase outline-design --req REQ-2026-002` 期望从 fail（旧枚举）转为 pass（新枚举） |
 | R-2 | tech | `save_review.py signoff` 子命令与现有 argparse 结构冲突：当前 `main()` 直接 `parser.add_argument` 没有子命令层（来源：scripts/lib/save_review.py:202）；引入 subparsers 会改变 CLI 接口 | medium | medium | 采用前置 `sys.argv[1] == "signoff"` 判断分支（非 argparse subparsers）：signoff 路径独立解析，原路径保持不变；调用方无感知；detail-design 阶段锁定接口 |
-| R-3 | tech | `code-review.md` 零 finding 快速路径漏洞：当前"8 checker 全部空 issues → 直接输出 `approved` 报告"（来源：.claude/commands/code-review.md:40）绕过了 `code-quality-reviewer` 和 `human_signoff`，本需求若只改 `code-quality-reviewer` Agent 定义而忘改 `code-review.md`，此路径仍可让 AI 直出 approved | high | high | 把此漏洞作为与 `conclusion` 枚举收敛并列的必改项（已在范围/包含 段隐含，需 detail-design 显式列出）；detail-design PR 第一批改动即包含此文件 |
+| R-3 | tech | `code-review.md` 零 finding 快速路径漏洞：当前"8 checker 全部空 issues → 直接输出 `approved` 报告"（来源：.claude/commands/code-review.md:40）绕过了 `code-quality-reviewer` 和 `human_signoff`，本需求若只改 `code-quality-reviewer` Agent 定义而忘改 `code-review.md`，此路径仍可让 AI 直出 approved | high | high | 已闭合：本评审发现该漏洞后，requirement.md 范围/包含 段新增"删除该零 finding 快速路径"产出物（来源：requirements/REQ-2026-003/artifacts/requirement.md），plan.md D-007 记录范围扩展决策（来源：requirements/REQ-2026-003/plan.md:103）；M-001 PR 第一批改动即包含此文件 |
 | R-4 | business | 旧 verdict 强制重签 ceremony 代价高：升级后所有含旧 verdict 的 feature 若未经 sign-off 都会被门禁拦截，开发者体验短期变差；若历史 verdict 数量多，迁移期可能卡住所有正在进行的需求 | medium | medium | 迁移窗口策略：先在 staging 分支跑 R008 新规则，统计受影响 verdict 数量；提供一键 sign-off 脚本（读取旧 verdict → 补写 human_signoff）供迁移期使用；超过 10 个旧 verdict 时需评估是否设置迁移豁免期 |
 | R-5 | security | tty 伪造风险：`os.isatty()` 校验可被开发者给 AI shell 装 PTY（`pty.openpty()`）绕过（来源：requirements/REQ-2026-003/plan.md:37）；plan.md 的 R3 风险段早已识别此点；tty 校验不是绝对防伪 | low | medium | 配合 `ai-collaboration.md` 硬规则（来源：context/team/ai-collaboration.md:17）：禁止主动给 AI 装 PTY；此为社会工程防线而非技术防线，对单人项目已足够；未来团队化可加 audit log 比对 |
-| R-6 | tech | `check_reviews.py` CR 规则与新 `conclusion` 枚举不一致：CR-1/CR-2/CR-3/CR-4/CR-6 均基于 `conclusion == "approved"` 判定（来源：scripts/lib/save_review.py:88）；枚举改名后若 CR 规则不同步改，所有新 verdict 的内部一致性校验会失效或误报 | medium | high | CR 规则改动与枚举改动必须同 PR 同步落地；detail-design 阶段列出每条 CR 规则的新语义（`approved→looks_clean, rejected→blocked`），PR review 时逐条比对 |
+| R-6 | tech | `check_reviews.py` CR 规则与新 `conclusion` 枚举不一致：CR-1/CR-2/CR-3/CR-4/CR-6 横跨多行均基于 `conclusion == "approved"` 判定——CR-1 见 scripts/lib/save_review.py:88、CR-2 见 :92、CR-3 见 :96、CR-4 见 :103、CR-6 见 :120；枚举改名后若 CR 规则不同步改，所有新 verdict 的内部一致性校验会失效或误报 | medium | high | CR 规则改动与枚举改动必须同 PR 同步落地；detail-design 阶段列出每条 CR 规则的新语义（`approved→looks_clean, rejected→blocked`），PR review 时逐条比对 |
 | R-7 | ops | `human_signoff` 字段写入后 R005 hash drift 风险：`signoff` 路径向 verdict JSON 文件写入新字段，若 verdict 文件本身在 `reviewed_artifacts` 中会触发 R005（来源：scripts/lib/check_reviews.py:129）；但 PR #47 已加黑名单兜底（`reviews/` 子路径被禁，来源：scripts/lib/save_review.py:178），此风险已被结构性解决 | low | low | 已闭合；detail-design 阶段确认 `signoff` 写入目标是 `reviews/*.json`，测试阶段只需验证 R005 不误报 |
 
 ---
@@ -164,13 +164,38 @@ refs-tech-feasibility: true
 | M-004 | 0 | 0.5 | 1 | 1.5 |
 | **总计** | **3** | **6.5** | **6.5** | **16** |
 
+### PR 拓扑依赖图
+
+```
+M-001 (schema + Agent + Skill)
+   │
+   │ 必须先：review-schema.yaml 的 conclusion 枚举改名 + human_signoff 字段定义
+   │ 是后续所有 PR 的契约前提
+   ▼
+   ├─→ M-002 (save_review.py signoff 子命令)
+   │      ├─ 弱依赖 M-001：写 human_signoff 字段需要 schema 已定义
+   │      └─ 与 M-003 共享 save_review.py 文件（CR 规则改动），需 rebase 协调
+   │
+   └─→ M-003 (check_reviews + gate 升级)
+          ├─ 强依赖 M-001：R008 校验 + CR 规则更新都基于新枚举
+          └─ 与 M-002 弱并行（共享 save_review.py 和 check_reviews.py，需 rebase）
+   
+M-004 (留档 + 端到端验收)
+   └─ 必须最后：依赖 M-001~M-003 全部合入后做端到端测试
+```
+
+**串行 / 并行关系**：
+- M-001 → (M-002 与 M-003 弱并行) → M-004
+- M-002 与 M-003 弱并行：可同时开发但合入需顺序（共享文件 rebase）
+- 推荐串行节奏：M-001 → M-002 → M-003 → M-004，因为 M-002 与 M-003 共享文件，并行 rebase 成本未必低于串行
+
 ---
 
 ## 4. 前置条件
 
 1. **review-schema.yaml 枚举改名必须先于所有其他改动落地**：下游 `check_reviews.py` / `save_review.py` / `code-quality-reviewer.md` 的新逻辑都依赖新枚举定义（来源：context/team/engineering-spec/review-schema.yaml）；若顺序反，CI 会因旧枚举校验失败阻断开发流程
 2. **历史 verdict 文件迁移脚本须在 M-002 PR 合入前就绪**：`check_reviews.py _r002_schema_recheck` 会对所有已落盘 verdict 做枚举校验（来源：scripts/lib/check_reviews.py:82），PR 合入后旧 verdict 立即不合规；迁移脚本须在同批次 PR 中提供并执行
-3. **`feature-lifecycle-manager` 所在文件需确认路径**：搜索时未找到该 Agent 定义，detail-design 阶段须先定位实际文件或确认该逻辑所在的 Skill/Command，再评估改动量
+3. **`feature-lifecycle-manager` 所在文件已确认**：`.claude/skills/feature-lifecycle-manager/SKILL.md`（Skill 而非 Agent），改动量在 §1.6 + M-003 工作量估算中已涵盖，无前置阻塞
 4. **Python 3.9+（`os.isatty` / `pathlib`）**：CI 固定 Python 3.11（来源：.github/workflows/quality-check.yml:22），本地开发环境需同版本
 
 ---
@@ -179,11 +204,7 @@ refs-tech-feasibility: true
 
 ## 待澄清清单
 
-[待补充]
-- 内容：`feature-lifecycle-manager` Agent 实际文件路径
-- 依据：需求引用 `feature-lifecycle-manager`（来源：requirements/REQ-2026-003/artifacts/requirement.md:16），但 `.claude/agents/feature-lifecycle-manager.md` 不存在，推测可能在 `.claude/skills/feature-lifecycle-manager/SKILL.md` 或其他路径
-- 风险：若该 Agent/Skill 改动量超预期（逻辑复杂或跨多文件），M-003 工作量可能增加 0.5~1 天
-- 验证时机：detail-design 阶段第一步定位文件路径并确认改动边界
+_假设 1（feature-lifecycle-manager 路径）已闭合 · 2026-04-29：实际位于 `.claude/skills/feature-lifecycle-manager/SKILL.md`，是 Skill 而非 Agent；改动量在 §1.6 + §3 M-003 已包含，无工作量上调。_
 
 [待补充]
 - 内容：`.review-scope.json` 在 `signoff --trivial` 路径的可用性

@@ -97,3 +97,11 @@
     1. 纯重命名 / 纯单测新增等场景仍走完整流程（接受：宁可多按一次确认，不放过有风险的变更）
     2. **下游门禁协议成本**：feature-lifecycle-manager / requirement:submit / GATE-REVIEW-VERDICT 三处判定需从 `decision == "approved"` 改为 `decision ∈ {"approved", "approved-trivial"}`；schema 枚举也需扩展。本需求范围/包含 段已显式列入这两项产出物，下游设计阶段需同步落实
 - **时间**：2026-04-29
+
+### D-007 范围扩展：闭合 `code-review.md:40` 零 finding 快速路径漏洞
+- **Context**：tech-research 阶段做技术可行性评估（commit cb55ea0）时，发现 `.claude/commands/code-review.md:40` 现存"8 checker 全部空 issues → 直接输出 `approved` 报告"快速路径——这是 `/code-review` 编排顶层的旁路，绕过 `code-quality-reviewer` 与本需求引入的 `human_signoff` 字段。即便本需求把 D-002（AI 禁出 approved）+ D-003（tty 校验）+ D-006（trivial 通道）+ 接受集合判定都做对，只要 `code-review.md:40` 这个旁路存在，AI 仍可在零 finding 场景下完成"自我盖章"。
+- **Decision**：把"删除 `code-review.md:40` 零 finding 快速路径"作为本需求附带闭合项纳入范围/包含 段。所有 review 路径必须经 `code-quality-reviewer` 出三档机器评估 + `human_signoff` 才能完成。
+- **Consequences**：
+  - 优点：双卡点机制结构性闭合，无可绕过的 AI 自盖章旁路
+  - 缺点：8 checker 全空场景也要走 judge + sign-off，仪式略重——可由 `--trivial` 通道（D-006）+ `--all` 兜底（D-005）配合缓解
+- **时间**：2026-04-29（tech-research 评审 R-3 发现 → 范围扩展）
