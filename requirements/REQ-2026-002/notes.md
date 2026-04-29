@@ -71,3 +71,13 @@ F-003 round-3 13 条 must_fix 中 4 条要求改 detailed-design.md（F-001 audi
 ### 防御补强（F-004 候选）
 - check-reviews R005 增 `--allow-stale` 或 ctx.cli_flags 旁路：development 阶段允许 stale=true 时降级 ERROR → WARNING（不阻断当前阶段流程）
 - 或 reviewer agent 接到「修 spec」类 must_fix 时自动跟 detail-design 重审任务，避免 round-3 留 R005 残留
+
+
+## 会话经验（2026-04-29 09:35）
+
+_[hook-skipped: claude-exit-1]_
+
+
+## 会话经验（2026-04-29 10:50）
+
+_本轮无新经验_

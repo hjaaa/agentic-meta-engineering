@@ -77,20 +77,21 @@ reviews:
       - REV-REQ-2026-002-outline-design-001
     stale: false
   detail-design:
-    latest: REV-REQ-2026-002-detail-design-002
+    latest: REV-REQ-2026-002-detail-design-003
     conclusion: approved
-    reviewed_commit: 932b90a
+    reviewed_commit: ab54fc0
     artifact_hashes:
       artifacts/detailed-design.md: 
-        81f3ac671f97228e65dfe31be87fbc9baf885cb455758ef29db8936907906dc6
+        1a99e2a4f4fca75067f7db08077ef3e1b4ca1e5eb6bd19a6ba4e38f4a8781dc6
       artifacts/features.json: 
-        6c3a4c2adcbc958aecbed130c5f407f6f00d84d1380e88ef5e363090bbd4181a
+        dc9ad4ac66657b91e78946b99f07e1630ef04d6de9707fe7b45f923524afe6eb
       artifacts/outline-design.md: 
         448d0e242f2a3c5f620762779987134caf7f51ff9d3840055c6eaab6a0440d47
     history:
       - REV-REQ-2026-002-detail-design-001
       - REV-REQ-2026-002-detail-design-002
-    stale: true
+      - REV-REQ-2026-002-detail-design-003
+    stale: false
   code:
     by_feature:
       F-001:
@@ -123,14 +124,29 @@ reviews:
         history:
           - REV-REQ-2026-002-code-F-003-001
           - REV-REQ-2026-002-code-F-003-002
-        latest: REV-REQ-2026-002-code-F-003-002
-        conclusion: needs_revision
-        reviewed_commit: f771d76
+          - REV-REQ-2026-002-code-F-003-003
+        latest: REV-REQ-2026-002-code-F-003-003
+        conclusion: approved
+        reviewed_commit: ab54fc0
         artifact_hashes:
           artifacts/features.json: 
             dc9ad4ac66657b91e78946b99f07e1630ef04d6de9707fe7b45f923524afe6eb
-          artifacts/tasks/F-003.md: 
-            52e9d5eecfb6bc953316812c71d6ef5de512e5ae9677984d4cf35b1010034ff6
           artifacts/detailed-design.md: 
-            32a51c9be363f2488941044390edfa5ffb889e396cd31bd774e96a2c0cad37f9
+            1a99e2a4f4fca75067f7db08077ef3e1b4ca1e5eb6bd19a6ba4e38f4a8781dc6
+        stale: false
+      F-004:
+        history:
+          - REV-REQ-2026-002-code-F-004-001
+          - REV-REQ-2026-002-code-F-004-002
+          - REV-REQ-2026-002-code-F-004-003
+        latest: REV-REQ-2026-002-code-F-004-003
+        conclusion: approved
+        reviewed_commit: 90c3be6
+        artifact_hashes:
+          artifacts/features.json:
+            54465fa499226779d3545542be74d2030667c6d22fd51f4a70a9cb216af6e3c1
+          artifacts/tasks/F-004.md:
+            5bb14f073429c10666ed414d50acb30761eecdf381db3f72548b43d3baaab71a
+          artifacts/detailed-design.md:
+            d820bafdc6e9cadef91f54bd37feaa26b2b5e475e26e1ee0cae3fa554a373f91
         stale: false
