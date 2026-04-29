@@ -65,7 +65,7 @@ assert_exit() {
 echo
 echo "== T1: R001 应当 fail（无 review） =="
 set +e
-bash scripts/check-reviews.sh --req "$REQ" --target-phase tech-research > /dev/null 2>&1
+python3 scripts/gates/run.py --trigger=adapter --legacy=check-reviews --req "$REQ" > /dev/null 2>&1
 assert_exit 1 $? "R001 fires when no review"
 set -e
 
@@ -92,7 +92,7 @@ echo "OK: meta.yaml 首行注释保留"
 echo
 echo "== T4: check-reviews happy path =="
 set +e
-bash scripts/check-reviews.sh --req "$REQ" --target-phase tech-research > /dev/null 2>&1
+python3 scripts/gates/run.py --trigger=adapter --legacy=check-reviews --req "$REQ" > /dev/null 2>&1
 assert_exit 0 $? "check-reviews passes after valid review"
 set -e
 
@@ -100,7 +100,7 @@ echo
 echo "== T5: R005 hash drift 触发 =="
 echo "drift" >> "$REQ_DIR/artifacts/requirement.md"
 set +e
-bash scripts/check-reviews.sh --req "$REQ" --target-phase tech-research > /dev/null 2>&1
+python3 scripts/gates/run.py --trigger=adapter --legacy=check-reviews --req "$REQ" > /dev/null 2>&1
 assert_exit 1 $? "R005 fires when artifact changed"
 set -e
 stale=$(python3 -c "import yaml; print(yaml.safe_load(open('$REQ_DIR/meta.yaml')).get('reviews', {}).get('definition', {}).get('stale'))")

@@ -46,10 +46,10 @@
 - **原因**：误以为 `/requirement:new` 是唯一入口，忽视了"直通分支"路径
 - **修复**：对照 `/agentic:help fast-path` 的"选择三问"——不需要跨会话恢复 + 不需要设计评审 + 不需要追溯链 → 切 feature 分支直接改 + `/code-review` + PR，不建需求目录
 
-## 9. 本地 check-sourcing 通过，PR CI 仍 fail（W002 升级为 error）
-- **症状**：本地 `bash scripts/check-sourcing.sh ...` 出 warning 但退码 0，PR push 后 GitHub Actions 的 `schema-and-index` job 失败
+## 9. 本地 sourcing 通过，PR CI 仍 fail（W002 升级为 error）
+- **症状**：本地 sourcing 检查出 warning 但退码 0，PR push 后 GitHub Actions 的 `quality-check` job 失败
 - **原因**：CI 跑的是 `--strict` 模式，warning 升级为 error；本地默认不开 strict
-- **修复**：开 PR 前本地预热 `bash scripts/check-sourcing.sh --all --strict`，把"段落含强约束数字断言但缺三态标记（W002）"等问题在本地修完。检查 5 个常见命中点：detailed-design 的伪代码段、tasks/F-*.md 的开发笔记、review 报告的"依据：..."条、test-report 的"已知限制"段、outline-design 的流程列表
+- **修复**：开 PR 前本地预热 `python3 scripts/gates/run.py --trigger=ci --strict`，把"段落含强约束数字断言但缺三态标记（W002）"等问题在本地修完。检查 5 个常见命中点：detailed-design 的伪代码段、tasks/F-*.md 的开发笔记、review 报告的"依据：..."条、test-report 的"已知限制"段、outline-design 的流程列表
 
 ## 10. 三态来源标记格式被 RE_SRC 拒收
 - **症状**：明明加了"来源：xxx"，check-sourcing 仍报 W002
