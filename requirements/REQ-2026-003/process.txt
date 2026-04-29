@@ -5,3 +5,4 @@
 2026-04-29 21:14:55 [phase-transition] definition → tech-research（7 gates pass；REV-005 approved 92 分）
 2026-04-29 21:59:08 [phase-task] tech-research：起草 tech-feasibility.md（feasibility=high，工作量 16 人天，4 PR 拆分）
 2026-04-29 22:09:44 [definition] REV-006 approved（93 分）：D-007 范围扩展（删 code-review.md:40 零 finding 旁路）经评审无矛盾
+2026-04-29 22:41:15 [save] tech-research 收敛：tech-feasibility.md drafted (high/16d/7risks) + R-3→D-007 范围扩展 + REV-006 approved 93 分
