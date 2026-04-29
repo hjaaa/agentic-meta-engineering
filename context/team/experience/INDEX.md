@@ -8,6 +8,9 @@
 - [`traceability-gate-error-code-tc-coverage.md`](traceability-gate-error-code-tc-coverage.md) — `development → testing` 门禁易暴露错误码 TC 缺口；开发期同步加 TC 是主防线，门禁是兜底
 - [`spec-drift-consumer-aligns-with-producer.md`](spec-drift-consumer-aligns-with-producer.md) — 规范说 X 在路径 P 但工具写到 Q 时，改消费方对齐产出方，不反向搬位置
 - [`ai-skips-realtime-notes-during-flow.md`](ai-skips-realtime-notes-during-flow.md) — auto mode 下 AI 推进流程时易漏 `/note`，process.txt 流水给假阳性安心感；需流程嵌入 / hook 强校验 / SessionEnd 兜底
+- [`hook-self-import-deadlock.md`](hook-self-import-deadlock.md) — PreToolUse hook 自身 import 被门禁的代码会形成死锁；syntax pre-check + fail-open 是出路（已落 design-guidance/hook-fail-open.md）
+- [`squash-merged-branch-cannot-be-rebased.md`](squash-merged-branch-cannot-be-rebased.md) — feature 分支被 squash-merge 后保留继续开发，再开 PR 必须用 merge / --skip-rebase；rebase 必撞冲突
+- [`long-shell-commands-paste-pitfall.md`](long-shell-commands-paste-pitfall.md) — AI 给用户的终端命令避免反斜杠续行 / 超长单行；zsh 粘贴切碎易把数据文件当命令执行报 permission denied
 
 ## 什么值得沉淀
 

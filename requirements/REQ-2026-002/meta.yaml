@@ -54,9 +54,9 @@ affected_modules:                        # definition 起必填；自由词，�
 tags: [gate, registry-driven, dogfooding]   # 可选；长尾标签，不归一化
 
 # ============ 结果组（completed 时才填） ============
-outcome: ""                    # shipped / abandoned / rolled-back
-completed_at: ""               # ISO8601，completed 时填
-lessons_extracted: false       # /knowledge:extract-experience 是否已跑
+outcome: shipped                              # shipped / abandoned / rolled-back
+completed_at: "2026-04-29 14:55:00"           # ISO8601，completed 时填（Asia/Shanghai）
+lessons_extracted: true                       # /knowledge:extract-experience 已跑：3 条新经验入 context/team/experience/ + 1 条规范入 context/team/engineering-spec/design-guidance/hook-fail-open.md
 reviews:
   definition:
     latest: REV-REQ-2026-002-definition-003

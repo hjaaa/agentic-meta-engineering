@@ -235,4 +235,5 @@ F-003 round 2 review（code-F-003-001.json）识别但 critic 已转 follow-up n
 | C-007 | governance | scripts/gates/run.py 30 天 22 commits 高频热区；建议合并 develop 后进入 ≥ 1 周稳定化窗口再接 F-005 / F-006 | 软约定，feature-lifecycle-manager Skill 可加 soft check |
 | C-008 | governance | 同 feature 连续 round 的 12h 静默期约定（F-004 同日内连续 round-2/3 节奏过紧） | feature-lifecycle-manager Skill soft check |
 | ~~C-009~~ | ~~hook-deadlock~~ | ~~PreToolUse hook 自身 import run.py，merge 冲突 / 半成品 commit 时 hook 崩溃锁死所有工具调用~~ | **已修 F-004 round-4**：pre_tool_use.sh 加 py_compile pre-check + 区分业务 fail (rc=1 → exit 2) 与 infra-failure (rc≠0/1 → exit 0 + WARNING)；落规范 context/team/engineering-spec/design-guidance/hook-fail-open.md |
+| C-010 | gate-system | testing → completed 弱门禁加固：当前 phase-transition 触发器对 from→to 不区分；缺 GATE-COMPLETION-FIELDS（outcome / completed_at / lessons_extracted 必填）+ GATE-TEST-REPORT-EXISTS（artifacts/test-report.md 存在）+ GATE-PR-MERGED（PR 已合并）。本需求手动满足这些应有但未实施的检查；F-006 系统实施 | F-006 候选项（已在 requirement.md:141 列入"不包含但已规划"） |
 
