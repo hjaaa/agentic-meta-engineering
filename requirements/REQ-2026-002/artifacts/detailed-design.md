@@ -45,6 +45,9 @@ gates:
       fixtures: [pass, fail, skip]
 
 escape_hatches:                       # 全局 escape 策略（非 gate 级，是流程级）
+                                      # 注：force-with-blockers 是**流程级** escape_hatch，
+                                      # 跨所有 trigger-applicable gate 强制覆盖（不限定 skips_gates）；
+                                      # 与 legacy-requirement 的 gate 级 skips_gates_with_tag 区分。
   - id: legacy-requirement
     field: meta.legacy
     skips_gates_with_tag: [review-verdict]
@@ -53,7 +56,7 @@ escape_hatches:                       # 全局 escape 策略（非 gate 级，�
 
   - id: force-with-blockers
     cli_flag: --force-with-blockers
-    triggers: [submit]
+    triggers: [submit, phase-transition]  # 流程级：跨所有 trigger-applicable gate 强制覆盖
     requires_reason: true             # CLI 形式：--force-with-blockers="<reason>"
     audit: true
 
@@ -264,8 +267,10 @@ def main(argv: list[str]) -> int:
 - `rollback_failed` — fail 路径中至少一个已 commit 的 write_state plugin 的 `rollback()` 抛
   异常时为 true；正常 / 无 write_state plugin / rollback 全部成功时为 false。runner 在
   `_handle_gate_failed` 收集后写入 audit。
-- `escape_used` — `--force-with-blockers` 等流程级 escape_hatch 命中时记 cli_flag 名；F-004
-  落地。本 round 占位为 null。
+- `escape_used` — `--force-with-blockers` 等流程级 escape_hatch 命中时记 cli_flag 名；F-004 落地；非命中时为 null。
+- `escape_reason` — `string | null`：force-with-blockers 等流程级 escape_hatch 命中时记 reason
+  文本（max_len=1024，控制字符过滤：unicodedata.category 以 'C' 开头的类，\t 和 \n 例外）；
+  非命中时为 null。与 `escape_used` 同时写入，可独立追溯绕过原因。
 - `exit_code` — audit log 自身的描述性字段（1=有 failed / 0=无 failed）；进程实际退出码以
   runner `_calc_exit_code` 为准（strict 下 warning fail 也升 1）。审计日志字段是「用户视角的快照」，
   不与进程退出码 100% 同步。

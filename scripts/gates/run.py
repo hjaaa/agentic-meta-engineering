@@ -365,15 +365,35 @@ def main(argv: Optional[list[str]] = None) -> int:
         print("ERROR 必须指定 --trigger 或 --validate-registry", file=sys.stderr)
         return 2
 
-    # F-004：--force-with-blockers 必填校验（reason 非空）
+    # F-004 round-2：--force-with-blockers reason 三条校验
+    # 1. 非空；2. 长度 ≤ 1024；3. 无控制字符（\t / \n 例外）
     force_reason = getattr(args, "force_with_blockers", None)
-    if force_reason is not None and not force_reason.strip():
-        print(
-            "ERROR --force-with-blockers 必须提供非空 reason，"
-            "如：--force-with-blockers='临时绕过：已有 Jira 跟进'",
-            file=sys.stderr,
-        )
-        return 2
+    if force_reason is not None:
+        if not force_reason.strip():
+            print(
+                "ERROR --force-with-blockers 必须提供非空 reason，"
+                "如：--force-with-blockers='临时绕过：已有 Jira 跟进'",
+                file=sys.stderr,
+            )
+            return 1
+        if len(force_reason) > 1024:
+            print(
+                f"ERROR --force-with-blockers reason 长度 {len(force_reason)} 超过上限 1024 字符；"
+                "请缩减描述",
+                file=sys.stderr,
+            )
+            return 1
+        bad_chars = [
+            ch for ch in force_reason
+            if ch not in ("\t", "\n") and unicodedata.category(ch).startswith("C")
+        ]
+        if bad_chars:
+            print(
+                f"ERROR --force-with-blockers reason 含控制字符（{[repr(c) for c in bad_chars[:5]]}）；"
+                "请移除控制字符后重试",
+                file=sys.stderr,
+            )
+            return 1
 
     ctx = build_context(args)
     candidates = filter_gates(registry_data, ctx)

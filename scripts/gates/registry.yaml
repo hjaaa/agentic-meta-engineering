@@ -312,7 +312,7 @@ escape_hatches:
 
   - id: force-with-blockers
     cli_flag: --force-with-blockers
-    triggers: [submit]
+    triggers: [submit, phase-transition]   # round-2 新增 phase-transition（与 run.py:_handle_escape_hatch 对齐）
     requires_reason: true
     audit: true
 
