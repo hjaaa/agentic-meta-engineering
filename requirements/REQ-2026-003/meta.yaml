@@ -1,7 +1,7 @@
 # ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-003
 title: 代码审查人类必经卡点（路由确认 + 结论 sign-off）
-phase: tech-research
+phase: outline-design
 created_at: "2026-04-29 17:05:53"     # 格式 YYYY-MM-DD HH:MM:SS（Asia/Shanghai），见 context/team/engineering-spec/time-format.md
 branch: feat/req-2026-003
 base_branch: develop                   # feat/* 派生的基点分支：develop / main / master
@@ -16,6 +16,12 @@ gates_passed:
       - "GATE-PLAN-FRESHNESS W003: plan.md 范围段 '不包含' 无子条目（待 definition 阶段补）"
   - phase: tech-research
     at: "2026-04-29 21:14:27"
+    gates: [GATE-META-SCHEMA, GATE-INDEX-INTEGRITY, GATE-SOURCING, 
+          GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY, 
+          GATE-PLAN-FRESHNESS]
+    warnings: []
+  - phase: outline-design
+    at: "2026-04-29 22:43:32"
     gates: [GATE-META-SCHEMA, GATE-INDEX-INTEGRITY, GATE-SOURCING, 
           GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY, 
           GATE-PLAN-FRESHNESS]
@@ -56,4 +62,17 @@ reviews:
       - REV-REQ-2026-003-definition-004
       - REV-REQ-2026-003-definition-005
       - REV-REQ-2026-003-definition-006
+    stale: false
+  outline-design:
+    latest: REV-REQ-2026-003-outline-design-002
+    conclusion: approved
+    reviewed_commit: e86d038
+    artifact_hashes:
+      artifacts/outline-design.md: 
+        b3200260d7d86de977cacfae7ea906f8e414d426ab5264230e255ff69e82765d
+      artifacts/requirement.md: 
+        f7d7b713eedb70645cb9b24d5178083979200d9362f870a07a32942f3c3c9406
+    history:
+      - REV-REQ-2026-003-outline-design-001
+      - REV-REQ-2026-003-outline-design-002
     stale: false

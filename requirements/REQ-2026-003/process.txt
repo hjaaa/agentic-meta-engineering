@@ -6,3 +6,7 @@
 2026-04-29 21:59:08 [phase-task] tech-research：起草 tech-feasibility.md（feasibility=high，工作量 16 人天，4 PR 拆分）
 2026-04-29 22:09:44 [definition] REV-006 approved（93 分）：D-007 范围扩展（删 code-review.md:40 零 finding 旁路）经评审无矛盾
 2026-04-29 22:41:15 [save] tech-research 收敛：tech-feasibility.md drafted (high/16d/7risks) + R-3→D-007 范围扩展 + REV-006 approved 93 分
+2026-04-29 22:44:07 [phase-transition] tech-research → outline-design（7 gates 全过，无 warning）
+2026-04-29 23:40:28 [phase-task] outline-design: outline-design.md drafted（13 模块 / 6 节骨架 + 删除点 + human_signoff schema；GATE-SOURCING strict 0 error）；append D-008 修订口径（GATE 升级口径与 requirement.md §76/93 对齐）
+2026-04-30 00:11:37 [review:approved] outline-design REV-001 approved（88 分；0 required_fixes / 3 suggestions / 1 arch_concern）：M2 删除连锁、D-008 修订口径与 requirement.md §76/93 对齐
+2026-04-30 00:14:24 [review:approved] outline-design REV-002 approved（轻审 supersedes 001；闭合 suggestion 1+2；suggestion 3 + arch_concern M11 cutover 留 detail-design）

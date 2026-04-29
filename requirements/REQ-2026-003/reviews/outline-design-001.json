@@ -1,0 +1,69 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-003-outline-design-001",
+  "requirement_id": "REQ-2026-003",
+  "phase": "outline-design",
+  "reviewer": "outline-design-quality-reviewer",
+  "reviewed_at": "2026-04-30 00:10:05",
+  "reviewed_commit": "e86d038",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "0ee353a88934c25043ad8d3fec4316af8733198c1f8b146ae4a3610a9c10e465"
+    },
+    {
+      "path": "artifacts/requirement.md",
+      "sha256": "f7d7b713eedb70645cb9b24d5178083979200d9362f870a07a32942f3c3c9406"
+    }
+  ],
+  "conclusion": "approved",
+  "score": 88,
+  "dimensions": {
+    "alignment_with_requirement": {
+      "score": 92,
+      "issues": []
+    },
+    "module_decomposition": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 78 行：M11『旧 verdict 处置策略』在模块表中归挂 scripts/lib/save_review.py（启动期校验），但 §3.3 第 156-158 行又描述为『M11 内嵌或独立脚本』，归属与命名（启动期校验 vs 一次性迁移脚本）口径不一致——detail-design 阶段需收敛到唯一落点，避免实现时两边都写"
+        }
+      ]
+    },
+    "tech_choice_rationale": {
+      "score": 88,
+      "issues": []
+    },
+    "scalability": {
+      "score": 82,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 203 行：signoff_source 枚举仅 cli-tty 与 D-004 决策一致，但 §4.2 没说明未来扩展（如 pr-review）时旧 cli-tty verdict 的兼容路径——建议在 detail-design 显式记一条『枚举增项不破坏旧 verdict』的演进约束，以兜住 R-O1 的隐性扩展面"
+        }
+      ]
+    },
+    "integration_with_existing": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 239 行：is_signed_off helper 在 feature-lifecycle-manager（Skill / Bash）的调用方式（bash 包装脚本 vs `python3 -c` 一行式）作为 R-O2 留到 detail-design 解决——outline 阶段可接受，但建议把『不允许 SKILL.md 内嵌字符串解析 verdict』作为一条强约束写进 §4.4，避免 detail-design 阶段又出现一份『简版查 decision 字段』的双轨实现"
+        }
+      ]
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "建议在 §4.2 schema 升级表后追加一段『未来 signoff_source 扩展时的兼容性策略』——按当前 D-004 out of scope 决策，schema 演进路径仍应在 outline 阶段留下意图记录（保持 cli-tty 始终合法 + 新增项不强制旧 verdict 重写）",
+    "建议把 §4.4 helper 章节加一条强约束：『feature-lifecycle-manager / GATE-REVIEW-VERDICT 严禁绕过 is_signed_off helper 自行字符串解析 human_signoff.decision』——把 R-O2 的两个候选实现（bash 包装 / python 一行）都收口到 helper 层，避免 detail-design 留歧义",
+    "§2.1 删除 code-review.md:40 的连锁改动已覆盖 M10 / M3 / 测试 grep（§2.1 第 90-93 行），但建议在『待澄清清单』第 1 条之外，detail-design 阶段把 grep 范围显式扩到 `scripts/lib/save_review.py` 与 `context/team/engineering-spec/specs/`——确认无其它地方把『零 finding === approved』写进规范"
+  ],
+  "scope": null,
+  "supersedes": null,
+  "architectural_concerns": [
+    "M11 旧 verdict 迁移采用『干跑 + 用户显式触发』策略，长期来看『进行中需求的旧 verdict』会随时间累积——若升级后短期内未做批量重签，feature-lifecycle-manager 会持续阻断 done 转换；detail-design 阶段建议给一份『升级 cutover 清单』指引（列出当前所有未 done feature + 是否需要 inline 重签 vs 重跑 review），避免 development 阶段大量需求一起卡住"
+  ]
+}

@@ -98,6 +98,17 @@
     2. **下游门禁协议成本**：feature-lifecycle-manager / requirement:submit / GATE-REVIEW-VERDICT 三处判定需从 `decision == "approved"` 改为 `decision ∈ {"approved", "approved-trivial"}`；schema 枚举也需扩展。本需求范围/包含 段已显式列入这两项产出物，下游设计阶段需同步落实
 - **时间**：2026-04-29
 
+### D-008 GATE-REVIEW-VERDICT 升级口径明确：从"防红灯"扩展为"必查 human_signoff"
+- **Context**：outline-design 起草前对照代码事实——`scripts/lib/check_reviews.py:73` 与 `:249` 当前只判 `conclusion == "rejected"`（"非 rejected 即放行"），即旧门禁是"防红灯"语义，并不要求 `== "approved"`。这意味着 AI 给出 `needs_revision` 也能让 submit 放行（实际通过率取决于 conclusion 字面值，不防 AI 自盖章）。requirement.md 第 76、93 行已明确把"升级该门禁判定逻辑，从看 conclusion 改为看 `human_signoff.decision ∈ {approved, approved-trivial}`"列入范围/包含段——这是**功能扩展**，不是当前实现的恒等改写。
+- **Decision**：详细设计阶段必须把 GATE-REVIEW-VERDICT 的升级实现到位，**而不是**当前仅"防 rejected"的弱判定。具体落点：
+  1. `scripts/lib/check_reviews.py` R003/R007（或新增 R008）增加：对 phase ∈ {definition, tech-research, outline-design, detail-design, code, testing} 的最新 verdict，必须 `human_signoff.decision ∈ {"approved", "approved-trivial"}` 才放行；缺字段或为 rejected/空 → 阻断
+  2. `feature-lifecycle-manager` 同口径：`SKILL.md:51` 字符串 `approved` 升级为查 `human_signoff.decision ∈ {approved, approved-trivial}`
+  3. 两处判定使用**同一个 helper**（例如 `check_reviews.is_signed_off(verdict)`），避免双轨漂移
+- **Consequences**：
+  - 优点：双卡点真正闭合——AI 即便绕过 rejected 也会被 sign-off 缺位拦下；门禁与 feature-lifecycle-manager 判定一致，无歧义
+  - 缺点：旧 verdict（无 human_signoff 字段）在升级后立刻全部视为"未签字"——所有进行中的需求需要重签或一次性迁移脚本兜底（与 D-002 Consequences "强制重签" 口径一致）；testing 阶段需为新判定写门禁测试
+- **时间**：2026-04-29（outline-design 起草前——回退 D-008 早期"无需升级 GATE"的误判，与 requirement.md 范围/包含段对齐）
+
 ### D-007 范围扩展：闭合 `code-review.md:40` 零 finding 快速路径漏洞
 - **Context**：tech-research 阶段做技术可行性评估（commit cb55ea0）时，发现 `.claude/commands/code-review.md:40` 现存"8 checker 全部空 issues → 直接输出 `approved` 报告"快速路径——这是 `/code-review` 编排顶层的旁路，绕过 `code-quality-reviewer` 与本需求引入的 `human_signoff` 字段。即便本需求把 D-002（AI 禁出 approved）+ D-003（tty 校验）+ D-006（trivial 通道）+ 接受集合判定都做对，只要 `code-review.md:40` 这个旁路存在，AI 仍可在零 finding 场景下完成"自我盖章"。
 - **Decision**：把"删除 `code-review.md:40` 零 finding 快速路径"作为本需求附带闭合项纳入范围/包含 段。所有 review 路径必须经 `code-quality-reviewer` 出三档机器评估 + `human_signoff` 才能完成。
