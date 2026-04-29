@@ -203,3 +203,56 @@ def test_validate_force_reason_tab_newline_allowed():
     reason_with_whitespace = "原因：\t制表符\n换行符"
     result = runner_mod._validate_force_reason(reason_with_whitespace)
     assert result is None
+
+
+# ====================== G-3 资源清理断言（F-004 round-3） ======================
+
+
+def test_force_escape_hatch_cleans_snapshots_and_staged_writes(monkeypatch, tmp_path):
+    """G-3：force-with-blockers 路径命中时，.bak 快照被清理且 staged_writes 被清空。
+
+    模拟 phase-transition 触发 + blocker fail + --force-with-blockers 命中场景，
+    验证 _cleanup_snapshots 已调用（.bak 文件不存在）且 ctx.staged_writes == []。
+    """
+    import sys
+    from pathlib import Path
+    from unittest.mock import MagicMock
+
+    # 创建一个临时 .bak 文件模拟 snapshot
+    bak_file = tmp_path / "meta.yaml.bak"
+    bak_file.write_text("backup content")
+    # snapshots dict：key=原始路径字符串，value=.bak Path
+    fake_snapshots = {str(tmp_path / "meta.yaml"): bak_file}
+
+    # 构造一个最小 GateContext mock
+    from plugins.base import GateContext
+    ctx = GateContext(
+        trigger="phase-transition",
+        requirement_id="REQ-2099-001",
+        cli_flags={"force_with_blockers": "紧急绕过：Jira-1234 跟进"},
+        meta={},
+        extra={},
+        changed_files=[],
+        env={},
+    )
+    # 预填一条假暂存写态，验证 clear 后为空
+    ctx.staged_writes.append(("meta.yaml", "some_key", "some_value"))
+
+    # 构造 GateFailed mock
+    gate_fail = MagicMock()
+    gate_fail.report.gate_id = "GATE-PLAN-FRESH"
+
+    # 调用 _handle_escape_hatch
+    force_used, rollback_failed = runner_mod._handle_escape_hatch(
+        ctx, gate_fail, executed=[], snapshots=fake_snapshots
+    )
+
+    # 断言 escape_hatch 命中
+    assert force_used is True
+    assert rollback_failed is False
+
+    # 断言 .bak 快照文件已被删除（_cleanup_snapshots 已调）
+    assert not bak_file.exists(), ".bak 快照文件应被 _cleanup_snapshots 删除"
+
+    # 断言 staged_writes 已清空
+    assert len(ctx.staged_writes) == 0, "ctx.staged_writes 应被 clear() 清空"

@@ -482,7 +482,10 @@ def _handle_escape_hatch(
             f"reason={force_reason!r}",
             file=sys.stderr,
         )
-        # 已跳过 rollback；剩余 gate 因 GateFailed 已中断；audit log 仅含已执行 gate 报告
+        # G-3 round-3：force 路径也要清理快照和暂存写态，
+        # 避免 .bak 文件残留 + ctx 跨调用复用时 staged_writes 幻态
+        _cleanup_snapshots(snapshots)
+        ctx.staged_writes.clear()
         return True, False
     rollback_failed = _handle_gate_failed(ctx, executed, snapshots)
     return False, rollback_failed
