@@ -516,8 +516,68 @@ def _build_audit_extra(force_used: bool, force_reason: str) -> dict[str, Any]:
     }
 
 
+def _init_snapshots(ctx: GateContext, plan: list[dict[str, Any]]) -> dict:
+    """按需做 stash_state，返回 snapshots dict（F-004 round-3 从 _execute_plan 抽出）。
+
+    仅 plan 中含 side_effects=write_state 的 gate 时才调 _stash_state；否则返回 {}。
+    stash 失败时降级为 {}（打 ERROR + 继续执行），保证 plugin 仍能运行。
+
+    参数：
+      ctx  — 当前执行上下文（trigger / requirement_id 用于日志）。
+      plan — 拓扑排序后候选 gate 列表。
+
+    返回：snapshots dict（_stash_state 返回值）；无需 stash 或 stash 失败时为 {}。
+    """
+    needs_stash = any(e.get("side_effects") == "write_state" for e in plan)
+    if not needs_stash:
+        return {}
+    # F-020 round-3：stash_state 单独包裹，PermissionError/磁盘满/路径异常时降级 {}
+    try:
+        return _stash_state(ctx)
+    except Exception as stash_exc:  # noqa: BLE001
+        print(
+            f"ERROR stash_state 失败 req={ctx.requirement_id or '-'} "
+            f"trigger={ctx.trigger}: {stash_exc}；跳过事务化保护继续执行",
+            file=sys.stderr,
+        )
+        return {}
+
+
+def _finalize_audit(
+    ctx: GateContext,
+    reports: list[Report],
+    rollback_failed: bool,
+    force_used: bool,
+    force_reason: str,
+) -> None:
+    """构建并落盘 audit log；失败时仅打 ERROR，不阻断 gate 结果（F-004 round-3 从 _execute_plan 抽出）。
+
+    F-019 round-3：write_audit 单独包裹 try/except，避免 audit 落盘故障（磁盘满/无写权限）
+    冒泡为 exit 2 阻断 Claude；audit 是基础设施级失败，绝不能升级为 gate 全崩。
+
+    参数：
+      ctx           — 当前执行上下文。
+      reports       — 本次执行所有 gate 的 Report 列表。
+      rollback_failed — fail 路径中 rollback 是否出现异常。
+      force_used    — escape_hatch 是否命中。
+      force_reason  — --force-with-blockers 传入的原始 reason 文本。
+    """
+    audit_extra = _build_audit_extra(force_used, force_reason)
+    try:
+        audit_data = _build_audit(ctx, reports, rollback_failed)
+        if audit_extra:
+            audit_data.update(audit_extra)
+        write_audit(audit_data)
+    except Exception as audit_exc:  # noqa: BLE001
+        print(
+            f"ERROR audit 落盘失败 req={ctx.requirement_id or '-'} "
+            f"trigger={ctx.trigger}: {audit_exc}；跳过 audit 不阻断 gate 结果",
+            file=sys.stderr,
+        )
+
+
 def _execute_plan(ctx: GateContext, plan: list[dict[str, Any]], strict: bool) -> int:
-    """执行 plan：precheck → run → 暂存事务化 commit / fail 路径 rollback + restore。
+    """执行 plan：init_snapshots → run/commit → escape_hatch → finalize_audit → exit_code。
 
     H1 事务化（F-002 round-2 修复）：
       commit_staged_writes 抛异常时统一走 GateFailed 路径——回滚已 commit 的 plugin、
@@ -525,23 +585,9 @@ def _execute_plan(ctx: GateContext, plan: list[dict[str, Any]], strict: bool) ->
 
     F-011 round-2：把"跑 gate / commit 写态 / GateFailed 处理"三段抽到子例程。
     F-007 round-2：拆出 _handle_escape_hatch + _build_audit_extra 降低复杂度。
+    F-004 round-3：抽 _init_snapshots + _finalize_audit，函数降至 ≤ 50 行 / CC ≤ 10。
     """
-    needs_stash = any(e.get("side_effects") == "write_state" for e in plan)
-    # F-020 round-3：stash_state 单独包裹 try/except，shutil.copy2 PermissionError /
-    # 磁盘满 / 路径异常时降级为 snapshots={} 跳过事务化保护，但不中断 runner，
-    # 让 plugin 仍能跑（write_state plugin 自己有 staged_writes 暂存兜底）。
-    if needs_stash:
-        try:
-            snapshots = _stash_state(ctx)
-        except Exception as stash_exc:  # noqa: BLE001
-            print(
-                f"ERROR stash_state 失败 req={ctx.requirement_id or '-'} "
-                f"trigger={ctx.trigger}: {stash_exc}；跳过事务化保护继续执行",
-                file=sys.stderr,
-            )
-            snapshots = {}
-    else:
-        snapshots = {}
+    snapshots = _init_snapshots(ctx, plan)
     executed: list[Gate] = []
     reports: list[Report] = []
     rollback_failed = False
@@ -557,22 +603,9 @@ def _execute_plan(ctx: GateContext, plan: list[dict[str, Any]], strict: bool) ->
     except Exception as exc:  # noqa: BLE001
         return _handle_runner_exception(ctx, snapshots, reports, _current_plugin[0], exc)
 
-    # F-019 round-3：write_audit 单独包裹 try/except，避免 audit 落盘故障
-    # （磁盘满 / 目录无写权限 / fsync 失败）冒泡为 exit 2 阻断 Claude；
-    # audit 是基础设施级失败，绝不能升级为 gate 全崩。
     force_reason = ctx.cli_flags.get("force_with_blockers", "")
-    audit_extra = _build_audit_extra(force_used, force_reason)
-    try:
-        audit_data = _build_audit(ctx, reports, rollback_failed)
-        if audit_extra:
-            audit_data.update(audit_extra)
-        write_audit(audit_data)
-    except Exception as audit_exc:  # noqa: BLE001
-        print(
-            f"ERROR audit 落盘失败 req={ctx.requirement_id or '-'} "
-            f"trigger={ctx.trigger}: {audit_exc}；跳过 audit 不阻断 gate 结果",
-            file=sys.stderr,
-        )
+    _finalize_audit(ctx, reports, rollback_failed, force_used, force_reason)
+
     # force-with-blockers 命中时允许 blocker fail 不影响 exit code（视为全通）
     if force_used:
         return 0
