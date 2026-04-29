@@ -29,12 +29,12 @@ gates_passed:
           check-reviews(detail-design)]
   - phase: development
     at: "2026-04-27 22:12:00"
-    gates: [check-meta, check-plan, tasks-exist-per-feature,
+    gates: [check-meta, check-plan, tasks-exist-per-feature, 
           tasks-status-pending]
   - phase: testing
     at: "2026-04-29 14:15:15"
-    gates: [GATE-META-SCHEMA, GATE-INDEX-INTEGRITY, GATE-SOURCING,
-          GATE-PLAN-FRESHNESS, GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT,
+    gates: [GATE-META-SCHEMA, GATE-INDEX-INTEGRITY, GATE-SOURCING, 
+          GATE-PLAN-FRESHNESS, GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, 
           GATE-TRACEABILITY]
 pr_url: https://github.com/hjaaa/agentic-meta-engineering/pull/45
 pr_number: 45
@@ -59,28 +59,30 @@ completed_at: "2026-04-29 14:55:00"           # ISO8601，completed 时填（Asi
 lessons_extracted: true                       # /knowledge:extract-experience 已跑：3 条新经验入 context/team/experience/ + 1 条规范入 context/team/engineering-spec/design-guidance/hook-fail-open.md
 reviews:
   definition:
-    latest: REV-REQ-2026-002-definition-003
+    latest: REV-REQ-2026-002-definition-004
     conclusion: approved
-    reviewed_commit: dde2826
+    reviewed_commit: 72ea75f
     artifact_hashes:
       artifacts/requirement.md: 
-        33288eca3cb114ca277c38191d915dd66e9e80b66c5aa7add929d03a8860ff58
+        15228c42e487f1cb9968b0819c7e2435adb69ae5624a40ba41b2018d14969b3d
     history:
       - REV-REQ-2026-002-definition-001
       - REV-REQ-2026-002-definition-002
       - REV-REQ-2026-002-definition-003
+      - REV-REQ-2026-002-definition-004
     stale: false
   outline-design:
-    latest: REV-REQ-2026-002-outline-design-001
+    latest: REV-REQ-2026-002-outline-design-002
     conclusion: approved
-    reviewed_commit: '6142790'
+    reviewed_commit: 72ea75f
     artifact_hashes:
       artifacts/outline-design.md: 
         448d0e242f2a3c5f620762779987134caf7f51ff9d3840055c6eaab6a0440d47
       artifacts/requirement.md: 
-        33288eca3cb114ca277c38191d915dd66e9e80b66c5aa7add929d03a8860ff58
+        15228c42e487f1cb9968b0819c7e2435adb69ae5624a40ba41b2018d14969b3d
     history:
       - REV-REQ-2026-002-outline-design-001
+      - REV-REQ-2026-002-outline-design-002
     stale: false
   detail-design:
     latest: REV-REQ-2026-002-detail-design-004
