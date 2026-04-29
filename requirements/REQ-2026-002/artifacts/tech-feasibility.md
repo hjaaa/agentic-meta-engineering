@@ -39,7 +39,7 @@ refs-tech-feasibility: true
 
 ### 1.3 Bash 写保护 / 进程链识别（跨平台）
 
-当前 protect-branch.sh 对 Bash 工具直接放行——`Bash` case 分支执行 `exit 0`（来源：.claude/hooks/protect-branch.sh:32）。H5 修复需要在 PreToolUse Hook 解析 Bash 的 `command` 字段，正则匹配写 `requirements/*/reviews/*.json` 的操作（来源：requirements/REQ-2026-002/artifacts/requirement.md:89）。
+当前 protect-branch.sh 对 Bash 工具直接放行——`Bash` case 分支执行 `exit 0`（来源：.claude/hooks/protect-branch.sh:1）[H5 已修复，闭合方案见 commit 56e7a43]。H5 修复需要在 PreToolUse Hook 解析 Bash 的 `command` 字段，正则匹配写 `requirements/*/reviews/*.json` 的操作（来源：requirements/REQ-2026-002/artifacts/requirement.md:89）。
 
 **跨平台进程链识别**：`ps -p $PPID -o comm=` 在 macOS 和 Linux 均可用，但 macOS 的 `comm` 字段会被截断（`save-review.sh` 长度处于安全区间，但需在 F-003 集成测试实测，详见下方"假设记录"块）
 
@@ -94,7 +94,7 @@ gate-checklist.md 结构为"按门禁分组的 Markdown 表格/列表"，逻辑�
 ## 3. 工作量估算
 
 **估算依据**：
-- 现有 7 个 check 脚本均为 Bash 薄壳 + Python 核心结构（来源：scripts/check-meta.sh:1）（来源：scripts/check-reviews.sh:1）
+- 现有 7 个 check 脚本均为 Bash 薄壳 + Python 核心结构（来源：scripts/gates/plugins/meta_schema.py:1）（来源：scripts/gates/plugins/review_verdict.py:1）；历史背景：原 scripts/check-meta.sh / scripts/check-reviews.sh 已在 F-004 commit 01a3c24 删除
 - check_reviews.py 最复杂（270 行，7 个 R 规则，来源：scripts/lib/check_reviews.py:1）；其余 Python 核心约 100-200 行
 - common.py 的 Report + Severity + exit_code 体系（来源：scripts/lib/common.py:1）已稳定，adapter 复用无需重设计
 - REQ-2026-001 历史参考（来源：requirements/REQ-2026-001/artifacts/tech-feasibility.md:1）：类似复杂度任务约 1-1.5 天/功能模块

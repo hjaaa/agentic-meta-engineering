@@ -73,13 +73,14 @@
         "H3：submit 与 next 在同输入下 Report.passed/failed 集合相同",
         "H4：PR 已 MERGED 时 submit 阻断并提示 /requirement:next；未 MERGED 时正常推进",
         "H5：Bash 写 reviews/*.json 全形态被拦——cat >/>>、tee/tee -a、mv、cp、python3 -c open(w)、heredoc（cat <<EOF >）、printf >、dd of= 至少 8 类",
-        "H5：save-review.sh 子进程经父进程链识别白名单放行；CLAUDE_GATES_BYPASS=1 缺 CLAUDE_GATES_BYPASS_REASON 时拦截并给清晰提示"
+        "H5：save-review.sh 子进程经父进程链识别白名单放行；CLAUDE_GATES_BYPASS=1 缺 CLAUDE_GATES_BYPASS_REASON 时拦截并给清晰提示",
+        "推迟到 F-004：--force-with-blockers escape_hatch 在 submit.py CLI 层落地（当前仅占位声明，runner 不读环境变量）"
       ]
     },
     {
       "id": "F-004",
       "title": "gate-checklist.md 渲染产物化 + 旧入口删除",
-      "description": "实现 migration/render-docs.py（从 registry.yaml 渲染 gate-checklist.md，文件头自动加 generated 标记）；CI 加 render --check step（D-007 强校验，diff 非空即 PR 失败）；删除 7 个旧 check-*.sh 薄壳 + scripts/post-dev-verify.sh + scripts/lib/check_*.py（adapter 已复用其逻辑，仅留 save_review.py）；更新 README / onboarding 引用。",
+      "description": "实现 migration/render-docs.py（从 registry.yaml 渲染 gate-checklist.md，文件头自动加 generated 标记）；CI 加 render --check step（D-007 强校验，diff 非空即 PR 失败）；删除 7 个旧 check-*.sh 薄壳 + scripts/post-dev-verify.sh（保留 scripts/lib/check_*.py——被 plugins/ 直接 import 复用，不是薄壳层，不删除）；更新 README / onboarding 引用。补 GATE-GH-AUTH/GATE-BASE-REACHABLE plugin（详设 §4.2 推迟自 F-003，submit trigger 完整化）；落地 --force-with-blockers escape_hatch CLI 解析（F-003 仅占位）。",
       "modules": [
         "scripts/gates/migration/render-docs.py",
         ".claude/skills/managing-requirement-lifecycle/reference/gate-checklist.md",
@@ -90,11 +91,6 @@
         "scripts/check-reviews.sh",
         "scripts/check-plan.sh",
         "scripts/post-dev-verify.sh",
-        "scripts/lib/check_meta.py",
-        "scripts/lib/check_index.py",
-        "scripts/lib/check_sourcing.py",
-        "scripts/lib/check_reviews.py",
-        "scripts/lib/check_plan.py",
         "context/team/onboarding/agentic-engineer-guide.md",
         "README.md"
       ],

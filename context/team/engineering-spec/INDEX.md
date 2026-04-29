@@ -7,6 +7,7 @@
 - [`design-guidance/four-layer-hierarchy.md`](design-guidance/four-layer-hierarchy.md) — 四层设计层级与自主权边界
 - [`design-guidance/context-engineering.md`](design-guidance/context-engineering.md) — 上下文工程原则
 - [`design-guidance/compounding.md`](design-guidance/compounding.md) — 复利工程原则
+- [`design-guidance/hook-fail-open.md`](design-guidance/hook-fail-open.md) — Hook 必须区分业务 fail 与基础设施故障；后者 fail-open 防止反向 brick 工具链
 
 ## 工具设计规范
 

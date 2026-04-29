@@ -20,7 +20,7 @@
 - **需求全生命周期**：8 阶段状态机 + 强制门禁（`/requirement:*` 共 8 个命令）
 - **多 Agent 代码审查**：8 专项 checker（security / complexity / concurrency / error-handling / performance / design-consistency / history-context / auxiliary-spec）→ `review-critic` 对抗验证 → `code-quality-reviewer` Judge 综合裁决
 - **团队知识沉淀**：`/knowledge:*` 五件套（extract-experience / generate-sop / generate-checklist / optimize-doc / organize-index）
-- **两条硬规则的工程化**：`check-sourcing.sh` 执行"刨根问底"，`post-dev-verify.sh` 做 feature done 总门禁
+- **两条硬规则的工程化**：统一门禁 runner `scripts/gates/run.py` 执行刨根问底（sourcing）+ post-dev 总门禁，registry 即 SoR
 - **自动机制（Hook）**：
   - `protect-branch` — `main/master/develop` 上直接写会被阻断
   - `auto-progress-log` — 工具日志由 Hook 自动追加（v2 写 `process.tool.log`，legacy 写 `process.txt`）
@@ -31,7 +31,7 @@
 
 ## 和 AI 协作的两条硬规则
 
-1. **刨根问底**：每条关键信息必须有引用、或标记"待确认"（由 `check-sourcing.sh` 校验）
+1. **刨根问底**：每条关键信息必须有引用、或标记"待确认"（由 `scripts/gates/run.py --trigger=ci --strict` 校验）
 2. **渐进式披露**：先输出 3-5 条关键点，用户确认后再出完整文档
 
 详见 `context/team/ai-collaboration.md`。
@@ -58,7 +58,7 @@ context/
 ├── team/          — 团队通用（协作规范 / Git / 工具链 / onboarding / 经验沉淀 / engineering-spec）
 └── project/<X>/   — 项目 X 专属（按需创建）
 requirements/      — 单个需求的全周期产出（meta / artifacts / notes / process）
-scripts/           — 工程自检脚本（check-meta / check-index / check-sourcing / post-dev-verify）
+scripts/gates/     — 统一门禁体系（run.py runner + registry.yaml + plugins/）
 ```
 
 ## 设计与规范入口

@@ -44,7 +44,7 @@ pending → in-progress → done
 
 1. 确认当前 feature 代码已 commit（`git log` 含 F-xxx）
 2. **跑脚本级总门禁 `post-dev-verify`**（在 `/code-review` 之前，过不了直接挂，省 AI 审查成本）：
-   - `bash scripts/post-dev-verify.sh --requirement <REQ-ID> --feature <F-xxx>`
+   - `python3 scripts/gates/run.py --trigger=post-dev --req=<REQ-ID> --feature=<F-xxx>`
    - 退出码 ≠ 0 → status 保持 `in-progress`，列出失败项让用户/subagent 修，**禁止进入下一步**
 3. 触发 `/code-review` scope = 该 feature
 4. 审查结果：
@@ -55,7 +55,7 @@ pending → in-progress → done
 
 - ❌ 禁止跳过状态（不允许 pending 直接 done）
 - ❌ 禁止在 `done` 后再退回（如需修改，走 `/requirement:rollback`）
-- ❌ 禁止跳过 `post-dev-verify`——即便"只改了文档""只是小改动"也必须跑；这正是用脚本代替口头承诺的价值
+- ❌ 禁止跳过 `post-dev-verify`——即便"只改了文档""只是小改动"也必须跑；这正是用脚本代替口头承诺的价值（命令：`python3 scripts/gates/run.py --trigger=post-dev --req=<REQ-ID> --feature=<F-xxx>`）
 - ❌ 禁止主 Agent 代替 subagent 直接写实现代码（保守档的核心约束；例外：用户明确要求）
 - ❌ 禁止并发派多个 implementer subagent（保守档约束；多 feature 逐个串行）
 - ✅ 每个 task 文件必须有 `status`、`complexity`、`depends_on`、`created_at`、`updated_at` 字段

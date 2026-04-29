@@ -52,9 +52,9 @@
 
 三态规则已下沉为脚本，不再只靠语义 reviewer：
 
-- `bash scripts/check-sourcing.sh <path.md>` — 单文件自检
-- `bash scripts/check-sourcing.sh --requirement <REQ-ID>` — 扫该需求所有 artifacts
-- `bash scripts/check-sourcing.sh --all --strict` — CI 全量强校验
+- `python3 scripts/gates/run.py --trigger=adapter --legacy=check-sourcing <path.md>` — 单文件自检
+- `python3 scripts/gates/run.py --trigger=adapter --legacy=check-sourcing --requirement <REQ-ID>` — 扫该需求所有 artifacts
+- `python3 scripts/gates/run.py --trigger=adapter --legacy=check-sourcing --all --strict` — CI 全量强校验
 
 检查项（代码见 `scripts/lib/check_sourcing.py`）：
 

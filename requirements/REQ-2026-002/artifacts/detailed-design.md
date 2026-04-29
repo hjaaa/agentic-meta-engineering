@@ -45,6 +45,9 @@ gates:
       fixtures: [pass, fail, skip]
 
 escape_hatches:                       # 全局 escape 策略（非 gate 级，是流程级）
+                                      # 注：force-with-blockers 是**流程级** escape_hatch，
+                                      # 跨所有 trigger-applicable gate 强制覆盖（不限定 skips_gates）；
+                                      # 与 legacy-requirement 的 gate 级 skips_gates_with_tag 区分。
   - id: legacy-requirement
     field: meta.legacy
     skips_gates_with_tag: [review-verdict]
@@ -53,7 +56,7 @@ escape_hatches:                       # 全局 escape 策略（非 gate 级，�
 
   - id: force-with-blockers
     cli_flag: --force-with-blockers
-    triggers: [submit]
+    triggers: [submit, phase-transition]  # 流程级：跨所有 trigger-applicable gate 强制覆盖
     requires_reason: true             # CLI 形式：--force-with-blockers="<reason>"
     audit: true
 
@@ -110,7 +113,14 @@ class GateContext:
     to_phase: Optional[str] = None
     changed_files: list[str] = field(default_factory=list)
     cli_flags: dict = field(default_factory=dict)
-    env: dict = field(default_factory=dict)        # 显式注入需要的环境变量
+    env: dict = field(default_factory=dict)        # 显式注入需要的环境变量；
+    # 当前白名单 key（来源：scripts/gates/run.py），常量 _ENV_WHITELIST：
+    #   - CLAUDE_HOOK_BRANCH         protect-branch 用：当前分支名（pre-tool-use trigger）
+    #   - CLAUDE_PROTECTED_BRANCHES  protect-branch 用：受保护分支名集合（: 分隔）
+    #   - CLAUDE_GATES_BYPASS        bash_write_protect 双轨白名单 2 主开关
+    #   - CLAUDE_GATES_BYPASS_REASON bash_write_protect 双轨白名单 2 必填原因
+    #   - SAVE_REVIEW_PID            save-review.sh 启动时 export $$，bash_write_protect 双轨
+    #                                白名单 1 主源（PID 比对，优先于 comm 匹配，容器场景必备）
     actor: Literal["claude-code", "human", "ci"] = "claude-code"
     meta: dict = field(default_factory=dict)       # meta.yaml 解析结果
     extra: dict = field(default_factory=dict)      # trigger 特定字段：tool_name / file_path / command
@@ -212,6 +222,61 @@ def main(argv: list[str]) -> int:
     return calc_exit_code(reports, args.strict)
 ```
 
+> 注：上述伪码是原始设计概念示意。实际实现经 F-004 round-2/round-3 拆分，主要 helper 签名如下：
+
+```python
+# F-011 round-2 / F-007 round-2 / F-004 round-3 抽出的私有 helper
+def _validate_force_reason(reason: Optional[str]) -> Optional[str]: ...
+    # round-3 G-1 抽出：reason 三段校验（非空/≤1024/控制字符）；通过返回 None，失败返回错误消息
+
+def _init_snapshots(ctx: GateContext, plan: list[dict]) -> dict: ...
+    # round-3 G-2 抽出：按需 stash_state；失败降级 {}
+
+def _finalize_audit(
+    ctx: GateContext,
+    reports: list[Report],
+    rollback_failed: bool,
+    force_used: bool,
+    force_reason: str,
+) -> None: ...
+    # round-3 G-2 抽出：audit 构建 + 落盘；失败打 ERROR 不阻断
+
+def _handle_escape_hatch(
+    ctx: GateContext,
+    gate_fail: GateFailed,
+    executed: list[Gate],
+    snapshots: dict,
+) -> tuple[bool, bool]: ...
+    # force-with-blockers 分支判定；返回 (force_used, rollback_failed)
+
+def _build_audit_extra(force_used: bool, force_reason: str) -> dict: ...
+    # escape_hatch 命中时拼装 audit 附加字段
+
+def _run_gates(
+    ctx: GateContext,
+    plan: list[dict],
+    executed: list[Gate],
+    reports: list[Report],
+    current_plugin: list[str],
+) -> None: ...
+    # 逐 gate 执行 precheck + run；error 级 FAIL 抛 GateFailed
+
+def _commit_write_state(ctx: GateContext, executed: list[Gate], current_plugin: list[str]) -> None: ...
+    # 全 pass 后提交 write_state plugin 的暂存写态
+
+def _handle_gate_failed(ctx: GateContext, executed: list[Gate], snapshots: dict) -> bool: ...
+    # GateFailed 路径：逆序 rollback + restore_state + staged_writes.clear()；返回 rollback_failed
+
+def _handle_runner_exception(
+    ctx: GateContext,
+    snapshots: dict,
+    reports: list[Report],
+    plugin_name: str,
+    exc: Exception,
+) -> int: ...
+    # plugin 抛未捕获异常：restore + audit + 返 2
+```
+
 ### 2.3 audit JSON schema
 
 写入路径 `scripts/gates/audit/<YYYY-MM>/<trigger>-<timestamp>.json`：
@@ -226,6 +291,13 @@ def main(argv: list[str]) -> int:
   "from_phase": "outline-design",
   "to_phase": "detail-design",
   "passed": ["GATE-META-SCHEMA", "GATE-PLAN-FRESH"],
+  "bypassed": [
+    {
+      "gate_id": "GATE-BASH-WRITE-PROTECT",
+      "reason": "hotfix-2026-04-28 紧急修复 reviews/*.json 错位",
+      "whitelisted": "env-bypass"
+    }
+  ],
   "failed": [
     {
       "gate_id": "GATE-REVIEW-VERDICT-R005",
@@ -240,6 +312,58 @@ def main(argv: list[str]) -> int:
   "exit_code": 1
 }
 ```
+
+force-with-blockers 命中时的 audit 示例（`escape_used` / `escape_reason` 字段）：
+
+```json
+{
+  "schema_version": "1.0",
+  "trigger": "phase-transition",
+  "timestamp": "2026-04-29 10:00:00",
+  "actor": "claude-code",
+  "requirement_id": "REQ-2026-002",
+  "from_phase": "detail-design",
+  "to_phase": "task-planning",
+  "passed": ["GATE-META-SCHEMA"],
+  "bypassed": [],
+  "failed": [
+    {
+      "gate_id": "GATE-REVIEW-VERDICT",
+      "code": "R001",
+      "message": "review verdict is needs_revision",
+      "fix_hint": "..."
+    }
+  ],
+  "skipped": [],
+  "escape_used": "force-with-blockers",
+  "escape_reason": "临时绕过：紧急修复，已有 Jira-1234 跟进",
+  "rollback_failed": false,
+  "exit_code": 0
+}
+```
+
+字段语义（来源：scripts/gates/audit.py），实现行 28-73：
+
+- `passed` — 普通 PASS 的 gate_id 列表（不含 env-bypass 白名单放行）。
+- `bypassed` — 走「白名单 2：CLAUDE_GATES_BYPASS=1 + REASON」放行的 gate；每条含 `gate_id` /
+  `reason`（用户填写的原因，全文留存以便追溯）/ `whitelisted="env-bypass"`。决策依据 D-005
+  「reason + audit 已足以追责」：放行不静默吞，必须留 reason。
+- `rollback_failed` — fail 路径中至少一个已 commit 的 write_state plugin 的 `rollback()` 抛
+  异常时为 true；正常 / 无 write_state plugin / rollback 全部成功时为 false。runner 在
+  `_handle_gate_failed` 收集后写入 audit。
+- `escape_used` — `--force-with-blockers` 等流程级 escape_hatch 命中时记 cli_flag 名；F-004 落地；非命中时为 null。
+- `escape_reason` — `string | null`：force-with-blockers 等流程级 escape_hatch 命中时记 reason
+  文本（max_len=1024，控制字符过滤：unicodedata.category 以 'C' 开头的类，\t 和 \n 例外）；
+  非命中时为 null。与 `escape_used` 同时写入，可独立追溯绕过原因。
+- `exit_code` — audit log 自身的描述性字段（1=有 failed / 0=无 failed）；进程实际退出码以
+  runner `_calc_exit_code` 为准（strict 下 warning fail 也升 1）。审计日志字段是「用户视角的快照」，
+  不与进程退出码 100% 同步。
+
+进程退出码语义（F-004 round-3 统一）：
+- 0 — 全部 gate 通过（含 SKIP / PASS）
+- 1 — 存在 severity=error 的 Decision.FAIL；strict 下 warning fail 也升 1
+- 2 — runner 自身异常 / 非法 trigger / 非法 requirement_id / registry 加载失败 /
+      非法 --force-with-blockers reason（CLI 入参非法统一归 2）
 
 ## 3. Plugin 详细规格
 
@@ -271,6 +395,19 @@ class ReviewVerdictGate(Gate):
 - `test_r005_drift_then_pass_commits_stale`：drift 触发 → 后续 R 全过 → meta.yaml stale=true 落盘
 - `test_r005_drift_then_fail_rolls_back`：drift 触发 → 后续某 R fail → meta.yaml 不变
 - `test_r005_alone_fails_no_partial_write`：仅 R005 fail → meta.yaml 不变
+
+#### 模块拆分说明（F-015 round-3 重构，来源：reviews/code-F-003-003.json）
+
+F-015 round-3 将原 `review_verdict.py`（397 行）拆为三个职责独立的模块：
+
+| 模块 | 行数 | 职责 |
+|---|---|---|
+| `plugins/review_verdict.py` | ~193 行 | Gate 入口：R001~R007 规则编排、staged_writes 暂存事务化、commit/rollback 协议 |
+| `plugins/review_verdict_ci.py` | ~182 行 | CI 全量扫描委托（ci trigger 时遍历所有需求目录调 review_verdict）；直接引用 §3.1 设计 |
+| `plugins/meta_writer.py` | ~78 行 | meta.yaml 原子写入 helper（`atomic_yaml_update`）；被 review_verdict.commit_staged_writes 调用 |
+
+三文件各自的 docstring 均反向引用本节（§3.1）；本节声明是单向断链的修复。
+调用关系：`review_verdict.py` → `meta_writer.py`；`review_verdict_ci.py` → `review_verdict.py`（代理调用）。
 
 ### 3.2 plugins/pr_state.py（关 H4）
 
@@ -312,16 +449,25 @@ RE_PROTECTED_PATH = re.compile(r"requirements/[^/]+/reviews/[^/]+\.json")
 # heredoc（cat <<EOF > file / cat <<-EOF >> file）/ printf 重定向 / dd of=
 RE_WRITE_OPS = re.compile(
     r"("
-    r">>?\s*['\"]?[^|;&]*?requirements/.+/reviews/.+\.json"          # > / >>
+    r">>?\s*['\"]?[^|;&]*?requirements/.+/reviews/.+\.json"          # > / >>（echo 重定向兜底）
     r"|tee\s+(-a\s+)?['\"]?[^|;&]*?requirements/.+/reviews/.+\.json"  # tee / tee -a
     r"|mv\s+\S+\s+['\"]?[^|;&]*?requirements/.+/reviews/.+\.json"     # mv
     r"|cp\s+\S+\s+['\"]?[^|;&]*?requirements/.+/reviews/.+\.json"     # cp
-    r"|python3?\s+-c\s+['\"].*open\(.*?requirements/.+/reviews/.+\.json.*?['\"]w['\"]"
+    r"|python3?\s+-c\s+['\"].*open\(.*?requirements/.+/reviews/.+\.json.*?['\"](?:w|a|wb|ab)['\"]"  # F-006 round-2 补 'a'/'ab'/'wb'
     r"|cat\s+<<-?\s*['\"]?\w+['\"]?\s+>>?\s*['\"]?[^|;&]*?requirements/.+/reviews/.+\.json"  # heredoc
     r"|printf\s+.*?>\s*['\"]?[^|;&]*?requirements/.+/reviews/.+\.json"  # printf >
     r"|dd\s+.*?of=['\"]?[^|;&]*?requirements/.+/reviews/.+\.json"       # dd of=
+    r"|awk\s+.*?>\s*['\"]?[^|;&]*?requirements/.+/reviews/.+\.json"     # awk >
+    r"|sed\s+.*?-i.*?requirements/.+/reviews/.+\.json"                  # sed -i（原地改写）
+    r"|sponge\s+['\"]?[^|;&]*?requirements/.+/reviews/.+\.json"         # sponge（moreutils）
+    r"|rsync\s+\S+\s+['\"]?[^|;&]*?requirements/.+/reviews/.+\.json"    # rsync
+    r"|install\s+.*?['\"]?[^|;&]*?requirements/.+/reviews/.+\.json"     # install
+    r"|pathlib\.(?:write_text|write_bytes)\(.*?requirements/.+/reviews/.+\.json"  # pathlib
     r")"
 )
+# 注：以上覆盖 _ALTS 全部 12 类写法：
+# echo/printf（> 重定向兜底）、cat(heredoc)、tee、dd of=、python -c open、
+# awk、sed -i、sponge、rsync、install、pathlib.write_text|write_bytes
 
 class BashWriteProtectGate(Gate):
     id = "GATE-BASH-WRITE-PROTECT"
@@ -338,7 +484,7 @@ class BashWriteProtectGate(Gate):
             return Report(gate_id=self.id, decision=Decision.PASS)
 
         # 双轨白名单（来源：requirements/REQ-2026-002/plan.md:96）
-        if self._caller_is_save_review_sh():
+        if self._caller_is_save_review_sh(ctx):
             return Report(gate_id=self.id, decision=Decision.PASS,
                           vars={"whitelisted": "save-review.sh"})
         if ctx.env.get("CLAUDE_GATES_BYPASS") == "1":
@@ -356,24 +502,24 @@ class BashWriteProtectGate(Gate):
             fix_hint="reviews/*.json 由 save-review.sh 唯一通道维护；如需修订评审，请让 reviewer Agent 重审",
         )
 
-    def _caller_is_save_review_sh(self) -> bool:
-        # 父进程链识别：ps -p $PPID -o comm=
+    def _caller_is_save_review_sh(self, ctx: GateContext) -> bool:
+        # 父进程链识别（单轨，F-012 round-3 删除 comm fallback 死代码）：
+        #   SAVE_REVIEW_PID env 比对：save-review.sh 启动时 export SAVE_REVIEW_PID=$$，
+        #   若 ppid 链中任一层 == 该 PID，立即放行（最快、不易伪造）。
+        #
+        # 注：原双轨中的 `comm == "save-review.sh"` fallback 已于 F-012 删除——
+        #   endswith 语义易被 evil-save-review.sh / xsave-review.sh 命名伪造；
+        #   且 SAVE_REVIEW_PID 通道已覆盖所有合法调用路径，fallback 成死代码。
         # macOS comm 字段截断风险见 tech-feasibility.md 1.3 节
+        target_pid_str = ctx.env.get("SAVE_REVIEW_PID")
+        target_pid = int(target_pid_str) if (target_pid_str and target_pid_str.isdigit()) else None
+        if target_pid is None:
+            return False  # 无 SAVE_REVIEW_PID，直接拒绝（快速返回）
         try:
-            ppid = os.getppid()
-            for _ in range(5):                           # 向上追溯 5 层
-                comm = subprocess.check_output(
-                    ["ps", "-p", str(ppid), "-o", "comm="]
-                ).decode().strip()
-                if comm.endswith("save-review.sh"):
+            for _comm, ppid in _walk_ppid_chain(os.getppid(), max_depth=5):
+                if ppid == target_pid:
                     return True
-                ppid_out = subprocess.check_output(
-                    ["ps", "-p", str(ppid), "-o", "ppid="]
-                ).decode().strip()
-                ppid = int(ppid_out)
-                if ppid <= 1:
-                    break
-        except (subprocess.CalledProcessError, ValueError):
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ValueError, OSError):
             return False
         return False
 ```
@@ -430,7 +576,8 @@ Claude Code Hook (PreToolUse)
    ├─→ stdin: {"tool_name": "Bash", "tool_input": {"command": "..."}}
    │
    ├─→ scripts/gates/triggers/pre_tool_use.sh 解析 stdin
-   ├─→ python run.py --trigger=pre-tool-use --tool=$TOOL --command="$CMD"
+   ├─→ python run.py --trigger=pre-tool-use（tool / file_path / command 通过环境变量
+   │      CLAUDE_HOOK_TOOL_NAME / CLAUDE_HOOK_FILE_PATH / CLAUDE_HOOK_COMMAND 注入）
    │      │
    │      ├─→ 仅跑 GATE-PROTECT-BRANCH + GATE-BASH-WRITE-PROTECT
    │      └─→ 任一 fail → exit 2（Hook 拒绝）

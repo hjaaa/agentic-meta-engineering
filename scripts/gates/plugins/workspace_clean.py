@@ -10,13 +10,29 @@ precheck：
   - trigger=ci 时，CI 环境 checkout 出来始终是干净的，直接 Skip；
   - trigger=pre-tool-use 时，非文件写操作直接 Skip；
   - 其他 trigger 一律继续。
+
+stash 残留过滤（F-004 round-4）：
+  state_io.stash_state 在 _run_gates 前为 write_state plugin（如 GATE-REVIEW-VERDICT）
+  对 requirements/<id>/meta.yaml 创建 .bak 备份，全 pass 路径下由 cleanup_snapshots
+  清理。但 GATE-WORKSPACE-CLEAN 在拓扑序中可能晚于 stash，会把 .bak 误判为 untracked
+  导致 phase-transition 永远过不去。本 plugin 显式忽略已知 stash residue（路径模式
+  `requirements/REQ-YYYY-NNN/meta.yaml.bak`），不影响真实用户改动的检测。
 """
 from __future__ import annotations
 
+import re
 import subprocess
 from typing import Optional
 
 from .base import Decision, Gate, GateContext, Report, Severity, Skip
+
+
+# F-004 round-4：state_io.stash_state 残留的合法 .bak 文件模式
+# 仅匹配 `?? requirements/REQ-YYYY-NNN/meta.yaml.bak`（git status --porcelain 格式：
+# `?? <path>`，untracked 文件前缀两空格）。其他 .bak 文件不匹配，仍按 dirty 处理。
+_STASH_RESIDUE_PATTERN = re.compile(
+    r"^\?\?\s+requirements/REQ-\d{4}-\d{3}/meta\.yaml\.bak\s*$"
+)
 
 
 class WorkspaceCleanGate(Gate):
@@ -66,17 +82,23 @@ class WorkspaceCleanGate(Gate):
 
         dirty = result.stdout.strip()
         if dirty:
-            # 取前 10 行展示，避免日志过长
-            preview_lines = dirty.splitlines()[:10]
-            preview = "\n".join(preview_lines)
-            return Report(
-                gate_id=self.id,
-                decision=Decision.FAIL,
-                code="WORKSPACE-DIRTY",
-                message=f"工作区有未提交的改动（共 {len(dirty.splitlines())} 处）:\n{preview}",
-                fix_hint="git stash / git add + commit 清理工作区后重试",
-                vars={"dirty_files": dirty.splitlines()},
-            )
+            # F-004 round-4：过滤 stash_state 创建的合法 .bak 残留
+            # （仅 requirements/REQ-YYYY-NNN/meta.yaml.bak，避免与拓扑前置 stash 竞态）
+            real_dirty_lines = [
+                line for line in dirty.splitlines()
+                if not _STASH_RESIDUE_PATTERN.match(line)
+            ]
+            if real_dirty_lines:
+                # 取前 10 行展示，避免日志过长
+                preview = "\n".join(real_dirty_lines[:10])
+                return Report(
+                    gate_id=self.id,
+                    decision=Decision.FAIL,
+                    code="WORKSPACE-DIRTY",
+                    message=f"工作区有未提交的改动（共 {len(real_dirty_lines)} 处）:\n{preview}",
+                    fix_hint="git stash / git add + commit 清理工作区后重试",
+                    vars={"dirty_files": real_dirty_lines},
+                )
 
         return Report(gate_id=self.id, decision=Decision.PASS)
 

@@ -12,7 +12,7 @@ description: 需求全生命周期管理伞形 Skill，被 8 个 /requirement:* 
 1. **识别意图**：映射到 8 个子动作之一
    - 新建 → bootstrap（创建分支+目录+meta.yaml，委托 `requirement-bootstrapper`）
    - 继续 → 委托 `requirement-session-restorer`
-   - 下一阶段 → 门禁校验（见 `reference/gate-checklist.md`，含 plan.md 软校验；**清单中 `bash scripts/...` 形式的检查项必须用 Bash 工具真实执行，以退出码判定，不允许读清单自答**）→ 若 check-plan.sh 出 warning 主动提示刷新 plan.md → 更新 phase
+   - 下一阶段 → 门禁校验（见 `reference/gate-checklist.md`，含 plan.md 软校验；**清单中 `bash scripts/...` 形式的检查项必须用 Bash 工具真实执行，以退出码判定，不允许读清单自答**）→ 若 `python3 scripts/gates/run.py --trigger=adapter --legacy=check-plan --req=<REQ-ID>` 出 warning 主动提示刷新 plan.md → 更新 phase
    - 保存 → 委托 `requirement-progress-logger`
    - 查看状态 → 读 meta.yaml 输出阶段+最近动作
    - 回退 → 归档当前 artifacts + 改 phase + 写 notes.md

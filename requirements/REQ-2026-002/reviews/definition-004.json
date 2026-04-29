@@ -1,0 +1,55 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-002-definition-004",
+  "requirement_id": "REQ-2026-002",
+  "phase": "definition",
+  "reviewer": "requirement-quality-reviewer",
+  "reviewed_at": "2026-04-29 15:23:40",
+  "reviewed_commit": "72ea75f",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/requirement.md",
+      "sha256": "15228c42e487f1cb9968b0819c7e2435adb69ae5624a40ba41b2018d14969b3d"
+    }
+  ],
+  "conclusion": "approved",
+  "score": 90,
+  "dimensions": {
+    "completeness": {
+      "score": 90,
+      "issues": []
+    },
+    "consistency": {
+      "score": 92,
+      "issues": []
+    },
+    "traceability": {
+      "score": 95,
+      "issues": []
+    },
+    "clarity": {
+      "score": 90,
+      "issues": []
+    },
+    "testability": {
+      "score": 88,
+      "issues": []
+    },
+    "business_rationale": {
+      "score": 88,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "第 17/22/28 行：sourcing 引用已统一切到 scripts/gates/registry.yaml:1 与 scripts/gates/run.py:1，并保留'历史背景'注脚指向旧路径所在 commit（67bddb2 / 01a3c24），路径同源映射到位，content-equivalent，未引入 semantic drift",
+    "第 93 行：H5 拦截场景的 protect-branch.sh 引用从 :30 调整为 :1 并补 [H5 已修复，闭合方案见 commit 56e7a43] 注脚，与 18 行的同名引用口径一致",
+    "第 38 行：成本目标基线锚点由 [待用户确认] 收敛为 plan.md:114 D-008 ADR；第 119 行：性能 SLA 由 [待用户确认] 收敛为 plan.md:72 D-003 ADR；第 168-181 行：待澄清清单由 5 项遗留收敛为 ADR 映射表，仅保留 1 项（9 字段候选集合，detail-design 阶段定稿）——状态收敛符合 definition→detail-design 渐进披露原则",
+    "本轮变更性质 = 文档维护类（路径同源映射 + 待澄清状态收敛），未触动需求决策 / acceptance criteria / scope，6 维评分相对 definition-003 持平或微升（traceability 因引用统一切到稳定 registry 入口 +5）"
+  ],
+  "scope": null,
+  "supersedes": "REV-REQ-2026-002-definition-003",
+  "project_specific_issues": [
+    "项目索引未声明特殊约束；sourcing 引用同源映射已对齐 F-004 commit 67bddb2/01a3c24/56e7a43 的实际删除/迁移路径，符合 check-sourcing strict 规范"
+  ]
+}

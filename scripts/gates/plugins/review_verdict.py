@@ -3,15 +3,22 @@
 设计说明（来源：detailed-design.md §3.1 + detailed-design.md §3.4）：
   承载 R001~R007 全部规则，复用 scripts/lib/check_reviews.py 中的各 _rXXX 函数。
 
-  注意 R005 约束（来源：detailed-design.md §3.1）：
-    - F-002 阶段：R005 仍按原行为（check_reviews._r005_hash_drift 直接写 meta.yaml stale=true）
-    - F-003 阶段：改造为事务化 staged_writes 模式（side_effects=write_state）
-    - 因此本 plugin 的 side_effects=none；commit_staged_writes/rollback 均为基类空实现
+  R005 事务化（H1 改造，来源：detailed-design.md §3.1，行 246-273）：
+    - side_effects = "write_state"
+    - run() 调用 _r005_hash_drift 时传入 ctx.staged_writes，只 append (path, dot_key, value)
+    - commit_staged_writes() 在所有 gate pass 后由 runner 调用，原子写 meta.yaml
+    - rollback() 清空 ctx.staged_writes（fail 路径丢弃暂存）
 
 precheck：
   - 需要 ctx.requirement_id + ctx.to_phase 才能跑（缺失任一直接 Skip）
   - ctx.meta.get("legacy") == True 时短路（历史治理豁免）
   - trigger 非 phase-transition / submit / ci 时跳过（review 校验仅在这些时机有意义）
+
+F-015 round-3 拆分：
+  - 本文件保留 ReviewVerdictGate 类 + 单需求 run 路径 + commit_staged_writes / rollback
+  - ci 全量扫描 → review_verdict_ci.py（run_all_requirements / load_req_meta / collect_findings / build_ci_report）
+  - meta.yaml 原子写入 → meta_writer.py（commit_meta_writes / set_dot_path / fcntl 锁）
+  目标：单文件降至约 180 行，三套独立职责拆开。
 """
 from __future__ import annotations
 
@@ -25,14 +32,14 @@ if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
 # noqa: E402 —— sys.path 注入后才能 import
-import yaml  # noqa: E402（F-022：提至模块顶层）
+import yaml  # noqa: E402
 from common import Report as LegacyReport  # noqa: E402
-from common import Severity as LegacySeverity  # noqa: E402
 import check_reviews  # noqa: E402
 
 from .base import Decision, Gate, GateContext, Report, Severity, Skip
+from . import review_verdict_ci  # F-015 round-3：ci 路径委托
+from . import meta_writer  # F-015 round-3：meta.yaml 原子写入委托
 
-# phase-transition 的目标 phase → 必须存在的 review phase 映射
 # 与 check_reviews.PHASE_REQUIREMENTS 保持一致（来源：scripts/lib/check_reviews.py:33-41）
 _PHASE_REQUIREMENTS = check_reviews.PHASE_REQUIREMENTS
 
@@ -44,57 +51,49 @@ class ReviewVerdictGate(Gate):
     severity = Severity.ERROR
     # phase-transition 和 submit 时必须检查；ci 时扫全部需求
     triggers = {"phase-transition", "submit", "ci"}
-    # F-002 阶段：R005 仍保留直接写 meta.yaml 的旧行为，side_effects=none
-    # F-003 阶段：改造为 write_state（staged_writes 事务化）
-    side_effects = "none"
+    # H1 改造：R005 hash drift 命中 → ctx.staged_writes 暂存 → runner 全 pass 后 commit
+    side_effects = "write_state"
 
     def precheck(self, ctx: GateContext) -> Optional[Skip]:
+        """前置门控：判断是否跳过本 gate（F-014 round-2 加 docstring）。
+
+        参数：ctx — GateContext，含 trigger / requirement_id / to_phase / meta。
+        返回：Skip 跳过本 gate 并解释原因；None 继续 run。
+        分支：
+          - ci trigger：始终运行（扫全部 requirements/）
+          - phase-transition：缺 to_phase 时跳过（无目标 phase 无法判定 review 要求）
+          - legacy=true：历史治理需求豁免 R001~R007
+        """
         # ci trigger：扫全部需求，不需要 requirement_id 和 to_phase
         if ctx.trigger == "ci":
             return None
 
         if not ctx.requirement_id:
-            return Skip("no requirement_id in context; review-verdict check skipped")
+            # F-035 round-2：Skip reason 中文化
+            return Skip("ctx.requirement_id 缺失；跳过 review-verdict 校验")
 
         if ctx.trigger == "phase-transition" and not ctx.to_phase:
-            return Skip("phase-transition requires to_phase; review-verdict check skipped")
+            return Skip("phase-transition 缺 to_phase；跳过 review-verdict 校验")
 
         # legacy=true 豁免（历史治理用）
         if ctx.meta.get("legacy") is True:
-            return Skip(f"{ctx.requirement_id} legacy=true; review-verdict check skipped")
+            return Skip(f"{ctx.requirement_id} 标记 legacy=true；跳过 review-verdict 校验")
 
         return None
 
     def run(self, ctx: GateContext) -> Report:
-        if ctx.trigger == "ci":
-            return self._run_all_requirements(ctx)
-        return self._run_single_requirement(ctx, ctx.requirement_id, ctx.to_phase)
+        """主流程：按 trigger 分流到 ci 全量扫描或单需求校验（F-014 round-2 加 docstring）。
 
-    def _run_all_requirements(self, ctx: GateContext) -> Report:
-        """ci trigger：扫全部 requirements/ 下的需求，汇总 findings。
-
-        调用链：_load_req_meta → _should_skip_req → 主循环聚合。
-        CC 保持 ≤ 6（来源：F-005 重构）。
+        参数：ctx — GateContext。
+        返回：Report —— PASS（含 warnings vars）或 FAIL（首个 error 为 message，
+              全集放 vars.errors / vars.warnings）。
+        H1：trigger ∈ {phase-transition, submit} 时走 staged_writes 暂存通道；
+            ci trigger 走 None 通道（仅扫描，不暂存写态）。
+        F-015 round-3：ci 分支委托给 review_verdict_ci.run_all_requirements。
         """
-        req_root = _REPO_ROOT / "requirements"
-        if not req_root.exists():
-            return Report(gate_id=self.id, decision=Decision.PASS, message="no requirements dir")
-
-        all_errors: list[tuple] = []
-        all_warnings: list[tuple] = []
-
-        for req_dir in sorted(req_root.iterdir()):
-            if not req_dir.is_dir() or req_dir.name.startswith("."):
-                continue
-            req_id = req_dir.name
-            meta = _load_req_meta(req_dir, all_warnings)
-            if meta is None:
-                continue
-            if _should_skip_req(meta):
-                continue
-            _collect_findings(meta, req_id, all_errors, all_warnings)
-
-        return _build_ci_report(self.id, all_errors, all_warnings)
+        if ctx.trigger == "ci":
+            return review_verdict_ci.run_all_requirements(self.id)
+        return self._run_single_requirement(ctx, ctx.requirement_id, ctx.to_phase)
 
     def _run_single_requirement(
         self, ctx: GateContext, req_id: Optional[str], target_phase: Optional[str]
@@ -130,143 +129,64 @@ class ReviewVerdictGate(Gate):
             )
 
         legacy_report = LegacyReport()
-        label = req_id
-        _run_r_rules(legacy_report, meta, effective_phase, label, req_id)
+        review_verdict_ci.run_r_rules(legacy_report, meta, effective_phase, req_id, req_id, ctx.staged_writes)
 
         # 行为契约：把 legacy 完整 render 输出到 stdout
         if legacy_report.findings():
             print(legacy_report.render())
 
-        return _legacy_to_report(self.id, legacy_report)
+        return review_verdict_ci.legacy_to_report(self.id, legacy_report)
 
+    def commit_staged_writes(self, ctx: GateContext) -> None:
+        """H1 事务化：runner 全 pass 后调用，把 ctx.staged_writes 原子写入 meta.yaml。
 
-def _load_req_meta(req_dir: "Path", all_warnings: list[tuple]) -> "Optional[dict]":
-    """读取 req_dir/meta.yaml；解析失败追加 warning 并返回 None。
+        仅处理 path == "meta.yaml" 的暂存条目；其他 path 由对应 plugin 自己处理。
+        多个 dot_key 一次性合并写入，减少 IO。
+        F-015 round-3：实际写入委托给 meta_writer.commit_meta_writes（含 fcntl 锁）。
+        """
+        if not ctx.requirement_id or not ctx.staged_writes:
+            return
+        my_writes = [(p, k, v) for (p, k, v) in ctx.staged_writes if p == "meta.yaml"]
+        if not my_writes:
+            return
+        meta_path = _REPO_ROOT / "requirements" / ctx.requirement_id / "meta.yaml"
+        if not meta_path.exists():
+            print(
+                f"WARNING GATE-REVIEW-VERDICT commit 跳过 req={ctx.requirement_id} "
+                f"meta.yaml 不存在 path={meta_path}",
+                file=sys.stderr,
+            )
+            return
+        try:
+            meta_writer.commit_meta_writes(meta_path, my_writes)
+        except (OSError, yaml.YAMLError) as exc:
+            # 写盘失败：保留 staged_writes 让 runner 走 rollback 路径恢复
+            print(
+                f"ERROR GATE-REVIEW-VERDICT commit 失败 req={ctx.requirement_id} "
+                f"path={meta_path}: {exc}",
+                file=sys.stderr,
+            )
+            raise
+        # 成功后清空，避免被其他 plugin 重复消费
+        ctx.staged_writes[:] = [
+            (p, k, v) for (p, k, v) in ctx.staged_writes if p != "meta.yaml"
+        ]
 
-    参数：
-      req_dir      — 需求目录 Path（必须存在）
-      all_warnings — 收集 warning 的列表（原地追加）
-    """
-    meta_path = req_dir / "meta.yaml"
-    if not meta_path.exists():
-        return None
-    req_id = req_dir.name
-    try:
-        with meta_path.open("r", encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
-    except Exception as exc:  # noqa: BLE001
-        print(
-            f"WARNING GATE-REVIEW-VERDICT req={req_id} meta.yaml 解析失败: {exc}",
-            file=sys.stderr,
-        )
-        all_warnings.append((req_id, "WARNING", "REVIEW-META-PARSE", f"meta.yaml 解析失败: {exc}"))
-        return None
+    def rollback(self, ctx: GateContext) -> None:
+        """H1 事务化：fail 路径丢弃 meta.yaml 暂存（runner 还会 _restore_state 恢复磁盘备份）。
 
-
-def _should_skip_req(meta: dict) -> bool:
-    """判断是否应跳过当前需求（legacy 或 phase 无对应 review 要求）。
-
-    参数：meta — meta.yaml 解析结果 dict。
-    返回：True = 跳过；False = 继续校验。
-    """
-    if meta.get("legacy") is True:
-        return True
-    target_phase = meta.get("phase", "")
-    return not target_phase or target_phase not in _PHASE_REQUIREMENTS
-
-
-def _collect_findings(
-    meta: dict,
-    req_id: str,
-    all_errors: list[tuple],
-    all_warnings: list[tuple],
-) -> None:
-    """对单个需求跑 R001~R007，结果分类追加到 all_errors / all_warnings。
-
-    参数：
-      meta         — meta.yaml 解析结果
-      req_id       — 需求 ID（用于日志 label）
-      all_errors   — 收集 error 的列表（原地追加）
-      all_warnings — 收集 warning 的列表（原地追加）
-    """
-    target_phase = meta.get("phase", "")
-    legacy_report = LegacyReport()
-    _run_r_rules(legacy_report, meta, target_phase, req_id, req_id)
-    for finding in legacy_report.findings():
-        if finding[1] == LegacySeverity.ERROR:
-            all_errors.append(finding)
-        else:
-            all_warnings.append(finding)
-
-
-def _build_ci_report(gate_id: str, all_errors: list[tuple], all_warnings: list[tuple]) -> Report:
-    """根据 ci trigger 汇总结果构造 Report。
-
-    有 error → FAIL（first error 为主信息）；否则 PASS（warnings 附带）。
-    """
-    if all_errors:
-        first = all_errors[0]
-        return Report(
-            gate_id=gate_id,
-            decision=Decision.FAIL,
-            code=first[2],
-            message=f"{first[0]}: {first[3]}",
-            fix_hint="对照 check-reviews.sh 规则修正对应 review 状态",
-            vars={
-                "errors": [list(f) for f in all_errors],
-                "warnings": [list(f) for f in all_warnings],
-            },
-        )
-    return Report(
-        gate_id=gate_id,
-        decision=Decision.PASS,
-        vars={"warnings": [list(f) for f in all_warnings]} if all_warnings else {},
-    )
-
-
-def _run_r_rules(
-    report: LegacyReport, meta: dict, target_phase: str, label: str, req_id: str
-) -> None:
-    """运行 R001~R007 全部规则，结果写入 report。
-
-    R005 在 F-002 阶段保留旧行为（直接写 meta.yaml stale=true），F-003 再改造为事务化。
-    """
-    check_reviews._r001_review_exists(meta, target_phase, report, label)
-    check_reviews._r002_schema_recheck(meta, target_phase, report, label, req_id)
-    check_reviews._r003_not_rejected(meta, target_phase, report, label)
-    check_reviews._r004_needs_revision(meta, target_phase, report, label)
-    # R005：F-002 阶段保留原行为（直接写 stale=true），事务化在 F-003 改造
-    check_reviews._r005_hash_drift(meta, target_phase, report, label, req_id)
-    check_reviews._r006_supersedes_chain(meta, target_phase, report, label, req_id)
-    check_reviews._r007_code_by_feature_coverage(meta, target_phase, report, label, req_id)
-
-
-def _legacy_to_report(gate_id: str, legacy: LegacyReport) -> Report:
-    """把 common.Report 的 findings 列表降维成单条 Report。"""
-    findings = legacy.findings()
-    errors = [f for f in findings if f[1] == LegacySeverity.ERROR]
-    warnings = [f for f in findings if f[1] == LegacySeverity.WARNING]
-
-    if errors:
-        first = errors[0]
-        message = f"{first[0]}: {first[2]}: {first[3]}"
-        return Report(
-            gate_id=gate_id,
-            decision=Decision.FAIL,
-            code=first[2],
-            message=message,
-            fix_hint="对照 check-reviews.sh 规则修正对应 review 状态（R001~R007）",
-            vars={
-                "errors": [list(f) for f in errors],
-                "warnings": [list(f) for f in warnings],
-            },
-        )
-
-    return Report(
-        gate_id=gate_id,
-        decision=Decision.PASS,
-        vars={"warnings": [list(f) for f in warnings]} if warnings else {},
-    )
+        异常不静默，按 F-002 review-003 经验需要 WARNING 上抛 runner 处理。
+        """
+        try:
+            ctx.staged_writes[:] = [
+                (p, k, v) for (p, k, v) in ctx.staged_writes if p != "meta.yaml"
+            ]
+        except Exception as exc:  # noqa: BLE001
+            print(
+                f"WARNING GATE-REVIEW-VERDICT rollback 异常 req={ctx.requirement_id}: {exc}",
+                file=sys.stderr,
+            )
+            raise
 
 
 # 模块级导出

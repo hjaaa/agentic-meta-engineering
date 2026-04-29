@@ -96,7 +96,7 @@
 
 | 状态 | 主 Agent 动作 |
 |---|---|
-| `DONE` | 转入"完成触发"流程（`post-dev-verify` + `/code-review`，见 `SKILL.md`） |
+| `DONE` | 转入"完成触发"流程（`python3 scripts/gates/run.py --trigger=post-dev` + `/code-review`，见 `SKILL.md`） |
 | `DONE_WITH_CONCERNS` | 先把疑虑清单给用户看，用户判断：接受疑虑继续走完成流程，或派修复 subagent |
 | `NEEDS_CONTEXT` | 补充缺失上下文（可能需要用户回答），**同模型重派**；不要主 Agent 代替 subagent 写代码 |
 | `BLOCKED` | 三选一：(1) 技术阻塞 → 升级模型档位重派；(2) 需求不清 → 问用户；(3) 触及范围不够 → 与用户协商扩大 `touches` 或拆子 feature。**禁止原模型原上下文重试**。 |

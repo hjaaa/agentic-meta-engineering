@@ -54,7 +54,7 @@
    ```bash
    git config core.hooksPath scripts/git-hooks
    ```
-   启用后每次 `git commit` 会自动跑 `check-meta.sh` / `check-index.sh`，提前拦截 schema 不合法与 INDEX 腐化。紧急情况可 `git commit --no-verify` 绕过（CI 仍会兜底）。
+   启用后每次 `git commit` 会自动跑统一门禁 runner（`scripts/gates/run.py --trigger=pre-commit`），提前拦截 schema 不合法与 INDEX 腐化。紧急情况可 `git commit --no-verify` 绕过（CI 仍会兜底）。
 
 ### 验证
 

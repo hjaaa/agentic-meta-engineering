@@ -147,8 +147,8 @@ gates:
       transition: null
       requires: []
     dependencies: []
-    # F-002 阶段：R005 仍保留旧行为（直接写 meta.yaml），F-003 改造为 write_state
-    side_effects: none
+    # F-003 H1：R005 改为事务化（staged_writes），全 gate pass 后由 runner 统一 commit
+    side_effects: write_state
     failure_message: |
       {gate_id} 失败：{message}
       修复建议：{fix_hint}
@@ -206,11 +206,88 @@ gates:
     tests:
       fixtures: [pass, fail, skip]
 
+  - id: GATE-PR-MERGED-STATE
+    plugin: pr_state
+    severity: error
+    triggers:
+      - submit
+    applies_when:
+      changed_files: []
+      target_phase: null
+      current_phase_in: []
+      transition: null
+      requires:
+        - meta.pr_number
+    dependencies: []
+    side_effects: none
+    failure_message: |
+      {gate_id} 失败：{message}
+      修复建议：{fix_hint}
+    tests:
+      fixtures: [pass, fail, skip]
+
   - id: GATE-PROTECT-BRANCH
     plugin: protect_branch
     severity: error
     triggers:
       - pre-tool-use
+    applies_when:
+      changed_files: []
+      target_phase: null
+      current_phase_in: []
+      transition: null
+      requires: []
+    dependencies: []
+    side_effects: none
+    failure_message: |
+      {gate_id} 失败：{message}
+      修复建议：{fix_hint}
+    tests:
+      fixtures: [pass, fail, skip]
+
+  - id: GATE-BASH-WRITE-PROTECT
+    plugin: bash_write_protect
+    severity: error
+    triggers:
+      - pre-tool-use
+    applies_when:
+      changed_files: []
+      target_phase: null
+      current_phase_in: []
+      transition: null
+      requires: []
+    dependencies: []
+    side_effects: none
+    failure_message: |
+      {gate_id} 失败：{message}
+      修复建议：{fix_hint}
+    tests:
+      fixtures: [pass, fail, skip]
+
+  - id: GATE-GH-AUTH
+    plugin: gh_auth
+    severity: error
+    triggers:
+      - submit
+    applies_when:
+      changed_files: []
+      target_phase: null
+      current_phase_in: []
+      transition: null
+      requires: []
+    dependencies: []
+    side_effects: none
+    failure_message: |
+      {gate_id} 失败：{message}
+      修复建议：{fix_hint}
+    tests:
+      fixtures: [pass, fail, skip]
+
+  - id: GATE-BASE-REACHABLE
+    plugin: base_reachable
+    severity: error
+    triggers:
+      - submit
     applies_when:
       changed_files: []
       target_phase: null
@@ -235,6 +312,14 @@ escape_hatches:
 
   - id: force-with-blockers
     cli_flag: --force-with-blockers
-    triggers: [submit]
+    triggers: [submit, phase-transition]   # round-2 新增 phase-transition（与 run.py:_handle_escape_hatch 对齐）
+    requires_reason: true
+    audit: true
+
+  # F-003 round-2：补全详设 §1 第三条 escape_hatch（bash_write_protect 的 env 双轨白名单）
+  - id: bypass-bash-write
+    env_var: CLAUDE_GATES_BYPASS
+    requires_reason_var: CLAUDE_GATES_BYPASS_REASON
+    skips_gates: [GATE-BASH-WRITE-PROTECT]
     requires_reason: true
     audit: true
