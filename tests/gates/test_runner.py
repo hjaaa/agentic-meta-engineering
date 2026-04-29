@@ -17,6 +17,7 @@ import pytest
 import yaml
 
 import run as runner_mod
+from audit import build_audit
 from plugins.base import Decision, GateContext, Report
 
 
@@ -360,3 +361,82 @@ def test_should_not_crash_when_write_audit_raises_oserror(monkeypatch, capsys):
     err = capsys.readouterr().err
     assert "ERROR audit 落盘失败" in err
     assert "No space left" in err
+
+
+# ====================== F-004 round-5：audit.exit_code 与 calc_exit_code 一致性（Codex P3） ======================
+
+
+def _make_warn_plan_and_report(gate_id: str = "GATE-PLAN-FRESHNESS"):
+    """构造 warning 级 gate 的 plan + FAIL Report，用于 P3 测试。"""
+    plan = [{"id": gate_id, "severity": "warning"}]
+    report = Report(
+        gate_id=gate_id,
+        decision=Decision.FAIL,
+        code="W001",
+        message="warning fail（如 plan-freshness 过期）",
+    )
+    return plan, report
+
+
+def _make_error_plan_and_report(gate_id: str = "GATE-META-SCHEMA"):
+    plan = [{"id": gate_id, "severity": "error"}]
+    report = Report(
+        gate_id=gate_id,
+        decision=Decision.FAIL,
+        code="E001",
+        message="error fail",
+    )
+    return plan, report
+
+
+def test_build_audit_exit_code_zero_for_warning_fail_in_non_strict():
+    """given_warning_fail_non_strict_when_build_audit_then_exit_code_0（Codex P3 修复）.
+
+    runner _calc_exit_code 在非 strict 模式下 warning fail 返回 0；
+    audit 必须与之一致，否则下游消费者收到错误信号。
+    """
+    plan, report = _make_warn_plan_and_report()
+    ctx = GateContext(trigger="post-dev", requirement_id="REQ-2099-006")
+    audit = build_audit(ctx, [report], rollback_failed=False, plan=plan, strict=False)
+    assert audit["exit_code"] == 0, (
+        "warning-level fail 在非 strict 下 audit.exit_code 应 = 0（与 runner 一致）"
+    )
+    assert len(audit["failed"]) == 1  # 但 failed 列表仍记录此 fail 供审计
+
+
+def test_build_audit_exit_code_one_for_warning_fail_in_strict():
+    """given_warning_fail_strict_when_build_audit_then_exit_code_1（strict 下应升 1）."""
+    plan, report = _make_warn_plan_and_report()
+    ctx = GateContext(trigger="post-dev", requirement_id="REQ-2099-007")
+    audit = build_audit(ctx, [report], rollback_failed=False, plan=plan, strict=True)
+    assert audit["exit_code"] == 1, "warning fail 在 strict 下 audit.exit_code 应升 1"
+
+
+def test_build_audit_exit_code_one_for_error_fail_regardless_of_strict():
+    """given_error_fail_when_build_audit_then_exit_code_1_either_strict_or_not。"""
+    plan, report = _make_error_plan_and_report()
+    ctx = GateContext(trigger="phase-transition", requirement_id="REQ-2099-008")
+    audit_loose = build_audit(ctx, [report], rollback_failed=False, plan=plan, strict=False)
+    audit_strict = build_audit(ctx, [report], rollback_failed=False, plan=plan, strict=True)
+    assert audit_loose["exit_code"] == 1
+    assert audit_strict["exit_code"] == 1
+
+
+def test_build_audit_falls_back_to_legacy_exit_code_when_plan_omitted():
+    """given_no_plan_when_build_audit_then_exit_code_falls_back_to_any_fail_one。
+
+    向后兼容：旧调用方未传 plan 时维持"任何 fail = 1"老行为，避免破坏未升级的调用路径。
+    """
+    plan, report = _make_warn_plan_and_report()
+    ctx = GateContext(trigger="post-dev", requirement_id="REQ-2099-009")
+    audit = build_audit(ctx, [report], rollback_failed=False)  # 未传 plan / strict
+    assert audit["exit_code"] == 1, "无 plan 时 fall back 到老行为（任何 fail = 1）"
+
+
+def test_build_audit_exit_code_zero_when_no_failures_with_plan():
+    """given_no_failures_when_build_audit_then_exit_code_0_with_plan。"""
+    pass_report = Report(gate_id="GATE-META-SCHEMA", decision=Decision.PASS)
+    plan = [{"id": "GATE-META-SCHEMA", "severity": "error"}]
+    ctx = GateContext(trigger="ci", requirement_id="REQ-2099-010")
+    audit = build_audit(ctx, [pass_report], rollback_failed=False, plan=plan, strict=False)
+    assert audit["exit_code"] == 0

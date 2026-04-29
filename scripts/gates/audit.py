@@ -25,16 +25,31 @@ AUDIT_DIR = _PKG_ROOT / "audit"
 SCHEMA_VERSION = "1.0"
 
 
-def build_audit(ctx, reports: list[Report], rollback_failed: bool) -> dict[str, Any]:
+def build_audit(
+    ctx,
+    reports: list[Report],
+    rollback_failed: bool,
+    plan: list[dict[str, Any]] | None = None,
+    strict: bool = False,
+) -> dict[str, Any]:
     """构造 audit log dict。
 
     F-008 round-2：env-bypass 路径的 PASS 单独记到 bypassed 字段，记录 reason，
     保证 D-005「reason + audit 已足以追责」决策落地（普通 PASS 仍仅记 gate_id）。
 
+    F-004 round-5（Codex P3 修复）：
+      原实现 `exit_code = 1 if failed else 0` —— 任何 fail 都给 1，但 runner 在非 strict
+      模式下 warning-level fail 实际返回 0（见 calc_exit_code）。两者不一致让 audit 给
+      下游消费者错误信号（如 plan-freshness warning fail 被误标为阻断）。
+      修为：传入 plan + strict 时调 calc_exit_code 与 runner 退出码语义一致；
+      不传时 fall back 到老行为（向后兼容尚未升级的调用方）。
+
     参数：
       ctx              — GateContext
       reports          — 各 plugin 的 Report 列表
       rollback_failed  — 是否有 rollback 失败（runner 计算）
+      plan             — 执行计划（含每 gate 的 severity）；提供时 audit exit_code 走精确路径
+      strict           — strict 模式标记；提供 plan 时按此判 warning-level fail 是否升 1
     """
     passed: list[str] = []
     bypassed: list[dict[str, Any]] = []
@@ -55,6 +70,12 @@ def build_audit(ctx, reports: list[Report], rollback_failed: bool) -> dict[str, 
         for r in reports if r.decision == Decision.FAIL
     ]
     skipped = [{"gate_id": r.gate_id, "reason": r.message} for r in reports if r.decision == Decision.SKIP]
+    if plan is not None:
+        exit_code = calc_exit_code(reports, plan, strict)
+    else:
+        # 兼容尚未升级的调用方（无 plan 上下文）：保留老的"any fail = 1"行为。
+        # 新调用必须传 plan + strict 以获得与 runner 一致的退出码。
+        exit_code = 1 if failed else 0
     return {
         "schema_version": SCHEMA_VERSION,
         "trigger": ctx.trigger,
@@ -69,7 +90,7 @@ def build_audit(ctx, reports: list[Report], rollback_failed: bool) -> dict[str, 
         "skipped": skipped,
         "escape_used": None,
         "rollback_failed": rollback_failed,
-        "exit_code": 1 if failed else 0,
+        "exit_code": exit_code,
     }
 
 

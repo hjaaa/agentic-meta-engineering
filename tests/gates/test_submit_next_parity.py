@@ -122,3 +122,58 @@ def test_submit_trigger_module_main_returns_runner_exit_code(tmp_path, capsys, m
     finally:
         import shutil
         shutil.rmtree(req_dir, ignore_errors=True)
+
+
+def test_submit_forwards_force_with_blockers_to_runner(monkeypatch):
+    """given_submit_main_with_--force-with-blockers_when_call_then_runner_argv_contains_flag.
+
+    F-004 round-5（Codex P1 修复）：原实现把 --force-with-blockers 转 env var
+    但 run.py 不读 env，escape_hatch 在 submit 入口完全非功能性。修后 submit.py
+    直接 forward `--force-with-blockers='<reason>'` 给 runner argv。
+    """
+    import sys
+    sys.path.insert(0, str(Path(runner._REPO_ROOT) / "scripts" / "gates" / "triggers"))
+    import submit as submit_mod
+
+    captured_argv: list[list[str]] = []
+
+    def fake_runner_main(argv):
+        captured_argv.append(list(argv))
+        return 0
+
+    monkeypatch.setattr(submit_mod.runner, "main", fake_runner_main)
+
+    rc = submit_mod.main([
+        "--req=REQ-2099-004",
+        "--force-with-blockers=临时绕过：已有 Jira-1234 跟进",
+        "--dry-run",
+    ])
+    assert rc == 0
+    assert len(captured_argv) == 1
+    forwarded = captured_argv[0]
+    # 关键断言：runner 收到了 --force-with-blockers='<reason>'，不是 env var 兜底
+    force_flags = [a for a in forwarded if a.startswith("--force-with-blockers=")]
+    assert force_flags, f"runner argv 缺 --force-with-blockers='...': {forwarded}"
+    assert "临时绕过：已有 Jira-1234 跟进" in force_flags[0], (
+        f"reason 文本未透传给 runner: {force_flags[0]}"
+    )
+
+
+def test_submit_omits_force_flag_when_not_provided(monkeypatch):
+    """given_submit_main_without_force_when_call_then_runner_argv_no_force_flag。
+
+    确保不传 --force-with-blockers 时也不在 argv 加占位（否则 runner 会校验空 reason 失败）。
+    """
+    import sys
+    sys.path.insert(0, str(Path(runner._REPO_ROOT) / "scripts" / "gates" / "triggers"))
+    import submit as submit_mod
+
+    captured_argv: list[list[str]] = []
+    monkeypatch.setattr(submit_mod.runner, "main", lambda a: captured_argv.append(list(a)) or 0)
+
+    rc = submit_mod.main(["--req=REQ-2099-005", "--dry-run"])
+    assert rc == 0
+    forwarded = captured_argv[0]
+    assert not any(a.startswith("--force-with-blockers") for a in forwarded), (
+        f"未传 --force-with-blockers 时 runner argv 不应含此 flag: {forwarded}"
+    )

@@ -553,8 +553,16 @@ def _finalize_audit(
     rollback_failed: bool,
     force_used: bool,
     force_reason: str,
+    plan: list[dict[str, Any]] | None = None,
+    strict: bool = False,
 ) -> None:
     """构建并落盘 audit log；失败时仅打 ERROR，不阻断 gate 结果（F-004 round-3 从 _execute_plan 抽出）。
+
+    F-004 round-5（Codex P3 修复，先本体后调用规则）：
+      新增 plan + strict 参数（default None/False 保持 backward compat），传给
+      _build_audit 让 audit.exit_code 与 runner 实际退出码一致。call site 在下一
+      commit 升级；本 commit 仅函数定义改，old 5-arg 调用仍可工作（plan=None 时
+      audit 走老的"any fail = 1"行为，等同重构前）。
 
     F-019 round-3：write_audit 单独包裹 try/except，避免 audit 落盘故障（磁盘满/无写权限）
     冒泡为 exit 2 阻断 Claude；audit 是基础设施级失败，绝不能升级为 gate 全崩。
@@ -568,7 +576,7 @@ def _finalize_audit(
     """
     audit_extra = _build_audit_extra(force_used, force_reason)
     try:
-        audit_data = _build_audit(ctx, reports, rollback_failed)
+        audit_data = _build_audit(ctx, reports, rollback_failed, plan=plan, strict=strict)
         if audit_extra:
             audit_data.update(audit_extra)
         write_audit(audit_data)
@@ -608,7 +616,7 @@ def _execute_plan(ctx: GateContext, plan: list[dict[str, Any]], strict: bool) ->
         return _handle_runner_exception(ctx, snapshots, reports, _current_plugin[0], exc)
 
     force_reason = ctx.cli_flags.get("force_with_blockers", "")
-    _finalize_audit(ctx, reports, rollback_failed, force_used, force_reason)
+    _finalize_audit(ctx, reports, rollback_failed, force_used, force_reason, plan=plan, strict=strict)
 
     # force-with-blockers 命中时允许 blocker fail 不影响 exit code（视为全通）
     if force_used:

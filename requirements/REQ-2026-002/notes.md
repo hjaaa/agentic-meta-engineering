@@ -81,3 +81,5 @@ _[hook-skipped: claude-exit-1]_
 ## 会话经验（2026-04-29 10:50）
 
 _本轮无新经验_
+
+- [2026-04-29 15:52:26] [completed] hook 第二次死锁（重构 in-flight）：改 _finalize_audit 签名漏改 call site 引发 TypeError。C-009 v1 加 py_compile pre-check 只抓静态 syntax 错（marker / 不闭合括号），抓不到 runtime 异常（TypeError / AttributeError / KeyError）。两次同源（hook 自指 + fail-closed）但层级不同：第 1 次 parse-time 崩、第 2 次 runtime 才崩。C-012 v2 待修：A) trigger 抓 stderr 含 "Traceback" → fail-open；B) run.py 顶层 try/except → 未捕获异常归 exit 2 与业务 fail (rc=1) 区分；A+B 组合 defense in depth (L1 静态 + L2 runtime + L3 stderr 兜底 + L4 用户终端 escape)。教训：fail-open 不能假设单一检测覆盖所有故障类型，必须分层独立兜底；修过一次的死锁问题给"假安全感"，下次重构同一层时必复发。
