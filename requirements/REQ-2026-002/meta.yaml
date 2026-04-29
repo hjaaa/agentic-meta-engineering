@@ -77,20 +77,21 @@ reviews:
       - REV-REQ-2026-002-outline-design-001
     stale: false
   detail-design:
-    latest: REV-REQ-2026-002-detail-design-003
+    latest: REV-REQ-2026-002-detail-design-004
     conclusion: approved
-    reviewed_commit: ab54fc0
+    reviewed_commit: 3802b7a
     artifact_hashes:
       artifacts/detailed-design.md: 
-        1a99e2a4f4fca75067f7db08077ef3e1b4ca1e5eb6bd19a6ba4e38f4a8781dc6
+        d820bafdc6e9cadef91f54bd37feaa26b2b5e475e26e1ee0cae3fa554a373f91
       artifacts/features.json: 
-        dc9ad4ac66657b91e78946b99f07e1630ef04d6de9707fe7b45f923524afe6eb
+        54465fa499226779d3545542be74d2030667c6d22fd51f4a70a9cb216af6e3c1
       artifacts/outline-design.md: 
         448d0e242f2a3c5f620762779987134caf7f51ff9d3840055c6eaab6a0440d47
     history:
       - REV-REQ-2026-002-detail-design-001
       - REV-REQ-2026-002-detail-design-002
       - REV-REQ-2026-002-detail-design-003
+      - REV-REQ-2026-002-detail-design-004
     stale: false
   code:
     by_feature:
@@ -143,10 +144,10 @@ reviews:
         conclusion: approved
         reviewed_commit: 90c3be6
         artifact_hashes:
-          artifacts/features.json:
+          artifacts/features.json: 
             54465fa499226779d3545542be74d2030667c6d22fd51f4a70a9cb216af6e3c1
-          artifacts/tasks/F-004.md:
+          artifacts/tasks/F-004.md: 
             5bb14f073429c10666ed414d50acb30761eecdf381db3f72548b43d3baaab71a
-          artifacts/detailed-design.md:
+          artifacts/detailed-design.md: 
             d820bafdc6e9cadef91f54bd37feaa26b2b5e475e26e1ee0cae3fa554a373f91
         stale: false

@@ -1,0 +1,80 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-002-detail-design-004",
+  "requirement_id": "REQ-2026-002",
+  "phase": "detail-design",
+  "reviewer": "detail-design-quality-reviewer",
+  "reviewed_at": "2026-04-29 14:12:41",
+  "reviewed_commit": "3802b7a",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/detailed-design.md",
+      "sha256": "d820bafdc6e9cadef91f54bd37feaa26b2b5e475e26e1ee0cae3fa554a373f91"
+    },
+    {
+      "path": "artifacts/features.json",
+      "sha256": "54465fa499226779d3545542be74d2030667c6d22fd51f4a70a9cb216af6e3c1"
+    },
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "448d0e242f2a3c5f620762779987134caf7f51ff9d3840055c6eaab6a0440d47"
+    }
+  ],
+  "conclusion": "approved",
+  "score": 92,
+  "dimensions": {
+    "consistency_with_outline": {
+      "score": 93,
+      "issues": []
+    },
+    "interface_completeness": {
+      "score": 93,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 225-278 行：§2.2 新增「实际实现 helper 签名」段列出 9 个私有 helper（_validate_force_reason / _init_snapshots / _finalize_audit / _handle_escape_hatch / _build_audit_extra / _run_gates / _commit_write_state / _handle_gate_failed / _handle_runner_exception），与 scripts/gates/run.py:327/523/550/455/495/619/643/668/685 命名 + 签名完全一致；建议后续把 round-3 G-3 新增的 _cleanup_snapshots（force-with-blockers 路径补充）也补到本段以贴合代码现状（非阻塞）"
+        }
+      ]
+    },
+    "data_model_soundness": {
+      "score": 92,
+      "issues": []
+    },
+    "sequence_correctness": {
+      "score": 92,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 318-343 行：force-with-blockers 命中 audit JSON example 完整列出 escape_used/escape_reason 字段；与 scripts/gates/run.py:495 _build_audit_extra 落字段一致（escape_used=cli_flag 名 / escape_reason=校验后 reason）；建议 §4.2 submit 时序图后追一行『force-with-blockers 命中走 _handle_escape_hatch 分支后 _cleanup_snapshots + clear staged_writes，再写 audit』以闭合 round-3 G-3 时序补丁（非阻塞）"
+        }
+      ]
+    },
+    "feature_granularity": {
+      "score": 90,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 80-105 行：F-004.description 删 5 个 lib/check_*.py 条目并补「保留 scripts/lib/check_*.py——被 plugins/ 直接 import 复用，不是薄壳层」措辞，与 git log 01a3c24（删 6 个旧 check-*.sh / post-dev-verify.sh）+ 仓内现状（lib/check_*.py 5 个仍在）完全一致，是合理的实施事实回写；features.json F-001~F-004 仍未补 complexity / interfaces_frozen 字段（与 003 建议一致，非阻塞）"
+        }
+      ]
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "round-4 是 spec sync 类重审：核心改动均为「代码已落地 → 反向回写 spec / features.json」，未引入新设计决策；3 处抽样验证（registry.yaml force-with-blockers triggers / bash_write_protect _ALTS 12 类 / _caller_is_save_review_sh 单轨实现 + ctx 形参）+ §3.1 模块拆分行数（review_verdict.py 193 / review_verdict_ci.py 182 / meta_writer.py 78）均与 spec 描述精确对齐",
+    "建议下一轮重构（如 PR2/PR3 阶段）把 F-001~F-004 补 complexity / interfaces_frozen / touches 三类字段，便于阶段 7 派发器精确路由（与 002/003 建议保持一致）",
+    "outline-design.md 仍宽泛描述 escape_hatch / side_effects，未与 detail-design round-4 的 force-with-blockers triggers 列表细节冲突；H1 staged_writes 模式 / 双轨白名单 1 单源化 / 退出码语义 0/1/2 等关键设计决策都已在 detail-design 内闭环"
+  ],
+  "scope": null,
+  "supersedes": "REV-REQ-2026-002-detail-design-003",
+  "features_json_validation": {
+    "valid": true,
+    "issues": [],
+    "enhancement_suggestions": [
+      "F-001 estimate_days=9 建议补 complexity: high",
+      "F-002 建议补 complexity: high + interfaces_frozen: true（接口已在 §2.1/§2.2 完整冻结）",
+      "F-003 建议补 complexity: high + touches: scripts/gates/plugins/ + interfaces_frozen: true",
+      "F-004 建议补 complexity: low + touches: scripts/gates/migration/ + scripts/check-*.sh（仅渲染脚本 + 删除旧入口；round-4 已闭环）"
+    ]
+  }
+}
