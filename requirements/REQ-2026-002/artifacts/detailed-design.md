@@ -222,6 +222,61 @@ def main(argv: list[str]) -> int:
     return calc_exit_code(reports, args.strict)
 ```
 
+> 注：上述伪码是原始设计概念示意。实际实现经 F-004 round-2/round-3 拆分，主要 helper 签名如下：
+
+```python
+# F-011 round-2 / F-007 round-2 / F-004 round-3 抽出的私有 helper
+def _validate_force_reason(reason: Optional[str]) -> Optional[str]: ...
+    # round-3 G-1 抽出：reason 三段校验（非空/≤1024/控制字符）；通过返回 None，失败返回错误消息
+
+def _init_snapshots(ctx: GateContext, plan: list[dict]) -> dict: ...
+    # round-3 G-2 抽出：按需 stash_state；失败降级 {}
+
+def _finalize_audit(
+    ctx: GateContext,
+    reports: list[Report],
+    rollback_failed: bool,
+    force_used: bool,
+    force_reason: str,
+) -> None: ...
+    # round-3 G-2 抽出：audit 构建 + 落盘；失败打 ERROR 不阻断
+
+def _handle_escape_hatch(
+    ctx: GateContext,
+    gate_fail: GateFailed,
+    executed: list[Gate],
+    snapshots: dict,
+) -> tuple[bool, bool]: ...
+    # force-with-blockers 分支判定；返回 (force_used, rollback_failed)
+
+def _build_audit_extra(force_used: bool, force_reason: str) -> dict: ...
+    # escape_hatch 命中时拼装 audit 附加字段
+
+def _run_gates(
+    ctx: GateContext,
+    plan: list[dict],
+    executed: list[Gate],
+    reports: list[Report],
+    current_plugin: list[str],
+) -> None: ...
+    # 逐 gate 执行 precheck + run；error 级 FAIL 抛 GateFailed
+
+def _commit_write_state(ctx: GateContext, executed: list[Gate], current_plugin: list[str]) -> None: ...
+    # 全 pass 后提交 write_state plugin 的暂存写态
+
+def _handle_gate_failed(ctx: GateContext, executed: list[Gate], snapshots: dict) -> bool: ...
+    # GateFailed 路径：逆序 rollback + restore_state + staged_writes.clear()；返回 rollback_failed
+
+def _handle_runner_exception(
+    ctx: GateContext,
+    snapshots: dict,
+    reports: list[Report],
+    plugin_name: str,
+    exc: Exception,
+) -> int: ...
+    # plugin 抛未捕获异常：restore + audit + 返 2
+```
+
 ### 2.3 audit JSON schema
 
 写入路径 `scripts/gates/audit/<YYYY-MM>/<trigger>-<timestamp>.json`：
@@ -255,6 +310,35 @@ def main(argv: list[str]) -> int:
   "escape_used": null,
   "rollback_failed": false,
   "exit_code": 1
+}
+```
+
+force-with-blockers 命中时的 audit 示例（`escape_used` / `escape_reason` 字段）：
+
+```json
+{
+  "schema_version": "1.0",
+  "trigger": "phase-transition",
+  "timestamp": "2026-04-29 10:00:00",
+  "actor": "claude-code",
+  "requirement_id": "REQ-2026-002",
+  "from_phase": "detail-design",
+  "to_phase": "task-planning",
+  "passed": ["GATE-META-SCHEMA"],
+  "bypassed": [],
+  "failed": [
+    {
+      "gate_id": "GATE-REVIEW-VERDICT",
+      "code": "R001",
+      "message": "review verdict is needs_revision",
+      "fix_hint": "..."
+    }
+  ],
+  "skipped": [],
+  "escape_used": "force-with-blockers",
+  "escape_reason": "临时绕过：紧急修复，已有 Jira-1234 跟进",
+  "rollback_failed": false,
+  "exit_code": 0
 }
 ```
 

@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -130,7 +131,12 @@ def _load_registry() -> dict:
       转换为 sys.exit(1) + ERROR 日志，让 CI 显示为门禁失败而非脚本崩溃。
     """
     if not _REGISTRY_PATH.exists():
-        print(f"ERROR registry.yaml 不存在：{_REGISTRY_PATH}", file=sys.stderr)
+        # 尽量输出相对仓库根的路径，避免 CI 日志泄露宿主机绝对目录
+        try:
+            _display = _REGISTRY_PATH.relative_to(_REPO_ROOT)
+        except ValueError:
+            _display = _REGISTRY_PATH
+        print(f"ERROR registry.yaml 不存在：{_display}", file=sys.stderr)
         sys.exit(1)
     try:
         with _REGISTRY_PATH.open("r", encoding="utf-8") as f:
@@ -180,11 +186,18 @@ def main() -> int:
         )
         return 1
 
-    # 默认模式：写入目标文件
+    # 默认模式：原子写入目标文件（先写 .tmp 再 os.replace，避免中途崩溃留 partial 文件）
     _OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = _OUTPUT_PATH.with_suffix(".md.tmp")
     try:
-        _OUTPUT_PATH.write_text(rendered, encoding="utf-8")
+        tmp_path.write_text(rendered, encoding="utf-8")
+        os.replace(tmp_path, _OUTPUT_PATH)
     except OSError as exc:
+        # 清理可能遗留的 .tmp 文件
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
         print(f"ERROR gate-checklist.md 写入失败：{exc}", file=sys.stderr)
         return 1
     print(f"OK 渲染完成：{_OUTPUT_PATH}")

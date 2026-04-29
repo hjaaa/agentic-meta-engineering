@@ -69,6 +69,13 @@ def _check_branch_reachable(base_branch: str) -> Report:
 
     独立为模块级函数，便于测试 mock。
     返回：PASS（退出码 0）/ FAIL（含修复建议）。
+
+    check=False 说明：
+      不使用 check=True（即不让 subprocess 自动抛 CalledProcessError），
+      因为 git fetch 非零退出本身就是我们要捕获的分支不可达信号；
+      我们在 result.returncode != 0 时自行返回 FAIL Report，
+      避免异常路径与 git 退出码语义冲突。
+      check=True 只应在"非零 = 程序 bug"场景下启用；此处"非零 = 预期失败路径"。
     """
     try:
         result = subprocess.run(
