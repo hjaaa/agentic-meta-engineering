@@ -1,0 +1,111 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-003-definition-002",
+  "requirement_id": "REQ-2026-003",
+  "phase": "definition",
+  "reviewer": "requirement-quality-reviewer",
+  "reviewed_at": "2026-04-29 20:44:24",
+  "reviewed_commit": "c8efde7",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/requirement.md",
+      "sha256": "acf80df6f35d550bc9162516d039d8e539f6e09f3025f5ce3e0c86e806d415e8"
+    },
+    {
+      "path": "plan.md",
+      "sha256": "c3df60350c5c116125afe51963d7946ddbc9b55944206768269e437534e1ea48"
+    },
+    {
+      "path": "meta.yaml",
+      "sha256": "16d290dc2cd7ea2770c58485bff0eae77bab624af86ee3bfb4e4ca4968f341c3"
+    }
+  ],
+  "conclusion": "needs_revision",
+  "score": 76,
+  "dimensions": {
+    "completeness": {
+      "score": 82,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "requirement.md 第 84 行 D-006 引入新 verdict 取值 approved-trivial，但范围/包含 段未把『scope-schema.md / verdict schema 中 human_signoff.decision 的取值枚举扩展为 {approved, approved-trivial}』作为产出物显式列出，下游设计阶段易遗漏 schema 枚举更新"
+        }
+      ]
+    },
+    "consistency": {
+      "score": 62,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "plan.md 第 19 行『GitHub PR Review 等价 sign-off 的具体抓取实现（仅在本需求的非功能需求中描述意图，实施留到下一迭代）』与 D-004（plan.md 第 75-81 行）『把 PR Review 等价 sign-off 从范围中完整移除，既不实施也不预留契约』直接矛盾——范围段说『下一迭代实施』、决策段说『完整移除』，对外口径冲突；同时 requirement.md 第 68 行非功能/安全合规已删 PR 路径，三方口径不一致"
+        },
+        {
+          "severity": "major",
+          "description": "requirement.md 第 84 行 D-006 引入 human_signoff.decision = 'approved-trivial' 取值，但第 44/80/81/82 行的下游判定（feature-lifecycle-manager、requirement:submit、GATE-REVIEW-VERDICT）一律写死 human_signoff.decision == \"approved\"，全文没有任何一处显式声明门禁是否接受 approved-trivial。结果二选一都是缺陷：① 门禁严格匹配 approved → trivial 通道实际无法转 done，D-006 失效；② 门禁额外接受 approved-trivial → 但当前文档未声明，实施时易漏。建议在范围/包含 段或决策表加一行：『门禁判定接受 {approved, approved-trivial} 集合，视同放行』"
+        },
+        {
+          "severity": "minor",
+          "description": "requirement.md 第 64 行『verdict schema 需向后兼容』来源标 plan.md:58，但 plan.md 第 58 行现在是 D-002 Context 段（『旧 schema 中 conclusion 由 AI 直接给...』），不是兼容性条款来源；真实兼容性表述在 D-002 Consequences 第 62 行（旧 verdict 迁移策略）。来源行号需要更新避免引用漂移"
+        }
+      ]
+    },
+    "traceability": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "requirement.md 第 100 行决策表 D-005 来源写 plan.md:D-005、第 101 行写 plan.md:D-006，但表内其余行（第 95-99 行）均使用 plan.md:<行号> 格式（如 plan.md:50 / plan.md:58 / plan.md:66）。同表内引用风格不一致；建议统一为行号制（D-005 在 plan.md:83；D-006 在 plan.md:91）以匹配 sourcing 校验脚本的行号格式期望"
+        }
+      ]
+    },
+    "clarity": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "requirement.md 第 84 行 trivial 通道描述把『判定逻辑（路径白名单）』『退出码（3）』『stderr 关键字（trivial: non-doc files detected）』『verdict 标记（approved-trivial）』四件事压在一句话里，且与场景 1/2/3 主流程脱节——场景段没有 trivial 触发分支的对应步骤。建议在场景 1 后追加一个『场景 1b：纯文档变更走 trivial 快速通道』或在场景 1 第 6 步加分支说明，提升可读性与下游测试用例生成的便利性"
+        }
+      ]
+    },
+    "testability": {
+      "score": 72,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "requirement.md 第 84 行 trivial 通道仅给出失败侧契约（退出码 3 + stderr 关键字），未给出成功侧可测契约——例如『成功通过的 trivial sign-off 退出码 = 0 / verdict.human_signoff.by 字段在 trivial 通道下取值是什么（git_user_email？还是固定字符串 trivial-auto？）/ at 字段是否仍写当前时间』。下游 testing 阶段无法据此构造 success-path 用例；建议在 D-006 或范围段补成功路径的最小输出契约"
+        },
+        {
+          "severity": "minor",
+          "description": "requirement.md 第 83 行 --all 兜底未给出可测契约——当 --all 触发时，scope-json 中 selected_checkers 字段是否一定写入全部 8 个 checker 名（白名单常量来源？）、skipped_checkers 是否为空数组、routing_confirmed_by.by 字段如何填写（git_user_email 还是省略）。建议补 1-2 条断言式描述，便于 prepare 阶段单测面覆盖"
+        }
+      ]
+    },
+    "business_rationale": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "requirement.md 第 89 行 D-004 不包含 PR Review 的理由列了两条（单人项目 + 分支保护未配置），plan.md D-004 Consequences 段也覆盖了缺点（未来团队化时 schema 需要扩展）。但 D-006 trivial 通道的缺点段（plan.md 第 96 行）只提『纯重命名 / 单测新增仍走完整流程』，未提及『approved-trivial 取值与下游门禁的协议成本』——这正是 consistency 维度发现的同一根因。建议把『下游门禁需同步识别新取值』作为 D-006 的隐含成本写入 Consequences，避免下游设计阶段误判 trivial 通道为零成本变更"
+        }
+      ]
+    }
+  },
+  "required_fixes": [
+    "修正 plan.md 第 19 行『范围/不包含』关于 PR Review 的表述：删除『仅在本需求的非功能需求中描述意图，实施留到下一迭代』，改为与 D-004 一致的口径——『完全 out of scope，既不实施也不预留契约；未来团队化需要时独立 REQ 处理』",
+    "在 requirement.md 范围/包含 段或决策表显式声明：『feature-lifecycle-manager / requirement:submit / GATE-REVIEW-VERDICT 三处门禁判定 human_signoff.decision 时，接受 {approved, approved-trivial} 集合，视同放行』；或反之声明 trivial 通道仅生成可审计 verdict、不参与转 done 门禁。任选其一，但必须显式落字"
+  ],
+  "suggestions": [
+    "requirement.md 第 84 行 D-006 trivial 通道补成功路径输出契约：退出码 = 0 + verdict.human_signoff.{by: git_user_email, at: ISO8601, decision: approved-trivial}",
+    "requirement.md 第 83 行 --all 兜底补 scope-json 输出契约：selected_checkers = 全部 8 个 checker 名 / skipped_checkers = []",
+    "在场景 1 后追加场景 1b（纯文档变更走 trivial 通道）或在场景 1 第 6 步加 --trivial 分支说明，让 trivial 通道的主流程在场景段有显式步骤",
+    "把 requirement.md 第 100/101 行决策表 D-005/D-006 来源由 plan.md:D-005 / plan.md:D-006 改为行号制 plan.md:83 / plan.md:91，与同表其余行引用风格保持一致",
+    "把 requirement.md 第 64 行 plan.md:58 来源改为 plan.md:62（D-002 Consequences 段，真实兼容性条款所在行）",
+    "requirement.md 范围/包含 段补『scope-schema.md / verdict schema 中 human_signoff.decision 取值枚举扩展为 {approved, approved-trivial}』作为产出物条目"
+  ],
+  "scope": null,
+  "supersedes": "REV-REQ-2026-003-definition-001",
+  "project_specific_issues": [
+    "本次为增量复审，覆盖 D-004（移除 PR Review 等价 sign-off）/ D-005（--all 兜底参数纳入本需求）/ D-006（trivial 通道仅放行纯文档）三条决策及其在范围/不包含/决策表/待澄清清单/风险段的同步收敛",
+    "项目索引（context/project/agentic-meta-engineering/INDEX.md）未声明业务域特殊约束（骨架仓库面向开发流程，无 auth/payment 等业务域）；本评审基于工具自身改造类需求的合理预期——可测性 = CI/门禁脚本可断言；一致性 = 范围段 / 决策段 / 场景段 / 待澄清段四方口径必须收敛；本轮发现的 2 个 major 均为四方口径未对齐"
+  ]
+}

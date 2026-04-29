@@ -10,7 +10,8 @@ services: [agentic-meta-engineering]   # 涉及的服务仓库
 gates_passed:
   - phase: definition
     at: "2026-04-29 17:07:36"
-    gates: [GATE-META-SCHEMA, GATE-INDEX-INTEGRITY, GATE-SOURCING, GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY]
+    gates: [GATE-META-SCHEMA, GATE-INDEX-INTEGRITY, GATE-SOURCING, 
+          GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY]
     warnings:
       - "GATE-PLAN-FRESHNESS W003: plan.md 范围段 '不包含' 无子条目（待 definition 阶段补）"
 pr_url: ""                             # /requirement:submit 成功后回写
@@ -34,3 +35,20 @@ tags: [human-in-the-loop, gating, signoff, routing]
 outcome: ""                    # shipped / abandoned / rolled-back
 completed_at: ""               # ISO8601，completed 时填
 lessons_extracted: false       # /knowledge:extract-experience 是否已跑
+reviews:
+  definition:
+    latest: REV-REQ-2026-003-definition-004
+    conclusion: approved
+    reviewed_commit: c8efde7
+    artifact_hashes:
+      artifacts/requirement.md: 
+        7c6185451912fd48a8f4b0b399e0d7db1d5e97a131f2bcb578c8b0fa0e2cf9eb
+      plan.md: 534896d210842ff1695fa50610bfcc0cd674ad26d0fcdc0c67ef466c78239362
+      meta.yaml: 
+        96107f18ede0ff2bdce4fd467531fe6f70af7ee40809a32f16b7a58823437df1
+    history:
+      - REV-REQ-2026-003-definition-001
+      - REV-REQ-2026-003-definition-002
+      - REV-REQ-2026-003-definition-003
+      - REV-REQ-2026-003-definition-004
+    stale: false
