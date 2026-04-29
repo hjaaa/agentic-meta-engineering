@@ -275,6 +275,12 @@ def main(argv: list[str]) -> int:
   runner `_calc_exit_code` 为准（strict 下 warning fail 也升 1）。审计日志字段是「用户视角的快照」，
   不与进程退出码 100% 同步。
 
+进程退出码语义（F-004 round-3 统一）：
+- 0 — 全部 gate 通过（含 SKIP / PASS）
+- 1 — 存在 severity=error 的 Decision.FAIL；strict 下 warning fail 也升 1
+- 2 — runner 自身异常 / 非法 trigger / 非法 requirement_id / registry 加载失败 /
+      非法 --force-with-blockers reason（CLI 入参非法统一归 2）
+
 ## 3. Plugin 详细规格
 
 ### 3.1 plugins/review_verdict.py（关 H1）

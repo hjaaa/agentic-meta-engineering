@@ -132,6 +132,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
       0  全部 gate 通过（含 SKIP / PASS）
       1  存在 severity=error 的 Decision.FAIL；strict 下 warning 级 fail 也升 1
       2  runner 自身异常 / 非法 trigger / 非法 requirement_id / registry 加载失败
+         / 非法 --force-with-blockers reason（CLI 入参非法统一归 2）
     """
     p = argparse.ArgumentParser(description="统一门禁 runner")
     p.add_argument("--trigger", help="触发器：pre-tool-use|pre-commit|phase-transition|submit|ci|post-dev|adapter")
@@ -147,7 +148,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         dest="force_with_blockers",
         default=None,
         help=(
-            "submit trigger 专用 escape_hatch：强制跳过 blocker 级失败；"
+            "submit / phase-transition trigger 专用 escape_hatch：强制跳过 blocker 级失败；"
             "必须提供非空 reason（如 --force-with-blockers='临时绕过：已有 Jira 跟进'）；"
             "使用情况会写入 audit log（escape_used: force-with-blockers）"
         ),
