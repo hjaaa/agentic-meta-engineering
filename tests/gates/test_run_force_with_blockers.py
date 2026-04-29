@@ -2,12 +2,17 @@
 
 覆盖 F-004 round-2 Block 3 要求：
   1. reason 非空 + 短 → pass（exit 0）
-  2. reason 空 → exit 1
-  3. reason 1025 字符 → exit 1
-  4. reason 含 \\x00 / \\x07 → exit 1
+  2. reason 空 → exit 2（F-004 round-3：CLI 入参非法归 2）
+  3. reason 1025 字符 → exit 2
+  4. reason 含 \\x00 / \\x07 → exit 2
   5. reason 含 \\t / \\n → pass（allow-list）
   6. registry.yaml triggers=[submit, phase-transition] 后
      phase-transition 触发不再越权（集成验证）
+
+覆盖 F-004 round-3 新增要求：
+  7. _validate_force_reason(None) → None（未传参数场景）
+  8. _validate_force_reason 合法 reason → None（校验通过）
+  9. _validate_force_reason 非法 reason → 返回具体错误消息字符串
 """
 from __future__ import annotations
 
@@ -54,24 +59,24 @@ def test_force_with_blockers_valid_reason(monkeypatch, tmp_path, capsys):
 
 
 def test_force_with_blockers_empty_reason(monkeypatch, capsys):
-    """reason 为空字符串 → exit 1 + 错误提示。"""
+    """reason 为空字符串 → exit 2（CLI 入参非法）+ 错误提示。"""
     result = _run_main(
         ["--trigger=submit", "--force-with-blockers= "],
         monkeypatch,
     )
-    assert result == 1
+    assert result == 2
     captured = capsys.readouterr()
     assert "非空 reason" in captured.err
 
 
 def test_force_with_blockers_reason_too_long(monkeypatch, capsys):
-    """reason 超 1024 字符 → exit 1 + 错误提示。"""
+    """reason 超 1024 字符 → exit 2（CLI 入参非法）+ 错误提示。"""
     long_reason = "A" * 1025
     result = _run_main(
         ["--trigger=submit", f"--force-with-blockers={long_reason}"],
         monkeypatch,
     )
-    assert result == 1
+    assert result == 2
     captured = capsys.readouterr()
     assert "超过上限 1024" in captured.err
 
@@ -88,25 +93,25 @@ def test_force_with_blockers_reason_exactly_1024(monkeypatch, capsys):
 
 
 def test_force_with_blockers_reason_control_char_null(monkeypatch, capsys):
-    """reason 含 \\x00（NUL 控制字符）→ exit 1 + 错误提示。"""
+    """reason 含 \\x00（NUL 控制字符）→ exit 2（CLI 入参非法）+ 错误提示。"""
     bad_reason = "临时绕过\x00恶意内容"
     result = _run_main(
         ["--trigger=submit", f"--force-with-blockers={bad_reason}"],
         monkeypatch,
     )
-    assert result == 1
+    assert result == 2
     captured = capsys.readouterr()
     assert "控制字符" in captured.err
 
 
 def test_force_with_blockers_reason_control_char_bel(monkeypatch, capsys):
-    """reason 含 \\x07（BEL 响铃字符）→ exit 1 + 错误提示。"""
+    """reason 含 \\x07（BEL 响铃字符）→ exit 2（CLI 入参非法）+ 错误提示。"""
     bad_reason = "原因\x07bell"
     result = _run_main(
         ["--trigger=submit", f"--force-with-blockers={bad_reason}"],
         monkeypatch,
     )
-    assert result == 1
+    assert result == 2
     captured = capsys.readouterr()
     assert "控制字符" in captured.err
 
@@ -146,3 +151,55 @@ def test_registry_phase_transition_in_triggers():
     assert "submit" in triggers, (
         f"force-with-blockers.triggers 应包含 submit，实际: {triggers}"
     )
+
+
+# ====================== _validate_force_reason 函数单测（F-004 round-3 G-1） ======================
+
+
+def test_validate_force_reason_none_returns_none():
+    """_validate_force_reason(None) 应返回 None（未传参数，无需校验）。"""
+    result = runner_mod._validate_force_reason(None)
+    assert result is None
+
+
+def test_validate_force_reason_valid_returns_none():
+    """合法 reason 应返回 None（校验全通过）。"""
+    result = runner_mod._validate_force_reason("临时绕过：已有 Jira 跟进")
+    assert result is None
+
+
+def test_validate_force_reason_empty_returns_error_message():
+    """reason 为纯空白时应返回以 '--force-with-blockers 必须提供非空 reason' 开头的错误消息。"""
+    result = runner_mod._validate_force_reason("   ")
+    assert result is not None
+    assert "非空 reason" in result
+
+
+def test_validate_force_reason_too_long_returns_error_message():
+    """reason 超过 1024 字符时应返回含 '超过上限 1024' 的错误消息。"""
+    long_reason = "x" * 1025
+    result = runner_mod._validate_force_reason(long_reason)
+    assert result is not None
+    assert "超过上限 1024" in result
+
+
+def test_validate_force_reason_exactly_1024_returns_none():
+    """reason 恰好 1024 字符时应返回 None（边界值通过）。"""
+    reason_1024 = "y" * 1024
+    result = runner_mod._validate_force_reason(reason_1024)
+    assert result is None
+
+
+def test_validate_force_reason_control_char_returns_error_message():
+    """reason 含 \\x00 控制字符时应返回含 '控制字符' 的错误消息。"""
+    bad_reason = "绕过原因\x00注入"
+    result = runner_mod._validate_force_reason(bad_reason)
+    assert result is not None
+    assert "控制字符" in result
+
+
+def test_validate_force_reason_tab_newline_allowed():
+    """reason 含 \\t 和 \\n（allow-list）时应返回 None（不视为控制字符）。"""
+    reason_with_whitespace = "原因：\t制表符\n换行符"
+    result = runner_mod._validate_force_reason(reason_with_whitespace)
+    assert result is None

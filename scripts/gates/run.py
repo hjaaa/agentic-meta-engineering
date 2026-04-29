@@ -323,6 +323,52 @@ def instantiate(entry: dict[str, Any]) -> Gate:
 # ====================== 主流程 ======================
 
 
+def _validate_force_reason(reason: Optional[str]) -> Optional[str]:
+    """校验 --force-with-blockers reason 的三段合法性规则（F-004 round-3 抽出）。
+
+    reason 为 None 时表示未传 --force-with-blockers，直接返回 None（无需校验）。
+    三段规则任一不过时返回可直接打印的**错误消息字符串**；全部通过返回 None。
+
+    参数：
+      reason — argparse 解析出的 force_with_blockers 值；None 表示未提供该参数。
+
+    返回：
+      None    — 校验通过（含 reason=None 的"未提供"场景）。
+      str     — 错误消息，调用方打印到 stderr 后返回退出码 2。
+
+    规则：
+      1. 非空：reason.strip() 非空。
+      2. 长度：len(reason) ≤ 1024 字符。
+      3. 控制字符：不含 unicodedata.category 以 'C' 开头的字符（\\t / \\n 例外）。
+    """
+    if reason is None:
+        # 未传 --force-with-blockers，无需校验
+        return None
+    # 规则 1：非空
+    if not reason.strip():
+        return (
+            "--force-with-blockers 必须提供非空 reason，"
+            "如：--force-with-blockers='临时绕过：已有 Jira 跟进'"
+        )
+    # 规则 2：长度 ≤ 1024
+    if len(reason) > 1024:
+        return (
+            f"--force-with-blockers reason 长度 {len(reason)} 超过上限 1024 字符；"
+            "请缩减描述"
+        )
+    # 规则 3：无控制字符（\t / \n 例外）
+    bad_chars = [
+        ch for ch in reason
+        if ch not in ("\t", "\n") and unicodedata.category(ch).startswith("C")
+    ]
+    if bad_chars:
+        return (
+            f"--force-with-blockers reason 含控制字符（{[repr(c) for c in bad_chars[:5]]}）；"
+            "请移除控制字符后重试"
+        )
+    return None
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     """runner 主入口（F-022 round-3 补 docstring，与 submit.py:60 风格一致）。
 
@@ -365,35 +411,12 @@ def main(argv: Optional[list[str]] = None) -> int:
         print("ERROR 必须指定 --trigger 或 --validate-registry", file=sys.stderr)
         return 2
 
-    # F-004 round-2：--force-with-blockers reason 三条校验
-    # 1. 非空；2. 长度 ≤ 1024；3. 无控制字符（\t / \n 例外）
+    # F-004 round-3：reason 校验抽到 _validate_force_reason，失败归 return 2（CLI 入参非法）
     force_reason = getattr(args, "force_with_blockers", None)
-    if force_reason is not None:
-        if not force_reason.strip():
-            print(
-                "ERROR --force-with-blockers 必须提供非空 reason，"
-                "如：--force-with-blockers='临时绕过：已有 Jira 跟进'",
-                file=sys.stderr,
-            )
-            return 1
-        if len(force_reason) > 1024:
-            print(
-                f"ERROR --force-with-blockers reason 长度 {len(force_reason)} 超过上限 1024 字符；"
-                "请缩减描述",
-                file=sys.stderr,
-            )
-            return 1
-        bad_chars = [
-            ch for ch in force_reason
-            if ch not in ("\t", "\n") and unicodedata.category(ch).startswith("C")
-        ]
-        if bad_chars:
-            print(
-                f"ERROR --force-with-blockers reason 含控制字符（{[repr(c) for c in bad_chars[:5]]}）；"
-                "请移除控制字符后重试",
-                file=sys.stderr,
-            )
-            return 1
+    reason_err = _validate_force_reason(force_reason)
+    if reason_err:
+        print(f"ERROR {reason_err}", file=sys.stderr)
+        return 2
 
     ctx = build_context(args)
     candidates = filter_gates(registry_data, ctx)
