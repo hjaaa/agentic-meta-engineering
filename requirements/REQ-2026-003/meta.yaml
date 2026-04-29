@@ -41,11 +41,8 @@ reviews:
     conclusion: approved
     reviewed_commit: 87d8c72
     artifact_hashes:
-      artifacts/requirement.md: 
+      artifacts/requirement.md:
         c606c2e54ab9f58b96c76bd7fe04bcabc542bb33cc7608d2c7896badf49a8622
-      plan.md: 534896d210842ff1695fa50610bfcc0cd674ad26d0fcdc0c67ef466c78239362
-      meta.yaml: 
-        22a8afca57bfc9c1e0f927100a8ae88e3811efda1ad3c1d83510a15f3fd9c708
     history:
       - REV-REQ-2026-003-definition-001
       - REV-REQ-2026-003-definition-002
