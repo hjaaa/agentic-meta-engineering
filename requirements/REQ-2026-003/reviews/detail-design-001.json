@@ -1,0 +1,133 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-003-detail-design-001",
+  "requirement_id": "REQ-2026-003",
+  "phase": "detail-design",
+  "reviewer": "detail-design-quality-reviewer",
+  "reviewed_at": "2026-04-30 00:21:41",
+  "reviewed_commit": "d91e2d2",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/detailed-design.md",
+      "sha256": "e1fa0b4b6c87307c6643d17610c74ef52169dbd710f41279985079efc6be3a7b"
+    },
+    {
+      "path": "artifacts/features.json",
+      "sha256": "104102f99740c4c9a597e542a54459999de4c931ee881cdb6be6ff191f61cdaf"
+    },
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "b3200260d7d86de977cacfae7ea906f8e414d426ab5264230e255ff69e82765d"
+    }
+  ],
+  "conclusion": "needs_revision",
+  "score": 76,
+  "dimensions": {
+    "consistency_with_outline": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "detailed-design.md:437 引用的 spec 路径 'specs/2026-04-30-code-review-human-checkpoints.md' 与 outline-design.md:80 (M13) 列出的 'specs/2026-04-29-code-review-human-checkpoints.md' 日期不一致；features.json:74 也用 04-30。请统一一处（建议跟进 04-30，因为 detail-design 阶段产出在 04-30），并在 outline 修订时同步——避免后续 git grep 找不到留档"
+        }
+      ]
+    },
+    "interface_completeness": {
+      "score": 65,
+      "issues": [
+        {
+          "severity": "blocker",
+          "description": "detailed-design.md:70-90 F-001.3 引用了 'CRViolation' 类型并 return CRViolation(rule=..., msg=...)；但 scripts/lib/save_review.py 既有 CR-1~CR-6 实现 (save_review.py:82-125 _check_cr_rules) 用的是 Report.add(label, Severity.ERROR, code, msg) 模式，仓库内不存在 CRViolation 类（grep -rn CRViolation scripts/ 0 命中）。详细设计虚构了一个不存在的类型，违反『接口签名严谨度』要求——F-001 实施者会被卡住，不知该新增 CRViolation 类还是沿用 Report。请改为：cr_7 / cr_8 函数接收 (verdict, report, label) 三参数，内部调 report.add(label, Severity.ERROR, 'CR-7', msg)，与既有 6 条规则同构"
+        },
+        {
+          "severity": "major",
+          "description": "detailed-design.md:362-368 F-004.3 给的 save_review.py signoff 子命令 CLI 形式 'python3 scripts/lib/save_review.py signoff --rev-id ... --decision ... --signed-by ... --signed-at ... --source cli-tty'，但既有 save_review.py:201-207 main() 的 argparse 是单一子命令模型 (--req --phase --reviewer --scope)，不带 sub-command 路由。详细设计未说明如何在 main() 加 subparser、如何与既有调用方（save-review.sh）共存、--source cli-tty 既然只支持一个值是否还要做 CLI 参数。建议在 F-004.3 / F-004.7 之间补一段 'save_review.py main() 加 argparse subparser 的兼容方案'——含既有 save-review.sh 调用是否需要改"
+        },
+        {
+          "severity": "major",
+          "description": "detailed-design.md:411 F-004.4 强约束写法 'feature-lifecycle-manager 通过 python3 -c \"...\"  间接调用'，但 detailed-design.md:426-433 F-004.5 给的实际命令多行使用 backslash 续行 'python3 -c \"import sys, json; sys.path.insert(0, \\'scripts/lib\\'); from check_reviews import is_signed_off; sys.exit(0 if is_signed_off(json.load(open(sys.argv[1]))) else 1)\" requirements/<id>/reviews/<rev-id>.json'。这一行式在 SKILL.md（Markdown）里如果开发者直接复制可能因为引号嵌套或 sys.path 拼接踩坑（zsh / bash 行为差异）。建议封装成 scripts/lib/is_signed_off_cli.py 单文件 wrapper，或 scripts/check-signoff.sh，保持调用方零思考——同时也是 outline §4.4 给的『独立 helper script』候选。否则 R-O2 实质未闭合"
+        }
+      ]
+    },
+    "data_model_soundness": {
+      "score": 78,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "detailed-design.md:48-60 F-001.2 review-schema.yaml 升级段落给出的『变更后』YAML 示例不完整：(a) 没说明 conclusion 是替换 enums.conclusion 还是 append（实际是替换，但 plan.md / outline 都说『替换』，schema 文件 review-schema.yaml:46-49 也确实是替换语义），但 YAML 片段只显示 'conclusion: ...' 三档，没给迁移指引——若 reviewer 误为 append 会破坏旧 verdict 校验。(b) 没列出 required_fields 是否要增删（human_signoff 显式 required: false，但 review-schema.yaml:17-32 既有 required_fields 列表里没有 human_signoff，文档没确认是否需要在 required_fields 段维持现状不动）。建议 F-001.2 加一段 '本次 schema diff 的写法清单'：① enums.conclusion 整体替换（写 yq 命令或精确 diff）；② enums 段 append signoff_decision/signoff_source；③ fields 段 append human_signoff 子 schema；④ required_fields 不动"
+        },
+        {
+          "severity": "minor",
+          "description": "detailed-design.md:163 .review-scope.json 字段中 'routing_confirmed_by.confirmed_by' 写 'huangjian@example.com' 注释 '// git config user.email'——但既有仓库 git user.email 是 fkclaude1223@gmail.com 等真实邮箱，举例使用 example.com 域无问题。但 F-002.2 字段不变量 §171-178 没有约束 confirmed_by 必须 email 格式（schema 层 human_signoff.signed_by 有 format:email，scope 层缺）。建议补一条不变量：'confirmed_by 必须符合 RFC 5322 email 简化正则 ^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$'，避免空字符串或机器名混入"
+        },
+        {
+          "severity": "minor",
+          "description": "detailed-design.md:514-538 §5.1 verdict 示例的 reviewed_at 用 '2026-04-30 14:00:00'，但 human_signoff.signed_at 用 '2026-04-30T14:30:00+0800'。两套时间格式不同源——前者 review-schema.yaml:60 format=datetime（YYYY-MM-DD HH:MM:SS），后者 F-001.2 schema 写 format: iso8601。建议在 §5.1 旁加一句『两种格式有意区分：reviewed_at 沿用既有 schema datetime，signed_at 用 ISO 8601 含时区，避免回溯歧义』，否则实施者可能去『统一』成同一格式而破坏既有 review-schema.yaml"
+        }
+      ]
+    },
+    "sequence_correctness": {
+      "score": 82,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "detailed-design.md:182-204 F-002.3 prepare 流程时序中，'argv 含 --trivial?' 分支说 '委托给 F-004 的 signoff Skill 做路径白名单判定（不在 prepare 跑）；prepare 仍按 default 路径走 tty 确认'。但这个语义有问题：场景 1b（trivial 通道）是『纯文档变更跳过 prepare 路由确认』；如果 prepare 仍走 tty 确认，trivial 通道在卡点 A 就被卡住——和 outline-design.md:60 D-006 trivial 通道意图相违。请明确：trivial 通道是 (a) 整体跳过卡点 A 还是 (b) 卡点 A 不跳但卡点 B 自动 approved-trivial？建议在 F-002.3 加注：'--trivial 在 prepare 阶段不做特殊处理，仅传递给下游；卡点 A 不豁免（因 trivial 通道仍可能跑 checker 抓低级错误，节省的是卡点 B 人工 review）'——若意图是卡点 A 也豁免，本条按相反方向修复"
+        },
+        {
+          "severity": "minor",
+          "description": "detailed-design.md:347-376 F-004.3 signoff Skill 流程中『二次 tty 校验』标注为『深防御，防 Skill 被绕过 Command 直接调用』。这是合理的，但与 outline §3.2 三层防御完全对齐——detailed-design 没新增『绕过路径』风险评估。建议在 F-004.3 末尾加注：'二次 tty 校验的成本是约 10ms（[ -t 0 ] 系统调用），收益是阻断 cat verdict.json | python3 save_review.py signoff 这类管道注入；若未来 Skill 改为 Python 实现，二次校验等价 sys.stdin.isatty()'。否则评审/未来维护者可能误判为『过度工程』而删除"
+        },
+        {
+          "severity": "minor",
+          "description": "detailed-design.md:222-225 F-002.4 回归测试要求第 3 条 'git grep 零 finding 快速路径 命中范围限制在...'，但实际 git grep 结果显示 .claude/skills/code-review-report/SKILL.md:14/15/40 共 3 处『零 finding』提及。F-002.4 给的删除点只覆盖了 SKILL.md:14（diff 片段），SKILL.md:15 (1 份综合裁决...零 finding 快速路径时该项为空) 和 SKILL.md:40 (禁止丢弃裁决明细段...即便零 finding 快速路径) 没列入删除点。建议 F-002.4 删除点 diff 段补 SKILL.md:15 和 SKILL.md:40，否则验收第 3 条会因残留 grep 命中而失败"
+        }
+      ]
+    },
+    "feature_granularity": {
+      "score": 75,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "features.json:62-88 F-004 'estimate_days: 5.5' 同时聚合 8 件事：①新 signoff Command ②新 signoff Skill ③save_review.py 加 signoff 子命令 ④check_reviews.py 加 is_signed_off helper ⑤R003/R007 升级 ⑥feature-lifecycle-manager 升级 ⑦ai-collaboration.md 加硬规则 ⑧新 spec 文档。modules 数 = 8（F-001~F-003 各 ≤ 4），是其他 feature 的 2 倍以上。建议按用户输入第 4 点拆分：F-004a (signoff CLI/Skill + save_review signoff 子命令，约 3.5 人天，模块①②③) + F-004b (下游 helper/门禁/feature-lifecycle/ai-collab/spec，约 2 人天，模块④~⑧)。两个子 feature 内部仍有依赖（b 用 a 的 schema），但可串行 + 不同 subagent 派发。粒度更接近 F-001~F-003，并 acceptance 项也能从 8 条降到各 4-5 条更可测"
+        },
+        {
+          "severity": "minor",
+          "description": "features.json 4 个 feature 都缺少阶段 7 派发用机读字段：complexity / depends_on_features / touches / interfaces_frozen 全空。F-001/F-002 偏简单（多文件 CRUD/字段添加），可补 complexity:medium；F-003 主要是 prompt + 模板替换 complexity:low；F-004 涉及多文件协作 + 依赖 F-001-F-003 全部，complexity:high。这些字段缺失会让阶段 7 subagent 派发退化为最保守模式（串行 + sonnet），实际 F-001/F-002 可并行/haiku 即可"
+        },
+        {
+          "severity": "minor",
+          "description": "features.json:78-87 F-004 acceptance 第 6 条 'GATE-REVIEW-VERDICT 跑既有需求 verdict（无 human_signoff 字段）一律视为未签 → 阻断'——这个 acceptance 与 detailed-design.md:441-453 F-004.6 cutover 清单存在张力：cutover 第 2 条说『已 completed/abandoned 的需求不处理，保持历史』，但 GATE-REVIEW-VERDICT 是逐次切阶段触发的，对未 completed 但有旧 verdict 的需求（如 REQ-2026-003 自身的 definition-001~006 / outline-design-001~002）会立刻在下一次切阶段时阻断。请明确该 acceptance 的验收范围：是否等价于『所有进行中需求必须先重签』？建议要么把 acceptance 缩到『新建 verdict 必须有 human_signoff』，要么把 cutover 第 2 条扩到『进行中需求的旧 verdict 也建议重签』——否则验收时容易扯皮"
+        }
+      ]
+    }
+  },
+  "required_fixes": [
+    "F-001.3 (detailed-design.md:70-90)：把 cr_7 / cr_8 签名从 '() -> Optional[CRViolation]' 改为 '(verdict, report, label) -> None'，内部调 report.add(label, Severity.ERROR, 'CR-7', msg)，与既有 _check_cr_rules 同构；移除 CRViolation 引用",
+    "F-002.4 (detailed-design.md:222-225 + 行 207-218)：删除点补 .claude/skills/code-review-report/SKILL.md:15 和 :40 两处『零 finding 快速路径』残留；否则 acceptance 第 3 条 'git grep 命中范围' 验收必失败",
+    "F-002.3 (detailed-design.md:185-188)：明确 --trivial 在 prepare 阶段是否豁免卡点 A——若豁免则补 'trivial 通道直接写 scope.json mode_hint=trivial + decision=trivial-bypass + tty_verified=false 也合法' 不变量；若不豁免则补 '场景 1b 仍要按一次 enter 确认' 提醒，避免实施者误读 D-006",
+    "F-004 拆分 (features.json:62-88)：按用户审查重点 4 拆为 F-004a（signoff CLI/Skill + save_review signoff 子命令，3.5d，依赖 F-001）+ F-004b（下游门禁 helper/feature-lifecycle/ai-collab/spec，2d，依赖 F-004a + F-002 + F-003），保留总 5.5d 不变",
+    "F-004.3 + F-004.4 (detailed-design.md:362-368, 411)：补一段『save_review.py main() 加 argparse subparser 的兼容方案』，明确既有 save-review.sh 调用是否需要改；is_signed_off 调用方式建议落实为独立 wrapper 脚本，避免 python3 -c 一行式在 SKILL.md 引号嵌套踩坑"
+  ],
+  "suggestions": [
+    "detailed-design.md:437 与 outline-design.md:80 / features.json:74 spec 路径日期不一致（04-29 vs 04-30），统一为 04-30",
+    "F-001.2 (detailed-design.md:48-60) 加一段『review-schema.yaml diff 写法清单』，明确 enums.conclusion 整体替换 + 其余 append + required_fields 不动",
+    "F-002.2 字段不变量 (detailed-design.md:171-178) 补 confirmed_by 必须符合 email 简化正则",
+    "§5.1 verdict 示例 (detailed-design.md:514-538) 加一句注释解释 reviewed_at 与 signed_at 的两种时间格式有意区分",
+    "F-004.3 (detailed-design.md:347-376) 末尾补一句对二次 tty 校验成本/收益的注释，避免未来维护者误判为过度工程而删除"
+  ],
+  "scope": null,
+  "supersedes": null,
+  "features_json_validation": {
+    "valid": true,
+    "issues": [],
+    "enhancement_suggestions": [
+      "F-001 建议补 complexity: medium（多文件 CRUD/字段添加，单 subagent 1.5d 可完成）",
+      "F-002 建议补 complexity: medium（含 tty 时序与 markdown 删除点，可与 F-001 并行）",
+      "F-003 建议补 complexity: low（prompt + 模板替换，依赖 F-001 schema）",
+      "F-004 建议补 complexity: high（8 模块协作，建议拆 F-004a/b）",
+      "建议补 depends_on_features 显式列出：F-003 depends_on_features=[F-001]，F-004 depends_on_features=[F-001,F-002,F-003]",
+      "建议补 interfaces_frozen: true（详细设计已冻结接口签名，唯一例外是上文 required_fixes 第 1/4 条 — 修复后可标 true）",
+      "建议补 touches 列出每个 feature 的精确文件路径（modules 字段已有，但 touches 可作为 task-context-builder 的二级入口）"
+    ]
+  }
+}

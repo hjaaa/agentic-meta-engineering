@@ -1,0 +1,114 @@
+{
+  "schema_version": "1.0",
+  "requirement_id": "REQ-2026-003",
+  "features": [
+    {
+      "id": "F-001",
+      "title": "review-schema 升级 + save_review CR 规则扩展 + 旧 verdict 处置基础",
+      "description": "改 context/team/engineering-spec/review-schema.yaml：conclusion 枚举替换为 [looks_clean, needs_attention, blocked]，新增 signoff_decision / signoff_source 枚举，新增 human_signoff 子 schema。改 scripts/lib/save_review.py：CR-1/CR-2/CR-3/CR-4/CR-6 按 detailed-design.md F-001.3 平移表替换判定字段（CR-1/CR-4 改读 is_signed_off helper）；新增 CR-7（conclusion 必须命中新枚举，阻断 AI 写 approved）+ CR-8（human_signoff.source 必须 ∈ signoff_source）。CR-7/CR-8 函数签名必须与既有 _check_cr_rules 同构 (verdict, report, label) -> None，禁止引入 CRViolation 类。新增 scripts/lib/migrate_review_v2.py 干跑脚本骨架——扫所有 reviews/*.json，列出旧 conclusion ∈ {approved, needs_revision, rejected} 的 verdict 数量与路径，不自动转换。本 feature 不动 reviewer Agent 输出空间（在 F-003 改）；不动下游门禁判定（在 F-004b 改）；为后续所有 feature 提供契约基础。",
+      "modules": [
+        "context/team/engineering-spec/review-schema.yaml",
+        "scripts/lib/save_review.py",
+        "scripts/lib/migrate_review_v2.py"
+      ],
+      "depends_on": [],
+      "complexity": "medium",
+      "estimate_days": 3.5,
+      "acceptance": [
+        "review-schema.yaml 升级后跑 python3 scripts/gates/run.py --validate-registry 退出码 0",
+        "save_review.py CR-7 拒收任何 conclusion=approved 的 JSON，stderr 含 'CR-7: conclusion ... not in enum'",
+        "save_review.py CR-8 拒收任何 human_signoff.source ∉ [cli-tty] 的 JSON，stderr 含 'CR-8: human_signoff.source'",
+        "新 verdict（含 human_signoff 字段，conclusion ∈ 三档新枚举）能正常写入；旧 verdict（conclusion ∈ 旧枚举）被 CR-7 拒收",
+        "CR-7/CR-8 单测函数签名为 (verdict: dict, report: Report, label: str) -> None，与既有 6 条规则同构",
+        "migrate_review_v2.py --dry-run 列出全仓所有旧 verdict 文件路径与 conclusion 字面值，不写盘"
+      ]
+    },
+    {
+      "id": "F-002",
+      "title": "卡点 A——code-review-prepare 路由建议 + tty 确认 + --all 兜底 + 删除零 finding 旁路",
+      "description": "改 .claude/skills/code-review-prepare/SKILL.md 与 reference/scope-schema.md：scope 增加 4 字段（checker_route / skipped_checkers / mode_hint / routing_confirmed_by），其中 routing_confirmed_by.confirmed_by 必须命中 email 简化正则；prepare 流程改为两阶段（建议→tty 等确认→写盘）。新增 --all 标志（命中即 mode_hint=all + checker_route 全集 + decision=all；--all 仍要求 tty）。--trivial 仅作为 mode_hint 透传，不在 prepare 阶段豁免卡点 A（详见 detailed-design.md F-002.3）。改 .claude/commands/code-review.md：删除 L40 零 finding 快速路径。同步删除 .claude/skills/code-review-report/SKILL.md 三处『零 finding 快速路径』残留（L14/L15/L40）。卡点 A 的 tty 校验在 prepare 入口实现：stdin 非 tty 且未带 --all 时退出码 2 + stderr 含 'routing: stdin not a tty'。",
+      "modules": [
+        ".claude/skills/code-review-prepare/SKILL.md",
+        ".claude/skills/code-review-prepare/reference/scope-schema.md",
+        ".claude/commands/code-review.md",
+        ".claude/skills/code-review-report/SKILL.md"
+      ],
+      "depends_on": [],
+      "complexity": "medium",
+      "estimate_days": 4,
+      "acceptance": [
+        ".review-scope.json 含 4 个新字段；checker_route ⊆ 8-checker 全集；mode_hint ∈ {default, all, trivial}；confirmed_by 命中 email 正则",
+        "prepare 在 stdin 非 tty 且无 --all 时退出码 = 2，stderr 含 'routing: stdin not a tty'",
+        "prepare 收到 --all 时跳过路由建议但仍要求 tty；scope.json: checker_route = 8 个 checker 全集，routing_confirmed_by.decision = 'all'",
+        "prepare 收到 --trivial 时仍走 default 路径走 tty 确认（不豁免卡点 A），仅在 scope.json 写 mode_hint=trivial 透传给下游",
+        "code-review.md 中 'L40 零 finding 快速路径' 已删除；code-review-report SKILL.md L14/L15/L40 三处『零 finding 快速路径』提及全部清空",
+        "git grep '零 finding 快速路径' 命中范围限制在 outline-design.md / detailed-design.md / requirement.md / plan.md / specs/2026-04-30-code-review-human-checkpoints.md"
+      ]
+    },
+    {
+      "id": "F-003",
+      "title": "Judge 三档收敛 + report 模板更新",
+      "description": "改 .claude/agents/code-quality-reviewer.md：conclusion 取值与结论规则收敛为三档（looks_clean / needs_attention / blocked），原 L199-205 结论规则段重写——无 keep critical + keep major≤5 + keep minor≤20 → looks_clean；有 keep major 或 minor>20 → needs_attention；有 keep critical → blocked。明文禁止输出 approved（CR-7 在 F-001 已兜底）和填写 human_signoff 字段（卡点 B 专属）。改 .claude/skills/code-review-report/SKILL.md：报告模板增加『路由说明』段（输出 scope.routing_confirmed_by 摘要 + skipped_checkers 列表）+ 『待 sign-off 提示』段（提示开发者执行 /code-review:signoff <REV-ID>）。",
+      "modules": [
+        ".claude/agents/code-quality-reviewer.md",
+        ".claude/skills/code-review-report/SKILL.md"
+      ],
+      "depends_on": ["F-001"],
+      "complexity": "low",
+      "estimate_days": 3,
+      "acceptance": [
+        "code-quality-reviewer Agent 输出的 verdict.conclusion 必须 ∈ [looks_clean, needs_attention, blocked]，不再出 approved",
+        "三档结论规则单测覆盖 3 个等价类：no_critical_few_major → looks_clean / has_major → needs_attention / has_critical → blocked",
+        "report Skill 渲染的 Markdown 报告含『路由说明』段（含 scope.routing_confirmed_by.decision/at/by + skipped_checkers 列表）+ 『待 sign-off 提示』段（含 /code-review:signoff 命令模板）",
+        "code-quality-reviewer Agent 输出的 verdict.human_signoff 必须为缺省（不写入），由卡点 B 填充"
+      ]
+    },
+    {
+      "id": "F-004a",
+      "title": "卡点 B——signoff CLI + signoff Skill + save_review.py signoff 子命令",
+      "description": "新增 .claude/commands/code-review/signoff.md（< 100 行；预检 tty + verdict 存在 + 委托 Skill；接收 <REV-ID> 与 --decision / --trivial 标志）。新增 .claude/skills/code-review-signoff/ Skill（SKILL.md < 1500 字 + reference/tty-check.md）：二次 tty 校验（深防御）、--trivial 路径白名单判定（git diff --name-only 全部 ∈ *.md / docs/** / *.txt 才放行）、调 save_review.py signoff 子命令完成 schema 校验。改 scripts/lib/save_review.py 加 argparse subparser：默认走 save 子命令（与既有 save-review.sh 调用兼容，不需改 sh）；新增 signoff 子命令接收 --rev-id / --decision / --signed-by / --signed-at / --source；写 human_signoff 字段后全量重跑 CR-1~CR-8 + append <req>/process.txt 评审事件 '<ts> [signoff] <REV-ID> <decision> by <email>'。",
+      "modules": [
+        ".claude/commands/code-review/signoff.md",
+        ".claude/skills/code-review-signoff/SKILL.md",
+        ".claude/skills/code-review-signoff/reference/tty-check.md",
+        "scripts/lib/save_review.py"
+      ],
+      "depends_on": ["F-001"],
+      "complexity": "medium",
+      "estimate_days": 3.5,
+      "acceptance": [
+        "/code-review:signoff <REV-ID> 在 tty 下完整跑通：写 human_signoff.{decision,signed_at,signed_by,source=cli-tty} → save_review CR 全过 → process.txt 追加 [signoff] 事件",
+        "/code-review:signoff 在 stdin 非 tty 时退出码 = 2，stderr 含 'signoff: stdin not a tty, refuse to sign for AI'",
+        "Skill 二次 tty 校验：直调 Skill（绕过 Command）在非 tty 下同样退出码 = 2",
+        "/code-review:signoff --trivial 在 diff 含非文档文件时退出码 = 3，stderr 含 'trivial: non-doc files detected'；全文档时退出码 = 0 + decision=approved-trivial",
+        "/code-review:signoff <REV-ID> 已签：退出码 = 5，stderr 含 'signoff: already signed by'",
+        "/code-review:signoff <非法-REV-ID>：退出码 = 4，stderr 含 'signoff: verdict ... not found'",
+        "save_review.py 加 subparser 后既有 'python3 save_review.py --req X --phase Y --reviewer Z' 调用方式仍正常工作（默认走 save 子命令路径）"
+      ]
+    },
+    {
+      "id": "F-004b",
+      "title": "下游门禁升级 + is_signed_off helper + feature-lifecycle-manager + ai-collab + spec 留档",
+      "description": "改 scripts/lib/check_reviews.py：新增 is_signed_off(verdict)→bool helper（True 当且仅当 human_signoff.decision ∈ {approved, approved-trivial}）；R003/R007 升级查 is_signed_off + conclusion=blocked（GATE-REVIEW-VERDICT 升级口径与 D-008 对齐）。新增 scripts/check-signoff.sh wrapper（单一职责调 is_signed_off 返回退出码；防 python3 -c 一行式引号嵌套踩坑）。改 .claude/skills/feature-lifecycle-manager/SKILL.md：done 转换调 bash scripts/check-signoff.sh，禁止字符串比对 approved。改 context/team/ai-collaboration.md：加规则三『sign-off 是人类专属动作』（AI 在主对话/子 Agent 中禁止调用 /code-review:signoff / save-review.sh signoff / save_review.py signoff，违反视为流程违规）。新增 context/team/engineering-spec/specs/2026-04-30-code-review-human-checkpoints.md 留档：双卡点机制规范 + 异常退出码完整矩阵 + 升级 cutover 清单（含『进行中需求的旧 verdict 是否重签』决策模版）。",
+      "modules": [
+        "scripts/lib/check_reviews.py",
+        "scripts/check-signoff.sh",
+        ".claude/skills/feature-lifecycle-manager/SKILL.md",
+        "context/team/ai-collaboration.md",
+        "context/team/engineering-spec/specs/2026-04-30-code-review-human-checkpoints.md"
+      ],
+      "depends_on": ["F-001", "F-002", "F-003", "F-004a"],
+      "complexity": "medium",
+      "estimate_days": 2,
+      "acceptance": [
+        "is_signed_off 单测 4 用例：{decision: approved} → True / {decision: approved-trivial} → True / {decision: rejected} → False / {} → False",
+        "scripts/check-signoff.sh <已签 verdict> 退出码 = 0；<未签 verdict> 退出码 = 1",
+        "feature-lifecycle-manager 转 done 调 check-signoff.sh：未签时阻断并提示 /code-review:signoff，已签时放行——SKILL.md 内 git grep 'decision == \"approved\"' / 'grep approved' 均无命中",
+        "GATE-REVIEW-VERDICT 跑既有进行中需求 verdict（无 human_signoff）一律视为未签 → 阻断；cutover 清单覆盖此 acceptance（详见 specs 文档对应章节）",
+        "ai-collaboration.md 加规则三后含『AI 不得调 /code-review:signoff / save-review.sh signoff / save_review.py signoff』硬规则",
+        "specs/2026-04-30-code-review-human-checkpoints.md 含异常矩阵 7 行 + cutover 清单（列当前所有未 done feature + 处置建议：重签 vs 重跑 review）",
+        "AI 代签 3 层防御手工冒烟通过：Command 层（signoff.md tty 预检）+ Skill 层（二次 tty 校验）+ CR 层（CR-8 拒收非 cli-tty source）"
+      ]
+    }
+  ]
+}

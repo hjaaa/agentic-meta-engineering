@@ -10,3 +10,7 @@
 2026-04-29 23:40:28 [phase-task] outline-design: outline-design.md drafted（13 模块 / 6 节骨架 + 删除点 + human_signoff schema；GATE-SOURCING strict 0 error）；append D-008 修订口径（GATE 升级口径与 requirement.md §76/93 对齐）
 2026-04-30 00:11:37 [review:approved] outline-design REV-001 approved（88 分；0 required_fixes / 3 suggestions / 1 arch_concern）：M2 删除连锁、D-008 修订口径与 requirement.md §76/93 对齐
 2026-04-30 00:14:24 [review:approved] outline-design REV-002 approved（轻审 supersedes 001；闭合 suggestion 1+2；suggestion 3 + arch_concern M11 cutover 留 detail-design）
+2026-04-30 00:15:41 [phase-transition] outline-design → detail-design（7 gates 全过，无 warning）
+2026-04-30 00:21:02 [phase-task] detail-design: detailed-design.md drafted（4 features / 16 人天 / 9 节）+ features.json（F-001 schema升级 → F-002 卡点A → F-003 三档 → F-004 卡点B+下游）；GATE-SOURCING strict 0 error
+2026-04-30 00:31:10 [phase-task] detail-design: 闭合 REV-001 全部 5 条 required_fixes + 5 条 suggestions（CR 函数签名/SKILL.md 三处删除/--trivial 卡点 A 不豁免/F-004 拆 a+b/argparse subparser+wrapper 脚本/spec 日期/email 正则/时间格式注释）
+2026-04-30 00:33:01 [review:approved] detail-design REV-002 approved（轻审 supersedes 001；6 fixes + 5 suggestions 全闭合）
