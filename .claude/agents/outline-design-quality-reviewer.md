@@ -61,7 +61,8 @@ verdict JSON 字段定义对齐 `context/team/engineering-spec/review-schema.yam
 - `reviewed_at`: `YYYY-MM-DD HH:MM:SS`（24h，秒精度）
 - `reviewed_commit`: 当前 git HEAD 的 7 位短 hash（必须匹配，不能编造）
 - `reviewed_artifacts[].sha256`: 填 64 个 `0` 占位即可，save-review.sh 会自动重算覆盖；但 `path` 必须是 `requirements/<REQ-ID>/` 下真实存在的相对路径
-- `reviewed_artifacts` **必须同时包含 `outline-design.md` 与 `requirement.md`**——上层需求若被改动，概要设计也应重审，drift 兜底覆盖到上游
+- `reviewed_artifacts` **必须同时包含且仅包含 `outline-design.md` 与 `requirement.md`**——上层需求若被改动，概要设计也应重审，drift 兜底覆盖到上游
+- `reviewed_artifacts` **严禁包含 `meta.yaml`、`plan.md` 或 `reviews/` 下任何文件**：meta.yaml 自引用会造成 R005 hash drift 循环（save-review.sh 已加黑名单兜底拒收）；plan.md 是项目规划而非设计产出物
 - `dimensions.*.issues[]`: 每项必须是 `{severity, description}` 对象（不是字符串）
   - `severity ∈ {blocker, major, minor}`
   - `description`: 非空文本，**必须含行号**（如「第 X 行：...」）

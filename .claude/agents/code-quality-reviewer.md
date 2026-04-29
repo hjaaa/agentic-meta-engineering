@@ -94,7 +94,7 @@ tools: Read, Grep, Bash
 - `dimensions.*.issues[]` 必须是 `{severity, description}` 对象，description 含 `file:line`（行号必填）
 - `required_fixes[]` 来自 `merged_issues` 中 `final_disposition=keep` ∧ `severity=critical` 的精简化描述，每条 `{description, location, severity: "blocker"}`，**条数与 keep+critical 严格一致**
 - `suggestions[]` 装 `cross_dimension_insights` 的元素（每个 insight 一条字符串）
-- `reviewed_artifacts`：至少 `artifacts/features.json`（用于 R005 检测 feature 定义本身漂移）；推荐再列 `artifacts/tasks/<feature_id>.md`
+- `reviewed_artifacts`：闭合两项 `artifacts/features.json` + `artifacts/tasks/<feature_id>.md`（features.json 用于 R005 检测 feature 定义漂移；tasks/<feature_id>.md 是当前 feature 的任务说明）。**严禁包含 `meta.yaml`、`plan.md`、`requirement.md` 或 `reviews/` 下任何文件**：meta.yaml 自引用会造成 R005 hash drift 循环（save-review.sh 已加黑名单兜底拒收）
 - `supersedes`: 首次评审 null；同 feature 二次评审填上次 review_id
 - CR 规则同其他 reviewer
 

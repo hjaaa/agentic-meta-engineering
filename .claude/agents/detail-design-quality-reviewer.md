@@ -66,7 +66,8 @@ verdict JSON 字段定义对齐 `context/team/engineering-spec/review-schema.yam
 - `reviewed_at`: `YYYY-MM-DD HH:MM:SS`
 - `reviewed_commit`: 当前 git HEAD 的 7 位短 hash
 - `reviewed_artifacts[].sha256`: 占位 64 个 0，save-review.sh 自动重算
-- `reviewed_artifacts` **必须包含三件**：`detailed-design.md` + `features.json` + `outline-design.md`（上游 drift 兜底）
+- `reviewed_artifacts` **必须包含且仅包含三件**：`detailed-design.md` + `features.json` + `outline-design.md`（上游 drift 兜底）
+- `reviewed_artifacts` **严禁包含 `meta.yaml`、`plan.md` 或 `reviews/` 下任何文件**：meta.yaml 自引用会造成 R005 hash drift 循环（save-review.sh 已加黑名单兜底拒收）；plan.md 是项目规划而非设计产出物
 - `dimensions.*.issues[]`: `{severity, description}` 对象，severity ∈ {blocker, major, minor}，description 含行号
 - `scope`: detail-design phase 固定 `null`
 - `supersedes`: 首次 `null`，重审填上一次 review_id
