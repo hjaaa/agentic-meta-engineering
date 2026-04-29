@@ -28,6 +28,7 @@ import os
 import re
 import sys
 import traceback
+import unicodedata
 from graphlib import TopologicalSorter
 from pathlib import Path
 from typing import Any, Optional
@@ -407,6 +408,71 @@ def _print_dry_run(ctx: GateContext, plan: list[dict[str, Any]]) -> int:
 # ====================== 执行 plan（F-011 round-2 拆分） ======================
 
 
+def _handle_escape_hatch(
+    ctx: GateContext,
+    gate_fail: "GateFailed",
+    executed: "list[Gate]",
+    snapshots: dict,
+) -> tuple[bool, bool]:
+    """处理 GateFailed 时的 force-with-blockers 分支判定。
+
+    force-with-blockers 是流程级 escape_hatch，仅 phase-transition / submit trigger 生效
+    （与 registry.yaml escape_hatches.triggers 对齐）。命中时打 WARNING 日志，不执行 rollback。
+
+    参数：
+      ctx       — 当前执行上下文（含 cli_flags.force_with_blockers）。
+      gate_fail — 触发失败的 GateFailed 异常（含 report.gate_id 用于日志）。
+      executed  — 已执行的 Gate 列表（非命中路径执行 rollback 用）。
+      snapshots — 事务快照（非命中时传给 _handle_gate_failed 执行 rollback）。
+
+    返回：(force_used, rollback_failed)
+      force_used      — True 表示 escape_hatch 命中，允许继续。
+      rollback_failed — True 表示 rollback 执行但失败（仅非命中路径有效）。
+    """
+    force_reason = ctx.cli_flags.get("force_with_blockers")
+    if force_reason and ctx.trigger in ("phase-transition", "submit"):
+        # escape_hatch 命中：记录 WARNING；audit log 由 _build_audit_extra 标记
+        print(
+            f"WARNING ESCAPE-HATCH force-with-blockers 触发："
+            f"gate_id={gate_fail.report.gate_id} "
+            f"trigger={ctx.trigger} req={ctx.requirement_id or '-'} "
+            f"reason={force_reason!r}",
+            file=sys.stderr,
+        )
+        # 已跳过 rollback；剩余 gate 因 GateFailed 已中断；audit log 仅含已执行 gate 报告
+        return True, False
+    rollback_failed = _handle_gate_failed(ctx, executed, snapshots)
+    return False, rollback_failed
+
+
+def _build_audit_extra(force_used: bool, force_reason: str) -> dict[str, Any]:
+    """拼装 escape_hatch 命中时的 audit 附加字段。
+
+    force_reason 在写入前经过：
+      1. 长度截断（max_len=1024 字符）
+      2. 控制字符过滤（unicodedata.category 以 'C' 开头的类，\t 和 \n 例外）
+
+    参数：
+      force_used   — True 时才生成非空 dict。
+      force_reason — --force-with-blockers 传入的原始 reason 文本。
+
+    返回：含 escape_used / escape_reason 的 dict；force_used=False 时返回空 dict。
+    """
+    if not force_used:
+        return {}
+    # 长度截断（F-4 spec：max_len=1024）
+    reason = force_reason[:1024]
+    # 控制字符过滤（F-4 spec：排除 unicodedata.category 以 'C' 开头，保留 \t / \n）
+    reason = "".join(
+        ch for ch in reason
+        if ch in ("\t", "\n") or not unicodedata.category(ch).startswith("C")
+    )
+    return {
+        "escape_used": "force-with-blockers",
+        "escape_reason": reason,
+    }
+
+
 def _execute_plan(ctx: GateContext, plan: list[dict[str, Any]], strict: bool) -> int:
     """执行 plan：precheck → run → 暂存事务化 commit / fail 路径 rollback + restore。
 
@@ -415,6 +481,7 @@ def _execute_plan(ctx: GateContext, plan: list[dict[str, Any]], strict: bool) ->
       恢复 meta.yaml 磁盘快照、清空 staged_writes，避免 partial-commit 持久化。
 
     F-011 round-2：把"跑 gate / commit 写态 / GateFailed 处理"三段抽到子例程。
+    F-007 round-2：拆出 _handle_escape_hatch + _build_audit_extra 降低复杂度。
     """
     needs_stash = any(e.get("side_effects") == "write_state" for e in plan)
     # F-020 round-3：stash_state 单独包裹 try/except，shutil.copy2 PermissionError /
@@ -443,33 +510,15 @@ def _execute_plan(ctx: GateContext, plan: list[dict[str, Any]], strict: bool) ->
         _commit_write_state(ctx, executed, _current_plugin)
         _cleanup_snapshots(snapshots)
     except GateFailed as gate_fail:
-        # F-004：force-with-blockers escape_hatch：仅 phase-transition / submit trigger 生效
-        force_reason = ctx.cli_flags.get("force_with_blockers")
-        if force_reason and ctx.trigger in ("phase-transition", "submit"):
-            # escape_hatch 命中：记录日志 + 打 audit 标记；允许继续
-            print(
-                f"WARNING ESCAPE-HATCH force-with-blockers 触发："
-                f"gate_id={gate_fail.report.gate_id} "
-                f"trigger={ctx.trigger} req={ctx.requirement_id or '-'} "
-                f"reason={force_reason!r}",
-                file=sys.stderr,
-            )
-            force_used = True
-            # 继续执行剩余 gate（_run_gates 已记录 reports）
-        else:
-            rollback_failed = _handle_gate_failed(ctx, executed, snapshots)
+        force_used, rollback_failed = _handle_escape_hatch(ctx, gate_fail, executed, snapshots)
     except Exception as exc:  # noqa: BLE001
         return _handle_runner_exception(ctx, snapshots, reports, _current_plugin[0], exc)
-
-    # F-004：escape_hatch 命中时在 audit 中写 escape_used 字段
-    audit_extra: dict[str, Any] = {}
-    if force_used:
-        audit_extra["escape_used"] = "force-with-blockers"
-        audit_extra["escape_reason"] = ctx.cli_flags.get("force_with_blockers", "")
 
     # F-019 round-3：write_audit 单独包裹 try/except，避免 audit 落盘故障
     # （磁盘满 / 目录无写权限 / fsync 失败）冒泡为 exit 2 阻断 Claude；
     # audit 是基础设施级失败，绝不能升级为 gate 全崩。
+    force_reason = ctx.cli_flags.get("force_with_blockers", "")
+    audit_extra = _build_audit_extra(force_used, force_reason)
     try:
         audit_data = _build_audit(ctx, reports, rollback_failed)
         if audit_extra:
