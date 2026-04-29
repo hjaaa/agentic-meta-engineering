@@ -141,6 +141,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--dry-run", action="store_true", help="不执行 gate.run，仅打印执行计划")
     p.add_argument("--validate-registry", action="store_true", help="仅校验 registry，不跑 gate")
     p.add_argument("--legacy", help="adapter 模式：包装某个旧 plugin（如 check-meta / check-index）")
+    p.add_argument(
+        "--force-with-blockers",
+        dest="force_with_blockers",
+        default=None,
+        help=(
+            "submit trigger 专用 escape_hatch：强制跳过 blocker 级失败；"
+            "必须提供非空 reason（如 --force-with-blockers='临时绕过：已有 Jira 跟进'）；"
+            "使用情况会写入 audit log（escape_used: force-with-blockers）"
+        ),
+    )
     p.add_argument("paths", nargs="*", help="adapter 模式下传入的目标文件（如 meta.yaml 路径）")
     return p.parse_args(argv)
 
@@ -245,7 +255,12 @@ def build_context(args: argparse.Namespace) -> GateContext:
         from_phase=args.from_phase,
         to_phase=args.to_phase,
         meta=meta,
-        cli_flags={"strict": args.strict, "dry_run": args.dry_run, "legacy": args.legacy},
+        cli_flags={
+            "strict": args.strict,
+            "dry_run": args.dry_run,
+            "legacy": args.legacy,
+            "force_with_blockers": getattr(args, "force_with_blockers", None),
+        },
         extra=extra,
         changed_files=changed_files,
         env=env,
@@ -349,6 +364,16 @@ def main(argv: Optional[list[str]] = None) -> int:
         print("ERROR 必须指定 --trigger 或 --validate-registry", file=sys.stderr)
         return 2
 
+    # F-004：--force-with-blockers 必填校验（reason 非空）
+    force_reason = getattr(args, "force_with_blockers", None)
+    if force_reason is not None and not force_reason.strip():
+        print(
+            "ERROR --force-with-blockers 必须提供非空 reason，"
+            "如：--force-with-blockers='临时绕过：已有 Jira 跟进'",
+            file=sys.stderr,
+        )
+        return 2
+
     ctx = build_context(args)
     candidates = filter_gates(registry_data, ctx)
     plan = topological_sort(candidates)
@@ -410,28 +435,55 @@ def _execute_plan(ctx: GateContext, plan: list[dict[str, Any]], strict: bool) ->
     executed: list[Gate] = []
     reports: list[Report] = []
     rollback_failed = False
+    force_used = False
     _current_plugin: list[str] = ["<unknown>"]
 
     try:
         _run_gates(ctx, plan, executed, reports, _current_plugin)
         _commit_write_state(ctx, executed, _current_plugin)
         _cleanup_snapshots(snapshots)
-    except GateFailed:
-        rollback_failed = _handle_gate_failed(ctx, executed, snapshots)
+    except GateFailed as gate_fail:
+        # F-004：force-with-blockers escape_hatch：仅 phase-transition / submit trigger 生效
+        force_reason = ctx.cli_flags.get("force_with_blockers")
+        if force_reason and ctx.trigger in ("phase-transition", "submit"):
+            # escape_hatch 命中：记录日志 + 打 audit 标记；允许继续
+            print(
+                f"WARNING ESCAPE-HATCH force-with-blockers 触发："
+                f"gate_id={gate_fail.report.gate_id} "
+                f"trigger={ctx.trigger} req={ctx.requirement_id or '-'} "
+                f"reason={force_reason!r}",
+                file=sys.stderr,
+            )
+            force_used = True
+            # 继续执行剩余 gate（_run_gates 已记录 reports）
+        else:
+            rollback_failed = _handle_gate_failed(ctx, executed, snapshots)
     except Exception as exc:  # noqa: BLE001
         return _handle_runner_exception(ctx, snapshots, reports, _current_plugin[0], exc)
+
+    # F-004：escape_hatch 命中时在 audit 中写 escape_used 字段
+    audit_extra: dict[str, Any] = {}
+    if force_used:
+        audit_extra["escape_used"] = "force-with-blockers"
+        audit_extra["escape_reason"] = ctx.cli_flags.get("force_with_blockers", "")
 
     # F-019 round-3：write_audit 单独包裹 try/except，避免 audit 落盘故障
     # （磁盘满 / 目录无写权限 / fsync 失败）冒泡为 exit 2 阻断 Claude；
     # audit 是基础设施级失败，绝不能升级为 gate 全崩。
     try:
-        write_audit(_build_audit(ctx, reports, rollback_failed))
+        audit_data = _build_audit(ctx, reports, rollback_failed)
+        if audit_extra:
+            audit_data.update(audit_extra)
+        write_audit(audit_data)
     except Exception as audit_exc:  # noqa: BLE001
         print(
             f"ERROR audit 落盘失败 req={ctx.requirement_id or '-'} "
             f"trigger={ctx.trigger}: {audit_exc}；跳过 audit 不阻断 gate 结果",
             file=sys.stderr,
         )
+    # force-with-blockers 命中时允许 blocker fail 不影响 exit code（视为全通）
+    if force_used:
+        return 0
     return _calc_exit_code(reports, plan, strict)
 
 

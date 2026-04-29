@@ -264,6 +264,44 @@ gates:
     tests:
       fixtures: [pass, fail, skip]
 
+  - id: GATE-GH-AUTH
+    plugin: gh_auth
+    severity: error
+    triggers:
+      - submit
+    applies_when:
+      changed_files: []
+      target_phase: null
+      current_phase_in: []
+      transition: null
+      requires: []
+    dependencies: []
+    side_effects: none
+    failure_message: |
+      {gate_id} 失败：{message}
+      修复建议：{fix_hint}
+    tests:
+      fixtures: [pass, fail, skip]
+
+  - id: GATE-BASE-REACHABLE
+    plugin: base_reachable
+    severity: error
+    triggers:
+      - submit
+    applies_when:
+      changed_files: []
+      target_phase: null
+      current_phase_in: []
+      transition: null
+      requires: []
+    dependencies: []
+    side_effects: none
+    failure_message: |
+      {gate_id} 失败：{message}
+      修复建议：{fix_hint}
+    tests:
+      fixtures: [pass, fail, skip]
+
 # 全局 escape 策略（流程级，非 gate 级）—— F-002 补全
 escape_hatches:
   - id: legacy-requirement
