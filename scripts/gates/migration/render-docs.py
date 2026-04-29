@@ -123,12 +123,24 @@ def _extract_first_line(failure_message: str, gate_id: str) -> str:
 
 
 def _load_registry() -> dict:
-    """加载 registry.yaml；解析失败则打 ERROR 后 exit 1。"""
+    """加载 registry.yaml；解析或读取失败则打 ERROR 后 exit 1。
+
+    返回：已解析的 registry dict（YAML 顶层对象）。
+    异常：FileNotFoundError / yaml.YAMLError / OSError 全部捕获，
+      转换为 sys.exit(1) + ERROR 日志，让 CI 显示为门禁失败而非脚本崩溃。
+    """
     if not _REGISTRY_PATH.exists():
         print(f"ERROR registry.yaml 不存在：{_REGISTRY_PATH}", file=sys.stderr)
         sys.exit(1)
-    with _REGISTRY_PATH.open("r", encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
+    try:
+        with _REGISTRY_PATH.open("r", encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+    except yaml.YAMLError as exc:
+        print(f"ERROR registry.yaml 语法错误：{exc}", file=sys.stderr)
+        sys.exit(1)
+    except OSError as exc:
+        print(f"ERROR registry.yaml 读取失败：{exc}", file=sys.stderr)
+        sys.exit(1)
 
 
 def main() -> int:
@@ -170,7 +182,11 @@ def main() -> int:
 
     # 默认模式：写入目标文件
     _OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _OUTPUT_PATH.write_text(rendered, encoding="utf-8")
+    try:
+        _OUTPUT_PATH.write_text(rendered, encoding="utf-8")
+    except OSError as exc:
+        print(f"ERROR gate-checklist.md 写入失败：{exc}", file=sys.stderr)
+        return 1
     print(f"OK 渲染完成：{_OUTPUT_PATH}")
     return 0
 
