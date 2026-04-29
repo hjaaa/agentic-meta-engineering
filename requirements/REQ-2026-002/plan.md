@@ -213,3 +213,25 @@ F-003 round 2 review（code-F-003-001.json）识别但 critic 已转 follow-up n
 - **F-004 评估结论**：本地 SSD 实测 fsync 仅微秒级。F-004 引入的新 plugin 均属于 submit trigger（低频），不加重 pre-tool-use 路径。无机械盘 / NFS 部署场景。
 - **决策**：**推迟到下一迭代**。理由：无实测性能问题，fsync 开关需修改 registry.yaml schema（新增字段）+ audit.py + 测试，工程量不小；在无量级问题前不做。触发条件：有机械盘 / NFS 部署场景的性能 baseline 数据后再做。
 
+### D-013：D-008 业务价值锚点验收推迟到下个新增门禁的需求（testing 阶段评估）
+
+- **背景**：D-008 立的"新增一条门禁工时 ≤ 0.5 人天"业务价值验收，需要"实际新增一条门禁"才能实测；本需求范围明确不新增门禁规则（requirement.md:142）。
+- **决策**：**testing 阶段不直接验证 D-008**。验收推迟到下次实际新增门禁的需求（候选：F-005 H2 rollback 门禁 / F-006 testing→completed 弱门禁加固，均为 requirement.md:140-141 列的"不包含但已规划"项）。届时由 implementer 如实记录"填 9 字段 + 写 1 个类 + 写 3 个测试"的工时，与 D-008 的 0.5 人天阈值比对。
+- **Consequences**：
+  - 好：避免为验收 KPI 而硬塞虚构门禁；保留 dogfooding 真实场景
+  - 不好：本需求 testing 阶段无法对核心业务价值打分；下个迭代必须留出 D-008 验收的 owner
+
+## testing 阶段 carry-over（本次会话发现，不阻塞 testing 阶段切换）
+
+来源：F-004 round-3 / round-4 + phase-transition 实战暴露。统一作为 F-005 / F-006 / 下迭代候选项。
+
+| 编号 | 类别 | 描述 | 触发场景 |
+|---|---|---|---|
+| C-002 | runner bug | runner stdout EXIT 与 audit.exit_code 不同步：F-004 round-4 phase-transition 跑出 stdout=0 但 audit=1（GATE-WORKSPACE-CLEAN failed 但未升 exit code） | _calc_exit_code 与 audit 各自计算，缺统一来源 |
+| C-003 | spec | features.json F-004.acceptance 仍是原始 4 条，未补 round-2/3 闭环子项（reason maxlen / 控制字符 / force 路径资源清理 / 退出码 2 统一 / spec sync §2.2） | F-005 / F-006 启动前一次性补齐 |
+| C-004 | security | render-docs.py main():163-167 --check 模式 print 仍输出绝对路径（_load_registry 已用 relative_to 修复，main 漏同步） | 一处修一处漏，约 5 行 patch |
+| C-005 | security | reason stderr 脱敏策略评估：_handle_escape_hatch 把 reason 原文 repr() 打 stderr，与 audit JSON 双写明文，需统一脱敏方案（建议 stderr 写摘要、audit 写完整） | 与 C-004 一并做 security cleanup |
+| C-006 | architecture | scripts/gates/run.py 总长 726 行 > 500 阈值；建议在新需求评估前先做 cli.py / plan_executor.py 拆分架构 RFC | F-005 启动前 |
+| C-007 | governance | scripts/gates/run.py 30 天 22 commits 高频热区；建议合并 develop 后进入 ≥ 1 周稳定化窗口再接 F-005 / F-006 | 软约定，feature-lifecycle-manager Skill 可加 soft check |
+| C-008 | governance | 同 feature 连续 round 的 12h 静默期约定（F-004 同日内连续 round-2/3 节奏过紧） | feature-lifecycle-manager Skill soft check |
+
