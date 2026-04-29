@@ -361,6 +361,18 @@ def main(argv: Optional[list[str]] = None) -> int:
 
 
 def _print_dry_run(ctx: GateContext, plan: list[dict[str, Any]]) -> int:
+    """dry-run 模式：打印执行计划摘要后直接返回，不执行任何 gate。
+
+    参数：
+      ctx  — 当前执行上下文（trigger / requirement_id 用于日志输出）。
+      plan — 拓扑排序后的候选 gate 列表（过滤 + 排序后结果）。
+
+    作用：
+      按序逐行打印每个 gate 的 id / plugin / severity，便于人工确认
+      执行计划是否符合预期（可在跑真实 gate 前用 --dry-run 检查注册情况）。
+
+    返回值：始终返回 0（dry-run 不判断 gate 结果，不影响退出码）。
+    """
     print(f"[dry-run] trigger={ctx.trigger} req={ctx.requirement_id} 候选 gate 数={len(plan)}")
     for entry in plan:
         print(f"  - {entry['id']} (plugin={entry['plugin']}, severity={entry['severity']})")

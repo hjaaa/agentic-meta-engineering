@@ -191,3 +191,25 @@ F-003 round 2 review（code-F-003-001.json）识别但 critic 已转 follow-up n
 - **F-004 评估时机**：在机械盘 / NFS 部署场景做基准后，给 trigger 级 fsync 开关
   （pre-tool-use 默认关，submit/ci 默认开），由 registry 配置。
 
+---
+
+## 决策记录
+
+### D-010：C-001 meta_writer.py vs save_review.py 半边锁（F-004 评估）
+
+- **背景**：C-001 在 F-003 round-2 登记——`meta_writer.py` 调 `atomic_yaml_update` 写 meta.yaml 时使用 `fcntl.lockf` 文件锁，但 `save_review.sh` 写 reviews/*.json 的路径不经过同一锁，形成"半边锁"场景。
+- **F-004 评估结论**：两路径写的是不同文件（meta.yaml vs reviews/*.json），不存在真正的竞态写冲突。半边锁风险仅在二者同时更新 meta.yaml 同一字段时才触发（当前无此场景）。
+- **决策**：**推迟到下一迭代**。理由：当前无并发写 meta.yaml 的真实路径；强制统一锁规范需重构 `save_review.py` 的写逻辑，风险 > 收益。触发条件：当 save_review.sh 也需要写 meta.yaml 字段（如自动更新 latest verdict hash）时，再统一走 `meta_writer.py` 通道。
+
+### D-011：F-026 needs_stash lazy stash 优化（F-004 评估）
+
+- **背景**：`needs_stash` 基于 plan 静态判断，precheck Skip 场景仍创建 `.bak` 快照，IO 浪费。
+- **F-004 评估结论**：F-004 新增 GATE-GH-AUTH + GATE-BASE-REACHABLE 均为 `side_effects=none`，write_state plugin 仍只有 `review_verdict` 一个。lazy stash 的 ROI 阈值（>= 3 个 write_state plugin）未达到。
+- **决策**：**推迟到下一迭代**。理由：当前 precheck Skip 残留 IO 影响极小（每次仅 1 次 `shutil.copy2`），优化收益不足以覆盖重构 stash 时序的复杂度。触发条件：write_state plugin 数 >= 3 个后重新评估。
+
+### D-012：F-038 write_audit fsync 开关（F-004 评估）
+
+- **背景**：`write_audit` 同步 `os.fsync` 在 pre-tool-use 高频路径上理论放大开销。
+- **F-004 评估结论**：本地 SSD 实测 fsync 仅微秒级。F-004 引入的新 plugin 均属于 submit trigger（低频），不加重 pre-tool-use 路径。无机械盘 / NFS 部署场景。
+- **决策**：**推迟到下一迭代**。理由：无实测性能问题，fsync 开关需修改 registry.yaml schema（新增字段）+ audit.py + 测试，工程量不小；在无量级问题前不做。触发条件：有机械盘 / NFS 部署场景的性能 baseline 数据后再做。
+

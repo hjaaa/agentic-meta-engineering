@@ -301,6 +301,19 @@ class ReviewVerdictGate(Gate):
 - `test_r005_drift_then_fail_rolls_back`：drift 触发 → 后续某 R fail → meta.yaml 不变
 - `test_r005_alone_fails_no_partial_write`：仅 R005 fail → meta.yaml 不变
 
+#### 模块拆分说明（F-015 round-3 重构，来源：reviews/code-F-003-003.json）
+
+F-015 round-3 将原 `review_verdict.py`（397 行）拆为三个职责独立的模块：
+
+| 模块 | 行数 | 职责 |
+|---|---|---|
+| `plugins/review_verdict.py` | ~193 行 | Gate 入口：R001~R007 规则编排、staged_writes 暂存事务化、commit/rollback 协议 |
+| `plugins/review_verdict_ci.py` | ~182 行 | CI 全量扫描委托（ci trigger 时遍历所有需求目录调 review_verdict）；直接引用 §3.1 设计 |
+| `plugins/meta_writer.py` | ~78 行 | meta.yaml 原子写入 helper（`atomic_yaml_update`）；被 review_verdict.commit_staged_writes 调用 |
+
+三文件各自的 docstring 均反向引用本节（§3.1）；本节声明是单向断链的修复。
+调用关系：`review_verdict.py` → `meta_writer.py`；`review_verdict_ci.py` → `review_verdict.py`（代理调用）。
+
 ### 3.2 plugins/pr_state.py（关 H4）
 
 ```python
@@ -341,7 +354,7 @@ RE_PROTECTED_PATH = re.compile(r"requirements/[^/]+/reviews/[^/]+\.json")
 # heredoc（cat <<EOF > file / cat <<-EOF >> file）/ printf 重定向 / dd of=
 RE_WRITE_OPS = re.compile(
     r"("
-    r">>?\s*['\"]?[^|;&]*?requirements/.+/reviews/.+\.json"          # > / >>
+    r">>?\s*['\"]?[^|;&]*?requirements/.+/reviews/.+\.json"          # > / >>（echo 重定向兜底）
     r"|tee\s+(-a\s+)?['\"]?[^|;&]*?requirements/.+/reviews/.+\.json"  # tee / tee -a
     r"|mv\s+\S+\s+['\"]?[^|;&]*?requirements/.+/reviews/.+\.json"     # mv
     r"|cp\s+\S+\s+['\"]?[^|;&]*?requirements/.+/reviews/.+\.json"     # cp
@@ -349,8 +362,17 @@ RE_WRITE_OPS = re.compile(
     r"|cat\s+<<-?\s*['\"]?\w+['\"]?\s+>>?\s*['\"]?[^|;&]*?requirements/.+/reviews/.+\.json"  # heredoc
     r"|printf\s+.*?>\s*['\"]?[^|;&]*?requirements/.+/reviews/.+\.json"  # printf >
     r"|dd\s+.*?of=['\"]?[^|;&]*?requirements/.+/reviews/.+\.json"       # dd of=
+    r"|awk\s+.*?>\s*['\"]?[^|;&]*?requirements/.+/reviews/.+\.json"     # awk >
+    r"|sed\s+.*?-i.*?requirements/.+/reviews/.+\.json"                  # sed -i（原地改写）
+    r"|sponge\s+['\"]?[^|;&]*?requirements/.+/reviews/.+\.json"         # sponge（moreutils）
+    r"|rsync\s+\S+\s+['\"]?[^|;&]*?requirements/.+/reviews/.+\.json"    # rsync
+    r"|install\s+.*?['\"]?[^|;&]*?requirements/.+/reviews/.+\.json"     # install
+    r"|pathlib\.(?:write_text|write_bytes)\(.*?requirements/.+/reviews/.+\.json"  # pathlib
     r")"
 )
+# 注：以上覆盖 _ALTS 全部 12 类写法：
+# echo/printf（> 重定向兜底）、cat(heredoc)、tee、dd of=、python -c open、
+# awk、sed -i、sponge、rsync、install、pathlib.write_text|write_bytes
 
 class BashWriteProtectGate(Gate):
     id = "GATE-BASH-WRITE-PROTECT"
@@ -367,7 +389,7 @@ class BashWriteProtectGate(Gate):
             return Report(gate_id=self.id, decision=Decision.PASS)
 
         # 双轨白名单（来源：requirements/REQ-2026-002/plan.md:96）
-        if self._caller_is_save_review_sh():
+        if self._caller_is_save_review_sh(ctx):
             return Report(gate_id=self.id, decision=Decision.PASS,
                           vars={"whitelisted": "save-review.sh"})
         if ctx.env.get("CLAUDE_GATES_BYPASS") == "1":
@@ -386,19 +408,21 @@ class BashWriteProtectGate(Gate):
         )
 
     def _caller_is_save_review_sh(self, ctx: GateContext) -> bool:
-        # 父进程链识别（双轨）：
-        #   1) SAVE_REVIEW_PID env 比对：save-review.sh 启动时 export SAVE_REVIEW_PID=$$，
-        #      若 ppid 链中任一层 == 该 PID，立即放行（最快、不易伪造）
-        #   2) fallback 完整 comm 严格匹配 == "save-review.sh"
-        #      （endswith 会被 evil-save-review.sh / xsave-review.sh 命名伪造，禁用）
+        # 父进程链识别（单轨，F-012 round-3 删除 comm fallback 死代码）：
+        #   SAVE_REVIEW_PID env 比对：save-review.sh 启动时 export SAVE_REVIEW_PID=$$，
+        #   若 ppid 链中任一层 == 该 PID，立即放行（最快、不易伪造）。
+        #
+        # 注：原双轨中的 `comm == "save-review.sh"` fallback 已于 F-012 删除——
+        #   endswith 语义易被 evil-save-review.sh / xsave-review.sh 命名伪造；
+        #   且 SAVE_REVIEW_PID 通道已覆盖所有合法调用路径，fallback 成死代码。
         # macOS comm 字段截断风险见 tech-feasibility.md 1.3 节
         target_pid_str = ctx.env.get("SAVE_REVIEW_PID")
         target_pid = int(target_pid_str) if (target_pid_str and target_pid_str.isdigit()) else None
+        if target_pid is None:
+            return False  # 无 SAVE_REVIEW_PID，直接拒绝（快速返回）
         try:
-            for comm, ppid in _walk_ppid_chain(os.getppid(), max_depth=5):
-                if target_pid is not None and ppid == target_pid:
-                    return True
-                if comm == "save-review.sh":
+            for _comm, ppid in _walk_ppid_chain(os.getppid(), max_depth=5):
+                if ppid == target_pid:
                     return True
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ValueError, OSError):
             return False
