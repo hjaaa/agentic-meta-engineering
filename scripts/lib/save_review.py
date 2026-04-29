@@ -175,6 +175,29 @@ def _check_scope_rules(verdict: dict, schema: dict, report: Report, label: str) 
                 report.add(label, Severity.ERROR, "scope", f"scope.feature_id={fid!r} 不匹配 {pat}")
 
 
+def _check_artifact_blacklist(artifacts: list) -> str | None:
+    """禁止 reviewed_artifacts 包含 meta.yaml 或 reviews/ 下的文件。
+
+    返回 None 表示通过；返回字符串 = 失败原因（调用方负责 paint + stderr + exit）。
+    黑名单原因：reviewer 写入 meta.yaml.reviews.<phase> 即修改 meta.yaml 内容，
+    若 meta.yaml 被列入 reviewed_artifacts 则 R005 hash drift 立刻自引用失败。
+    """
+    for art in artifacts:
+        path_str = art.get("path", "")
+        if path_str == "meta.yaml":
+            return (
+                "❌ reviewed_artifacts 严禁包含 meta.yaml：reviewer 写入会修改 meta.yaml，"
+                "导致 R005 hash drift 自引用循环；只列业务产出物"
+                "（requirement.md / outline-design.md / detailed-design.md / features.json / tasks/*）"
+            )
+        if path_str.startswith("reviews/"):
+            return (
+                f"❌ reviewed_artifacts 严禁包含 reviews/ 下的文件（path={path_str}）："
+                "reviewer 输出自身不应被 hash 跟踪"
+            )
+    return None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="写入 review JSON + 更新 meta.yaml.reviews")
     parser.add_argument("--req", required=True, help="REQ-YYYY-NNN")
@@ -221,6 +244,13 @@ def main() -> int:
     if not req_dir.exists():
         print(paint(f"❌ 需求目录不存在: {rel(req_dir)}", "red"), file=sys.stderr)
         return 2
+
+    # 黑名单：阻止 reviewer agent 把 meta.yaml / reviews/ 自身塞进 reviewed_artifacts
+    # 历史教训：reviewer 写入 meta.yaml.reviews 块即破坏自身 hash，导致 R005 自引用循环
+    blacklist_err = _check_artifact_blacklist(verdict.get("reviewed_artifacts", []))
+    if blacklist_err is not None:
+        print(paint(blacklist_err, "red"), file=sys.stderr)
+        return 1
 
     for art in verdict.get("reviewed_artifacts", []):
         art_path = req_dir / art["path"]
