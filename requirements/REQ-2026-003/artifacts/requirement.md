@@ -113,7 +113,7 @@ refs-requirement: true
 | 旧 verdict 迁移 | 自动转换 / 强制重签 | 强制重签 | 升级即视为门禁规则变更，旧签字不可继承 |
 | `--all` 兜底是否本需求实现 | 实现 / 推迟 | 实现 | CLI 改动极小；不实现则纯文档变更也卡两次人，体验极差（来源：requirements/REQ-2026-003/plan.md:83）|
 | trivial 通道范围 | 不做 / 仅纯文档 / 文档+重命名+测试 / 自定义 | 仅纯文档（`*.md` / `docs/**` / `*.txt`）| 先严后松；其余场景留待真实抱怨出现再扩（来源：requirements/REQ-2026-003/plan.md:91）|
-| 门禁如何识别 trivial verdict | 仅 `approved` / 接受 `{approved, approved-trivial}` 集合 | 接受集合 | trivial 通道引入新 decision 取值，门禁需显式扩枚举，避免严格匹配导致 trivial 通道失效（来源：本文件范围/包含 段，配合 D-006）|
+| 门禁如何识别 trivial verdict | 仅 `approved` / 接受 `{approved, approved-trivial}` 集合 | 接受集合 | trivial 通道引入新 decision 取值，门禁需显式扩枚举，避免严格匹配导致 trivial 通道失效（来源：requirements/REQ-2026-003/plan.md:91）|
 
 ## 待澄清清单
 
