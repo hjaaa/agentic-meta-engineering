@@ -14,18 +14,18 @@ refs-requirement: true
 1. **PreToolUse Hook**：`protect-branch.sh` 拦受保护分支直写 + 拦 `reviews/*.json` 直写（来源：.claude/hooks/protect-branch.sh:1）。
 2. **本地 pre-commit**：跑 check-meta / check-index + meta.yaml.reviews ↔ reviews/*.json 同步性（来源：scripts/git-hooks/pre-commit:1）。
 3. **阶段切换门禁清单**：手写 Markdown 由 Skill 逐条解释执行（来源：.claude/skills/managing-requirement-lifecycle/reference/gate-checklist.md:1）。
-4. **/requirement:submit 前置门禁**：另一份手写清单（来源：.claude/skills/managing-requirement-lifecycle/reference/gate-checklist.md:88）。
+4. **/requirement:submit 前置门禁**：另一份手写清单（来源：scripts/gates/registry.yaml:1）；历史背景：原 gate-checklist.md:88 已在 F-004 commit 67bddb2 改为 render-docs 重渲染产物。
 5. **CI 兜底**：串跑 4 个 check 脚本（来源：.github/workflows/quality-check.yml:1）。
 6. **verdict 写时一致性**：CR-1~CR-6（来源：context/team/engineering-spec/review-schema.yaml:68）。
 7. **verdict 读时门禁**：R001~R007（来源：scripts/lib/check_reviews.py:33）。
 8. **追溯链**：traceability-gate-checker Skill（来源：.claude/skills/traceability-gate-checker/SKILL.md:1）。
-9. **post-dev-verify 总闸**（来源：scripts/post-dev-verify.sh:1）。
+9. **post-dev-verify 总闸**（来源：scripts/gates/run.py:1）；历史背景：通过 --trigger=post-dev 调用，原 scripts/post-dev-verify.sh 已在 F-004 commit 01a3c24 删除。
 
 每层独立维护"哪些规则、何时跑、怎么报错、怎么处理副作用"，由此暴露的具体腐化点：
 
 - **半成品状态**：R005 在切阶段中途把 `stale=true` 写回 meta.yaml，后续 R 失败时 phase 没切但 meta 已部分修改（来源：scripts/lib/check_reviews.py:152）。
 - **绕过点**：`protect-branch.sh` 仅拦 Edit/Write 工具，Bash 直接 `cat > requirements/.../reviews/x.json` 完全绕过（来源：.claude/hooks/protect-branch.sh:1）[H5 已修复，闭合方案见 commit 56e7a43]。
-- **submit 与 next 校验割裂**：submit 只查 review-*.md 文本无 blocker（来源：.claude/skills/managing-requirement-lifecycle/reference/submit-rules.md:113），next development→testing 用 R007 + review-*.md 双轨（来源：.claude/skills/managing-requirement-lifecycle/reference/gate-checklist.md:71）。
+- **submit 与 next 校验割裂**：submit 只查 review-*.md 文本无 blocker（来源：.claude/skills/managing-requirement-lifecycle/reference/submit-rules.md:113），next development→testing 用 R007 + review-*.md 双轨（来源：scripts/gates/registry.yaml:1）；历史背景：trigger=phase-transition 段对应原 gate-checklist.md:71，后者已在 F-004 commit 67bddb2 改为 render-docs 重渲染产物。
 - **PR 状态无回环**：submit 写 `pr_url` / `pr_number` 后不再回访（来源：.claude/skills/managing-requirement-lifecycle/reference/submit-rules.md:75）。
 
 新增一条门禁的当前成本是"改 4 个文件 + 跑通 3 套清单 + 祈祷不漏"，这是反复发生的腐化点。

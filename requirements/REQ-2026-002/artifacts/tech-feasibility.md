@@ -94,7 +94,7 @@ gate-checklist.md 结构为"按门禁分组的 Markdown 表格/列表"，逻辑�
 ## 3. 工作量估算
 
 **估算依据**：
-- 现有 7 个 check 脚本均为 Bash 薄壳 + Python 核心结构（来源：scripts/check-meta.sh:1）（来源：scripts/check-reviews.sh:1）
+- 现有 7 个 check 脚本均为 Bash 薄壳 + Python 核心结构（来源：scripts/gates/plugins/meta_schema.py:1）（来源：scripts/gates/plugins/review_verdict.py:1）；历史背景：原 scripts/check-meta.sh / scripts/check-reviews.sh 已在 F-004 commit 01a3c24 删除
 - check_reviews.py 最复杂（270 行，7 个 R 规则，来源：scripts/lib/check_reviews.py:1）；其余 Python 核心约 100-200 行
 - common.py 的 Report + Severity + exit_code 体系（来源：scripts/lib/common.py:1）已稳定，adapter 复用无需重设计
 - REQ-2026-001 历史参考（来源：requirements/REQ-2026-001/artifacts/tech-feasibility.md:1）：类似复杂度任务约 1-1.5 天/功能模块
