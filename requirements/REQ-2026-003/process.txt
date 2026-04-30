@@ -15,3 +15,4 @@
 2026-04-30 21:53:12 [signoff] REV-REQ-2026-003-detail-design-003 approved by hj19961223@gmail.com
 2026-04-30 21:53:55 [phase-transition] detail-design → task-planning（7 gates 候选 / 6 通过 / 1 skipped GATE-TRACEABILITY 仅 testing 校验；detail-design v3 signoff approved）
 2026-04-30 22:00:03 [save] task-planning 4 task 文件（F-001..F-004）+ notes.md 详设 sourcing 自检经验落盘；待切 development
+2026-05-01 01:15:45 [phase-transition] task-planning → development（7 gates 候选 / 6 通过 / 1 skipped GATE-TRACEABILITY 仅 testing 校验；6 W002 advisory 已入 gates_passed）
