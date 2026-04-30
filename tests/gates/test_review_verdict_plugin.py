@@ -443,3 +443,59 @@ def test_review_verdict_r007_missing_code_review(tmp_path, monkeypatch):
     report = gate.run(ctx)
     assert report.decision == Decision.FAIL
     assert "R007" in (report.code or "")
+
+
+# ====================== canonical phase 枚举校验（REQ-2026-003 工程债修复） ======================
+# 历史 bug：to_phase 写成 'technical-research' 等非 canonical 名时，plugin 的
+# `effective_phase not in _PHASE_REQUIREMENTS` 分支返回 PASS（"无对应 review 要求"），
+# 让 typo 静默通过。修复：先用 phase_enum.load_canonical_phases() 区分"typo"和
+# "合法但无 review 要求"两种情况，前者直接 FAIL。
+
+
+def test_review_verdict_fails_on_typo_phase(tmp_path, monkeypatch):
+    """given_typo_to_phase_when_run_then_fail（不再 vacuous PASS）。"""
+    req_id = "REQ-2026-991"
+    req_dir = _make_req(tmp_path, req_id)
+    _patch_check_reviews(monkeypatch, tmp_path, req_id)
+
+    meta = _base_meta(req_id, "tech-research")
+    _write_meta(req_dir, meta)
+
+    gate = plugin_mod.ReviewVerdictGate()
+    ctx = GateContext(
+        trigger="phase-transition",
+        requirement_id=req_id,
+        to_phase="technical-research",  # 非 canonical（应为 tech-research）
+        meta=meta,
+    )
+    report = gate.run(ctx)
+    assert report.decision == Decision.FAIL
+    assert report.code == "REVIEW-INVALID-PHASE"
+    assert "technical-research" in (report.message or "")
+
+
+def test_review_verdict_passes_on_canonical_phase_without_review_requirement(
+    tmp_path, monkeypatch
+):
+    """given_canonical_phase_without_review_requirement_when_run_then_pass。
+
+    bootstrap / definition 是合法 phase 但不在 PHASE_REQUIREMENTS 中（无前置 review
+    要求）→ 维持原 PASS 语义，与 typo 分支区分开。
+    """
+    req_id = "REQ-2026-990"
+    req_dir = _make_req(tmp_path, req_id)
+    _patch_check_reviews(monkeypatch, tmp_path, req_id)
+
+    meta = _base_meta(req_id, "definition")
+    _write_meta(req_dir, meta)
+
+    gate = plugin_mod.ReviewVerdictGate()
+    ctx = GateContext(
+        trigger="phase-transition",
+        requirement_id=req_id,
+        to_phase="definition",  # 合法但无前置 review 要求
+        meta=meta,
+    )
+    report = gate.run(ctx)
+    assert report.decision == Decision.PASS
+    assert "无对应 review 要求" in (report.message or "")

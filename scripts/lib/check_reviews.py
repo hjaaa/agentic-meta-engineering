@@ -26,6 +26,7 @@ from common import REPO_ROOT, Report, Severity, paint, rel
 # save_review 同目录，scripts/lib 已在 sys.path 中（脚本入口由 sh 启动）
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import save_review
+import phase_enum  # canonical phase 枚举单一事实源
 
 REQUIREMENTS_DIR = REPO_ROOT / "requirements"
 
@@ -66,7 +67,21 @@ def _load_meta(req: str) -> dict[str, Any]:
 
 
 def _r001_review_exists(meta: dict, target_phase: str, report: Report, label: str) -> None:
-    """R001: target-phase 要求的 review 必须存在（latest != null）"""
+    """R001: target-phase 要求的 review 必须存在（latest != null）
+
+    fail-closed 防御：target_phase 必须在 canonical 枚举内，否则视为 typo / 非法值
+    直接报 R001 错误。避免历史 bug：non-canonical phase 名（如 'technical-research'）
+    通过 PHASE_REQUIREMENTS.get(..., []) 返回空 list → 静默 vacuous pass。
+    """
+    canonical_phases = phase_enum.load_canonical_phases()
+    if target_phase and target_phase not in canonical_phases:
+        report.add(
+            label, Severity.ERROR, "R001",
+            f"target-phase '{target_phase}' 不在 canonical phase 枚举内 "
+            f"({sorted(canonical_phases)})；可能 phase 名拼写有误，"
+            f"参考 context/team/engineering-spec/meta-schema.yaml:38",
+        )
+        return
     required_phases = PHASE_REQUIREMENTS.get(target_phase, [])
     reviews = meta.get("reviews") or {}
     for phase in required_phases:

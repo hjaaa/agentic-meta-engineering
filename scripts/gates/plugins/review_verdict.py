@@ -35,6 +35,7 @@ if str(_LIB_DIR) not in sys.path:
 import yaml  # noqa: E402
 from common import Report as LegacyReport  # noqa: E402
 import check_reviews  # noqa: E402
+import phase_enum  # noqa: E402  canonical phase 枚举单一事实源
 
 from .base import Decision, Gate, GateContext, Report, Severity, Skip
 from . import review_verdict_ci  # F-015 round-3：ci 路径委托
@@ -121,6 +122,25 @@ class ReviewVerdictGate(Gate):
 
         # submit trigger 时，target_phase 取 meta 中当前 phase
         effective_phase = target_phase or meta.get("phase", "")
+
+        # fail-closed：typo / 非法 phase 名直接报错，避免静默 vacuous pass
+        # （历史 bug：'technical-research' 因不在 _PHASE_REQUIREMENTS 中而走下面 PASS 分支）
+        canonical_phases = phase_enum.load_canonical_phases()
+        if effective_phase and effective_phase not in canonical_phases:
+            return Report(
+                gate_id=self.id,
+                decision=Decision.FAIL,
+                code="REVIEW-INVALID-PHASE",
+                message=(
+                    f"target_phase={effective_phase!r} 不在 canonical phase 枚举内 "
+                    f"({sorted(canonical_phases)})；可能 phase 名拼写有误"
+                ),
+                fix_hint=(
+                    "检查 meta.yaml.phase 或 --to/--from 参数；canonical 枚举见 "
+                    "context/team/engineering-spec/meta-schema.yaml:38"
+                ),
+            )
+
         if not effective_phase or effective_phase not in _PHASE_REQUIREMENTS:
             return Report(
                 gate_id=self.id,

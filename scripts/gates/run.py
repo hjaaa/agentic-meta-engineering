@@ -55,6 +55,12 @@ import registry as _registry  # noqa: E402
 import audit as _audit  # noqa: E402
 import state_io as _state_io  # noqa: E402
 
+# canonical phase 枚举单一事实源（scripts/lib/phase_enum.py）
+_LIB_DIR = _REPO_ROOT / "scripts" / "lib"
+if str(_LIB_DIR) not in sys.path:
+    sys.path.insert(0, str(_LIB_DIR))
+import phase_enum  # noqa: E402
+
 # Re-export：测试和 triggers/submit.py 通过 `import run as runner_mod` 访问以下符号
 RegistryError = _registry.RegistryError
 _validate_registry_schema = _registry._validate_registry_schema
@@ -324,6 +330,33 @@ def instantiate(entry: dict[str, Any]) -> Gate:
 # ====================== 主流程 ======================
 
 
+def _validate_phase_args(args: argparse.Namespace) -> Optional[str]:
+    """校验 --from / --to 是否在 canonical phase 枚举内。
+
+    返回：None 表示通过；非空 str 为错误消息（调用方打 stderr 后退 2）。
+
+    设计动机：
+      历史 bug（REQ-2026-003 排查）——meta.yaml.phase 被写成 'technical-research'
+      （应为 'tech-research'）后，phase-transition 门禁链上多处 vacuous pass：
+        1. _r001_review_exists 用 PHASE_REQUIREMENTS.get(..., []) 默认空 list
+        2. ReviewVerdictGate.run 同样落到 PASS 分支
+      入口处先做白名单校验，把 typo 在最早一关拦下，比下游 plugin 各自防御更稳。
+
+    校验规则：
+      - args.from_phase / args.to_phase 任一为空时跳过（合法用法：CI 模式不传）
+      - 非空且不在 canonical phases 时返回错误消息
+    """
+    canonical = phase_enum.load_canonical_phases()
+    for label, val in (("--from", args.from_phase), ("--to", args.to_phase)):
+        if val and val not in canonical:
+            return (
+                f"{label}={val!r} 不在 canonical phase 枚举内 "
+                f"({sorted(canonical)})；可能 phase 名拼写有误，"
+                f"参考 context/team/engineering-spec/meta-schema.yaml:38"
+            )
+    return None
+
+
 def _validate_force_reason(reason: Optional[str]) -> Optional[str]:
     """校验 --force-with-blockers reason 的三段合法性规则（F-004 round-3 抽出）。
 
@@ -417,6 +450,13 @@ def main(argv: Optional[list[str]] = None) -> int:
     reason_err = _validate_force_reason(force_reason)
     if reason_err:
         print(f"ERROR {reason_err}", file=sys.stderr)
+        return 2
+
+    # canonical phase 校验：拒绝 --from / --to 写错的 phase 名（如 'technical-research'），
+    # 避免下游 review-verdict / meta-schema 链路的 vacuous pass。
+    phase_err = _validate_phase_args(args)
+    if phase_err:
+        print(f"ERROR {phase_err}", file=sys.stderr)
         return 2
 
     ctx = build_context(args)
