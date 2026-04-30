@@ -234,14 +234,40 @@ def _check_artifact_blacklist(artifacts: list) -> str | None:
     return None
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="写入 review JSON + 更新 meta.yaml.reviews")
-    parser.add_argument("--req", required=True, help="REQ-YYYY-NNN")
-    parser.add_argument("--phase", required=True, help="definition / outline-design / detail-design / code")
-    parser.add_argument("--reviewer", required=True)
-    parser.add_argument("--scope", default=None, help="形如 feature_id=F-001（仅 phase=code 必填）")
-    args = parser.parse_args()
+def _resolve_verdict_path(rev_id: str) -> Path | None:
+    """从 REV-ID 反推 verdict 文件路径。
 
+    REV-ID 格式：REV-<REQ-ID>-<prefix>-NNN
+    示例：REV-REQ-2026-003-definition-001
+          REV-REQ-2026-003-code-F-001-001
+
+    返回路径（不保证存在），或 None（解析失败）。
+    """
+    # 格式：REV-REQ-YYYY-NNN-<phase_and_seq>
+    # 去掉开头的 "REV-" 前缀
+    if not rev_id.startswith("REV-"):
+        return None
+    rest = rev_id[4:]  # 去掉 "REV-"
+
+    # REQ-ID 固定为 REQ-YYYY-NNN（3 段 + 连字符）
+    # 从 rest 中提取：REQ-2026-003 然后是文件名剩余部分
+    parts = rest.split("-")
+    # 期望格式：["REQ", "2026", "003", ...phase+seq...]
+    if len(parts) < 4 or parts[0] != "REQ":
+        return None
+
+    req_id = f"{parts[0]}-{parts[1]}-{parts[2]}"
+    # 文件名：rest 去掉 "<req_id>-" 前缀 = 余下的 phase-seq 部分
+    filename_stem = rest[len(req_id) + 1:]  # e.g. "definition-001" or "code-F-001-001"
+    if not filename_stem:
+        return None
+
+    verdict_path = REQUIREMENTS_DIR / req_id / "reviews" / f"{filename_stem}.json"
+    return verdict_path
+
+
+def _run_save(args: argparse.Namespace) -> int:
+    """既有 save 逻辑（原 main() 全部迁入此函数）。"""
     try:
         verdict = json.load(sys.stdin)
     except json.JSONDecodeError as exc:
@@ -360,6 +386,149 @@ def main() -> int:
     print(paint(f"✓ 已更新 {rel(meta_path)} 的 reviews.{phase}", "green"))
 
     return 0
+
+
+def _run_signoff(args: argparse.Namespace) -> int:
+    """signoff 子命令：把 human_signoff 字段写入已有 verdict 文件。
+
+    流程：
+      1. 从 REV-ID 定位 verdict 文件
+      2. 读 verdict JSON
+      3. 写 human_signoff 字段
+      4. 全量重跑 CR-1~CR-8 校验
+      5. 通过 → 写盘 + append process.txt
+      6. 失败 → 退出码 1 + stderr CR 详情
+    """
+    rev_id = args.rev_id
+    verdict_path = _resolve_verdict_path(rev_id)
+    if verdict_path is None:
+        print(f"signoff: verdict {rev_id} not found", file=sys.stderr)
+        return 4
+
+    if not verdict_path.exists():
+        print(f"signoff: verdict {rev_id} not found", file=sys.stderr)
+        return 4
+
+    # 读取 verdict 文件
+    try:
+        with verdict_path.open("r", encoding="utf-8") as f:
+            verdict = json.load(f)
+    except (json.JSONDecodeError, OSError) as exc:
+        print(paint(f"❌ verdict 文件解析失败: {exc}", "red"), file=sys.stderr)
+        return 2
+
+    # 检查是否已签字（防重复签名）
+    existing_sig = verdict.get("human_signoff") or {}
+    if existing_sig.get("decision"):
+        signed_by = existing_sig.get("signed_by", "unknown")
+        signed_at = existing_sig.get("signed_at", "unknown")
+        print(f"signoff: already signed by {signed_by} at {signed_at}", file=sys.stderr)
+        return 5
+
+    # 写入 human_signoff 字段
+    verdict["human_signoff"] = {
+        "decision": args.decision,
+        "signed_at": args.signed_at,
+        "signed_by": args.signed_by,
+        "source": args.source,
+    }
+
+    # 全量重跑 CR-1~CR-8 + 格式校验
+    schema = _load_schema()
+    report = Report()
+    label = f"{verdict_path.name}:{verdict.get('requirement_id', '?')}"
+    _check_required_fields(verdict, schema, report, label)
+    _check_enums(verdict, schema, report, label)
+    _check_format(verdict, schema, report, label)
+    _check_cr_rules(verdict, report, label)
+    _check_scope_rules(verdict, schema, report, label)
+
+    if report.errors > 0:
+        print(report.render(), file=sys.stderr)
+        return 1
+
+    # 写盘（原子替换）
+    tmp_path = verdict_path.with_suffix(".json.tmp")
+    with tmp_path.open("w", encoding="utf-8") as f:
+        json.dump(verdict, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+    tmp_path.replace(verdict_path)
+    print(paint(f"✓ human_signoff 已写入 {rel(verdict_path)}", "green"))
+
+    # append process.txt 评审事件
+    req_id = verdict.get("requirement_id", "")
+    if req_id:
+        _append_signoff_process_log(req_id, rev_id, args.decision, args.signed_by)
+
+    return 0
+
+
+def _append_signoff_process_log(
+    req_id: str, rev_id: str, decision: str, signed_by: str
+) -> None:
+    """追加 signoff 事件到 requirements/<req>/process.txt。
+
+    格式（模仿 requirement-progress-logger 单行格式）：
+      <ts> [signoff] <REV-ID> <decision> by <email>
+    """
+    process_path = REQUIREMENTS_DIR / req_id / "process.txt"
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    line = f"{ts} [signoff] {rev_id} {decision} by {signed_by}\n"
+    try:
+        with process_path.open("a", encoding="utf-8") as f:
+            f.write(line)
+        print(paint(f"✓ 已追加事件到 {rel(process_path)}", "green"))
+    except OSError as exc:
+        # 日志写入失败不阻断主流程，仅警告
+        print(paint(f"⚠️  process.txt 写入失败（{exc}），签字已生效", "yellow"), file=sys.stderr)
+
+
+def main() -> int:
+    """CLI 入口：支持 save（默认）与 signoff 两个子命令。
+
+    兼容性保证：
+      既有调用 'python3 save_review.py --req X --phase Y --reviewer Z'
+      在升级后等价于 'python3 save_review.py save --req X --phase Y --reviewer Z'，
+      通过 args.cmd is None 路径走 _run_save，无需改 save-review.sh。
+    """
+    parser = argparse.ArgumentParser(description="写入 review JSON / 签字")
+    sub = parser.add_subparsers(dest="cmd", required=False)
+
+    # 默认子命令（无 cmd 时进入）：save —— 与既有调用方完全兼容
+    save_p = sub.add_parser("save", help="写入 review JSON + 更新 meta.yaml.reviews")
+    save_p.add_argument("--req", required=True, help="REQ-YYYY-NNN")
+    save_p.add_argument("--phase", required=True,
+                        help="definition / outline-design / detail-design / code")
+    save_p.add_argument("--reviewer", required=True)
+    save_p.add_argument("--scope", default=None,
+                        help="形如 feature_id=F-001（仅 phase=code 必填）")
+
+    # 新增子命令：signoff（卡点 B 调用）
+    signoff_p = sub.add_parser("signoff", help="写 human_signoff 字段（卡点 B 调用）")
+    signoff_p.add_argument("--rev-id", required=True, help="REV-ID，如 REV-REQ-2026-003-definition-001")
+    signoff_p.add_argument("--decision", required=True,
+                           choices=["approved", "approved-trivial", "rejected"],
+                           help="sign-off 决策")
+    signoff_p.add_argument("--signed-by", required=True, help="签字人 email（取自 git config user.email）")
+    signoff_p.add_argument("--signed-at", required=True, help="签字时间（ISO8601 含时区）")
+    # --source 当前枚举仅 cli-tty，保留参数形式为 D-004（PR Review 等价）预留扩展
+    signoff_p.add_argument("--source", default="cli-tty", choices=["cli-tty"],
+                           help="sign-off 来源（默认 cli-tty）")
+
+    args = parser.parse_args()
+
+    # cmd 缺省时（历史调用无 subcommand），检查是否有 --req 参数
+    # 若有则走 save 路径（兼容旧调用）；若无则打印帮助
+    if args.cmd is None:
+        # 兼容旧调用：无子命令时尝试重解析为 save 子命令
+        save_args = sub.choices["save"].parse_args(sys.argv[1:])
+        return _run_save(save_args)
+
+    if args.cmd == "save":
+        return _run_save(args)
+    if args.cmd == "signoff":
+        return _run_signoff(args)
+    return 2
 
 
 if __name__ == "__main__":
