@@ -1,7 +1,7 @@
 # ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-003
 title: 代码审查人类必经卡点（路由确认 + 结论 sign-off）
-phase: tech-research
+phase: outline-design
 created_at: "2026-04-29 17:05:53"     # 格式 YYYY-MM-DD HH:MM:SS（Asia/Shanghai），见 context/team/engineering-spec/time-format.md
 branch: feat/req-2026-003
 base_branch: develop                   # feat/* 派生的基点分支：develop / main / master
@@ -18,10 +18,16 @@ gates_passed:
       - "GATE-PLAN-FRESHNESS W003: plan.md 范围段 '不包含' 无子条目（待 definition 阶段补）"
   - phase: tech-research
     at: "2026-04-30 10:52:42"
-    gates: [GATE-META-SCHEMA, GATE-INDEX-INTEGRITY, GATE-SOURCING, 
-          GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY, 
+    gates: [GATE-META-SCHEMA, GATE-INDEX-INTEGRITY, GATE-SOURCING,
+          GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY,
           GATE-PLAN-FRESHNESS]
     warnings: []
+  - phase: outline-design
+    at: "2026-04-30 20:47:26"
+    gates: [GATE-META-SCHEMA, GATE-INDEX-INTEGRITY, GATE-SOURCING,
+          GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-PLAN-FRESHNESS]
+    warnings: []
+    notes: "GATE-TRACEABILITY skipped（仅在 to_phase=testing 时校验）"
 pr_url: ""                             # /requirement:submit 成功后回写
 pr_number: 0                           # /requirement:submit 成功后回写
 log_layout: split                      # split（默认，工具日志→process.tool.log / 语义事件→process.txt） | legacy（老格式，全写 process.txt）
