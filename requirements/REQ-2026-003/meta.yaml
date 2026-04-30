@@ -72,12 +72,12 @@ reviews:
       - REV-REQ-2026-003-outline-design-001
     stale: false
   detail-design:
-    latest: REV-REQ-2026-003-detail-design-002
+    latest: REV-REQ-2026-003-detail-design-003
     conclusion: looks_clean
-    reviewed_commit: '4666949'
+    reviewed_commit: 65db506
     artifact_hashes:
       artifacts/detailed-design.md: 
-        e0fe1bb230a28cfe0f009e1ce0eb56ae48e2bc66358add50e9f65735ae9bcc10
+        0a4c524770f4648b5cc58eb8ad143e3957297f84d80cb29a5ad507cbcf2ba7c1
       artifacts/features.json: 
         ffad16bd8a4abd36ef31fc679d232e4b629fa98a569dfc382bed2e70c9aec23a
       artifacts/outline-design.md: 
@@ -85,4 +85,5 @@ reviews:
     history:
       - REV-REQ-2026-003-detail-design-001
       - REV-REQ-2026-003-detail-design-002
+      - REV-REQ-2026-003-detail-design-003
     stale: false

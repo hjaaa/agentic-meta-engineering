@@ -11,3 +11,4 @@
 2026-04-30 21:16:31 [save] outline-design 全流程完成切到 detail-design：3 ADR + 草稿 + 评审 88 + 2 signoff（commits 213cf33→632b9a7）
 2026-04-30 21:40:15 [review:looks_clean] detail-design REV-002 / 90 / 0 required_fixes / minor 2+3 闭环 / supersedes REV-001 / 待 tty signoff
 2026-04-30 21:46:46 [signoff] REV-REQ-2026-003-detail-design-002 approved by hj19961223@gmail.com
+2026-04-30 21:51:28 [review:looks_clean] detail-design REV-003 / 90 / 纯 sourcing 修订 / supersedes REV-002 / 待 tty signoff（可走 --trivial）
