@@ -42,6 +42,30 @@ description: 聚合 8 个专项 checker + review-critic 对抗验证 + code-qual
 - ✅ 每个 issue 必须有 `file:line` 引用
 - ✅ 裁决明细段须覆盖所有候选 finding（含被 drop 的，用于复盘误报）
 
+## 报告模板增量段（F-003 引入）
+
+报告模板（templates/review-report.md.tmpl）在既有 verdict 摘要段之后追加两段：
+
+### 路由说明
+
+显示卡点 A 的确认信息（从 `.review-scope.json` 取值）：
+
+- **决策**：`{routing_confirmed_by.decision}`（accept / all / custom）
+- **确认人**：`{routing_confirmed_by.confirmed_by}`（git config user.email）
+- **确认时间**：`{routing_confirmed_by.confirmed_at}`
+- **跑了哪些 checker**：`{checker_route}` 列表
+- **跳过的 checker（含原因）**：从 `skipped_checkers[]` 渲染列表
+
+### 待 sign-off 提示
+
+显示当前 verdict 的机器评估结论 + 引导用户执行 sign-off：
+
+- 头：`本次评审输出 conclusion = {conclusion}（looks_clean / needs_attention / blocked），这只是 AI 的机器评估，不代表合并通过。`
+- 引导：列出两条命令模板：
+  - `/code-review:signoff <review_id>`（对话式 sign-off）
+  - `/code-review:signoff <review_id> --trivial`（纯文档变更快速通道）
+- 警示：未 sign-off 时 feature-lifecycle-manager 不会把对应 feature 转 done；GATE-REVIEW-VERDICT 在 phase-transition / submit 时会阻断
+
 ## 参考资源
 
 - [`templates/review-report.md.tmpl`](templates/review-report.md.tmpl) — 报告模板

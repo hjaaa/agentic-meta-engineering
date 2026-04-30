@@ -4,9 +4,31 @@
 
 **__CONCLUSION__** · __N_CRIT__ critical / __N_MAJ__ major / __N_MIN__ minor
 
-- `approved` — 可合入
-- `needs_revision` — 需修改后复审
-- `rejected` — 驳回，方向性问题
+- `looks_clean` — AI 机器评估无阻塞问题
+- `needs_attention` — AI 机器评估发现待改进项
+- `blocked` — AI 机器评估发现关键问题
+
+## 路由说明
+
+本次审查路由由 `code-review-prepare` 卡点 A 确认：
+
+- **决策**：__ROUTING_DECISION__
+- **确认人**：__ROUTING_CONFIRMED_BY__
+- **确认时间**：__ROUTING_CONFIRMED_AT__
+- **跑了哪些 checker**：__CHECKER_ROUTE__
+- **跳过的 checker（含原因）**：
+  - __SKIPPED_CHECKER_NAME__：__SKIPPED_CHECKER_REASON__
+
+## 待 sign-off 提示
+
+本次评审输出 `conclusion = __CONCLUSION__`，**这只是 AI 的机器评估**，不代表合并通过。请开发者本人执行：
+
+```bash
+/code-review:signoff __REVIEW_ID__            # 对话式 sign-off
+/code-review:signoff __REVIEW_ID__ --trivial  # 纯文档变更快速通道
+```
+
+未 sign-off 时 feature-lifecycle-manager 不会把对应 feature 转为 done，GATE-REVIEW-VERDICT 在 phase-transition / submit 时会阻断。
 
 ## 裁决明细
 
