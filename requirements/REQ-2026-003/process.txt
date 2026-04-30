@@ -1,1 +1,2 @@
 2026-04-30 09:56:56 [phase-transition] bootstrap → 文档清零重启（路线出错；17 个 git commit 保留作参考）
+2026-04-30 10:04:54 [phase-transition] bootstrap → definition（7 gates 全过；W001+W003 plan.md 模板占位符 definition 阶段补）
