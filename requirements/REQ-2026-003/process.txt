@@ -7,3 +7,4 @@
 2026-04-30 20:48:22 [phase-transition] tech-research → outline-design（7 gates 候选 / 6 通过 / 1 skipped GATE-TRACEABILITY 仅 testing 校验；definition signoff approved）
 2026-04-30 21:09:40 [review:looks_clean] outline-design REV-001 / 88 分 / 0 required_fixes / 5 minor suggestions + 1 arch concern 转 detail-design 跟进；待 tty signoff
 2026-04-30 21:14:04 [signoff] REV-REQ-2026-003-outline-design-001 approved by hj19961223@gmail.com
+2026-04-30 21:14:50 [phase-transition] outline-design → detail-design（7 gates 候选 / 6 通过 / 1 skipped GATE-TRACEABILITY 仅 testing 校验；outline-design signoff approved）

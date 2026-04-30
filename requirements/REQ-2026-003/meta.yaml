@@ -1,7 +1,7 @@
 # ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-003
 title: 代码审查人类必经卡点（路由确认 + 结论 sign-off）
-phase: outline-design
+phase: detail-design
 created_at: "2026-04-29 17:05:53"     # 格式 YYYY-MM-DD HH:MM:SS（Asia/Shanghai），见 context/team/engineering-spec/time-format.md
 branch: feat/req-2026-003
 base_branch: develop                   # feat/* 派生的基点分支：develop / main / master
@@ -24,7 +24,13 @@ gates_passed:
     warnings: []
   - phase: outline-design
     at: "2026-04-30 20:47:26"
-    gates: [GATE-META-SCHEMA, GATE-INDEX-INTEGRITY, GATE-SOURCING, 
+    gates: [GATE-META-SCHEMA, GATE-INDEX-INTEGRITY, GATE-SOURCING,
+          GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-PLAN-FRESHNESS]
+    warnings: []
+    notes: "GATE-TRACEABILITY skipped（仅在 to_phase=testing 时校验）"
+  - phase: detail-design
+    at: "2026-04-30 21:14:25"
+    gates: [GATE-META-SCHEMA, GATE-INDEX-INTEGRITY, GATE-SOURCING,
           GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-PLAN-FRESHNESS]
     warnings: []
     notes: "GATE-TRACEABILITY skipped（仅在 to_phase=testing 时校验）"
