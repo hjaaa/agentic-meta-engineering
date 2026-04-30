@@ -142,9 +142,10 @@ reviews:
       F-001:
         history:
           - REV-REQ-2026-003-code-F-001-001
-        latest: REV-REQ-2026-003-code-F-001-001
-        conclusion: needs_attention
-        reviewed_commit: 82b6217
+          - REV-REQ-2026-003-code-F-001-002
+        latest: REV-REQ-2026-003-code-F-001-002
+        conclusion: looks_clean
+        reviewed_commit: 54b0f88
         artifact_hashes:
           artifacts/features.json: 
             ffad16bd8a4abd36ef31fc679d232e4b629fa98a569dfc382bed2e70c9aec23a
