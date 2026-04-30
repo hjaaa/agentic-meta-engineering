@@ -1,106 +1,24 @@
 # ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-003
 title: 代码审查人类必经卡点（路由确认 + 结论 sign-off）
-phase: task-planning
+phase: bootstrap
 created_at: "2026-04-29 17:05:53"     # 格式 YYYY-MM-DD HH:MM:SS（Asia/Shanghai），见 context/team/engineering-spec/time-format.md
 branch: feat/req-2026-003
 base_branch: develop                   # feat/* 派生的基点分支：develop / main / master
 project: agentic-meta-engineering      # 关联 context/project/<project>/
 services: [agentic-meta-engineering]   # 涉及的服务仓库
-gates_passed:
-  - phase: definition
-    at: "2026-04-29 17:07:36"
-    gates: [GATE-META-SCHEMA, GATE-INDEX-INTEGRITY, GATE-SOURCING, 
-          GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY]
-    warnings:
-      - "GATE-PLAN-FRESHNESS W003: plan.md 范围段 '不包含' 无子条目（待 definition 阶段补）"
-  - phase: tech-research
-    at: "2026-04-29 21:14:27"
-    gates: [GATE-META-SCHEMA, GATE-INDEX-INTEGRITY, GATE-SOURCING, 
-          GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY, 
-          GATE-PLAN-FRESHNESS]
-    warnings: []
-  - phase: outline-design
-    at: "2026-04-29 22:43:32"
-    gates: [GATE-META-SCHEMA, GATE-INDEX-INTEGRITY, GATE-SOURCING, 
-          GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY, 
-          GATE-PLAN-FRESHNESS]
-    warnings: []
-  - phase: detail-design
-    at: "2026-04-30 00:15:22"
-    gates: [GATE-META-SCHEMA, GATE-INDEX-INTEGRITY, GATE-SOURCING,
-          GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY,
-          GATE-PLAN-FRESHNESS]
-    warnings: []
-  - phase: task-planning
-    at: "2026-04-30 01:30:00"
-    gates: [GATE-META-SCHEMA, GATE-INDEX-INTEGRITY, GATE-SOURCING,
-          GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY,
-          GATE-PLAN-FRESHNESS]
-    warnings:
-      - "GATE-PLAN-FRESHNESS W002: detailed-design.md 第 488 行段落含强约束数字断言但缺三态标记（已确认非幻觉）"
+gates_passed: []
 pr_url: ""                             # /requirement:submit 成功后回写
 pr_number: 0                           # /requirement:submit 成功后回写
 log_layout: split                      # split（默认，工具日志→process.tool.log / 语义事件→process.txt） | legacy（老格式，全写 process.txt）
 
 # ============ 语义组（definition 阶段补齐，供跨需求检索） ============
-feature_area: "review"
-change_type: "feature"
-affected_modules:
-  - .claude/commands/code-review
-  - .claude/skills/code-review-prepare
-  - .claude/skills/code-review-report
-  - .claude/agents/code-quality-reviewer
-  - .claude/skills/feature-lifecycle-manager
-  - scripts/lib/save_review
-  - context/team/engineering-spec/specs
-tags: [human-in-the-loop, gating, signoff, routing]
+feature_area: ""                         # definition 起必填；值必须在 context/project/<project>/areas.yaml 白名单内
+change_type: ""                          # definition 起必填；枚举：feature / bugfix / refactor / perf / security
+affected_modules: []                     # definition 起必填；自由词，建议与 services 子模块对齐
+tags: []                                 # 可选；长尾标签，不归一化
 
 # ============ 结果组（completed 时才填） ============
 outcome: ""                    # shipped / abandoned / rolled-back
 completed_at: ""               # ISO8601，completed 时填
 lessons_extracted: false       # /knowledge:extract-experience 是否已跑
-reviews:
-  definition:
-    latest: REV-REQ-2026-003-definition-006
-    conclusion: approved
-    reviewed_commit: cb55ea0
-    artifact_hashes:
-      artifacts/requirement.md: 
-        f7d7b713eedb70645cb9b24d5178083979200d9362f870a07a32942f3c3c9406
-    history:
-      - REV-REQ-2026-003-definition-001
-      - REV-REQ-2026-003-definition-002
-      - REV-REQ-2026-003-definition-003
-      - REV-REQ-2026-003-definition-004
-      - REV-REQ-2026-003-definition-005
-      - REV-REQ-2026-003-definition-006
-    stale: false
-  outline-design:
-    latest: REV-REQ-2026-003-outline-design-002
-    conclusion: approved
-    reviewed_commit: e86d038
-    artifact_hashes:
-      artifacts/outline-design.md: 
-        b3200260d7d86de977cacfae7ea906f8e414d426ab5264230e255ff69e82765d
-      artifacts/requirement.md: 
-        f7d7b713eedb70645cb9b24d5178083979200d9362f870a07a32942f3c3c9406
-    history:
-      - REV-REQ-2026-003-outline-design-001
-      - REV-REQ-2026-003-outline-design-002
-    stale: false
-  detail-design:
-    latest: REV-REQ-2026-003-detail-design-002
-    conclusion: approved
-    reviewed_commit: d91e2d2
-    artifact_hashes:
-      artifacts/detailed-design.md: 
-        cb1a3064bba795c88e852eb44852cf310944786c744951c68c03a50938abacf0
-      artifacts/features.json: 
-        f0672a780164c2b0658057dc27d84a79efa8299599d69767136595240ef43c1d
-      artifacts/outline-design.md: 
-        b3200260d7d86de977cacfae7ea906f8e414d426ab5264230e255ff69e82765d
-    history:
-      - REV-REQ-2026-003-detail-design-001
-      - REV-REQ-2026-003-detail-design-002
-    stale: false
