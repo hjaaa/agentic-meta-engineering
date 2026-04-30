@@ -59,5 +59,11 @@
   "supersedes": null,
   "project_specific_issues": [
     "项目 INDEX.md 仅声明 areas.yaml（骨架功能区白名单）作为唯一项目级知识，未声明额外动态约束；本需求 affected_modules=[review, commands, skills, scripts] 与 areas.yaml 的功能区命名一致，无额外项目维度需要叠加"
-  ]
+  ],
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-04-30T20:46:45.776244+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
+  }
 }
