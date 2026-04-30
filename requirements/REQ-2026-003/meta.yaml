@@ -18,13 +18,13 @@ gates_passed:
       - "GATE-PLAN-FRESHNESS W003: plan.md 范围段 '不包含' 无子条目（待 definition 阶段补）"
   - phase: tech-research
     at: "2026-04-30 10:52:42"
-    gates: [GATE-META-SCHEMA, GATE-INDEX-INTEGRITY, GATE-SOURCING,
-          GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY,
+    gates: [GATE-META-SCHEMA, GATE-INDEX-INTEGRITY, GATE-SOURCING, 
+          GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY, 
           GATE-PLAN-FRESHNESS]
     warnings: []
   - phase: outline-design
     at: "2026-04-30 20:47:26"
-    gates: [GATE-META-SCHEMA, GATE-INDEX-INTEGRITY, GATE-SOURCING,
+    gates: [GATE-META-SCHEMA, GATE-INDEX-INTEGRITY, GATE-SOURCING, 
           GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-PLAN-FRESHNESS]
     warnings: []
     notes: "GATE-TRACEABILITY skipped（仅在 to_phase=testing 时校验）"
@@ -52,4 +52,16 @@ reviews:
         15648b2724d1a4535b6761acc9d409f75d8ec062b4e1426a4ecf4b0d2d7b6049
     history:
       - REV-REQ-2026-003-definition-001
+    stale: false
+  outline-design:
+    latest: REV-REQ-2026-003-outline-design-001
+    conclusion: looks_clean
+    reviewed_commit: e58c055
+    artifact_hashes:
+      artifacts/outline-design.md: 
+        b70ccd43ec129b8de44c781b4f43aae95d1a17c3481e1f449df3df64bfd67fba
+      artifacts/requirement.md: 
+        15648b2724d1a4535b6761acc9d409f75d8ec062b4e1426a4ecf4b0d2d7b6049
+    history:
+      - REV-REQ-2026-003-outline-design-001
     stale: false
