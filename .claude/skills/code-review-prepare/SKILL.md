@@ -9,23 +9,20 @@ description: /code-review 的预检 Skill。识别审查模式（独立/嵌入�
 
 ## 核心流程
 
-1. **识别模式**：
-   - **嵌入模式**：当前分支在某个 `requirements/*/meta.yaml.branch` 中 → 从 `meta.yaml.services` 取服务列表
-   - **独立模式**：否则 → 审当前分支 vs `main` 的增量
+1. **识别模式 + 取增量 diff**：
+   - **嵌入模式**：当前分支在某个 `requirements/*/meta.yaml.branch` 中 → 从 `meta.yaml.services` 取服务列表；`git diff main...HEAD -- <services>`
+   - **独立模式**：否则 → 审当前分支 vs `main` 的增量；`git diff main...HEAD`
+   - 统计增量规模（修改文件数、增删行数、涉及顶级目录）
 
-2. **取增量 diff**：
-   - 嵌入：`git diff main...HEAD -- <services>`
-   - 独立：`git diff main...HEAD`
+2. **生成 .review-scope.json + 卡点 A 路由确认**：调 `python3 scripts/lib/code_review_routing.py`：
+   - **默认两阶段**：脚本扫 diff 输出候选 checker_route + 跳过原因 → tty 确认（accept / all / abort / 自定义子集逗号分隔下标）→ 写盘
+   - `--all`：跳过路由建议，直接用 8 全集——**仍要求 tty**（防 AI 自动加 --all 绕过卡点 A）
+   - `--trivial`：仅写 mode_hint=trivial 透传给下游，**不豁免**卡点 A，仍走默认两阶段 tty 确认
+   - **stdin 非 tty → 退出码 2**（拒绝 AI 在主对话直接调；abort 时不写盘、正常退出 0）
 
-3. **统计增量规模**：
-   - 修改文件数
-   - 增加/删除行数
-   - 涉及的顶级目录
+3. **触发并行 checker**：按 `.review-scope.json.checker_route` 运行对应 checker（不是固定 8 个；`decision=all` 才是 8 全集）
 
-4. **写 `.review-scope.json`**（根目录，`.gitignore` 已覆盖）：
-   按 `reference/scope-schema.md` 的 schema。
-
-5. **输出预检摘要给用户**：模式、范围、增量规模，确认继续后触发并行审查。
+4. **输出预检摘要给用户**：模式、范围、增量规模，确认继续后进入并行审查阶段。
 
 ## 硬约束
 
