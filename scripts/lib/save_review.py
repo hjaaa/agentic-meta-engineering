@@ -483,18 +483,15 @@ def _append_signoff_process_log(
         print(paint(f"⚠️  process.txt 写入失败（{exc}），签字已生效", "yellow"), file=sys.stderr)
 
 
-def main() -> int:
-    """CLI 入口：支持 save（默认）与 signoff 两个子命令。
+_KNOWN_CMDS: frozenset[str] = frozenset({"save", "signoff"})
 
-    兼容性保证：
-      既有调用 'python3 save_review.py --req X --phase Y --reviewer Z'
-      在升级后等价于 'python3 save_review.py save --req X --phase Y --reviewer Z'，
-      通过 args.cmd is None 路径走 _run_save，无需改 save-review.sh。
-    """
+
+def _build_parsers() -> tuple[argparse.ArgumentParser, argparse._SubParsersAction]:
+    """构造主 parser + subparser，供 main() 和单测复用。"""
     parser = argparse.ArgumentParser(description="写入 review JSON / 签字")
     sub = parser.add_subparsers(dest="cmd", required=False)
 
-    # 默认子命令（无 cmd 时进入）：save —— 与既有调用方完全兼容
+    # save 子命令（与既有调用方完全兼容）
     save_p = sub.add_parser("save", help="写入 review JSON + 更新 meta.yaml.reviews")
     save_p.add_argument("--req", required=True, help="REQ-YYYY-NNN")
     save_p.add_argument("--phase", required=True,
@@ -503,26 +500,51 @@ def main() -> int:
     save_p.add_argument("--scope", default=None,
                         help="形如 feature_id=F-001（仅 phase=code 必填）")
 
-    # 新增子命令：signoff（卡点 B 调用）
+    # signoff 子命令（卡点 B 调用）
     signoff_p = sub.add_parser("signoff", help="写 human_signoff 字段（卡点 B 调用）")
-    signoff_p.add_argument("--rev-id", required=True, help="REV-ID，如 REV-REQ-2026-003-definition-001")
+    signoff_p.add_argument("--rev-id", required=True,
+                           help="REV-ID，如 REV-REQ-2026-003-definition-001")
     signoff_p.add_argument("--decision", required=True,
                            choices=["approved", "approved-trivial", "rejected"],
                            help="sign-off 决策")
-    signoff_p.add_argument("--signed-by", required=True, help="签字人 email（取自 git config user.email）")
-    signoff_p.add_argument("--signed-at", required=True, help="签字时间（ISO8601 含时区）")
+    signoff_p.add_argument("--signed-by", required=True,
+                           help="签字人 email（取自 git config user.email）")
+    signoff_p.add_argument("--signed-at", required=True,
+                           help="签字时间（ISO8601 含时区）")
     # --source 当前枚举仅 cli-tty，保留参数形式为 D-004（PR Review 等价）预留扩展
     signoff_p.add_argument("--source", default="cli-tty", choices=["cli-tty"],
                            help="sign-off 来源（默认 cli-tty）")
 
-    args = parser.parse_args()
+    return parser, sub
 
-    # cmd 缺省时（历史调用无 subcommand），检查是否有 --req 参数
-    # 若有则走 save 路径（兼容旧调用）；若无则打印帮助
-    if args.cmd is None:
-        # 兼容旧调用：无子命令时尝试重解析为 save 子命令
-        save_args = sub.choices["save"].parse_args(sys.argv[1:])
+
+def main() -> int:
+    """CLI 入口：支持 save（默认）与 signoff 两个子命令。
+
+    兼容性保证：
+      既有调用 'python3 save_review.py --req X --phase Y --reviewer Z'（无 subcommand）
+      在升级后等价于 'python3 save_review.py save --req X --phase Y --reviewer Z'。
+
+    实现方案：
+      检查 sys.argv 第一个非 '-' 开头的参数是否是已知子命令。
+      不是已知子命令 → 注入 'save' 前缀，走 save 路径（历史兼容）。
+      是已知子命令 → 正常解析。
+    """
+    # 检测是否需要注入 'save' 前缀（历史兼容）
+    # 寻找 sys.argv[1:] 中第一个非 '-' 开头的 token（候选 subcommand 位置）
+    raw_argv = sys.argv[1:]
+    first_positional = next(
+        (tok for tok in raw_argv if not tok.startswith("-")), None
+    )
+    if first_positional not in _KNOWN_CMDS:
+        # 旧调用格式（无 subcommand）：注入 'save' 前缀，委托 save 子 parser 解析
+        _, sub = _build_parsers()
+        save_args = sub.choices["save"].parse_args(raw_argv)
         return _run_save(save_args)
+
+    # 新调用格式（有 subcommand）
+    parser, _ = _build_parsers()
+    args = parser.parse_args()
 
     if args.cmd == "save":
         return _run_save(args)
