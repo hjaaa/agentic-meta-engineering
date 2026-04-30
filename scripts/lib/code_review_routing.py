@@ -417,3 +417,40 @@ def _build_plan(files: list[str], config: RoutingConfig) -> RoutingPlan:
         files_must_hit=files_must_hit,
         files_suggest_hit=files_suggest_hit,
     )
+
+
+# ---------------------------------------------------------------------------
+# 公开 API（F-002 import 时使用）
+# ---------------------------------------------------------------------------
+
+__all__ = [
+    # 常量
+    "ALL_CHECKERS",
+    "ROUTING_YAML_PATH",
+    "SCOPE_JSON_PATH",
+    "MAX_INVALID_PROMPTS",
+    "MAX_MUST_RULES",
+    "EXIT_OK",
+    "EXIT_BAD_ARGS",
+    "EXIT_NON_TTY",
+    "EXIT_SCHEMA_INVALID",
+    "EXIT_YAML_LOAD_ERROR",
+    "EXIT_USER_ABORT",
+    "_ERROR_MESSAGES",
+    # 异常
+    "RoutingError",
+    "RoutingYamlError",
+    "RoutingSchemaError",
+    "RoutingTTYError",
+    "RoutingAbort",
+    # 数据类
+    "MatchResult",
+    "RoutingPlan",
+    "RoutingDecision",
+    "RoutingConfig",
+    # 核心函数
+    "_load_yaml",
+    "_validate_schema",
+    "_enumerate_diff_files",
+    "_build_plan",
+]
