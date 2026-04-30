@@ -298,7 +298,7 @@ def _resolve_confirmed_by() -> str:
 
 ```jsonc
 {
-  // ─────── 现有 11 字段（来源：scope-schema.md:7-25，本需求不动）───────
+  // ─────── 现有 11 字段（本需求不动；来源：.claude/skills/code-review-prepare/reference/scope-schema.md:7-25）───────
   "mode": "embedded" | "standalone",
   "requirement_id": "REQ-2026-003",
   "feature_id": "F-002",          // 仅 embedded 必填，standalone null
@@ -555,7 +555,7 @@ sequenceDiagram
 
 ---
 
-## 6. 错误文案模板（D-001 Consequences 闭环；4 个 [待补充] 之第 2）
+## 6. 错误文案模板（D-001 Consequences 闭环；4 个 outline 待补充项之第 2）
 
 `_ERROR_MESSAGES: dict[int, str]` 常量定义（routing.py 模块级）：
 
@@ -720,7 +720,7 @@ L25：`pip install pyyaml ruamel.yaml` → `pip install pyyaml ruamel.yaml "path
 | E3 | 把 routing.yaml 的 must 写成 6 条 | 退码 3 + stderr 含"V3" |
 | E4 | 把 routing.yaml 写成不合法 yaml | 退码 4 + stderr 含行号 |
 
-### 10.4 benchmark（Q4 闭环；4 个 [待补充] 之第 3）
+### 10.4 benchmark（Q4 闭环；4 个 outline 待补充项之第 3）
 
 `tests/benchmarks/test_routing_perf.py` 用 `pytest-benchmark`：
 
@@ -728,7 +728,7 @@ L25：`pip install pyyaml ruamel.yaml` → `pip install pyyaml ruamel.yaml "path
 |---|---|---|
 | B1 trivial-only | 50 文件全 .md | P95 < 100ms（含 yaml 加载冷启动） |
 | B2 mixed | 200 文件 mixed | P95 < 200ms |
-| B3 large | 2000 文件 mixed（来源：requirement.md:73 上限） | P95 < 200ms（边界） |
+| B3 large | 2000 文件 mixed（diff 上限来源：requirements/REQ-2026-003/artifacts/requirement.md:73） | P95 < 200ms（边界） |
 
 执行：`pytest tests/benchmarks/test_routing_perf.py --benchmark-json=out.json`，CI 不强制（标 `pytest.mark.benchmark`），本地 / 临测跑。冷启动包含——更接近真实路径。
 
