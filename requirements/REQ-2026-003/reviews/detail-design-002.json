@@ -65,5 +65,11 @@
       "F-002 已具备 complexity / depends_on_features / interfaces_frozen / touches 四个机读字段，阶段 7 派发友好；若日后拆分为 F-002a/b，记得给两个子 feature 各自填齐这四字段。",
       "F-003 / F-004 已具备完整机读字段集，无需补充。"
     ]
+  },
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-04-30T21:46:46.621287+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
   }
 }
