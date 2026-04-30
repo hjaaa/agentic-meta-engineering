@@ -12,92 +12,65 @@ TC-A7（全空 issues 流水线 → quality-reviewer 出 looks_clean）属于 F-
 本期跳过——F-003 实施后启用。
 
 实现说明：
-  - tty 模拟：通过环境变量 CODE_REVIEW_ROUTING_FAKE_TTY=1 + subprocess 传入
-  - 非 tty：不设该变量，stdin 接管为 PIPE（subprocess 默认非 tty）
-  - 工作目录设为仓库根，确保 git config / .review-scope.json 路径正确
+  - TC-A1~A4（tty 交互场景）：函数级单测，用 monkeypatch mock _is_tty 和 stdin，
+    直接调脚本内部函数，不通过 subprocess，不依赖任何 env var 旁路。
+  - TC-A5/A6（非 tty 端到端拒收）：保留 subprocess，stdin=PIPE 自动为非 tty，
+    断言 returncode==2 + stderr 含 'routing: stdin not a tty'。
 """
 from __future__ import annotations
 
+import io
 import json
-import os
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from unittest import mock
 
 import pytest
 
-# 脚本路径
+# ── 模块导入（scripts/lib 无 __init__.py，用 sys.path.insert 风格）──
 _REPO_ROOT = Path(__file__).resolve().parents[2]
-_SCRIPT = _REPO_ROOT / "scripts" / "lib" / "code_review_routing.py"
+_SCRIPTS_LIB = _REPO_ROOT / "scripts" / "lib"
+_SCRIPT = _SCRIPTS_LIB / "code_review_routing.py"
+
+# 仅在首次插入（避免重复）
+if str(_SCRIPTS_LIB) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_LIB))
+
+import code_review_routing as routing  # noqa: E402
 
 # ALL_CHECKERS 全集（与脚本保持一致）
-ALL_CHECKERS = [
-    "complexity-checker",
-    "security-checker",
-    "concurrency-checker",
-    "performance-checker",
-    "error-handling-checker",
-    "design-consistency-checker",
-    "history-context-checker",
-    "auxiliary-spec-checker",
-]
+ALL_CHECKERS = routing.ALL_CHECKERS
 
 
-def _run_routing(
-    args: list[str],
-    stdin_text: str = "",
-    fake_tty: bool = True,
-    scope_out: str | None = None,
-    cwd: Path | None = None,
-) -> subprocess.CompletedProcess:
-    """封装调用 code_review_routing.py 的通用 helper。
+# ════════════════════════════════════════════════
+# 辅助：mock tty + stdin 的上下文管理器
+# ════════════════════════════════════════════════
 
-    参数：
-      args        — 传给脚本的额外 CLI 参数
-      stdin_text  — 写入 stdin 的文本（模拟用户输入）
-      fake_tty    — True 则设置 CODE_REVIEW_ROUTING_FAKE_TTY=1，模拟 tty 场景
-      scope_out   — --scope-out 参数；默认传 tmpdir 下的临时路径
-      cwd         — 工作目录；默认使用仓库根
-
-    返回 CompletedProcess（capture_output=True）。
-    """
-    env = os.environ.copy()
-    if fake_tty:
-        env["CODE_REVIEW_ROUTING_FAKE_TTY"] = "1"
-    else:
-        env.pop("CODE_REVIEW_ROUTING_FAKE_TTY", None)
-
-    cmd = [sys.executable, str(_SCRIPT)]
-    if scope_out:
-        cmd += ["--scope-out", scope_out]
-    cmd += args
-
-    return subprocess.run(
-        cmd,
-        input=stdin_text,
-        capture_output=True,
-        text=True,
-        env=env,
-        cwd=str(cwd or _REPO_ROOT),
-    )
+def _make_fake_stdin(text: str) -> io.StringIO:
+    """创建带 isatty=True 的假 stdin。"""
+    fake = io.StringIO(text)
+    fake.isatty = lambda: True  # type: ignore[attr-defined]
+    return fake
 
 
-# ──────────────────────────────────────────────
+# ════════════════════════════════════════════════
 # TC-A1: tty + accept → decision=accept，scope.json 存在
-# ──────────────────────────────────────────────
-def test_tc_a1_accept_writes_scope_with_ai_route(tmp_path):
+# ════════════════════════════════════════════════
+
+def test_tc_a1_accept_writes_scope_with_ai_route(tmp_path, monkeypatch):
     """given_tty_when_accept_then_scope_json_contains_ai_suggested_route_and_returncode_0。"""
     scope_out = str(tmp_path / ".review-scope.json")
+    fake_stdin = _make_fake_stdin("accept\n")
 
-    result = _run_routing(
-        args=[],
-        stdin_text="accept\n",
-        fake_tty=True,
-        scope_out=scope_out,
-    )
+    # mock：_is_tty 返回 True，sys.stdin 替换为假 stdin
+    monkeypatch.setattr(routing, "_is_tty", lambda: True)
+    monkeypatch.setattr(routing.sys, "stdin", fake_stdin)
 
-    assert result.returncode == 0, f"期望 returncode=0，实际={result.returncode}\nstderr={result.stderr}"
+    # 调用默认模式（diff 从 git 获取，git 在 repo 根可用）
+    # diff_stat_stdin=False → 内部会调 git diff，可能失败但不阻塞流程
+    routing._run_default_mode(scope_out=scope_out, trivial=False, diff_stat_stdin=False)
 
     # scope.json 必须存在
     scope_path = Path(scope_out)
@@ -106,14 +79,12 @@ def test_tc_a1_accept_writes_scope_with_ai_route(tmp_path):
     with scope_path.open(encoding="utf-8") as f:
         scope = json.load(f)
 
-    # decision 必须为 accept
     confirmed = scope.get("routing_confirmed_by", {})
     assert confirmed.get("decision") == "accept", (
         f"期望 decision=accept，实际={confirmed.get('decision')}"
     )
     assert confirmed.get("tty_verified") is True, "期望 tty_verified=True"
 
-    # checker_route 必须是 ALL_CHECKERS 的非空子集
     route = scope.get("checker_route", [])
     assert isinstance(route, list) and len(route) > 0, (
         f"期望 checker_route 非空列表，实际={route}"
@@ -122,27 +93,24 @@ def test_tc_a1_accept_writes_scope_with_ai_route(tmp_path):
         f"checker_route 含非法 checker：{route}"
     )
 
-    # mode_hint 必须为 default（非 --all / --trivial）
     assert scope.get("mode_hint") == "default", (
         f"期望 mode_hint=default，实际={scope.get('mode_hint')}"
     )
 
 
-# ──────────────────────────────────────────────
+# ════════════════════════════════════════════════
 # TC-A2: tty + all → decision=all，8 全集
-# ──────────────────────────────────────────────
-def test_tc_a2_all_writes_8_checker_full_set(tmp_path):
+# ════════════════════════════════════════════════
+
+def test_tc_a2_all_writes_8_checker_full_set(tmp_path, monkeypatch):
     """given_tty_when_all_then_scope_json_contains_all_8_checkers_and_returncode_0。"""
     scope_out = str(tmp_path / ".review-scope.json")
+    fake_stdin = _make_fake_stdin("all\n")
 
-    result = _run_routing(
-        args=[],
-        stdin_text="all\n",
-        fake_tty=True,
-        scope_out=scope_out,
-    )
+    monkeypatch.setattr(routing, "_is_tty", lambda: True)
+    monkeypatch.setattr(routing.sys, "stdin", fake_stdin)
 
-    assert result.returncode == 0, f"returncode={result.returncode}\nstderr={result.stderr}"
+    routing._run_default_mode(scope_out=scope_out, trivial=False, diff_stat_stdin=False)
 
     scope_path = Path(scope_out)
     assert scope_path.exists(), ".review-scope.json 不存在"
@@ -164,94 +132,109 @@ def test_tc_a2_all_writes_8_checker_full_set(tmp_path):
     )
 
 
-# ──────────────────────────────────────────────
-# TC-A3: tty + abort → scope.json 不存在，returncode 0，stderr 含 aborted
-# ──────────────────────────────────────────────
-def test_tc_a3_abort_does_not_write_scope(tmp_path):
-    """given_tty_when_abort_then_no_scope_json_and_returncode_0_and_stderr_contains_aborted。"""
+# ════════════════════════════════════════════════
+# TC-A3: tty + abort → scope.json 不存在，stderr 含 aborted
+# ════════════════════════════════════════════════
+
+def test_tc_a3_abort_does_not_write_scope(tmp_path, monkeypatch, capsys):
+    """given_tty_when_abort_then_no_scope_json_and_stderr_contains_aborted。"""
     scope_out = str(tmp_path / ".review-scope.json")
+    fake_stdin = _make_fake_stdin("abort\n")
 
-    result = _run_routing(
-        args=[],
-        stdin_text="abort\n",
-        fake_tty=True,
-        scope_out=scope_out,
-    )
+    monkeypatch.setattr(routing, "_is_tty", lambda: True)
+    monkeypatch.setattr(routing.sys, "stdin", fake_stdin)
 
-    assert result.returncode == 0, f"returncode={result.returncode}\nstderr={result.stderr}"
+    routing._run_default_mode(scope_out=scope_out, trivial=False, diff_stat_stdin=False)
 
     scope_path = Path(scope_out)
     assert not scope_path.exists(), "abort 时不应写入 .review-scope.json，但文件存在"
 
-    assert "aborted by user" in result.stderr, (
-        f"期望 stderr 含 'aborted by user'，实际 stderr={result.stderr!r}"
+    captured = capsys.readouterr()
+    assert "aborted by user" in captured.err, (
+        f"期望 stderr 含 'aborted by user'，实际={captured.err!r}"
     )
 
 
-# ──────────────────────────────────────────────
-# TC-A4: tty + 非法输入 → returncode 1，stderr 含 'invalid token'
-# ──────────────────────────────────────────────
-def test_tc_a4_invalid_token_returns_rc1(tmp_path):
-    """given_tty_when_garbage_input_then_returncode_1_and_stderr_contains_invalid_token。"""
+# ════════════════════════════════════════════════
+# TC-A4: tty + 非法输入 → sys.exit(1)，stderr 含 'invalid token'
+# ════════════════════════════════════════════════
+
+def test_tc_a4_invalid_token_exits_1(tmp_path, monkeypatch, capsys):
+    """given_tty_when_garbage_input_then_sys_exit_1_and_stderr_contains_invalid_token。"""
     scope_out = str(tmp_path / ".review-scope.json")
+    fake_stdin = _make_fake_stdin("xxgarbage\n")
 
-    result = _run_routing(
-        args=[],
-        stdin_text="xxgarbage\n",
-        fake_tty=True,
-        scope_out=scope_out,
+    monkeypatch.setattr(routing, "_is_tty", lambda: True)
+    monkeypatch.setattr(routing.sys, "stdin", fake_stdin)
+
+    with pytest.raises(SystemExit) as exc_info:
+        routing._run_default_mode(scope_out=scope_out, trivial=False, diff_stat_stdin=False)
+
+    assert exc_info.value.code == 1, (
+        f"期望 sys.exit(1)，实际={exc_info.value.code}"
+    )
+    captured = capsys.readouterr()
+    assert "invalid token" in captured.err, (
+        f"期望 stderr 含 'invalid token'，实际={captured.err!r}"
     )
 
-    assert result.returncode == 1, f"期望 returncode=1，实际={result.returncode}\nstderr={result.stderr}"
-    assert "invalid token" in result.stderr, (
-        f"期望 stderr 含 'invalid token'，实际={result.stderr!r}"
-    )
 
-
-# ──────────────────────────────────────────────
+# ════════════════════════════════════════════════
 # TC-A5: 非 tty stdin，无标志 → returncode 2，stderr 含特定文字
-# ──────────────────────────────────────────────
+# （保留 subprocess——契约是"非 tty 进程的退出码"）
+# ════════════════════════════════════════════════
+
 def test_tc_a5_non_tty_default_returns_rc2(tmp_path):
     """given_non_tty_when_no_flags_then_returncode_2_and_stderr_contains_not_a_tty。"""
     scope_out = str(tmp_path / ".review-scope.json")
 
-    result = _run_routing(
-        args=[],
-        stdin_text="",
-        fake_tty=False,  # 不设 FAKE_TTY，stdin=PIPE 即为非 tty
-        scope_out=scope_out,
+    result = subprocess.run(
+        [sys.executable, str(_SCRIPT), "--scope-out", scope_out],
+        input="",
+        capture_output=True,
+        text=True,
+        # stdin 接 PIPE（subprocess 默认），自动为非 tty
+        cwd=str(_REPO_ROOT),
     )
 
-    assert result.returncode == 2, f"期望 returncode=2，实际={result.returncode}\nstderr={result.stderr}"
+    assert result.returncode == 2, (
+        f"期望 returncode=2，实际={result.returncode}\nstderr={result.stderr}"
+    )
     assert "routing: stdin not a tty" in result.stderr, (
         f"期望 stderr 含 'routing: stdin not a tty'，实际={result.stderr!r}"
     )
 
 
-# ──────────────────────────────────────────────
+# ════════════════════════════════════════════════
 # TC-A6: 非 tty + --all → returncode 2（--all 同样不豁免 tty 校验）
-# ──────────────────────────────────────────────
+# （保留 subprocess——契约是"非 tty 进程的退出码"）
+# ════════════════════════════════════════════════
+
 def test_tc_a6_non_tty_with_all_flag_returns_rc2(tmp_path):
     """given_non_tty_when_all_flag_then_returncode_2_prevents_ai_bypass。"""
     scope_out = str(tmp_path / ".review-scope.json")
 
-    result = _run_routing(
-        args=["--all"],
-        stdin_text="",
-        fake_tty=False,
-        scope_out=scope_out,
+    result = subprocess.run(
+        [sys.executable, str(_SCRIPT), "--scope-out", scope_out, "--all"],
+        input="",
+        capture_output=True,
+        text=True,
+        cwd=str(_REPO_ROOT),
     )
 
-    assert result.returncode == 2, f"期望 returncode=2，实际={result.returncode}\nstderr={result.stderr}"
+    assert result.returncode == 2, (
+        f"期望 returncode=2，实际={result.returncode}\nstderr={result.stderr}"
+    )
     assert "routing: stdin not a tty" in result.stderr, (
         f"期望 stderr 含 'routing: stdin not a tty'，实际={result.stderr!r}"
     )
 
 
-# ──────────────────────────────────────────────
+# ════════════════════════════════════════════════
 # TC-A7: 全空 issues 流水线 → quality-reviewer 出 looks_clean
 # 属于 F-003 范畴，本期跳过，F-003 实施后启用
-# ──────────────────────────────────────────────
+# ════════════════════════════════════════════════
+
 @pytest.mark.skip(reason="TODO F-003: code-quality-reviewer 输出 looks_clean 场景，待 F-003 实施后启用")
 def test_tc_a7_empty_issues_pipeline_produces_looks_clean():
     """given_all_checkers_return_empty_issues_when_pipeline_runs_then_conclusion_is_looks_clean。

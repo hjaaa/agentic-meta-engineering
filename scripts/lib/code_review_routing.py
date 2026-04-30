@@ -13,15 +13,11 @@
   0 — 正常完成（含 abort 用户取消）
   1 — 输入非法（无效 token、email 格式错误）
   2 — 非 tty stdin，拒绝交互确认
-
-测试钩子：
-  CODE_REVIEW_ROUTING_FAKE_TTY=1 — 仅供 pytest 模拟 tty 场景（生产路径禁止使用）
 """
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import subprocess
 import sys
@@ -63,9 +59,7 @@ _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 def _is_tty() -> bool:
-    """检测 stdin 是否为 tty。支持测试钩子 CODE_REVIEW_ROUTING_FAKE_TTY=1。"""
-    if os.environ.get("CODE_REVIEW_ROUTING_FAKE_TTY") == "1":
-        return True
+    """检测 stdin 是否为 tty。非 tty 时拒绝运行（防止 AI 绕过卡点 A）。"""
     return sys.stdin.isatty()
 
 
