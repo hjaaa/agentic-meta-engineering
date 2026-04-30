@@ -30,6 +30,20 @@ import yaml
 
 from common import REPO_ROOT, Report, Severity, paint, rel
 
+# F-004b 实装后 is_signed_off 会从 check_reviews 导入；本期用占位兜底
+# 占位实现：一律视为未签字（F-004b 未合并时的安全默认值）
+try:
+    from check_reviews import is_signed_off  # type: ignore[import]  # F-004b 实装后启用
+except ImportError:
+    def is_signed_off(verdict: dict) -> bool:  # noqa: D401
+        """占位：F-004b 未合并时一律视为未签字。"""
+        return False
+
+# 新三档 conclusion 枚举（v2.0 schema）
+CONCLUSION_NEW: set[str] = {"looks_clean", "needs_attention", "blocked"}
+# human_signoff.decision 通过值集合
+SIGNOFF_DECISION_PASS: set[str] = {"approved", "approved-trivial"}
+
 SCHEMA_PATH = REPO_ROOT / "context" / "team" / "engineering-spec" / "review-schema.yaml"
 REQUIREMENTS_DIR = REPO_ROOT / "requirements"
 
@@ -80,28 +94,37 @@ def _check_format(verdict: dict, schema: dict, report: Report, label: str) -> No
 
 
 def _check_cr_rules(verdict: dict, report: Report, label: str) -> None:
+    """校验 CR-1 ~ CR-8 内部一致性规则。
+
+    签名不变：(verdict, report, label) -> None。
+    通过 report.add 累积错误，禁止抛异常。
+    """
     conclusion = verdict.get("conclusion")
     required_fixes = verdict.get("required_fixes") or []
     score = verdict.get("score")
     dimensions = verdict.get("dimensions") or {}
 
-    # CR-1: approved ⇒ required_fixes == []
-    if conclusion == "approved" and len(required_fixes) > 0:
-        report.add(label, Severity.ERROR, "CR-1", "conclusion=approved 但 required_fixes 非空")
+    # CR-1: 已签字 ⇒ required_fixes == []
+    # is_signed_off 来自 F-004b；未合并时占位实现一律返回 False（跳过本条）
+    if is_signed_off(verdict) and len(required_fixes) > 0:
+        report.add(label, Severity.ERROR, "CR-1", "已签字（is_signed_off=True）但 required_fixes 非空")
 
-    # CR-2: required_fixes 非空 ⇒ conclusion ∈ {needs_revision, rejected}
-    if len(required_fixes) > 0 and conclusion not in ("needs_revision", "rejected"):
-        report.add(label, Severity.ERROR, "CR-2", f"required_fixes 非空但 conclusion={conclusion!r}")
+    # CR-2: required_fixes 非空 ⇒ conclusion ∈ {needs_attention, blocked}
+    if len(required_fixes) > 0 and conclusion not in ("needs_attention", "blocked"):
+        report.add(label, Severity.ERROR, "CR-2", f"required_fixes 非空但 conclusion={conclusion!r}，应为 needs_attention 或 blocked")
 
-    # CR-3: 任一 dim.score < 60 ⇒ conclusion ≠ approved
+    # CR-3: 任一 dim.score < 60 ⇒ conclusion ≠ looks_clean
     for dim_name, dim in dimensions.items():
         dim_score = dim.get("score") if isinstance(dim, dict) else None
-        if isinstance(dim_score, int) and dim_score < 60 and conclusion == "approved":
-            report.add(label, Severity.ERROR, "CR-3", f"维度 {dim_name} score={dim_score} < 60 但 conclusion=approved")
+        if isinstance(dim_score, int) and dim_score < 60 and conclusion == "looks_clean":
+            report.add(label, Severity.ERROR, "CR-3", f"维度 {dim_name} score={dim_score} < 60 但 conclusion=looks_clean")
 
-    # CR-4: score < 70 ⇒ conclusion ≠ approved
-    if isinstance(score, int) and score < 70 and conclusion == "approved":
-        report.add(label, Severity.ERROR, "CR-4", f"score={score} < 70 但 conclusion=approved")
+    # CR-4: score < 70 ⇒ conclusion ≠ looks_clean 且不能已签字
+    if isinstance(score, int) and score < 70:
+        if conclusion == "looks_clean":
+            report.add(label, Severity.ERROR, "CR-4", f"score={score} < 70 但 conclusion=looks_clean")
+        if is_signed_off(verdict):
+            report.add(label, Severity.ERROR, "CR-4", f"score={score} < 70 但已签字（is_signed_off=True），禁止签字通过低分 verdict")
 
     # CR-5: 每个 issue 必须 severity 合法 + description 非空
     for dim_name, dim in dimensions.items():
@@ -117,12 +140,25 @@ def _check_cr_rules(verdict: dict, report: Report, label: str) -> None:
             if not desc or not desc.strip():
                 report.add(label, Severity.ERROR, "CR-5", f"维度 {dim_name} issues[{i}] description 为空")
 
-    # CR-6: 任一 issue.severity=blocker ⇒ conclusion ≠ approved
-    if conclusion == "approved":
-        for dim_name, dim in dimensions.items():
-            for issue in (dim.get("issues") if isinstance(dim, dict) else []) or []:
-                if isinstance(issue, dict) and issue.get("severity") == "blocker":
-                    report.add(label, Severity.ERROR, "CR-6", f"维度 {dim_name} 含 blocker issue 但 conclusion=approved")
+    # CR-6: 任一 issue.severity=blocker ⇒ conclusion 必须 == blocked（正向约束）
+    for dim_name, dim in dimensions.items():
+        for issue in (dim.get("issues") if isinstance(dim, dict) else []) or []:
+            if isinstance(issue, dict) and issue.get("severity") == "blocker":
+                if conclusion != "blocked":
+                    report.add(label, Severity.ERROR, "CR-6",
+                               f"维度 {dim_name} 含 blocker issue，conclusion 必须为 blocked，实际 {conclusion!r}")
+
+    # CR-7（新增）: conclusion 必须命中新枚举——阻断 AI 残留写旧值（如 approved）
+    if verdict.get("conclusion") not in CONCLUSION_NEW:
+        report.add(label, Severity.ERROR, "CR-7",
+                   f"conclusion {verdict.get('conclusion')!r} not in enum {sorted(CONCLUSION_NEW)}")
+
+    # CR-8（新增）: human_signoff.source 若存在必须 ∈ signoff_source 枚举（当前仅 cli-tty）
+    sig = verdict.get("human_signoff") or {}
+    src = sig.get("source")
+    if sig and src != "cli-tty":
+        report.add(label, Severity.ERROR, "CR-8",
+                   f"human_signoff.source {src!r} not in [cli-tty]")
 
 
 def _git_head_short() -> str | None:
