@@ -20,3 +20,15 @@ fail-open 路径不生效。最终需要用户手动 `! sed -i '' '428,434d' scr
 **规矩**：以后改 hook 链上的关键文件（scripts/gates/run.py / scripts/lib/
 check_reviews.py 等），**先加函数定义、再加调用**；或先在 try/except 包住调用，
 等定义到位再去掉 try。
+
+
+## 会话经验（2026-04-30 11:52）
+
+本轮 transcript 仅包含 `/clear` 和 `/exit` 两条本地命令，无实际对话内容。
+
+_本轮无新经验_
+
+
+## 会话经验（2026-04-30 17:29）
+
+_[hook-skipped: claude-exit-143]_

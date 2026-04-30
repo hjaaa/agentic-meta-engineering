@@ -10,16 +10,16 @@ services: [agentic-meta-engineering]   # 涉及的服务仓库
 gates_passed:
   - phase: definition
     at: "2026-04-30 10:04:37"
-    gates: [GATE-META-SCHEMA, GATE-INDEX-INTEGRITY, GATE-SOURCING,
-          GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY,
+    gates: [GATE-META-SCHEMA, GATE-INDEX-INTEGRITY, GATE-SOURCING, 
+          GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY, 
           GATE-PLAN-FRESHNESS]
     warnings:
       - "GATE-PLAN-FRESHNESS W001: plan.md 保留 2 处模板占位符（目标 + 风险 1）（待 definition 阶段补）"
       - "GATE-PLAN-FRESHNESS W003: plan.md 范围段 '不包含' 无子条目（待 definition 阶段补）"
   - phase: tech-research
     at: "2026-04-30 10:52:42"
-    gates: [GATE-META-SCHEMA, GATE-INDEX-INTEGRITY, GATE-SOURCING,
-          GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY,
+    gates: [GATE-META-SCHEMA, GATE-INDEX-INTEGRITY, GATE-SOURCING, 
+          GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY, 
           GATE-PLAN-FRESHNESS]
     warnings: []
 pr_url: ""                             # /requirement:submit 成功后回写
@@ -36,3 +36,14 @@ tags: [code-review, routing, tty-checkpoint, token-saving]
 outcome: ""                    # shipped / abandoned / rolled-back
 completed_at: ""               # ISO8601，completed 时填
 lessons_extracted: false       # /knowledge:extract-experience 是否已跑
+reviews:
+  definition:
+    latest: REV-REQ-2026-003-definition-001
+    conclusion: looks_clean
+    reviewed_commit: c151012
+    artifact_hashes:
+      artifacts/requirement.md: 
+        15648b2724d1a4535b6761acc9d409f75d8ec062b4e1426a4ecf4b0d2d7b6049
+    history:
+      - REV-REQ-2026-003-definition-001
+    stale: false
