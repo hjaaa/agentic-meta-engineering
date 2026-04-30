@@ -24,13 +24,13 @@ gates_passed:
     warnings: []
   - phase: outline-design
     at: "2026-04-30 20:47:26"
-    gates: [GATE-META-SCHEMA, GATE-INDEX-INTEGRITY, GATE-SOURCING,
+    gates: [GATE-META-SCHEMA, GATE-INDEX-INTEGRITY, GATE-SOURCING, 
           GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-PLAN-FRESHNESS]
     warnings: []
     notes: "GATE-TRACEABILITY skipped（仅在 to_phase=testing 时校验）"
   - phase: detail-design
     at: "2026-04-30 21:14:25"
-    gates: [GATE-META-SCHEMA, GATE-INDEX-INTEGRITY, GATE-SOURCING,
+    gates: [GATE-META-SCHEMA, GATE-INDEX-INTEGRITY, GATE-SOURCING, 
           GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-PLAN-FRESHNESS]
     warnings: []
     notes: "GATE-TRACEABILITY skipped（仅在 to_phase=testing 时校验）"
@@ -70,4 +70,19 @@ reviews:
         15648b2724d1a4535b6761acc9d409f75d8ec062b4e1426a4ecf4b0d2d7b6049
     history:
       - REV-REQ-2026-003-outline-design-001
+    stale: false
+  detail-design:
+    latest: REV-REQ-2026-003-detail-design-002
+    conclusion: looks_clean
+    reviewed_commit: '4666949'
+    artifact_hashes:
+      artifacts/detailed-design.md: 
+        e0fe1bb230a28cfe0f009e1ce0eb56ae48e2bc66358add50e9f65735ae9bcc10
+      artifacts/features.json: 
+        ffad16bd8a4abd36ef31fc679d232e4b629fa98a569dfc382bed2e70c9aec23a
+      artifacts/outline-design.md: 
+        b70ccd43ec129b8de44c781b4f43aae95d1a17c3481e1f449df3df64bfd67fba
+    history:
+      - REV-REQ-2026-003-detail-design-001
+      - REV-REQ-2026-003-detail-design-002
     stale: false
