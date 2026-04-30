@@ -150,6 +150,24 @@ class TestValidateSchemaMusTooLong:
 
 
 # ---------------------------------------------------------------------------
+# U5b: _validate_schema — suggest 段不是 list → V3b
+# ---------------------------------------------------------------------------
+
+class TestValidateSchemaSuggestNotList:
+    def test_should_raise_routing_schema_error_with_v3b_when_suggest_not_list(self):
+        raw = {
+            "version": 1,
+            "must": [],
+            "suggest": "not-a-list",
+            "trivial_whitelist": [],
+        }
+        with pytest.raises(RoutingSchemaError) as exc_info:
+            _validate_schema(raw)
+        assert exc_info.value.exit_code == 3
+        assert "V3b" in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
 # U6: _validate_schema — checkers 含 unknown-checker → V5
 # ---------------------------------------------------------------------------
 
