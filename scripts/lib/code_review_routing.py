@@ -1,31 +1,30 @@
-"""code-review-prepare 的卡点 A 路由 CLI。
+"""code-review-routing 核心引擎。
 
-功能：
-  - 扫 diff（或从 stdin 读 --diff-stat-stdin），按关键字规则生成 checker_route 候选
-  - tty 校验：非 tty 环境拒绝运行（退出码 2），防止 AI 自动绕过卡点 A
-  - 交互确认：accept / all / abort / 自定义子集（逗号分隔下标）
-  - 写 .review-scope.json（含 routing_confirmed_by 子段）
+功能（F-001 核心层，无 IO / tty / main）：
+  - 异常体系与退出码常量
+  - 数据模型（frozen dataclass）
+  - yaml 加载与 schema 校验（V1-V7）
+  - pathspec 三段匹配与 RoutingPlan 构造
 
-用法：
-  python3 scripts/lib/code_review_routing.py [--all] [--trivial] [--diff-stat-stdin] [--scope-out PATH]
-
-退出码：
-  0 — 正常完成（含 abort 用户取消）
-  1 — 输入非法（无效 token、email 格式错误）
-  2 — 非 tty stdin，拒绝交互确认
+F-002 负责：main / _parse_args / _check_tty / _prompt_user
+           _write_scope / _audit_log / _resolve_confirmed_by
 """
 from __future__ import annotations
 
-import argparse
-import json
-import re
 import subprocess
-import sys
-from datetime import datetime, timezone
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 
-# 8 个 checker 全集（固定顺序）
-ALL_CHECKERS: list[str] = [
+import pathspec
+import yaml
+
+# ---------------------------------------------------------------------------
+# 模块常量
+# ---------------------------------------------------------------------------
+
+# 8 个 checker 全集（固定顺序，tuple 防止意外修改）
+ALL_CHECKERS: tuple[str, ...] = (
     "complexity-checker",
     "security-checker",
     "concurrency-checker",
@@ -34,326 +33,387 @@ ALL_CHECKERS: list[str] = [
     "design-consistency-checker",
     "history-context-checker",
     "auxiliary-spec-checker",
-]
+)
 
-# 各 checker 的关键字匹配规则（正则，命中则进入候选路由）
-_CHECKER_PATTERNS: dict[str, re.Pattern[str]] = {
-    "security-checker": re.compile(
-        r"password|secret|token|sql|[Dd]ao", re.IGNORECASE
-    ),
-    "concurrency-checker": re.compile(
-        r"sync|mutex|lock|goroutine|async", re.IGNORECASE
-    ),
-    "performance-checker": re.compile(
-        r"N\+1|for\s+\w+\s+query|range\s+loop", re.IGNORECASE
-    ),
+ROUTING_YAML_PATH = Path(".claude/code-review-routing.yaml")
+SCOPE_JSON_PATH = Path(".review-scope.json")
+MAX_INVALID_PROMPTS = 3
+MAX_MUST_RULES = 5
+
+# 退出码（F-002 main() 实际使用，这里定义让 F-002 直接 import）
+EXIT_OK = 0
+EXIT_BAD_ARGS = 1
+EXIT_NON_TTY = 2
+EXIT_SCHEMA_INVALID = 3
+EXIT_YAML_LOAD_ERROR = 4
+EXIT_USER_ABORT = 5
+
+# 用户提示模板（F-002 可直接 import 复用）
+_ERROR_MESSAGES: dict[int, str] = {
+    EXIT_BAD_ARGS: "参数错误或 git diff 执行失败",
+    EXIT_NON_TTY: "stdin 不是 tty，拒绝交互确认（防 AI 绕过卡点 A）",
+    EXIT_SCHEMA_INVALID: "routing.yaml schema 校验失败",
+    EXIT_YAML_LOAD_ERROR: "routing.yaml 加载失败",
+    EXIT_USER_ABORT: "用户取消",
 }
 
-# 默认全跑的 checker（无关键字规则，宁滥勿缺）
-_DEFAULT_RUN_CHECKERS: list[str] = [
-    c for c in ALL_CHECKERS if c not in _CHECKER_PATTERNS
-]
-
-# 合法 email 格式（git config user.email 的简单校验）
-_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+# ---------------------------------------------------------------------------
+# 异常体系
+# ---------------------------------------------------------------------------
 
 
-def _is_tty() -> bool:
-    """检测 stdin 是否为 tty。非 tty 时拒绝运行（防止 AI 绕过卡点 A）。"""
-    return sys.stdin.isatty()
+class RoutingError(Exception):
+    """路由引擎基础异常；exit_code 供 main() 作为进程退出码使用。"""
+
+    def __init__(self, detail: str, exit_code: int = EXIT_BAD_ARGS) -> None:
+        super().__init__(detail)
+        self.detail = detail
+        self.exit_code = exit_code
+
+    def __str__(self) -> str:
+        return self.detail
 
 
-def _get_git_email() -> str:
-    """从 git config 读取 user.email；空值或非法格式 → 退出码 1。"""
+class RoutingYamlError(RoutingError):
+    """yaml 文件缺失 / 编码错误 / 语法错误。exit_code=4。"""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail, exit_code=EXIT_YAML_LOAD_ERROR)
+
+
+class RoutingSchemaError(RoutingError):
+    """yaml schema 校验失败（V1-V7）。exit_code=3。"""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail, exit_code=EXIT_SCHEMA_INVALID)
+
+
+class RoutingTTYError(RoutingError):
+    """非 tty 环境拒绝运行。exit_code=2。"""
+
+    def __init__(self, detail: str = _ERROR_MESSAGES[EXIT_NON_TTY]) -> None:
+        super().__init__(detail, exit_code=EXIT_NON_TTY)
+
+
+class RoutingAbort(RoutingError):
+    """用户主动取消。exit_code=5。"""
+
+    def __init__(self, detail: str = _ERROR_MESSAGES[EXIT_USER_ABORT]) -> None:
+        super().__init__(detail, exit_code=EXIT_USER_ABORT)
+
+
+# ---------------------------------------------------------------------------
+# 数据模型（全部 frozen=True，保证不可变）
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class _RuleEntry:
+    """routing.yaml 中单条规则（pattern + checkers）。"""
+
+    pattern: str
+    checkers: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class RoutingConfig:
+    """从 routing.yaml 解析并校验后的配置对象。"""
+
+    version: int
+    must: tuple[_RuleEntry, ...]
+    suggest: tuple[_RuleEntry, ...]
+    trivial_whitelist: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class MatchResult:
+    """单个文件的路由匹配结果。"""
+
+    path: str
+    matched_must: list[str] = field(default_factory=list)
+    matched_suggest: list[str] = field(default_factory=list)
+    matched_trivial: bool = False
+
+
+@dataclass(frozen=True)
+class RoutingPlan:
+    """所有文件的聚合路由计划。"""
+
+    must_checkers: set[str]
+    suggest_checkers: set[str]
+    trivial_only: bool
+    files_total: int
+    files_trivial: int
+    # checker → 命中该 checker 的文件路径列表
+    files_must_hit: dict[str, list[str]]
+    files_suggest_hit: dict[str, list[str]]
+
+
+@dataclass(frozen=True)
+class RoutingDecision:
+    """人类卡点 A 确认结果（F-002 构造，F-001 仅定义类型）。"""
+
+    decision: Literal["accept", "all", "custom", "abort", "trivial-skipped"]
+    confirmed_at: str
+    confirmed_by: str
+    tty_verified: bool
+    final_route: list[str]
+
+
+# ---------------------------------------------------------------------------
+# 无 IO 纯计算函数
+# ---------------------------------------------------------------------------
+
+
+def _load_yaml(path: Path) -> dict:
+    """从磁盘加载 routing.yaml，返回原始 dict。
+
+    文件缺失 / 编码错误 / yaml 语法错 → RoutingYamlError(4)。
+    语法错时 detail 含 "file:line detail" 格式定位信息。
+    """
     try:
-        email = subprocess.check_output(
-            ["git", "config", "user.email"], text=True
-        ).strip()
-    except subprocess.CalledProcessError:
-        email = ""
+        with path.open("r", encoding="utf-8") as fh:
+            raw = yaml.safe_load(fh)
+    except FileNotFoundError:
+        raise RoutingYamlError(f"routing.yaml 不存在: {path}")
+    except UnicodeDecodeError as exc:
+        raise RoutingYamlError(f"routing.yaml 编码错误: {exc}")
+    except yaml.YAMLError as exc:
+        # 尽量带行号，方便定位
+        if hasattr(exc, "problem_mark") and exc.problem_mark is not None:
+            line = exc.problem_mark.line
+            raise RoutingYamlError(
+                f"{path}:{line} yaml 语法错误: {exc.problem}"
+            )
+        raise RoutingYamlError(f"routing.yaml yaml 语法错误: {exc}")
 
-    # 空值或主机名（无 @ 符号）视为无效
-    if not email or "@" not in email:
-        print(f"routing: invalid email {email!r}", file=sys.stderr)
-        sys.exit(1)
-
-    if not _EMAIL_RE.match(email):
-        print(f"routing: invalid email {email!r}", file=sys.stderr)
-        sys.exit(1)
-
-    return email
+    if raw is None:
+        # 空文件 safe_load 返回 None，视为 schema 缺字段（由 _validate_schema 报 V1）
+        return {}
+    return raw
 
 
-def _get_diff_text(diff_stat_stdin: bool) -> str:
-    """获取 diff 文本：--diff-stat-stdin 从 stdin 读，否则运行 git diff。"""
-    if diff_stat_stdin:
-        return sys.stdin.read()
-    try:
-        return subprocess.check_output(
-            ["git", "diff", "--stat", "main...HEAD"], text=True
+def _validate_schema(raw: dict) -> RoutingConfig:
+    """校验 routing.yaml 原始 dict，返回 RoutingConfig。
+
+    任意校验项（V1-V7）失败 → RoutingSchemaError(3)，detail 含违反编号。
+    """
+    # V1：顶层必含 version / must / suggest / trivial_whitelist
+    required_keys = {"version", "must", "suggest", "trivial_whitelist"}
+    missing = required_keys - set(raw.keys())
+    if missing:
+        raise RoutingSchemaError(f"V1: 缺少必填字段 {sorted(missing)}")
+
+    # V2：version == 1
+    if raw["version"] != 1:
+        raise RoutingSchemaError(f"V2: version 必须为 1，实际为 {raw['version']!r}")
+
+    # V3：must 条数 ≤ MAX_MUST_RULES
+    must_raw = raw["must"]
+    if not isinstance(must_raw, list):
+        raise RoutingSchemaError("V3: must 必须是列表")
+    if len(must_raw) > MAX_MUST_RULES:
+        raise RoutingSchemaError(
+            f"V3: must 规则数 {len(must_raw)} 超过上限 {MAX_MUST_RULES}"
         )
-    except subprocess.CalledProcessError:
-        # diff 失败时返回空字符串，不阻塞流程
-        return ""
 
+    suggest_raw = raw["suggest"]
+    if not isinstance(suggest_raw, list):
+        raise RoutingSchemaError("V4: suggest 必须是列表")
 
-def _build_checker_route(diff_text: str) -> tuple[list[str], list[dict[str, str]]]:
-    """根据 diff 文本生成候选 checker_route 和 skipped_checkers。
+    # V4：must/suggest 每项 pattern(str, 非空) + checkers(list[str])
+    must_entries = _parse_rule_list(must_raw, "must")
+    suggest_entries = _parse_rule_list(suggest_raw, "suggest")
 
-    规则：
-    - 有关键字规则的 checker：命中则进候选，未命中进 skipped（注明原因）
-    - 无关键字规则的 checker：默认全跑（宁滥勿缺，遵循 R2 漏跑风险规避）
+    # V6：trivial_whitelist 每项是非空 str
+    trivial_raw = raw["trivial_whitelist"]
+    if not isinstance(trivial_raw, list):
+        raise RoutingSchemaError("V6: trivial_whitelist 必须是列表")
+    trivial_list: list[str] = []
+    for idx, item in enumerate(trivial_raw):
+        if not isinstance(item, str) or not item.strip():
+            raise RoutingSchemaError(
+                f"V6: trivial_whitelist[{idx}] 必须是非空字符串，实际为 {item!r}"
+            )
+        trivial_list.append(item)
 
-    返回：(checker_route, skipped_checkers)
-    """
-    route: list[str] = list(_DEFAULT_RUN_CHECKERS)  # 默认全跑的先加进来
-    skipped: list[dict[str, str]] = []
-
-    for checker, pattern in _CHECKER_PATTERNS.items():
-        # 提取 checker 类别名（去掉 -checker 后缀）用于日志
-        category = checker.replace("-checker", "")
-        if pattern.search(diff_text):
-            route.append(checker)
-        else:
-            skipped.append({
-                "name": checker,
-                "reason": f"diff 未命中 {category} 关键字",
-            })
-
-    # 按 ALL_CHECKERS 顺序对 route 排序，保持稳定输出
-    order_map = {c: i for i, c in enumerate(ALL_CHECKERS)}
-    route.sort(key=lambda c: order_map.get(c, 999))
-
-    return route, skipped
-
-
-def _print_route_prompt(
-    route: list[str], skipped: list[dict[str, str]]
-) -> None:
-    """在 tty 上输出候选 checker 列表 + skipped 原因，供用户确认。"""
-    print("\n===== 卡点 A：路由建议 =====", flush=True)
-    print("候选 checker（AI 建议执行）：", flush=True)
-    for i, name in enumerate(route):
-        print(f"  [{i}] {name}", flush=True)
-
-    if skipped:
-        print("\n跳过的 checker（diff 未命中关键字）：", flush=True)
-        for item in skipped:
-            print(f"  - {item['name']}: {item['reason']}", flush=True)
-
-    print(
-        "\n请选择操作：",
-        flush=True,
+    # V7：所有 pattern + trivial_whitelist 可被 pathspec 解析
+    all_patterns = (
+        [e.pattern for e in must_entries]
+        + [e.pattern for e in suggest_entries]
+        + trivial_list
     )
-    print(
-        "  accept          — 接受 AI 建议的候选列表",
-        flush=True,
-    )
-    print(
-        "  all             — 运行全部 8 个 checker",
-        flush=True,
-    )
-    print(
-        "  abort           — 取消本次审查",
-        flush=True,
-    )
-    print(
-        "  1,3,5           — 自定义子集（逗号分隔下标）",
-        flush=True,
-    )
-    print("请输入：", end="", flush=True)
-
-
-def _parse_user_input(
-    raw: str, route: list[str]
-) -> tuple[list[str], str]:
-    """解析用户输入，返回 (final_route, decision)。
-
-    非法 token → 直接 sys.exit(1) 并输出 stderr。
-    abort → 返回 ([], 'abort')，由调用方处理。
-    """
-    token = raw.strip().lower()
-
-    if token == "accept":
-        return route, "accept"
-
-    if token == "all":
-        return list(ALL_CHECKERS), "all"
-
-    if token == "abort":
-        return [], "abort"
-
-    # 尝试解析逗号分隔下标
-    parts = token.split(",")
-    indices: list[int] = []
-    for p in parts:
-        p = p.strip()
-        if not p.isdigit():
-            print(f"routing: invalid token {raw!r}", file=sys.stderr)
-            sys.exit(1)
-        idx = int(p)
-        if idx < 0 or idx >= len(route):
-            print(f"routing: invalid token {raw!r}", file=sys.stderr)
-            sys.exit(1)
-        indices.append(idx)
-
-    if not indices:
-        print(f"routing: invalid token {raw!r}", file=sys.stderr)
-        sys.exit(1)
-
-    custom_route = [route[i] for i in indices]
-    return custom_route, "custom"
-
-
-def _build_scope_patch(
-    final_route: list[str],
-    skipped: list[dict[str, str]],
-    mode_hint: str,
-    decision: str,
-    email: str,
-) -> dict:
-    """构造 scope.json 中新增的 4 个字段。"""
-    return {
-        "checker_route": final_route,
-        "skipped_checkers": skipped,
-        "mode_hint": mode_hint,
-        "routing_confirmed_by": {
-            "decision": decision,
-            "confirmed_at": datetime.now(timezone.utc).isoformat(),
-            "confirmed_by": email,
-            "tty_verified": True,
-        },
-    }
-
-
-def _load_existing_scope(scope_out: str) -> dict:
-    """读取已有 scope.json（若存在），否则返回空 dict。"""
-    path = Path(scope_out)
-    if path.exists():
+    for pat in all_patterns:
         try:
-            with path.open("r", encoding="utf-8") as f:
-                return json.load(f)
-        except (json.JSONDecodeError, OSError):
-            return {}
-    return {}
+            pathspec.PathSpec.from_lines("gitignore", [pat])
+        except Exception as exc:
+            raise RoutingSchemaError(f"V7: pattern {pat!r} 无法被 pathspec 解析: {exc}")
+
+    return RoutingConfig(
+        version=raw["version"],
+        must=tuple(must_entries),
+        suggest=tuple(suggest_entries),
+        trivial_whitelist=tuple(trivial_list),
+    )
 
 
-def _write_scope(scope_out: str, data: dict) -> None:
-    """将 scope dict 序列化写入文件。"""
-    path = Path(scope_out)
-    with path.open("w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
-    print(f"routing: .review-scope.json 已写入 {scope_out}", flush=True)
+def _parse_rule_list(rules: list, section: str) -> list[_RuleEntry]:
+    """解析 must 或 suggest 规则列表，违反 V4/V5 → RoutingSchemaError。"""
+    entries: list[_RuleEntry] = []
+    for idx, item in enumerate(rules):
+        if not isinstance(item, dict):
+            raise RoutingSchemaError(
+                f"V4: {section}[{idx}] 必须是 dict，实际为 {type(item).__name__}"
+            )
+        if "pattern" not in item or "checkers" not in item:
+            raise RoutingSchemaError(
+                f"V4: {section}[{idx}] 缺少 pattern 或 checkers 字段"
+            )
+        pattern = item["pattern"]
+        checkers = item["checkers"]
+        if not isinstance(pattern, str) or not pattern.strip():
+            raise RoutingSchemaError(
+                f"V4: {section}[{idx}].pattern 必须是非空字符串，实际为 {pattern!r}"
+            )
+        if not isinstance(checkers, list):
+            raise RoutingSchemaError(
+                f"V4: {section}[{idx}].checkers 必须是列表"
+            )
+        # V5：checkers 元素 ∈ ALL_CHECKERS
+        for c in checkers:
+            if not isinstance(c, str):
+                raise RoutingSchemaError(
+                    f"V5: {section}[{idx}].checkers 元素必须是字符串，实际为 {c!r}"
+                )
+            if c not in ALL_CHECKERS:
+                raise RoutingSchemaError(
+                    f"V5: {section}[{idx}].checkers 含未知 checker {c!r}"
+                )
+        entries.append(_RuleEntry(pattern=pattern, checkers=tuple(checkers)))
+    return entries
 
 
-def _run_all_mode(scope_out: str, trivial: bool) -> None:
-    """--all 模式：跳过路由建议，但仍要求 tty（防 AI 绕过卡点 A）。"""
-    # tty 校验（--all 也不豁免）
-    if not _is_tty():
-        print(
-            "routing: stdin not a tty, refuse interactive confirmation",
-            file=sys.stderr,
+def _enumerate_diff_files(base_sha: str, head_sha: str) -> list[str]:
+    """通过 git diff --name-only 枚举两个 commit 之间变更的文件列表。
+
+    git 执行失败 → RoutingError(EXIT_BAD_ARGS)。
+    """
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--name-only", f"{base_sha}..{head_sha}"],
+            capture_output=True,
+            text=True,
+            check=True,
         )
-        sys.exit(2)
-
-    email = _get_git_email()
-    mode_hint = "trivial" if trivial else "all"
-    scope = _load_existing_scope(scope_out)
-    patch = _build_scope_patch(
-        final_route=list(ALL_CHECKERS),
-        skipped=[],
-        mode_hint=mode_hint,
-        decision="all",
-        email=email,
-    )
-    scope.update(patch)
-    _write_scope(scope_out, scope)
-
-
-def _run_default_mode(
-    scope_out: str, trivial: bool, diff_stat_stdin: bool
-) -> None:
-    """默认模式（含 --trivial）：扫 diff → tty 确认 → 写盘。"""
-    # tty 校验
-    if not _is_tty():
-        print(
-            "routing: stdin not a tty, refuse interactive confirmation",
-            file=sys.stderr,
+    except subprocess.CalledProcessError as exc:
+        # exc.stderr 在某些场景（如 mock）可能为 None，需防御
+        stderr_msg = (exc.stderr or "").strip()
+        raise RoutingError(
+            f"git diff 执行失败（{base_sha}..{head_sha}）: {stderr_msg}",
+            exit_code=EXIT_BAD_ARGS,
         )
-        sys.exit(2)
-
-    email = _get_git_email()
-
-    # 扫 diff 生成候选
-    diff_text = _get_diff_text(diff_stat_stdin)
-    route, skipped = _build_checker_route(diff_text)
-
-    # 输出候选给用户确认
-    _print_route_prompt(route, skipped)
-
-    # 读取用户输入
-    raw = sys.stdin.readline()
-    final_route, decision = _parse_user_input(raw, route)
-
-    if decision == "abort":
-        print("routing: aborted by user", file=sys.stderr)
-        # 不写盘，直接正常退出
-        return
-
-    # mode_hint：--trivial 时写 trivial，否则按 decision
-    if trivial:
-        mode_hint = "trivial"
-    elif decision == "all":
-        mode_hint = "all"
-    else:
-        mode_hint = "default"
-
-    scope = _load_existing_scope(scope_out)
-    patch = _build_scope_patch(
-        final_route=final_route,
-        skipped=skipped,
-        mode_hint=mode_hint,
-        decision=decision,
-        email=email,
-    )
-    scope.update(patch)
-    _write_scope(scope_out, scope)
+    lines = [line for line in result.stdout.splitlines() if line.strip()]
+    return lines
 
 
-def main(argv: list[str] | None = None) -> None:
-    """CLI 入口。"""
-    parser = argparse.ArgumentParser(
-        description="code-review-prepare 卡点 A：路由建议 + tty 确认 + scope.json 写盘"
-    )
-    parser.add_argument(
-        "--all",
-        dest="run_all",
-        action="store_true",
-        help="跳过路由建议，直接用 8 全集（仍要求 tty）",
-    )
-    parser.add_argument(
-        "--trivial",
-        action="store_true",
-        help="透传 mode_hint=trivial，不豁免卡点 A",
-    )
-    parser.add_argument(
-        "--diff-stat-stdin",
-        action="store_true",
-        help="从 stdin 读 diff 文本（而非运行 git diff）",
-    )
-    parser.add_argument(
-        "--scope-out",
-        default=".review-scope.json",
-        help="scope.json 输出路径（默认：.review-scope.json）",
+def _build_plan(files: list[str], config: RoutingConfig) -> RoutingPlan:
+    """对文件列表执行三段 pathspec 匹配，构造 RoutingPlan。
+
+    三段匹配优先级：
+      1. must   — 命中 → 并入 must_checkers
+      2. suggest — 无论 must 是否命中，独立匹配并入 suggest_checkers
+      3. trivial — 仅当 must + suggest 都未命中时计入 files_trivial
+
+    出口前强制校验 INV-PLAN-1..4（assert），违反说明实现有 bug。
+    """
+    # 预编译 pathspec（避免对每个文件重复编译）
+    must_specs = [
+        (
+            pathspec.PathSpec.from_lines("gitignore", [rule.pattern]),
+            rule.checkers,
+        )
+        for rule in config.must
+    ]
+    suggest_specs = [
+        (
+            pathspec.PathSpec.from_lines("gitignore", [rule.pattern]),
+            rule.checkers,
+        )
+        for rule in config.suggest
+    ]
+    trivial_spec = pathspec.PathSpec.from_lines(
+        "gitignore", list(config.trivial_whitelist)
     )
 
-    args = parser.parse_args(argv)
+    must_checkers: set[str] = set()
+    suggest_checkers: set[str] = set()
+    files_must_hit: dict[str, list[str]] = {}
+    files_suggest_hit: dict[str, list[str]] = {}
+    files_trivial = 0
+    files_total = len(files)
 
-    if args.run_all:
-        _run_all_mode(args.scope_out, args.trivial)
-    else:
-        _run_default_mode(args.scope_out, args.trivial, args.diff_stat_stdin)
+    for path in files:
+        hit_must = False
+        hit_suggest = False
 
+        # 第一段：must 匹配
+        for spec, checkers in must_specs:
+            if spec.match_file(path):
+                hit_must = True
+                for c in checkers:
+                    must_checkers.add(c)
+                    files_must_hit.setdefault(c, []).append(path)
 
-if __name__ == "__main__":
-    main()
+        # 第二段：suggest 匹配（独立，不受 must 影响）
+        for spec, checkers in suggest_specs:
+            if spec.match_file(path):
+                hit_suggest = True
+                for c in checkers:
+                    suggest_checkers.add(c)
+                    files_suggest_hit.setdefault(c, []).append(path)
+
+        # 第三段：trivial —— 仅当 must 和 suggest 都未命中时才计入
+        if not hit_must and not hit_suggest:
+            if trivial_spec.match_file(path):
+                files_trivial += 1
+            # 三段都未命中 → 灰色文件，不入任何统计
+
+    trivial_only = (
+        len(must_checkers) == 0
+        and len(suggest_checkers) == 0
+        and files_trivial == files_total
+        and files_total > 0
+    )
+
+    # INV-PLAN-1: files_must_hit 的 key 集合必须等于 must_checkers
+    assert set(files_must_hit.keys()) == must_checkers, (
+        f"INV-PLAN-1 violated: files_must_hit.keys()={set(files_must_hit.keys())} "
+        f"!= must_checkers={must_checkers}"
+    )
+    # INV-PLAN-2: files_suggest_hit 的 key 集合必须等于 suggest_checkers
+    assert set(files_suggest_hit.keys()) == suggest_checkers, (
+        f"INV-PLAN-2 violated: files_suggest_hit.keys()={set(files_suggest_hit.keys())} "
+        f"!= suggest_checkers={suggest_checkers}"
+    )
+    # INV-PLAN-3: must_checkers ∪ suggest_checkers ⊆ ALL_CHECKERS
+    assert must_checkers <= set(ALL_CHECKERS) and suggest_checkers <= set(ALL_CHECKERS), (
+        f"INV-PLAN-3 violated: checkers 超出 ALL_CHECKERS 范围"
+    )
+    # INV-PLAN-4: trivial_only=True ⇒ must/suggest 全空 ∧ files_trivial == files_total > 0
+    if trivial_only:
+        assert (
+            len(must_checkers) == 0
+            and len(suggest_checkers) == 0
+            and files_trivial == files_total
+            and files_total > 0
+        ), "INV-PLAN-4 violated"
+
+    return RoutingPlan(
+        must_checkers=must_checkers,
+        suggest_checkers=suggest_checkers,
+        trivial_only=trivial_only,
+        files_total=files_total,
+        files_trivial=files_trivial,
+        files_must_hit=files_must_hit,
+        files_suggest_hit=files_suggest_hit,
+    )
