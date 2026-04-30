@@ -163,15 +163,19 @@ def _r002_schema_recheck(meta: dict, target_phase: str, report: Report, label: s
 
 
 def _r004_needs_revision(meta: dict, target_phase: str, report: Report, label: str) -> None:
-    """R004: latest.conclusion = needs_revision → 默认 WARNING，--strict 升 ERROR"""
+    """R004: latest.conclusion = needs_attention → 默认 WARNING，--strict 升 ERROR
+
+    F-001/F-003 schema 升级后，旧 conclusion 值 needs_revision 已替换为
+    needs_attention（AI 三档机器评估）。R004 同步级联到新枚举值。
+    """
     reviews = meta.get("reviews") or {}
     for phase in PHASE_REQUIREMENTS.get(target_phase, []):
         if phase == "code":
             continue
         entry = reviews.get(phase) or {}
-        if entry.get("conclusion") == "needs_revision":
+        if entry.get("conclusion") == "needs_attention":
             report.add(label, Severity.WARNING, "R004",
-                       f"reviews.{phase}.conclusion=needs_revision，建议先修后切阶段")
+                       f"reviews.{phase}.conclusion=needs_attention，建议先修后切阶段")
 
 
 def _r005_hash_drift(

@@ -6,16 +6,19 @@
   (b) 新调用 'python3 save_review.py save --req X --phase Y --reviewer Z' 走 save
   (c) signoff 子命令：写 human_signoff + CR-1~CR-8 全跑 + process.txt append
   (d) _resolve_verdict_path 单测：REV-ID 反推路径
+  (e) D-003 深防御第三层：非 tty stdin 直调 signoff 子命令 → 退出码 2
 
 实现说明：
   - (a)(b) 用 monkeypatch mock _run_save/_run_signoff 验证路由
-  - (c) 函数级单测，直接调 _run_signoff(args)，不需要 subprocess
-  - 不引入任何 env var 旁路
+  - (c) 函数级单测，直接调 _run_signoff(args)，monkeypatch sys.stdin 为 tty
+  - (e) subprocess 跑 save_review.py signoff，stdin=PIPE 非 tty → 退出码 2
+  - 不引入任何 env var 旁路（FAKE_TTY 等已被 D-003 红线封禁）
 """
 from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from pathlib import Path
 from unittest import mock
@@ -29,6 +32,17 @@ if str(_SCRIPTS_LIB) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_LIB))
 
 import save_review as sr  # noqa: E402
+
+
+class _FakeTTY:
+    """模拟 tty 的最小 stdin stub：isatty() 返回 True。
+
+    用于函数级单测时绕过 D-003 深防御第三层的 tty 校验，
+    使单测聚焦于签字业务逻辑而非 tty 机制本身。
+    """
+
+    def isatty(self) -> bool:
+        return True
 
 
 # ════════════════════════════════════════════════════════
@@ -164,6 +178,8 @@ def test_signoff_subcommand_writes_human_signoff_and_appends_process_txt(tmp_pat
 
     # mock REQUIREMENTS_DIR 指向 tmp_path
     monkeypatch.setattr(sr, "REQUIREMENTS_DIR", tmp_path / "requirements")
+    # D-003 第三层 tty 校验：函数级单测模拟 tty，使测试聚焦签字业务逻辑
+    monkeypatch.setattr(sys, "stdin", _FakeTTY())
 
     # 构造 args（模拟 argparse 解析的结果）
     args = argparse.Namespace(
@@ -213,6 +229,8 @@ def test_signoff_subcommand_rejects_already_signed(tmp_path, monkeypatch):
     verdict_path.write_text(json.dumps(verdict), encoding="utf-8")
 
     monkeypatch.setattr(sr, "REQUIREMENTS_DIR", tmp_path / "requirements")
+    # D-003 第三层 tty 校验：函数级单测模拟 tty
+    monkeypatch.setattr(sys, "stdin", _FakeTTY())
 
     args = argparse.Namespace(
         rev_id="REV-REQ-2099-001-definition-001",
@@ -228,6 +246,8 @@ def test_signoff_subcommand_rejects_already_signed(tmp_path, monkeypatch):
 
 def test_signoff_subcommand_rejects_nonexistent_rev_id(monkeypatch):
     """given_nonexistent_rev_id_when_signoff_then_returncode_4。"""
+    # D-003 第三层 tty 校验：函数级单测模拟 tty，聚焦"verdict 不存在"业务逻辑
+    monkeypatch.setattr(sys, "stdin", _FakeTTY())
     args = argparse.Namespace(
         rev_id="REV-REQ-9999-001-definition-999",
         decision="approved",
@@ -258,6 +278,8 @@ def test_signoff_subcommand_rejects_verdict_with_cr_violation(tmp_path, monkeypa
     verdict_path.write_text(json.dumps(verdict), encoding="utf-8")
 
     monkeypatch.setattr(sr, "REQUIREMENTS_DIR", tmp_path / "requirements")
+    # D-003 第三层 tty 校验：函数级单测模拟 tty，使测试聚焦 CR 校验业务逻辑
+    monkeypatch.setattr(sys, "stdin", _FakeTTY())
 
     args = argparse.Namespace(
         rev_id="REV-REQ-2099-001-definition-001",
@@ -270,3 +292,24 @@ def test_signoff_subcommand_rejects_verdict_with_cr_violation(tmp_path, monkeypa
     rc = sr._run_signoff(args)
     # score=50 + conclusion=looks_clean 触发 CR-4，签字被拒
     assert rc == 1, f"期望 returncode=1（CR 校验失败），实际={rc}"
+
+
+def test_signoff_subcommand_non_tty_stdin_returns_rc2():
+    """given_non_tty_stdin_when_signoff_then_returncode_2_e2e。
+
+    D-003 深防御第三层端到端验证：subprocess 直调 save_review.py signoff，
+    stdin=PIPE 即非 tty，期望退出 2 + stderr 含 'stdin not a tty'。
+    防 AI 绕过 Command + Skill 两层 tty 校验直接调本入口完成代签。
+    """
+    cmd = [
+        sys.executable,
+        str(_SCRIPTS_LIB / "save_review.py"),
+        "signoff",
+        "--rev-id", "REV-REQ-2099-001-definition-001",
+        "--decision", "approved",
+        "--signed-by", "test@test.com",
+        "--signed-at", "2026-04-30T03:00:00+08:00",
+    ]
+    proc = subprocess.run(cmd, input="", capture_output=True, text=True)
+    assert proc.returncode == 2, f"期望 returncode=2，实际={proc.returncode}\nstderr={proc.stderr}"
+    assert "stdin not a tty" in proc.stderr, f"stderr 缺关键串：{proc.stderr}"

@@ -392,6 +392,7 @@ def _run_signoff(args: argparse.Namespace) -> int:
     """signoff 子命令：把 human_signoff 字段写入已有 verdict 文件。
 
     流程：
+      0. D-003 深防御第三层：校验 stdin 必须为 tty（防 AI 绕过 Command + Skill 直调本入口）
       1. 从 REV-ID 定位 verdict 文件
       2. 读 verdict JSON
       3. 写 human_signoff 字段
@@ -399,6 +400,13 @@ def _run_signoff(args: argparse.Namespace) -> int:
       5. 通过 → 写盘 + append process.txt
       6. 失败 → 退出码 1 + stderr CR 详情
     """
+    # D-003 深防御第三层：save_review.py signoff 本身也校验 tty，
+    # 防 AI 绕过 Command + Skill 两层直接调本入口完成代签。
+    # 绝不引入任何 env var 旁路（FAKE_TTY 等已被红线封禁）。
+    if not sys.stdin.isatty():
+        print("signoff: stdin not a tty, refuse to sign for AI", file=sys.stderr)
+        return 2
+
     rev_id = args.rev_id
     verdict_path = _resolve_verdict_path(rev_id)
     if verdict_path is None:
