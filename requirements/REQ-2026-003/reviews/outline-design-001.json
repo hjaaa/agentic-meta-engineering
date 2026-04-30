@@ -75,5 +75,11 @@
   "supersedes": null,
   "architectural_concerns": [
     "§5.1 的设计依赖 '主 Agent 在 commands/code-review.md Step 2 后立即判 scope.skipped' 这一行为契约——但目前主 Agent 是 LLM，其行为最终由 commands/code-review.md 提示词约束（非代码强制）。短期可控，但若未来 critic/judge/report 改为独立 Skill 自助调用，'skipped 短路只在主 Agent 一处判' 的隐式约定可能成为脆弱点。detail-design 阶段建议补一行 'skipped 短路是否需要在 critic/judge/report 入口加防御性检查' 的明确决策"
-  ]
+  ],
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-04-30T21:14:04.434551+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
+  }
 }
