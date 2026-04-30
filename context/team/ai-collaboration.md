@@ -35,6 +35,16 @@ Agent 写入 `requirements/<id>/artifacts/*.md` 的每条关键信息必须属�
 
 禁止一次性输出完整长文档。
 
+### 规则三：sign-off 是人类专属动作
+
+Agent 在主对话或子 Agent 中，**禁止**调用以下命令或 CLI：
+- `/code-review:signoff <REV-ID>`
+- `bash scripts/save-review.sh signoff ...`
+- `python3 scripts/lib/save_review.py signoff ...`
+
+调用前的 tty 校验（`[ -t 0 ]`）会拒绝 AI shell，但 AI 不得通过假 tty / pipe trick / heredoc 等方式绕过。
+违反视为流程违规——人类发现即回滚 verdict 字段并在需求 notes.md 记录。
+
 ## 人的最小行动路径（5 步）
 
 1. **说出场景** — "我要开发一个新需求" / "继续之前的需求" / "帮我审查一下这段代码"
