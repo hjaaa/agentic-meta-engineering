@@ -37,8 +37,6 @@ argument-hint: "[scope]（可选，默认 git diff main..HEAD）"
 - `performance-checker`
 - `history-context-checker`
 
-**零 finding 快速路径**：若 8 个 checker 全部返回空 issues，直接跳到第 4 步输出 `approved` 报告，不调 critic / 不调综合 reviewer。
-
 ### 3. 对抗验证 + 综合裁决
 
 **3a. 调用 `review-critic`**
@@ -56,7 +54,7 @@ critic 输出每条 finding 的 verdict（`rejected / not_proven / not_rebutted`
 ### 4. 报告：`code-review-report` Skill
 
 - 合并 issue（按 critic verdict 处置：rejected → drop；not_proven → 降级 + 标注；not_rebutted → 保留）
-- 应用综合裁决结论（approved / needs_revision / rejected）
+- 应用综合裁决结论（looks_clean / needs_attention / blocked）
 - 生成"裁决明细"段（F-id / checker / severity / critic verdict / 最终处置）
 - 写入文件：
   - 嵌入：`requirements/<id>/artifacts/review-YYYYMMDD-HHMMSS.md`
