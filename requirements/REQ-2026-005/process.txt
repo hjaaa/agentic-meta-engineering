@@ -16,3 +16,5 @@
 2026-05-01 21:51:19 [signoff] REV-REQ-2026-005-code-F-001-001 approved by hj19961223@gmail.com
 2026-05-01 21:52:26 [save] F-001 完成（looks_clean 92, signed approved by hj19961223@gmail.com；commits f453b67/8a3cdc8/12354ca）
 2026-05-01 21:53:41 [save] F-005 派发 subagent（model=sonnet，FG-005 traceability/pr_state/CI lint/meta.legacy）
+2026-05-01 22:27:18 [review:needs_attention] code-quality-reviewer 出 needs_attention 78（F-005 / 2 major + 9 minor；F-9 ruff select / F-10 ls-remote fallback 设计偏离；required_fixes=[]）
+2026-05-01 22:33:37 [save] F-005 round-2 派发：F-10 实施 ls-remote fallback + F-9 ADR 写入 plan.md D-008（保持 detail-design 阶段 hash 不变）
