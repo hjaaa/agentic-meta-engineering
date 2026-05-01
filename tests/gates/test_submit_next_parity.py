@@ -21,7 +21,12 @@ import run as runner
 
 
 def _make_min_req(tmp_path: Path, req_id: str = "REQ-2099-001") -> Path:
-    """构造最小可加载的 REQ 目录，满足 build_context 读 meta.yaml 不抛错。"""
+    """构造最小可加载的 REQ 目录，满足 build_context 读 meta.yaml 不抛错。
+
+    F-003：filter_gates 升级后 GATE-PR-MERGED-STATE 的 applies_when.requires
+    含 'meta.pr_number'；为满足"submit 计划包含该 gate"断言，meta 写入占位
+    pr_number=999999（dry-run 不会真调 gh）。
+    """
     repo_root = Path(runner._REPO_ROOT)
     # 临时把 REQ 目录建到 repo_root/requirements 下；注意：
     # _validate_requirement_id 只放行 REQ-YYYY-NNN，所以这里用 REQ-2099-001
@@ -35,6 +40,8 @@ def _make_min_req(tmp_path: Path, req_id: str = "REQ-2099-001") -> Path:
                 "title": "submit/next parity test",
                 "phase": "development",
                 "branch": f"feat/{req_id.lower()}",
+                # F-003：让 GATE-PR-MERGED-STATE.applies_when.requires=[meta.pr_number] 命中
+                "pr_number": 999999,
             },
             allow_unicode=True,
         ),

@@ -33,6 +33,7 @@ from graphlib import TopologicalSorter
 from pathlib import Path
 from typing import Any, Optional
 
+import pathspec
 import yaml
 
 # 把 plugins 包加入 import 路径
@@ -278,24 +279,171 @@ def build_context(args: argparse.Namespace) -> GateContext:
 # ====================== 过滤 + 拓扑 ======================
 
 
-def filter_gates(registry_data: dict[str, Any], ctx: GateContext) -> list[dict[str, Any]]:
-    """根据 ctx.trigger 过滤 gate（applies_when 内更精细的条件留给 F-002 实现）。
+def filter_gates(
+    registry_data: dict[str, Any],
+    ctx: GateContext,
+    *,
+    ignore_changed_files: bool = False,
+) -> list[dict[str, Any]]:
+    """按 trigger + applies_when 全部 5 字段过滤 gate（F-003 升级）。
 
-    adapter 模式：用 ctx.cli_flags['legacy'] 指定旧入口名（如 check-meta），
-    通过 LEGACY_TO_PLUGIN 映射到 plugin 名后只保留对应 gate。
+    新增字段消费（每个字段满足"任一不命中即过滤掉"的 AND 语义；空值 = 不限制）：
+      - applies_when.changed_files: list[str]   gitignore-style，pathspec 库匹配
+      - applies_when.target_phase:  str | null  与 ctx.to_phase 比对
+      - applies_when.current_phase_in: list[str] 与 ctx.meta.phase 比对
+      - applies_when.transition:    str ("from->to") 与 ctx.from_phase->ctx.to_phase 比对
+      - applies_when.requires:      list[str]    每项为 'meta.<field>'，要求该字段非空
+
+    legacy grandfather：ctx.meta.get("legacy") is True 时，跳过 tags 含
+      "legacy-bypass" 的 gate（如 GATE-TRACEABILITY 历史 REQ 没追溯链）。
+      该判定优先于 5 字段过滤；命中跳过即不进 candidates。
+
+    adapter 模式：ctx.cli_flags['legacy'] 指定旧入口名（如 check-meta），
+      通过 LEGACY_TO_PLUGIN 映射到 plugin 名后只保留对应 gate；不走 5 字段过滤
+      （旧入口快照行为契约）。
+
+    参数：
+      registry_data        — load_registry 返回值（dict，含 gates list）
+      ctx                  — 当前执行上下文
+      ignore_changed_files — 测试场景跳过 changed_files 过滤；默认 False
     """
     out: list[dict[str, Any]] = []
-    legacy = ctx.cli_flags.get("legacy")
-    legacy_plugin = LEGACY_TO_PLUGIN.get(legacy) if legacy else None
+    legacy_adapter = ctx.cli_flags.get("legacy")
+    legacy_plugin = LEGACY_TO_PLUGIN.get(legacy_adapter) if legacy_adapter else None
+    is_legacy_meta = ctx.meta.get("legacy") is True
+
     for entry in registry_data.get("gates", []):
-        if legacy:
+        # adapter 模式：仅保留命中 plugin 的 gate，不消费 applies_when（保旧契约）
+        if legacy_adapter:
             if entry["plugin"] == legacy_plugin:
                 out.append(entry)
             continue
-        # 普通模式：trigger 命中即纳入候选
-        if ctx.trigger in (entry.get("triggers") or []):
-            out.append(entry)
+
+        # 普通模式：trigger 命中是前置硬条件
+        if ctx.trigger not in (entry.get("triggers") or []):
+            continue
+
+        # legacy grandfather：meta.legacy=true 跳过 legacy-bypass tag 的 gate
+        if is_legacy_meta and "legacy-bypass" in (entry.get("tags") or []):
+            continue
+
+        # 5 字段 applies_when 过滤：任一字段不命中 → 该 gate 被剔除
+        if not _matches_applies_when(entry, ctx, ignore_changed_files=ignore_changed_files):
+            continue
+
+        out.append(entry)
     return out
+
+
+def _matches_applies_when(
+    entry: dict[str, Any],
+    ctx: GateContext,
+    *,
+    ignore_changed_files: bool,
+) -> bool:
+    """对单条 gate entry 跑 applies_when 5 字段命中判定（AND 逻辑）。
+
+    任一字段为 None / 空列表 / 缺失 → 视为"不限制"，pass-through 不参与判定。
+    所有非空字段必须全部命中，gate 才进 candidates。
+
+    切分原因：filter_gates 主体保持 ≤ 60 行；本 helper 单独可单测。
+    """
+    aw = entry.get("applies_when") or {}
+
+    # changed_files：pathspec 任一命中（仅 pre-commit trigger 起作用）
+    # 设计依据：ci / phase-transition / submit / post-dev / pre-tool-use 不通过 staged
+    # 文件列表过滤；changed_files 只在 pre-commit 路径短路那些与改动无关的 gate（保
+    # 与 4 plugin 旧 precheck"if ctx.trigger == 'pre-commit'"一致的语义）。
+    if (
+        ctx.trigger == "pre-commit"
+        and not ignore_changed_files
+        and not _match_changed_files(aw.get("changed_files"), ctx.changed_files)
+    ):
+        return False
+    # target_phase：与 ctx.to_phase 严格相等
+    if not _match_target_phase(aw.get("target_phase"), ctx.to_phase):
+        return False
+    # current_phase_in：ctx.meta.phase 必须在列表中
+    if not _match_current_phase_in(aw.get("current_phase_in"), ctx.meta.get("phase")):
+        return False
+    # transition：'from->to' 字面匹配 ctx.from_phase / ctx.to_phase
+    if not _match_transition(aw.get("transition"), ctx.from_phase, ctx.to_phase):
+        return False
+    # requires：每项 'meta.<field>' 必须在 ctx.meta 中存在且非空
+    if not _match_requires(aw.get("requires"), ctx.meta):
+        return False
+
+    return True
+
+
+def _match_changed_files(patterns: Optional[list[str]], changed_files: list[str]) -> bool:
+    """changed_files 字段命中：patterns 为空（None/[]）→ 不限制；否则 pathspec 任一命中即可。
+
+    用 pathspec.GitIgnoreSpec 解析 gitignore-style 模式（与 .gitignore 语义一致）；
+    解析失败抛 ValueError，调用方（filter_gates）让其冒泡——registry 配错应早爆而非静默。
+    """
+    if not patterns:
+        return True
+    if not changed_files:
+        # 模式非空但本次无 changed_files：视为不命中（pre-commit hook 必须有改动才跑此类 gate）
+        return False
+    try:
+        spec = pathspec.GitIgnoreSpec.from_lines(patterns)
+    except (ValueError, TypeError) as exc:
+        # 配置错误：明确报错，不静默放行
+        raise RuntimeError(
+            f"applies_when.changed_files 模式解析失败: {patterns!r}: {exc}"
+        ) from exc
+    # match_files 返回命中迭代器；用 any 短路
+    return any(True for _ in spec.match_files(changed_files))
+
+
+def _match_target_phase(target_phase: Optional[str], to_phase: Optional[str]) -> bool:
+    """target_phase 字段命中：None → 不限制；非空必须 == ctx.to_phase。"""
+    if target_phase is None:
+        return True
+    return target_phase == to_phase
+
+
+def _match_current_phase_in(allowed: Optional[list[str]], current: Optional[str]) -> bool:
+    """current_phase_in 字段命中：空列表/None → 不限制；非空必须包含 ctx.meta.phase。"""
+    if not allowed:
+        return True
+    return current in allowed
+
+
+def _match_transition(transition: Optional[str], from_phase: Optional[str], to_phase: Optional[str]) -> bool:
+    """transition 字段命中：None → 不限制；'X->Y' 必须等于 from->to 字面拼接。"""
+    if transition is None:
+        return True
+    if not from_phase or not to_phase:
+        # 配置要求 transition 但 ctx 没给 from/to → 不命中
+        return False
+    return transition == f"{from_phase}->{to_phase}"
+
+
+def _match_requires(requires: Optional[list[str]], meta: dict[str, Any]) -> bool:
+    """requires 字段命中：空列表/None → 不限制；每项 'meta.<field>' 必须在 meta 中非空。
+
+    支持 dot key（如 'meta.pr_number' / 'meta.foo.bar'）；S9 已强制要求 'meta.' 前缀。
+    """
+    if not requires:
+        return True
+    for key in requires:
+        if not isinstance(key, str) or not key.startswith("meta."):
+            # S9 应已拦下；保险兜底视作不命中
+            return False
+        # 'meta.foo.bar' → 取 ('foo', 'bar') 在 meta 中逐层查找
+        path = key[len("meta."):].split(".")
+        cursor: Any = meta
+        for seg in path:
+            if not isinstance(cursor, dict) or seg not in cursor:
+                return False
+            cursor = cursor[seg]
+        # 非空判定：None / "" / [] / {} / 0 都视为不存在；本字段语义是"必须有值"
+        if not cursor:
+            return False
+    return True
 
 
 # 旧入口名 → plugin 名的映射（adapter 模式用；snapshot 行为契约用）
