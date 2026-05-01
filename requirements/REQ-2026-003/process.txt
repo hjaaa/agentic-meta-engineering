@@ -23,3 +23,6 @@
 2026-05-01 09:34:15 [development] F-001 → done（looks_clean 90 / 0 major / 1 minor follow-up；review-002 supersedes 001）
 2026-05-01 09:35:10 [development] F-002 开始（派 subagent: sonnet / general-purpose；F-001 done）
 2026-05-01 10:02:00 [development] F-002 派修复 subagent（review blocked：4 critical 契约 bug + 3 major + 6 minor）
+2026-05-01 10:19:31 [signoff] REV-REQ-2026-003-code-F-002-002 approved by hj19961223@gmail.com
+2026-05-01 10:20:12 [development] F-002 → done（needs_attention 78 / 0 critical / 2 keep major / I-2/I-3 留 F-003 收口）
+2026-05-01 10:20:12 [development] F-003 开始（派 subagent: haiku / general-purpose；low complexity）
