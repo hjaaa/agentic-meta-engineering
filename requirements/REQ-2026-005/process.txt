@@ -21,3 +21,4 @@
 2026-05-01 22:49:22 [review:looks_clean] code-quality-reviewer 出 looks_clean 90（F-005 round-2 / supersedes 001 / 一审 F-9 F-10 双 major 闭合 / 仅 2 minor 不阻塞）
 2026-05-01 22:51:09 [signoff] REV-REQ-2026-005-code-F-005-002 approved by hj19961223@gmail.com
 2026-05-01 22:51:36 [save] F-005 完成（looks_clean 90 round-2 signed approved；commits 5089fe1/062186b round-2 + d6f1694/3c4886e/c226a3f/92c8cb8/0ddb3ff round-1）
+2026-05-01 22:52:33 [save] F-003 派发 subagent（model=opus，FG-003 filter_gates 升级 + phase 相邻表 + 4 plugin precheck 双轨清理）
