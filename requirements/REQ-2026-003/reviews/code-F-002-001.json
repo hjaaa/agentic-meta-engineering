@@ -1,0 +1,166 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-003-code-F-002-001",
+  "requirement_id": "REQ-2026-003",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-01 09:56:55",
+  "reviewed_commit": "922db63",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "ffad16bd8a4abd36ef31fc679d232e4b629fa98a569dfc382bed2e70c9aec23a"
+    },
+    {
+      "path": "artifacts/tasks/F-002.md",
+      "sha256": "bd5ee79bcba7864d0a13adfe5429ed2abe188774733915ad14d8b38214f3abc4"
+    }
+  ],
+  "conclusion": "blocked",
+  "score": 58,
+  "dimensions": {
+    "design_consistency": {
+      "score": 55,
+      "issues": [
+        {
+          "severity": "blocker",
+          "description": "scripts/lib/code_review_routing.py:792,806 skipped_checkers 字段名 'checker' 应为 'name'，与详设 §3.1 / scope-schema.md L88 不一致"
+        },
+        {
+          "severity": "blocker",
+          "description": "scripts/lib/code_review_routing.py:801,803,805 reason 字串不在 §3.3 三选一模板内（'suggest 命中但用户未选' / 'routing 规则未命中（灰色）...' / '用户手动去除'），违反详设明示约束"
+        },
+        {
+          "severity": "blocker",
+          "description": "scripts/lib/code_review_routing.py:865-866 routing_decision.files_must_hit/suggest_hit 写 dict，详设 §3.1 schema 定为 int，下游消费方解析会失败"
+        },
+        {
+          "severity": "major",
+          "description": "scripts/lib/code_review_routing.py:813-816 I1 assert 表达式 is_trivial_skipped == (is_trivial_skipped and ...) 数学恒真，反向蕴含丢失"
+        },
+        {
+          "severity": "major",
+          "description": "scripts/lib/code_review_routing.py:592 _resolve_confirmed_by 仅 '@' in email 校验，详设 I6 要求完整正则 ^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+        }
+      ]
+    },
+    "security": {
+      "score": 88,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 90,
+      "issues": []
+    },
+    "complexity": {
+      "score": 60,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/code_review_routing.py:1-1073 routing.py 1073 行（base 540 → +539），超 500 行阈值 2.1x，建议拆 IO 子模块（已转 follow-up）"
+        },
+        {
+          "severity": "major",
+          "description": "scripts/lib/code_review_routing.py: _prompt_user 85 行 cc 21"
+        },
+        {
+          "severity": "major",
+          "description": "scripts/lib/code_review_routing.py: _write_scope 86 行 cc 20 嵌套 5（I1-I8 assert 内联是主因）"
+        },
+        {
+          "severity": "major",
+          "description": "scripts/lib/code_review_routing.py: main 77 行嵌套 5（含 decision==custom 分支 + RoutingError catch 链）"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 60,
+      "issues": [
+        {
+          "severity": "blocker",
+          "description": "scripts/lib/code_review_routing.py:1005 RoutingAbort 退码 5 嵌套 format：用户 q 后实际 stdout 输出嵌套字符串 '[routing] 本次审查已取消（[routing] 本次审查已取消（用户主动取消 (q)）。）。'"
+        },
+        {
+          "severity": "major",
+          "description": "scripts/lib/code_review_routing.py:813-836 I1-I8 用 assert，触发 AssertionError 不在 RoutingError 体系，main 第 1002 行 except 不到，堆栈穿透 stderr 违反全局规范'对外接口禁暴露堆栈'"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/code_review_routing.py: _git_diff_stats except Exception 静默吞没（返 0,0），违反'不吞异常'"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 75,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/code_review_routing.py: _now_shanghai_display docstring 缺'为什么'说明"
+        },
+        {
+          "severity": "minor",
+          "description": "tests/lib/test_code_review_routing.py: T1-T5 命名不符 should_xxx_when_yyy 全局规范"
+        },
+        {
+          "severity": "minor",
+          "description": "tests/lib/test_code_review_routing.py: _setup_test_repo docstring 返回值描述错"
+        }
+      ]
+    },
+    "performance": {
+      "score": 82,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/code_review_routing.py: _git_diff_stats 两次 subprocess（--shortstat + --numstat），可改一次 numstat 自算（已转 follow-up）"
+        }
+      ]
+    },
+    "history_context": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/code_review_routing.py:1029-1073 __all__ 私有暴露从 review-001 的 10 个扩到 17 个，扩大违反 PEP 8（review-001 F-12 已 downgrade）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/code_review_routing.py: _now_shanghai/_now_shanghai_display 不在 __all__ 但同类私有却暴露，一致性破坏"
+        }
+      ]
+    }
+  },
+  "required_fixes": [
+    {
+      "description": "skipped_checkers 字段名 'checker' 改 'name'，对齐详设 §3.1 / scope-schema.md L88",
+      "location": "scripts/lib/code_review_routing.py:792,806",
+      "severity": "blocker"
+    },
+    {
+      "description": "skipped_checkers.reason 三个字串改用详设 §3.3 三选一模板（路径未命中 must/suggest 任何规则 / 用户在 custom 子集中未选择 / diff 全在 trivial 白名单内（skipped=true 全 8 个））",
+      "location": "scripts/lib/code_review_routing.py:801,803,805",
+      "severity": "blocker"
+    },
+    {
+      "description": "RoutingAbort 退码 5 输出去掉二次 format，改为 print(str(e))，避免嵌套字符串",
+      "location": "scripts/lib/code_review_routing.py:1005",
+      "severity": "blocker"
+    },
+    {
+      "description": "routing_decision.files_must_hit/suggest_hit 写出改 int（命中文件数），对齐详设 §3.1 schema",
+      "location": "scripts/lib/code_review_routing.py:865-866",
+      "severity": "blocker"
+    }
+  ],
+  "suggestions": [
+    "复杂度 + 错误处理同根：H-2/H-3/H-4（85/86/77 行嵌套 5）+ H-11（assert 不在异常体系）源于 IO 层与不变量校验内联在 _write_scope。拆 _assert_scope_invariants 独立函数 + 改 raise RoutingSchemaError，一次重构覆盖 4 条 finding",
+    "契约漂移成簇：H-5（字段名）+ H-6（reason 模板）+ H-8（int vs dict）全在 routing_decision/skipped_checkers 输出 schema 上漂移，同一段写 scope dict 的代码 line 786-870 集中改",
+    "assert 是双刃剑：H-9（恒真 bug）+ H-11（异常穿透）都因 assert 误用。建议把 I1-I8 全部转 RoutingSchemaError，顺手修 H-9/H-11 两条",
+    "Follow-up：拆 routing.py 1073 行到 io.py/prompt.py/validators.py，纳入下一 feature 范围",
+    "Follow-up：_git_diff_stats 改一次 --numstat 自算 shortstat，省一次 subprocess"
+  ],
+  "scope": {
+    "feature_id": "F-002"
+  },
+  "supersedes": null
+}
