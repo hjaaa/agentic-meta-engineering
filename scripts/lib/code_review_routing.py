@@ -6,13 +6,21 @@
   - yaml 加载与 schema 校验（V1-V7）
   - pathspec 三段匹配与 RoutingPlan 构造
 
-F-002 负责：main / _parse_args / _check_tty / _prompt_user
-           _write_scope / _audit_log / _resolve_confirmed_by
+F-002 IO 层（本文件追加）：
+  main / _parse_args / _check_tty / _prompt_user
+  _write_scope / _audit_log / _resolve_confirmed_by
 """
 from __future__ import annotations
 
+import argparse
+import json
+import os
+import re
 import subprocess
+import sys
+import tempfile
 from dataclasses import dataclass, field
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Literal
 
@@ -499,6 +507,522 @@ def _build_plan(files: list[str], config: RoutingConfig) -> RoutingPlan:
 
 
 # ---------------------------------------------------------------------------
+# F-002 IO 层：参数解析 / tty 校验 / 用户确认 / 写盘 / 审计
+# ---------------------------------------------------------------------------
+
+
+def _parse_args(argv: list[str] | None) -> argparse.Namespace:
+    """解析 CLI 参数并做白名单校验。
+
+    严格校验 sha 格式（7-40 位 hex）和 requirement-id 格式（REQ-YYYY-NNN），
+    是为了在入口层尽早拒绝明显错误的调用，而不是让 git diff 或 audit 写了一条垃圾记录。
+    """
+    parser = argparse.ArgumentParser(
+        prog="code-review-routing",
+        description="代码审查路由器：tty 卡点 A，产出 .review-scope.json",
+    )
+    parser.add_argument("--mode", required=True, help="embedded | standalone")
+    parser.add_argument("--requirement-id", required=True, dest="requirement_id")
+    parser.add_argument("--base-sha", required=True, dest="base_sha")
+    parser.add_argument("--head-sha", required=True, dest="head_sha")
+    parser.add_argument("--base-branch", required=True, dest="base_branch")
+    parser.add_argument("--current-branch", required=True, dest="current_branch")
+    parser.add_argument("--feature-id", required=False, dest="feature_id", default="")
+    parser.add_argument(
+        "--services",
+        required=False,
+        default="agentic-meta-engineering",
+        help="逗号分隔的 service 列表",
+    )
+
+    ns = parser.parse_args(argv)
+
+    # 白名单：mode 必须是枚举值
+    if ns.mode not in ("embedded", "standalone"):
+        raise RoutingError(
+            f"--mode 必须是 embedded 或 standalone，实际为 {ns.mode!r}",
+            exit_code=EXIT_BAD_ARGS,
+        )
+
+    # 白名单：sha 格式（7-40 位十六进制）
+    sha_pattern = re.compile(r"^[0-9a-f]{7,40}$")
+    for flag, sha in (("--base-sha", ns.base_sha), ("--head-sha", ns.head_sha)):
+        if not sha_pattern.fullmatch(sha):
+            raise RoutingError(
+                f"{flag} sha 格式非法（期望 7-40 位十六进制），实际为 {sha!r}",
+                exit_code=EXIT_BAD_ARGS,
+            )
+
+    # 白名单：requirement-id 格式（REQ-YYYY-NNN）
+    if not re.fullmatch(r"^REQ-\d{4}-\d{3}$", ns.requirement_id):
+        raise RoutingError(
+            f"--requirement-id 格式非法（期望 REQ-YYYY-NNN），实际为 {ns.requirement_id!r}",
+            exit_code=EXIT_BAD_ARGS,
+        )
+
+    return ns
+
+
+def _check_tty() -> None:
+    """确认当前进程的 stdin 是真实 tty，否则拒绝运行。
+
+    tty 校验是核心安全门禁：防止 AI 管道、heredoc、CI 自动化绕过人工卡点 A。
+    严禁通过任何 env var（FAKE_TTY 等）旁路——旁路会使 F-002 整体价值归零。
+    """
+    if not sys.stdin.isatty():
+        raise RoutingTTYError()
+
+
+def _resolve_confirmed_by() -> str:
+    """读取 git config user.email 作为确认人身份标识。
+
+    用 email 而非 name，因为 email 更具唯一性，便于后续 audit 追溯到具体责任人。
+    """
+    try:
+        result = subprocess.run(
+            ["git", "config", "user.email"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        email = result.stdout.strip()
+    except subprocess.CalledProcessError:
+        email = ""
+
+    if not email or "@" not in email:
+        raise RoutingError(
+            f"git config user.email 未设置或格式非法（实际为 {email!r}）。"
+            "请先执行：git config user.email 'your@email.com'",
+            exit_code=EXIT_BAD_ARGS,
+        )
+    return email
+
+
+def _parse_custom_input(
+    line: str,
+    plan: RoutingPlan,
+    recommended_indexed: list[str],
+) -> set[str]:
+    """解析用户输入的自定义子集（逗号分隔 1-based 索引）。
+
+    独立抽出是为了让 U11/U12 单测可以直接覆盖容错逻辑，
+    避免把 stdin 交互混入单测范围。
+
+    返回：用户选择的 checker 名称集合（已强制包含 must_checkers），
+    若输入无法解析为任何合法索引则返回空集（调用方据此计 invalid_count）。
+    """
+    parts = [p.strip() for p in line.split(",") if p.strip()]
+    if not parts:
+        return set()
+
+    selected: set[str] = set()
+    n = len(recommended_indexed)
+    for part in parts:
+        # 只接受纯数字
+        if not part.isdigit():
+            return set()
+        idx = int(part) - 1  # 1-based → 0-based
+        if idx < 0 or idx >= n:
+            return set()
+        selected.add(recommended_indexed[idx])
+
+    # must 强制保留：即便用户未选，也要自动加回
+    selected.update(plan.must_checkers)
+    return selected
+
+
+def _prompt_user(plan: RoutingPlan, req_id: str = "") -> RoutingDecision:
+    """在 tty 展示路由计划，等待用户输入 4 档热键，返回 RoutingDecision。
+
+    4 档热键：
+      ""（直接回车）→ accept：接受推荐集（must ∪ suggest），按 ALL_CHECKERS 顺序
+      "a" / "A"   → all：升全集 8 路
+      "q" / "Q"   → audit 写 "用户主动取消 (q)" 后 raise RoutingAbort
+      "1,3,5" 等  → custom：自定义子集，must 强制保留
+
+    连续 3 次无效输入同样 audit 写 "连续 3 次无效输入" 后 raise RoutingAbort。
+    req_id 用于写 audit；为空则跳过 audit（单测无仓库场景）。
+    """
+    # 推荐集 = sorted(must ∪ suggest)，按 ALL_CHECKERS 顺序
+    recommended: list[str] = [
+        c for c in ALL_CHECKERS
+        if c in plan.must_checkers or c in plan.suggest_checkers
+    ]
+
+    # 灰色文件数 = total - trivial - 命中 must/suggest 的唯一文件数
+    files_grey = max(
+        0,
+        plan.files_total - plan.files_trivial
+        - len({f for paths in plan.files_must_hit.values() for f in paths})
+        - len({f for paths in plan.files_suggest_hit.values() for f in paths}),
+    )
+
+    separator = "─" * 60
+    print(separator)
+    print("代码审查路由器·卡点 A")
+    print(
+        f"diff 共 {plan.files_total} 个文件"
+        f"（trivial {plan.files_trivial}"
+        f" / must {len(plan.must_checkers)}"
+        f" / suggest {len(plan.suggest_checkers)}"
+        f" / 灰色 {files_grey}）"
+    )
+    print("推荐 checker 集（标 [must] 不可去掉）：")
+    for i, checker in enumerate(recommended, 1):
+        tag = "[must]" if checker in plan.must_checkers else "[sug] "
+        print(f"  {i}. {tag} {checker}")
+    print(separator)
+    print("回车=接受推荐  a=升全集 8 路  q=取消  数字逗号(如 1,3)=自定义子集")
+
+    invalid_count = 0
+    while True:
+        try:
+            raw = input("> ").strip()
+        except EOFError:
+            # stdin 被关闭，视为 abort
+            raise RoutingAbort("[routing] stdin 关闭，视为 abort")
+
+        if raw == "":
+            # 直接回车 → accept
+            return RoutingDecision(
+                decision="accept",
+                confirmed_at=_now_shanghai(),
+                confirmed_by="",  # main() 层补充 confirmed_by
+                tty_verified=True,
+                final_route=recommended[:],
+            )
+
+        if raw.lower() == "a":
+            # 升全集
+            return RoutingDecision(
+                decision="all",
+                confirmed_at=_now_shanghai(),
+                confirmed_by="",
+                tty_verified=True,
+                final_route=list(ALL_CHECKERS),
+            )
+
+        if raw.lower() == "q":
+            # 用户主动取消：先 audit 再 raise
+            if req_id:
+                _audit_log(req_id, "[code-review-aborted] 用户主动取消 (q)")
+            raise RoutingAbort(
+                _ERROR_MESSAGES[EXIT_USER_ABORT].format(cause="用户主动取消 (q)")
+            )
+
+        # 尝试解析为数字子集
+        selected = _parse_custom_input(raw, plan, recommended)
+        if selected:
+            # 按 ALL_CHECKERS 顺序排列
+            final_route = [c for c in ALL_CHECKERS if c in selected]
+            invalid_count = 0
+            return RoutingDecision(
+                decision="custom",
+                confirmed_at=_now_shanghai(),
+                confirmed_by="",
+                tty_verified=True,
+                final_route=final_route,
+            )
+
+        # 无效输入
+        invalid_count += 1
+        remaining = MAX_INVALID_PROMPTS - invalid_count
+        if invalid_count >= MAX_INVALID_PROMPTS:
+            # 连续 3 次无效：先 audit 再 raise
+            if req_id:
+                _audit_log(req_id, "[code-review-aborted] 连续 3 次无效输入")
+            raise RoutingAbort(
+                _ERROR_MESSAGES[EXIT_USER_ABORT].format(cause="连续 3 次无效输入")
+            )
+        print(
+            f"[invalid] 不识别的输入。提示：直接回车=接受 / a=全集 / q=取消 / "
+            f"数字逗号(如 1,3)=自定义子集（剩余 {remaining} 次机会）"
+        )
+
+
+def _now_shanghai() -> str:
+    """返回当前 Asia/Shanghai 时间的 ISO8601 字符串（含 +08:00）。
+
+    统一时区来源，避免不同机器时区配置导致 audit 时间不一致。
+    """
+    tz_shanghai = timezone(timedelta(hours=8))
+    return datetime.now(tz=tz_shanghai).isoformat(timespec="seconds")
+
+
+def _now_shanghai_display() -> str:
+    """返回 YYYY-MM-DD HH:MM:SS 格式（写入 scope.json routing_decision.confirmed_at）。"""
+    tz_shanghai = timezone(timedelta(hours=8))
+    return datetime.now(tz=tz_shanghai).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _audit_log(req_id: str, line: str) -> None:
+    """追加一条 audit 记录到 requirements/<req_id>/process.txt。
+
+    用 append 模式保证日志不会因原子写操作而截断历史，
+    每条记录前缀 ISO8601 时间戳，方便按时间排序和 grep。
+    """
+    log_path = Path("requirements") / req_id / "process.txt"
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        timestamp = _now_shanghai()
+        with log_path.open("a", encoding="utf-8") as fh:
+            fh.write(f"{timestamp} {line}\n")
+    except OSError as exc:
+        # audit 写失败不应阻断主流程，但需要记录到 stderr 让用户知晓
+        print(f"[routing] audit_log 写入失败（{exc}），继续执行", file=sys.stderr)
+
+
+def _write_scope(
+    plan: RoutingPlan,
+    decision: RoutingDecision,
+    args: argparse.Namespace,
+) -> None:
+    """原子写 .review-scope.json。
+
+    使用 tempfile + os.replace 保证写盘原子性：
+    不会出现外部进程读到半写状态的 JSON。
+    写盘前校验 I1-I8 不变量，违反视为实现 bug（raise AssertionError）。
+    """
+    # ---- 构造 skipped_checkers ----
+    all_checkers_set = set(ALL_CHECKERS)
+    route_set = set(decision.final_route)
+
+    if decision.decision == "trivial-skipped":
+        skipped_checkers = [
+            {"checker": c, "reason": "diff 全在 trivial 白名单内（skipped=true 全 8 个）"}
+            for c in ALL_CHECKERS
+        ]
+    else:
+        # accept / all / custom：未在 final_route 中的 checker 被 skipped
+        skipped_checkers = []
+        for c in ALL_CHECKERS:
+            if c not in route_set:
+                if c in plan.suggest_checkers:
+                    reason = "suggest 命中但用户未选"
+                elif c not in plan.must_checkers and c not in plan.suggest_checkers:
+                    reason = "routing 规则未命中（灰色），未纳入审查路由"
+                else:
+                    reason = "用户手动去除"
+                skipped_checkers.append({"checker": c, "reason": reason})
+
+    # ---- I1-I8 不变量校验 ----
+    is_trivial_skipped = decision.decision == "trivial-skipped"
+    is_all = decision.decision == "all"
+    is_custom = decision.decision == "custom"
+
+    # I1: trivial-skipped ⇔ skipped=true ∧ checker_route=[] ∧ len(skipped_checkers)==8
+    assert is_trivial_skipped == (
+        is_trivial_skipped and decision.final_route == [] and len(skipped_checkers) == 8
+    ), "I1 violated"
+
+    # I2: decision="all" ⇔ skipped=false ∧ checker_route == list(ALL_CHECKERS)
+    if is_all:
+        assert decision.final_route == list(ALL_CHECKERS), "I2 violated"
+
+    # I3: decision="custom" → set(must_checkers) ⊆ checker_route
+    if is_custom:
+        assert plan.must_checkers.issubset(set(decision.final_route)), "I3 violated"
+
+    # I5: tty_verified is True
+    assert decision.tty_verified is True, "I5 violated"
+
+    # I7: skipped=true ⇔ checker_route==[] ∧ len(skipped_checkers)==8
+    if is_trivial_skipped:
+        assert decision.final_route == [] and len(skipped_checkers) == 8, "I7 violated"
+
+    # I8: len(checker_route) + len(skipped_checkers) == 8
+    assert len(decision.final_route) + len(skipped_checkers) == 8, (
+        f"I8 violated: {len(decision.final_route)} + {len(skipped_checkers)} != 8"
+    )
+
+    # ---- 构造 stats / diff_summary（调用 git diff --shortstat / --numstat）----
+    stats, diff_summary = _git_diff_stats(args.base_sha, args.head_sha)
+
+    # ---- 构造 services 列表 ----
+    services = [s.strip() for s in args.services.split(",") if s.strip()]
+
+    # ---- 构造完整 scope dict ----
+    scope = {
+        "mode": args.mode,
+        "requirement_id": args.requirement_id,
+        "feature_id": args.feature_id or "",
+        "base_sha": args.base_sha,
+        "head_sha": args.head_sha,
+        "base_branch": args.base_branch,
+        "current_branch": args.current_branch,
+        "services": services,
+        "stats": stats,
+        "diff_summary": diff_summary,
+        "timestamp": _now_shanghai(),
+        "skipped": is_trivial_skipped,
+        "checker_route": decision.final_route,
+        "skipped_checkers": skipped_checkers,
+        "routing_decision": {
+            "decision": decision.decision,
+            "confirmed_at": decision.confirmed_at,
+            "confirmed_by": decision.confirmed_by,
+            "tty_verified": decision.tty_verified,
+            "files_must_hit": plan.files_must_hit,
+            "files_suggest_hit": plan.files_suggest_hit,
+            "files_trivial": plan.files_trivial,
+            "files_total": plan.files_total,
+        },
+    }
+
+    # ---- 原子写 ----
+    scope_path = SCOPE_JSON_PATH
+    tmp_fd, tmp_path = tempfile.mkstemp(
+        dir=scope_path.parent if scope_path.parent != Path(".") else Path("."),
+        suffix=".tmp",
+        prefix=".review-scope-",
+    )
+    try:
+        with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
+            json.dump(scope, fh, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, scope_path)
+    except Exception:
+        # 清理残留 tmp 文件，再重新抛出
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+def _git_diff_stats(base_sha: str, head_sha: str) -> tuple[dict, str]:
+    """获取 git diff shortstat 和 numstat，解析为结构化数据。
+
+    失败时返回空结构，不阻断主流程（stats 仅用于展示，非关键路径）。
+    """
+    stats: dict = {"insertions": 0, "deletions": 0, "files_changed": 0}
+    diff_summary = ""
+
+    try:
+        # --shortstat：例如 "3 files changed, 50 insertions(+), 10 deletions(-)"
+        shortstat = subprocess.run(
+            ["git", "diff", "--shortstat", f"{base_sha}..{head_sha}"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+
+        m_files = re.search(r"(\d+) file", shortstat)
+        m_ins = re.search(r"(\d+) insertion", shortstat)
+        m_del = re.search(r"(\d+) deletion", shortstat)
+        if m_files:
+            stats["files_changed"] = int(m_files.group(1))
+        if m_ins:
+            stats["insertions"] = int(m_ins.group(1))
+        if m_del:
+            stats["deletions"] = int(m_del.group(1))
+
+        # --numstat：每行 "ins\tdel\tfile"
+        numstat_out = subprocess.run(
+            ["git", "diff", "--numstat", f"{base_sha}..{head_sha}"],
+            capture_output=True, text=True, check=True,
+        ).stdout
+        lines = []
+        for row in numstat_out.splitlines():
+            parts = row.split("\t", 2)
+            if len(parts) == 3:
+                ins, dl, fname = parts
+                lines.append(f"{fname} (+{ins} -{dl})")
+        diff_summary = "\n".join(lines)
+    except Exception:
+        pass  # 降级：保持空结构
+
+    return stats, diff_summary
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI 主入口：routing 8 步流程。
+
+    不直接调用 sys.exit；返回整数退出码，由调用方决定是否 exit。
+    顶层 try/except RoutingError 统一处理所有退码分支。
+    """
+    try:
+        # 步骤 1：解析参数
+        args = _parse_args(argv)
+
+        # 步骤 2：tty 校验
+        _check_tty()
+
+        # 步骤 3：加载 yaml
+        raw = _load_yaml(ROUTING_YAML_PATH)
+
+        # 步骤 4：schema 校验
+        config = _validate_schema(raw)
+
+        # 步骤 5：枚举 diff 文件
+        files = _enumerate_diff_files(args.base_sha, args.head_sha)
+
+        # 步骤 6：构造路由计划
+        plan = _build_plan(files, config)
+
+        # 步骤 7：分支处理
+        confirmed_by = _resolve_confirmed_by()
+
+        if plan.trivial_only:
+            # 全 trivial，自动跳过
+            decision = RoutingDecision(
+                decision="trivial-skipped",
+                confirmed_at=_now_shanghai_display(),
+                confirmed_by=confirmed_by,
+                tty_verified=True,
+                final_route=[],
+            )
+            _write_scope(plan, decision, args)
+            _audit_log(
+                args.requirement_id,
+                f"[code-review-skipped] {plan.files_total} 文件全在 trivial 白名单内（routing-auto）",
+            )
+        else:
+            # 需要人工确认；abort 路径由 _prompt_user 内部 raise RoutingAbort
+            decision_raw = _prompt_user(plan, req_id=args.requirement_id)
+
+            # 补充 confirmed_by（_prompt_user 不做 git 调用，避免在交互过程中阻塞）
+            decision = RoutingDecision(
+                decision=decision_raw.decision,
+                confirmed_at=_now_shanghai_display(),
+                confirmed_by=confirmed_by,
+                tty_verified=True,
+                final_route=decision_raw.final_route,
+            )
+
+            _write_scope(plan, decision, args)
+
+            if decision.decision == "custom":
+                checker_list = ", ".join(decision.final_route)
+                _audit_log(
+                    args.requirement_id,
+                    f"[code-review-route-custom] 用户自定义子集：{checker_list}",
+                )
+            # accept / all 不写 audit（§8.4）
+
+        return EXIT_OK
+
+    except RoutingError as e:
+        if e.exit_code == EXIT_USER_ABORT:
+            # 用户主动 abort 不算错误，输出到 stdout（§6）
+            print(_ERROR_MESSAGES[EXIT_USER_ABORT].format(cause=str(e)))
+        else:
+            # 其他错误输出到 stderr
+            try:
+                msg = _ERROR_MESSAGES[e.exit_code].format(
+                    detail=str(e),
+                    file="routing.yaml",
+                    line="?",
+                    cause=str(e),
+                )
+            except KeyError:
+                msg = f"[routing] 未知错误（退码 {e.exit_code}）：{e}"
+            print(msg, file=sys.stderr)
+        return e.exit_code
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+
+
+# ---------------------------------------------------------------------------
 # 公开 API（F-002 import 时使用）
 # ---------------------------------------------------------------------------
 
@@ -527,7 +1051,7 @@ __all__ = [
     "RoutingPlan",
     "RoutingDecision",
     "RoutingConfig",
-    # 核心函数
+    # 核心函数（F-001）
     "_load_yaml",
     "_validate_rule_entry",
     "_validate_schema",
@@ -537,4 +1061,13 @@ __all__ = [
     "_match_file",
     "_assert_plan_invariants",
     "_build_plan",
+    # IO 层（F-002）
+    "_parse_args",
+    "_check_tty",
+    "_resolve_confirmed_by",
+    "_parse_custom_input",
+    "_prompt_user",
+    "_write_scope",
+    "_audit_log",
+    "main",
 ]
