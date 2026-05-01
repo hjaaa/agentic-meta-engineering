@@ -69,5 +69,11 @@
   "supersedes": null,
   "architectural_concerns": [
     "长期隐患：§3.4 决定 Decision 枚举不扩展 INFO 态，改用 vars[severity_hint] 表达——短期避免插件契约扩散，但未来若有第 4/5 类语义（如 BLOCKED_PENDING_REVIEW）会继续向 vars 堆字符串约定，detail-design 阶段建议评估 vars 是否需要 schema 化"
-  ]
+  ],
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-01T19:17:18.452623+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
+  }
 }

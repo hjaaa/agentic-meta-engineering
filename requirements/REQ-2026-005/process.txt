@@ -4,3 +4,5 @@
 2026-05-01 18:21:06 [phase-transition] definition → tech-research
 2026-05-01 18:47:57 [signoff] REV-REQ-2026-005-definition-002 approved by hj19961223@gmail.com
 2026-05-01 18:48:36 [phase-transition] tech-research → outline-design (post-signoff REV-002 looks_clean 92)
+2026-05-01 19:17:18 [signoff] REV-REQ-2026-005-outline-design-001 approved by hj19961223@gmail.com
+2026-05-01 19:18:05 [phase-transition] outline-design → detail-design (post-signoff REV-outline-001 looks_clean 86)
