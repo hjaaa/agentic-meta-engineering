@@ -8,7 +8,7 @@
 #   因此本脚本对各用例选择最合适的测试路径：
 #
 #   E1 SKIP — pty 子进程在 bash 内复杂，已由 T1-T3（test_code_review_routing.py）pty 单测覆盖
-#   E2 — 改 5 个 .md 文件（全 trivial），直接调用 _build_plan 验证 trivial_only=True
+#   E2 — 改 5 个 .md 文件（全 trivial），直接调用 _build_plan + _write_scope + _audit_log
 #   E3 — routing.yaml must 写 6 条（超 MAX_MUST_RULES=5），调用 _validate_schema 期望 exit_code=3
 #   E4 — routing.yaml 写不合法 yaml，调用 _load_yaml 期望 exit_code=4
 
@@ -28,10 +28,10 @@ pass() { echo "[e2e] $1 PASS"; PASS=$((PASS + 1)); }
 skip() { echo "[e2e] $1 SKIP（$2）"; }
 fail() { echo "[e2e] $1 FAIL: $2"; FAIL=$((FAIL + 1)); }
 
-# ──────────────────────────────────────────────────
+# --------------------------------------------------
 # 准备：建立临时 git 仓库（E2/E3/E4 公用基础结构）
 # routing.py import 路径：以 REPO_ROOT 为根，scripts.lib.code_review_routing
-# ──────────────────────────────────────────────────
+# --------------------------------------------------
 
 setup_work_dir() {
     local dir="$1"
@@ -46,15 +46,17 @@ setup_work_dir() {
     git commit -q -m "init"
 }
 
-# ──────────────────────────────────────────────────
+# --------------------------------------------------
 # E1：pty 子进程在 bash 内复杂，已由 T1-T3 单测覆盖
-# ──────────────────────────────────────────────────
+# --------------------------------------------------
 skip "E1" "pty 子进程在 bash 内复杂，已由 T1-T3（test_code_review_routing.py）pty 单测覆盖"
 
-# ──────────────────────────────────────────────────
-# E2：5 个 .md 文件（全 trivial）→ _build_plan 返回 trivial_only=True
-#     使用真实 routing.yaml + 真实 git diff（通过 REPO_ROOT 直接运行）
-# ──────────────────────────────────────────────────
+# --------------------------------------------------
+# E2：5 个 .md 文件（全 trivial）→ 完整模拟 trivial 分支
+#     K-1 fix：断言 trivial_only=True + scope.json skipped=true + audit [code-review-skipped] + 退码 0
+#     K-5 fix：显式捕获子进程 rc，避免 || true 吞没 traceback
+#     K-6 fix：截断长度 300 -> 1000
+# --------------------------------------------------
 E2_DIR="$WORK/e2_trivial"
 setup_work_dir "$E2_DIR"
 BASE_SHA="$(git rev-parse HEAD)"
@@ -66,39 +68,108 @@ git add .
 git commit -q -m "add 5 trivial md files"
 HEAD_SHA="$(git rev-parse HEAD)"
 
-# 直接用 Python 在 REPO_ROOT 内部调用 _build_plan，用 E2_DIR 的真实 git diff
-E2_OUT="$(cd "$REPO_ROOT" && python3 - <<PYEOF 2>&1
+# 使用 REPO_ROOT 的真实 routing.yaml 绝对路径，避免 E2_DIR 内找不到相对路径
+E2_ROUTING_YAML="$REPO_ROOT/.claude/code-review-routing.yaml"
+
+set +e
+E2_OUT="$(python3 - <<PYEOF 2>&1
+import argparse
+import os
 import subprocess
 import sys
-sys.path.insert(0, ".")
+from pathlib import Path
+
+sys.path.insert(0, "$REPO_ROOT")
 from scripts.lib.code_review_routing import (
-    _build_plan, _validate_schema, _load_yaml, ROUTING_YAML_PATH
+    _build_plan, _validate_schema, _load_yaml, _write_scope, _audit_log,
+    RoutingDecision, _now_shanghai_display,
 )
-# 拿到 E2 仓库的 diff 文件列表
+
+# 拿到 E2 仓库的 diff 文件列表（在 E2_DIR 运行 git diff）
 result = subprocess.run(
     ["git", "diff", "--name-only", "$BASE_SHA", "$HEAD_SHA"],
     cwd="$E2_DIR",
     capture_output=True, text=True, check=True,
 )
 files = [f.strip() for f in result.stdout.splitlines() if f.strip()]
-config = _validate_schema(_load_yaml(ROUTING_YAML_PATH))
+
+# 用 REPO_ROOT 的真实 routing.yaml（绝对路径，避免 E2_DIR 内找不到相对路径）
+config = _validate_schema(_load_yaml(Path("$E2_ROUTING_YAML")))
 plan = _build_plan(files, config)
+
 print("trivial_only=" + str(plan.trivial_only))
 print("files_total=" + str(plan.files_total))
 print("files_trivial=" + str(plan.files_trivial))
-PYEOF
-)" || true
 
-if echo "$E2_OUT" | grep -q "trivial_only=True"; then
-    pass "E2"
+# 构造 trivial-skipped decision（confirmed_by 直接指定，绕过 _resolve_confirmed_by tty 校验）
+decision = RoutingDecision(
+    decision="trivial-skipped",
+    confirmed_at=_now_shanghai_display(),
+    confirmed_by="e2e@test.local",
+    tty_verified=True,
+    final_route=[],
+)
+
+# 构造 args（_write_scope 需要；base_sha/head_sha 用于 _git_diff_stats，在 E2_DIR 内执行）
+args = argparse.Namespace(
+    mode="embedded",
+    requirement_id="REQ-2099-001",
+    base_sha="$BASE_SHA",
+    head_sha="$HEAD_SHA",
+    base_branch="develop",
+    current_branch="feat/req-2099-001",
+    feature_id="F-004",
+    services="e2e-service",
+)
+
+# 切换到 E2_DIR，让 _write_scope 和 _audit_log 用 E2_DIR 作为工作目录（相对路径基准）
+os.chdir("$E2_DIR")
+_write_scope(plan, decision, args)
+_audit_log("REQ-2099-001", "[code-review-skipped] 5 文件全在 trivial 白名单内（routing-auto）")
+
+print("scope_written=True")
+sys.exit(0)
+PYEOF
+)"
+E2_RC=$?
+set -e
+
+_E2_FAIL=0
+
+# 断言1：trivial_only=True
+echo "$E2_OUT" | grep -q "trivial_only=True" \
+    || { fail "E2" "rc=$E2_RC; 期望 trivial_only=True，实际：${E2_OUT:0:1000}"; _E2_FAIL=1; }
+
+# 断言2：scope.json 存在且 skipped=true
+if [ -f "$E2_DIR/.review-scope.json" ]; then
+    E2_SKIPPED="$(python3 -c "import json; d=json.load(open('$E2_DIR/.review-scope.json')); print('skipped=' + str(d.get('skipped')))" 2>&1)"
+    echo "$E2_SKIPPED" | grep -q "skipped=True" \
+        || { fail "E2" "scope.json 存在但 skipped!=True，实际：$E2_SKIPPED"; _E2_FAIL=1; }
 else
-    fail "E2" "期望 trivial_only=True，实际输出：${E2_OUT:0:300}"
+    fail "E2" "scope.json 未写盘（$E2_DIR/.review-scope.json 不存在）; rc=$E2_RC; 输出：${E2_OUT:0:1000}"
+    _E2_FAIL=1
 fi
 
-# ──────────────────────────────────────────────────
+# 断言3：audit 文件含 [code-review-skipped]
+E2_AUDIT="$E2_DIR/requirements/REQ-2099-001/process.txt"
+if [ -f "$E2_AUDIT" ]; then
+    grep -q "\[code-review-skipped\]" "$E2_AUDIT" \
+        || { fail "E2" "audit 文件存在但未含 [code-review-skipped]; 内容：$(head -5 "$E2_AUDIT")"; _E2_FAIL=1; }
+else
+    fail "E2" "audit 文件未写盘（$E2_AUDIT 不存在）; rc=$E2_RC; 输出：${E2_OUT:0:1000}"
+    _E2_FAIL=1
+fi
+
+# 断言4：退码 0
+[ "$E2_RC" -eq 0 ] \
+    || { fail "E2" "Python 子进程退码=$E2_RC; 输出：${E2_OUT:0:1000}"; _E2_FAIL=1; }
+
+[ "$_E2_FAIL" -eq 0 ] && pass "E2"
+
+# --------------------------------------------------
 # E3：routing.yaml must 写 6 条（超 MAX_MUST_RULES=5）
 #     调用 _validate_schema 期望 RoutingSchemaError，exit_code=3
-# ──────────────────────────────────────────────────
+# --------------------------------------------------
 E3_YAML="$WORK/e3_routing.yaml"
 cat > "$E3_YAML" << 'YAML_EOF'
 version: 1
@@ -122,6 +193,9 @@ trivial_whitelist:
   - "**/*.md"
 YAML_EOF
 
+# K-5 fix：显式捕获子进程 rc，避免 || true 吞没 traceback
+# K-6 fix：截断长度 300 -> 1000
+set +e
 E3_OUT="$(cd "$REPO_ROOT" && python3 - <<PYEOF 2>&1
 import sys
 sys.path.insert(0, ".")
@@ -140,17 +214,20 @@ except Exception as e:
     print("detail=" + str(e))
     sys.exit(0)
 PYEOF
-)" || true
+)"
+E3_RC=$?
+set -e
 
 if echo "$E3_OUT" | grep -q "exit_code=3" && echo "$E3_OUT" | grep -q "V3"; then
     pass "E3"
 else
-    fail "E3" "期望 exit_code=3 且含 V3，实际输出：${E3_OUT:0:300}"
+    fail "E3" "rc=$E3_RC; 期望 exit_code=3 且含 V3，实际输出：${E3_OUT:0:1000}"
 fi
 
-# ──────────────────────────────────────────────────
+# --------------------------------------------------
 # E4：routing.yaml 写不合法 yaml → _load_yaml 期望 RoutingYamlError，exit_code=4
-# ──────────────────────────────────────────────────
+#     K-2 fix：加行号断言（detail 含 problem_mark.line 行号）
+# --------------------------------------------------
 E4_YAML="$WORK/e4_routing.yaml"
 cat > "$E4_YAML" << 'YAML_EOF'
 version: 1
@@ -163,6 +240,10 @@ trivial_whitelist:
   - "**/*.md"
 YAML_EOF
 
+# K-5 fix：显式捕获子进程 rc，避免 || true 吞没 traceback
+# K-6 fix：截断长度 300 -> 1000
+# K-2 fix：加行号断言（_load_yaml 在 yaml.YAMLError 时拼入 problem_mark.line 行号）
+set +e
 E4_OUT="$(cd "$REPO_ROOT" && python3 - <<PYEOF 2>&1
 import sys
 sys.path.insert(0, ".")
@@ -180,17 +261,22 @@ except Exception as e:
     print("detail=" + str(e))
     sys.exit(0)
 PYEOF
-)" || true
+)"
+E4_RC=$?
+set -e
 
 if echo "$E4_OUT" | grep -q "exit_code=4"; then
+    # K-2 fix：断言 detail 含行号（_load_yaml 拼入 problem_mark.line，格式 "path:N yaml 语法错误"）
+    echo "$E4_OUT" | grep -qE "[0-9]+" \
+        || fail "E4" "rc=$E4_RC; exit_code=4 OK 但 stderr 缺行号信息（期望数字行号）：${E4_OUT:0:1000}"
     pass "E4"
 else
-    fail "E4" "期望 exit_code=4，实际输出：${E4_OUT:0:300}"
+    fail "E4" "rc=$E4_RC; 期望 exit_code=4，实际输出：${E4_OUT:0:1000}"
 fi
 
-# ──────────────────────────────────────────────────
+# --------------------------------------------------
 # 汇总
-# ──────────────────────────────────────────────────
+# --------------------------------------------------
 echo ""
 echo "[e2e] 汇总：PASS=$PASS  FAIL=$FAIL"
 if [ "$FAIL" -gt 0 ]; then
