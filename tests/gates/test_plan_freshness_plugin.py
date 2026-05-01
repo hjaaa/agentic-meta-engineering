@@ -89,31 +89,37 @@ def test_plan_freshness_fails_on_missing_plan(tmp_path, monkeypatch):
     assert "plan.md" in (report.message or "").lower()
 
 
-# ====================== skip 用例 ======================
+# ====================== skip 语义（F-003：搬到 runner filter_gates） ======================
 
 
-def test_plan_freshness_skips_on_pre_commit_without_plan_change():
-    """given_pre_commit_without_plan_md_when_precheck_then_skip（skip fixture）."""
-    gate = plugin_mod.PlanFreshnessGate()
+def test_plan_freshness_filtered_on_pre_commit_without_plan_change():
+    """given_pre_commit_without_plan_md_when_filter_gates_then_excluded（skip fixture）."""
+    import run as runner_mod
+    data = runner_mod.load_registry()
     ctx = GateContext(
         trigger="pre-commit",
         changed_files=["scripts/foo.py", "requirements/REQ-001/meta.yaml"],
     )
-    skip = gate.precheck(ctx)
-    assert skip is not None
-    assert "no plan.md" in skip.reason
+    ids = {e["id"] for e in runner_mod.filter_gates(data, ctx)}
+    assert "GATE-PLAN-FRESHNESS" not in ids
 
 
-def test_plan_freshness_does_not_skip_when_plan_in_changed():
-    gate = plugin_mod.PlanFreshnessGate()
+def test_plan_freshness_kept_when_plan_in_changed():
+    """given_pre_commit_with_plan_change_when_filter_gates_then_included。"""
+    import run as runner_mod
+    data = runner_mod.load_registry()
     ctx = GateContext(
         trigger="pre-commit",
         changed_files=["requirements/REQ-001/plan.md"],
     )
-    assert gate.precheck(ctx) is None
+    ids = {e["id"] for e in runner_mod.filter_gates(data, ctx)}
+    assert "GATE-PLAN-FRESHNESS" in ids
 
 
-def test_plan_freshness_does_not_skip_on_ci_trigger():
+def test_plan_freshness_precheck_returns_none_after_f003():
+    """F-003 双轨清理后 precheck 不再过滤；保 None 返回行为契约。"""
     gate = plugin_mod.PlanFreshnessGate()
-    ctx = GateContext(trigger="ci")
+    ctx = GateContext(trigger="pre-commit", changed_files=["scripts/foo.py"])
     assert gate.precheck(ctx) is None
+    ctx2 = GateContext(trigger="ci")
+    assert gate.precheck(ctx2) is None

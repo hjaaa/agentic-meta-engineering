@@ -77,30 +77,40 @@ def test_index_integrity_fails_on_broken_link(tmp_scan_root: Path):
     assert "does-not-exist" in (report.message or "")
 
 
-# ====================== skip 用例 ======================
+# ====================== skip 语义（F-003：搬到 runner filter_gates） ======================
+# 旧实现：plugin.precheck 在 pre-commit + 无 md 改动时返回 Skip
+# 新实现：runner filter_gates 通过 applies_when.changed_files 过滤掉该 gate
+# 测试断言对象从 plugin.precheck 变为 runner.filter_gates
 
 
-def test_index_integrity_skips_on_pre_commit_without_md_changes():
-    """given_pre_commit_without_md_change_when_precheck_then_skip（skip fixture）."""
-    gate = plugin_mod.IndexIntegrityGate()
+def test_index_integrity_filtered_on_pre_commit_without_md_changes():
+    """given_pre_commit_without_md_change_when_filter_gates_then_excluded（skip fixture）."""
+    import run as runner_mod
+    data = runner_mod.load_registry()
     ctx = GateContext(
         trigger="pre-commit",
         changed_files=["scripts/foo.sh", "Makefile"],
     )
-    skip = gate.precheck(ctx)
-    assert skip is not None
+    ids = {e["id"] for e in runner_mod.filter_gates(data, ctx)}
+    assert "GATE-INDEX-INTEGRITY" not in ids
 
 
-def test_index_integrity_does_not_skip_when_md_in_changed():
-    gate = plugin_mod.IndexIntegrityGate()
+def test_index_integrity_kept_when_md_in_changed():
+    """given_pre_commit_with_index_md_change_when_filter_gates_then_included。"""
+    import run as runner_mod
+    data = runner_mod.load_registry()
     ctx = GateContext(
         trigger="pre-commit",
         changed_files=["context/team/INDEX.md"],
     )
-    assert gate.precheck(ctx) is None
+    ids = {e["id"] for e in runner_mod.filter_gates(data, ctx)}
+    assert "GATE-INDEX-INTEGRITY" in ids
 
 
-def test_index_integrity_does_not_skip_on_ci_trigger():
+def test_index_integrity_precheck_returns_none_after_f003():
+    """F-003 双轨清理后 precheck 不再过滤；保 None 返回行为契约。"""
     gate = plugin_mod.IndexIntegrityGate()
-    ctx = GateContext(trigger="ci")
+    ctx = GateContext(trigger="pre-commit", changed_files=["scripts/foo.sh"])
     assert gate.precheck(ctx) is None
+    ctx2 = GateContext(trigger="ci")
+    assert gate.precheck(ctx2) is None

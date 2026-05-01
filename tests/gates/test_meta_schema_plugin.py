@@ -87,34 +87,42 @@ def test_meta_schema_fails_on_bad_id_format(tmp_path):
     assert report.code == "R-META"
 
 
-# ====================== skip 用例 ======================
+# ====================== skip 语义（F-003：搬到 runner filter_gates） ======================
+# 旧实现：plugin.precheck 在 pre-commit + 无 meta.yaml 改动时返回 Skip
+# 新实现：runner filter_gates 通过 applies_when.changed_files=[requirements/*/meta.yaml] 过滤
 
 
-def test_meta_schema_skips_on_pre_commit_without_meta_change(tmp_path):
-    """given_pre_commit_without_meta_change_when_precheck_then_skip（skip fixture）."""
-    gate = plugin_mod.MetaSchemaGate()
+def test_meta_schema_filtered_on_pre_commit_without_meta_change(tmp_path):
+    """given_pre_commit_without_meta_change_when_filter_gates_then_excluded（skip fixture）."""
+    import run as runner_mod
+    data = runner_mod.load_registry()
     ctx = GateContext(
         trigger="pre-commit",
         changed_files=["scripts/foo.py", "context/team/INDEX.md"],
     )
-    skip = gate.precheck(ctx)
-    assert skip is not None
-    assert "no meta.yaml" in skip.reason
+    ids = {e["id"] for e in runner_mod.filter_gates(data, ctx)}
+    assert "GATE-META-SCHEMA" not in ids
 
 
-def test_meta_schema_does_not_skip_when_meta_in_changed(tmp_path):
-    gate = plugin_mod.MetaSchemaGate()
+def test_meta_schema_kept_when_meta_in_changed(tmp_path):
+    """given_pre_commit_with_meta_change_when_filter_gates_then_included。"""
+    import run as runner_mod
+    data = runner_mod.load_registry()
     ctx = GateContext(
         trigger="pre-commit",
         changed_files=["requirements/REQ-2026-002/meta.yaml"],
     )
-    assert gate.precheck(ctx) is None
+    ids = {e["id"] for e in runner_mod.filter_gates(data, ctx)}
+    assert "GATE-META-SCHEMA" in ids
 
 
-def test_meta_schema_does_not_skip_on_ci_trigger():
+def test_meta_schema_precheck_returns_none_after_f003():
+    """F-003 双轨清理后 precheck 不再过滤；保 None 返回行为契约。"""
     gate = plugin_mod.MetaSchemaGate()
-    ctx = GateContext(trigger="ci")
+    ctx = GateContext(trigger="pre-commit", changed_files=["scripts/foo.py"])
     assert gate.precheck(ctx) is None
+    ctx2 = GateContext(trigger="ci")
+    assert gate.precheck(ctx2) is None
 
 
 # ====================== adapter 入参透传 ======================

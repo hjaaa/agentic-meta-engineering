@@ -7,8 +7,10 @@
   - 仅 WARNING finding → Decision.PASS（severity=warning 由 registry 决定）
   - 无 finding         → Decision.PASS
 
-precheck：当 trigger=pre-commit 且无 artifacts/*.md 改动时直接 Skip。
-其他 trigger 由 registry.yaml 的 applies_when 过滤。
+F-003：changed_files 过滤双轨清理——pre-commit 时 runner 已通过
+registry.yaml.applies_when.changed_files 过滤；本 plugin 不再 precheck 内重复
+判定（避免双轨腐化）。run() 内 _resolve_targets 仍按 changed_files 选择性扫描，
+是 IO 选路而非过滤，保留不动。
 """
 from __future__ import annotations
 
@@ -39,14 +41,11 @@ class SourcingGate(Gate):
     side_effects = "none"
 
     def precheck(self, ctx: GateContext) -> Optional[Skip]:
-        """pre-commit 时若无 artifacts/*.md 改动则跳过；其他 trigger 一律继续。
+        """F-003 起本 plugin 不在 precheck 做 changed_files 过滤（runner 一处消费）。
 
-        参数：ctx.changed_files — staged 文件列表（pre-commit 由 runner 注入）。
-        返回：Skip（无需检查）或 None（继续执行 run）。
+        留空实现仅为满足 Gate 抽象方法契约；过滤完全交给 runner 的
+        filter_gates(applies_when.changed_files) 一次性处理。
         """
-        if ctx.trigger == "pre-commit":
-            if not _has_artifact_md_change(ctx.changed_files):
-                return Skip("no artifacts/*.md changes in this commit")
         return None
 
     def run(self, ctx: GateContext) -> Report:
@@ -83,11 +82,6 @@ class SourcingGate(Gate):
             print(legacy_report.render())
 
         return _legacy_to_report(self.id, legacy_report)
-
-
-def _has_artifact_md_change(changed_files: list[str]) -> bool:
-    """changed_files 命中 requirements/*/artifacts/**/*.md → True。"""
-    return bool(_changed_artifact_paths(changed_files))
 
 
 def _resolve_targets(ctx: GateContext) -> list[Path]:

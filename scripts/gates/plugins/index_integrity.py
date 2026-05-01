@@ -7,8 +7,9 @@
   - 仅 WARNING finding              → Decision.PASS（不在 strict 模式下不阻塞）
   - 无 finding                      → Decision.PASS
 
-precheck 决定本 gate 是否真跑：当 trigger=pre-commit 且无任何 INDEX.md 或
-context/* 改动命中时直接 Skip。其他 trigger 一律继续。
+F-003：changed_files 过滤双轨清理——pre-commit 时 runner 已通过
+registry.yaml.applies_when.changed_files 过滤；本 plugin 不再 precheck 内重复
+判定。
 """
 from __future__ import annotations
 
@@ -40,14 +41,7 @@ class IndexIntegrityGate(Gate):
     side_effects = "none"
 
     def precheck(self, ctx: GateContext) -> Optional[Skip]:
-        """pre-commit 时若无 INDEX.md / context/*.md / requirements/*.md 改动则跳过。
-
-        参数：ctx.changed_files — staged 文件列表（pre-commit 由 runner 注入）。
-        返回：Skip（无需检查）或 None（继续执行 run）。
-        """
-        if ctx.trigger == "pre-commit":
-            if not _has_index_relevant_change(ctx.changed_files):
-                return Skip("no INDEX.md or scanned md changes in this commit")
+        """F-003 起本 plugin 不在 precheck 做 changed_files 过滤（runner 一处消费）。"""
         return None
 
     def run(self, ctx: GateContext) -> Report:
@@ -92,22 +86,6 @@ class IndexIntegrityGate(Gate):
             print(legacy_report.render())
 
         return _legacy_to_report(self.id, legacy_report)
-
-
-def _has_index_relevant_change(changed_files: list[str]) -> bool:
-    """改动文件命中 INDEX.md 或扫描根下任一 md → True。"""
-    if not changed_files:
-        return False
-    for f in changed_files:
-        if f.endswith("INDEX.md"):
-            return True
-        # 简化处理：context/ 或 requirements/ 下的 md 文件均视为相关
-        parts = Path(f).parts
-        if parts[:1] == ("context",) and f.endswith(".md"):
-            return True
-        if parts[:1] == ("requirements",) and f.endswith(".md"):
-            return True
-    return False
 
 
 def _legacy_to_report(gate_id: str, legacy: LegacyReport) -> Report:
