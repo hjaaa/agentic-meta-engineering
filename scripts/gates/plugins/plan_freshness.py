@@ -133,7 +133,11 @@ def _resolve_req_dirs(ctx: GateContext) -> list[Path]:
 def _legacy_to_report(gate_id: str, legacy: LegacyReport) -> Report:
     """把 common.Report 的 findings 列表降维成单条 Report。
 
-    E001（plan.md 不存在）是 error → FAIL；W 类软警告 → PASS（strict 由 runner 决定）。
+    转换规则：
+      - E001（plan.md 不存在）→ Decision.FAIL，code=R-PLAN
+      - 仅 WARNING finding（W001/W002/W003）→ Decision.FAIL，code=R-WARNING-ONLY
+        （gate severity=warning，strict 模式下 has_warning_fail 触发 exit=1）
+      - 无 finding → Decision.PASS
     """
     findings = legacy.findings()
     errors = [f for f in findings if f[1] == LegacySeverity.ERROR]
@@ -154,10 +158,22 @@ def _legacy_to_report(gate_id: str, legacy: LegacyReport) -> Report:
             },
         )
 
+    # 纯 warning 分支：gate severity=warning，strict 模式下由 audit.calc_exit_code 升级 exit=1
+    if warnings:
+        first = warnings[0]
+        return Report(
+            gate_id=gate_id,
+            decision=Decision.FAIL,
+            code="R-WARNING-ONLY",
+            message=f"{first[0]}: {first[2]}: {first[3]}",
+            fix_hint="该 gate 仅含 warning；strict 模式下视为失败",
+            vars={"warnings": [list(f) for f in warnings]},
+        )
+
     return Report(
         gate_id=gate_id,
         decision=Decision.PASS,
-        vars={"warnings": [list(f) for f in warnings]} if warnings else {},
+        vars={},
     )
 
 
