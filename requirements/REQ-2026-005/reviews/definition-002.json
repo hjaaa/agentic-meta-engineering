@@ -53,5 +53,11 @@
   "supersedes": "REV-REQ-2026-005-definition-001",
   "project_specific_issues": [
     "项目索引未声明额外约束；本轮重审仅验证回归（5 条 minor + 行号偏移），未重做完整六维"
-  ]
+  ],
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-01T18:47:57.303403+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
+  }
 }
