@@ -1,1 +1,2 @@
 2026-05-01 18:02:14 [phase-transition] bootstrap → definition (warning: PLAN-FRESHNESS W003，definition 阶段修)
+2026-05-01 18:14:10 [save] definition 阶段 5 项决策入档（ruff 仅 EWF / F6 无条件按时删 / F10 INFO 不升级 / F9 加 grandfather / FG-003 baseline 必抓）

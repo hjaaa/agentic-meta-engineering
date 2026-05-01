@@ -72,7 +72,7 @@ refs-requirement: true
 
 ## 非功能需求
 
-- **性能**：门禁 runner 单次执行（含全部 plugin）耗时不应因本次改动增加 > 20%（CI 关键路径，已知 [待用户确认]——目前 runner 实际耗时无 baseline 数据）
+- **性能**：门禁 runner 单次执行（含全部 plugin）耗时不应因本次改动增加 > 20%。**FG-003 实施前必须抓 baseline 作为 acceptance 前提**（方法见末尾"待澄清清单"第 1 条）；超 20% 即触发降级方案（保留 plugin 内 changed_files 副本，registry 字段消费仅作可选优化）
 - **兼容性**：
   - 已合入 develop 的历史 PR/commit 在改动后**不应**因 strict 升级被回溯报错（仅约束未来行为）
   - `--force-with-blockers` 旧名保留 alias，旧 alias 命中时 stderr 打印 `[DEPRECATED] use --bypass-review-blockers instead, removed at 2026-11-01`
@@ -134,19 +134,19 @@ refs-requirement: true
 | F6 旧名处理 | 立即删 / 永远保留 / deprecate 6 个月 | deprecate 6 个月（**2026-11-01** 删） | 业界 deprecation 惯例；保留 alias 让 CI 脚本/文档有迁移窗口；用户已确认 |
 | F11 build/test 工具选型 | pytest only / pytest + mypy / pytest + ruff / pytest + ruff + mypy | pytest + ruff | pytest 已配（pyproject.toml）；ruff 是事实标准 lint，零配置启动；mypy 留待未来需求；用户已确认 |
 | F2 codex 侧是否同步修 | 同步修 / 仅修 .claude / 删 .codex 配置 | 仅修 .claude | 项目决策不维护 codex 双轨（依据：本会话用户决议；已撤销 chore commit）；用户已确认 |
+| F11 ruff 规则集严格度 | [E,W,F] / +I / +UP / +B / 全开 | 起步仅 [E,W,F] | 避免首次 PR 大量 reformat 噪音；后续以独立需求渐进收紧；用户已确认 |
+| F6 旧名删除是否绑硬指标 | 按时无条件删 / 绑 alias 调用 ≥1 次 / 永久保留 | 2026-11-01 无条件删 | 业界 deprecation 惯例；绑指标会引入"忘验证→永远不删"的 trap；用户已确认 |
+| F10 CLOSED PR 状态升级路径 | PASS / WARNING（参与 strict 升级）/ INFO（不升级） | INFO 不升级 | CLOSED 是用户决策点不是代码缺陷；strict 应升级"代码质量类 warning"而非"PR 状态类提示"；用户已确认 |
+| F9 历史 REQ 回归处理 | 全量回溯 / meta.legacy=true grandfather / 仅未来 REQ 校验 | grandfather 机制 | REQ-2026-001~003 已 completed，不应被新校验逻辑回溯卡住；复用 meta-schema.yaml 已定义的 legacy 字段；用户已确认 |
+| FG-003 baseline 是否硬要求 | 必须抓 / 推荐抓 / 可选 | 必须抓 | 不抓无法验证 ≤+20% 非功能需求；纳入 FG-003 acceptance；用户已确认 |
 
 ## 待澄清清单
 
-1. **runner 单次耗时基线**：当前无量化数据，FG-003 改动（registry 字段消费、相邻表查询）可能引入耗时增长。**建议在 FG-003 实施前用 `time` 抓 baseline；超 20% 即降级方案** [待用户确认]
-2. **F11 ruff 规则集严格度**：起步用 `[E, W, F]`（基础语法/警告/pyflakes），但是否要顺带启用 `I`（isort 顺序）/ `UP`（pyupgrade）/ `B`（bugbear）？过严会导致首次 PR 大量 reformat [待用户确认]
-3. **F6 旧名 deprecation 删除时机**：2026-11-01 是建议时间，是否要绑定一个"`--bypass-review-blockers` 在 CI 调用 ≥ 1 次"的硬指标作为前提？还是无条件按时删？ [待用户确认]
-4. **F10 CLOSED → WARNING 改造**：当前是 PASS+`gh_call_failed: True`；改成 WARNING 后，CI 在 `--strict` 下会因 FG-001 升级而 FAIL——这是预期行为吗？还是 CLOSED 应该是 INFO 级（不参与 strict 升级）？ [待用户确认]
-5. **F9 traceability submit trigger 加入后回归**：现有所有完成态 REQ（REQ-2026-001~003）执行 submit 时会重新跑 traceability，若历史 features.json/detailed-design.md 不满足新校验逻辑会回溯报错。**是否需要 grandfather 机制（meta.legacy=true 跳过）？** [待用户确认]
-6. **runner 单次耗时基线方法**：[待补充]
-   - 内容：用 `time python3 scripts/gates/run.py --trigger=<all> --req=REQ-2026-005` 跑 5 次取中位数作为 baseline
-   - 依据：本仓 plugin 数量（21 条）+ 单次 IO 主要为读 yaml/md，耗时本身应在 1~3s 量级
-   - 风险：若 baseline 实际 > 5s，FG-003 改动后即便 +10% 也会拖慢 CI
-   - 验证时机：FG-003 实施前与实施后各跑一次对比
+1. **runner 单次耗时基线方法**：[待补充]
+   - 内容：用 `time python3 scripts/gates/run.py --trigger=ci --req=REQ-2026-005` 跑 5 次取中位数作为 baseline；FG-003 实施后再跑一次对比
+   - 依据：本仓 plugin 数量约 21 条 + 单次 IO 主要为读 yaml/md，耗时本身应在 1~3s 量级
+   - 风险：若 baseline 实际 > 5s，FG-003 改动后即便 +10% 也会拖慢 CI；触发降级方案（保留 plugin 内 changed_files 副本）
+   - 验证时机：FG-003 实施前抓 baseline；实施后回归对比；超 20% 即评估降级
 
 ---
 
