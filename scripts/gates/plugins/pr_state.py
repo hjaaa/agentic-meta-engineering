@@ -121,7 +121,24 @@ class PrMergedStateGate(Gate):
                 ),
                 vars={"pr_number": pr_num_str, "merged_at": data.get("mergedAt")},
             )
-        # OPEN / CLOSED / DRAFT 等都允许继续 submit（CLOSED 由用户判断是否重开）
+
+        # F-005：CLOSED 状态加 INFO 标记（不阻断 submit，但在 vars 留审计痕迹）
+        if state == "CLOSED":
+            return Report(
+                gate_id=self.id,
+                decision=Decision.PASS,
+                message=(
+                    f"PR #{pr_num_str} 已 CLOSED；如需继续推进请确认是否需要重开 PR"
+                ),
+                vars={
+                    "pr_number": pr_num_str,
+                    "state": state,
+                    "pr_state_closed": True,
+                    "severity_hint": "info",
+                },
+            )
+
+        # OPEN / DRAFT 等继续 submit
         return Report(
             gate_id=self.id,
             decision=Decision.PASS,
