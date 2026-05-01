@@ -21,3 +21,4 @@
 2026-05-01 09:33:30 [signoff] REV-REQ-2026-003-code-F-001-002 approved by hj19961223@gmail.com
 2026-05-01 09:34:15 [signoff] REV-REQ-2026-003-code-F-001-002 approved by hj19961223@gmail.com (cli-tty)
 2026-05-01 09:34:15 [development] F-001 → done（looks_clean 90 / 0 major / 1 minor follow-up；review-002 supersedes 001）
+2026-05-01 09:35:10 [development] F-002 开始（派 subagent: sonnet / general-purpose；F-001 done）
