@@ -3,8 +3,11 @@
 python_functions = ["test_*", "should_*"]
 
 [tool.ruff]
-# F-005：ruff 集成。select=["F"] 起步（历史 E501 共 289 条，>200 阈值触发降级策略）
-# E501(line-too-long) 289 条 / E402 13 条 / F401 2 条 / F841 2 条 = 306 总计
-# 策略：>200 → 降级 select=["F"]；E/W 类待后续独立 PR 修复
-select = ["F"]
+# F-005：ruff 集成。line-length 全局设置
+# 历史问题统计（select=E,W,F）：E501 289 / E402 13 / F401 2 / F841 2 = 306 总计
+# > 200 阈值 → 策略：降级 select=["F"] 起步；E/W 类待后续独立 PR 修复
 line-length = 120
+
+[tool.ruff.lint]
+# F-005：仅启用 F 类（Pyflakes）；E/W 历史问题 > 200 条，后续独立 PR 逐步收紧
+select = ["F"]
