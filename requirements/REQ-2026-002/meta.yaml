@@ -2,6 +2,10 @@
 id: REQ-2026-002                 # 例：REQ-2026-001
 title: 统一门禁系统
 phase: completed
+legacy: true   # 标记理由：本需求 completed 早于 REQ-2026-003 commit e3e0131 引入的
+               # R003/R007 sign-off 强校验；review 文件为旧 schema（conclusion='approved'
+               # / 缺 human_signoff）。豁免 R001~R007 不影响其他 gate。详见
+               # context/team/engineering-spec/meta-schema.yaml legacy 字段语义。
 created_at: "2026-04-27 19:50:15"     # 格式 YYYY-MM-DD HH:MM:SS（Asia/Shanghai），见 context/team/engineering-spec/time-format.md
 branch: feat/req-2026-002             # 例：feat/req-2026-001
 base_branch: develop   # feat/* 派生的基点分支：develop / main / master

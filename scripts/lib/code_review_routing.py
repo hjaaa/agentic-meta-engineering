@@ -1004,8 +1004,11 @@ def _git_diff_stats(base_sha: str, head_sha: str) -> tuple[dict, str]:
         diff_summary = "\n".join(lines)
     except Exception as exc:
         # H-15 fix: 降级但不静默吞没，打印到 stderr 让用户知晓（stats 仅展示用，非关键路径）
+        # Codex P1-A fix: 异常路径必须返回 tuple[dict, str]——与函数签名一致；
+        # 之前返回单个 dict 会让调用方 `(stats, summary) = _git_diff_stats(...)`
+        # 触发 ValueError，把"非关键统计失败"升级成"路由整体崩溃"。
         print(f"[routing] git diff stats 获取失败（{exc}），使用空结构", file=sys.stderr)
-        return {"files_changed": 0, "insertions": 0, "deletions": 0, "diff_summary": ""}
+        return {"files_changed": 0, "insertions": 0, "deletions": 0}, ""
 
     return stats, diff_summary
 

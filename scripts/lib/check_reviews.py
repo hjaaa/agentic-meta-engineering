@@ -25,14 +25,15 @@ from common import REPO_ROOT, Report, Severity, paint, rel
 
 # save_review 同目录，scripts/lib 已在 sys.path 中（脚本入口由 sh 启动）
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import save_review
-import phase_enum  # canonical phase 枚举单一事实源
-
-REQUIREMENTS_DIR = REPO_ROOT / "requirements"
 
 # ─── REQ-2026-003 双卡点 sign-off 判定 ──────────────────────────────────────
-# 所有调用方（feature-lifecycle-manager / GATE-REVIEW-VERDICT）共用此常量+helper，
-# 严禁在各自逻辑里重复比对字符串（避免双轨 D-008）。
+# 所有调用方（feature-lifecycle-manager / GATE-REVIEW-VERDICT / save_review.CR 检查）
+# 共用此常量+helper，严禁在各自逻辑里重复比对字符串（避免双轨 D-008）。
+#
+# 注意：SIGNOFF_PASS / is_signed_off 必须定义在 `import save_review` 之前——
+# save_review 顶层会 `from check_reviews import is_signed_off`，若放在 import
+# save_review 之后，循环导入会让 save_review 拿到 ImportError 并永久绑定 stub
+# `return False`，导致 CR-1 / CR-4 静默失效（Codex P1-B verified bug）。
 SIGNOFF_PASS: set[str] = {"approved", "approved-trivial"}
 
 
@@ -44,6 +45,12 @@ def is_signed_off(verdict: dict) -> bool:
     """
     sig = verdict.get("human_signoff") or {}
     return sig.get("decision") in SIGNOFF_PASS
+
+
+import save_review
+import phase_enum  # canonical phase 枚举单一事实源
+
+REQUIREMENTS_DIR = REPO_ROOT / "requirements"
 
 
 # ─── target-phase → 必须存在的 review phase 列表 ────────────────────────────

@@ -61,6 +61,74 @@ def test_sourcing_passes_on_no_targets(tmp_path, monkeypatch):
     assert "no artifacts" in (report.message or "")
 
 
+# ====================== W002 衍生文档豁免 ======================
+
+
+def _md_with_w002_trigger() -> str:
+    """触发 W002：段落含强约束动词 + 30 字内出现数字、且无三态标记。"""
+    return (
+        "# 衍生文档\n\n"
+        "本次 conclusion = blocked，**禁止 sign-off**。必须先修 4 critical → 重审 → 通过后才能 sign-off。\n"
+    )
+
+
+def test_sourcing_exempts_w002_for_review_files(tmp_path):
+    """given_review_filename_when_run_then_w002_skipped。
+
+    review-YYYYMMDD-HHMMSS.md 是评审报告（已 sign-off 的结论性叙述），
+    数字断言来自评审上下文，不应受 W002 强制三态标记约束。
+    """
+    md_file = tmp_path / "review-20260501-101804.md"
+    _write_md(md_file, _md_with_w002_trigger())
+
+    gate = plugin_mod.SourcingGate()
+    ctx = GateContext(trigger="ci", extra={"sourcing_paths": [str(md_file)]})
+    report = gate.run(ctx)
+
+    assert report.decision == Decision.PASS, (
+        f"review-*.md 应豁免 W002，实际 decision={report.decision}, message={report.message}"
+    )
+
+
+def test_sourcing_exempts_w002_for_tasks_files(tmp_path):
+    """given_tasks_subdir_when_run_then_w002_skipped。
+
+    tasks/F-*.md 是任务清单，其数字断言通常复述 features.json 的 acceptance；
+    源头追溯由 features.json 完成，tasks 文件不应再被 W002 卡住。
+    """
+    md_file = tmp_path / "tasks" / "F-001.md"
+    _write_md(md_file, _md_with_w002_trigger())
+
+    gate = plugin_mod.SourcingGate()
+    ctx = GateContext(trigger="ci", extra={"sourcing_paths": [str(md_file)]})
+    report = gate.run(ctx)
+
+    assert report.decision == Decision.PASS, (
+        f"tasks/*.md 应豁免 W002，实际 decision={report.decision}, message={report.message}"
+    )
+
+
+def test_sourcing_still_emits_w002_for_design_spec(tmp_path):
+    """given_design_spec_filename_when_run_then_w002_warning_still_emitted。
+
+    设计 spec 文档（detailed-design / requirement / outline-design / tech-feasibility）
+    必须仍受 W002 约束——豁免范围不能扩大到 spec 文档。
+    （strict 升级 warning→error 是 runner 层职责，本测试仅断言 plugin 仍发出 warning。）
+    """
+    md_file = tmp_path / "detailed-design.md"
+    _write_md(md_file, _md_with_w002_trigger())
+
+    gate = plugin_mod.SourcingGate()
+    ctx = GateContext(trigger="ci", extra={"sourcing_paths": [str(md_file)]})
+    report = gate.run(ctx)
+
+    warnings = report.vars.get("warnings", []) if report.vars else []
+    has_w002 = any("W002" in str(w) for w in warnings)
+    assert has_w002, (
+        f"detailed-design.md 应发出 W002 warning，实际 vars.warnings={warnings}"
+    )
+
+
 # ====================== fail 用例 ======================
 
 

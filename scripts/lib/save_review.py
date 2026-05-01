@@ -30,14 +30,10 @@ import yaml
 
 from common import REPO_ROOT, Report, Severity, paint, rel
 
-# F-004b 实装后 is_signed_off 会从 check_reviews 导入；本期用占位兜底
-# 占位实现：一律视为未签字（F-004b 未合并时的安全默认值）
-try:
-    from check_reviews import is_signed_off  # type: ignore[import]  # F-004b 实装后启用
-except ImportError:
-    def is_signed_off(verdict: dict) -> bool:  # noqa: D401
-        """占位：F-004b 未合并时一律视为未签字。"""
-        return False
+# is_signed_off 来自 check_reviews——必须在 check_reviews 完成 SIGNOFF_PASS / is_signed_off
+# 定义之后才能 import 本文件，否则循环导入会绑死 stub。check_reviews.py 已把这两个符号
+# 放在 `import save_review` 之前；如改动 check_reviews import 顺序，必须同步验证此处导入。
+from check_reviews import is_signed_off  # noqa: E402
 
 # 新三档 conclusion 枚举（v2.0 schema）
 CONCLUSION_NEW: set[str] = {"looks_clean", "needs_attention", "blocked"}

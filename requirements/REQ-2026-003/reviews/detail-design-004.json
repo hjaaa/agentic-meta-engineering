@@ -1,0 +1,76 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-003-detail-design-004",
+  "requirement_id": "REQ-2026-003",
+  "phase": "detail-design",
+  "reviewer": "detail-design-quality-reviewer",
+  "reviewed_at": "2026-05-01 13:33:48",
+  "reviewed_commit": "a091ff4",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/detailed-design.md",
+      "sha256": "1126f37c9a62662a182a9528730a84f22eaa9407171b9ef9488609119c2f9d40"
+    },
+    {
+      "path": "artifacts/features.json",
+      "sha256": "ffad16bd8a4abd36ef31fc679d232e4b629fa98a569dfc382bed2e70c9aec23a"
+    },
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "b70ccd43ec129b8de44c781b4f43aae95d1a17c3481e1f449df3df64bfd67fba"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 90,
+  "dimensions": {
+    "consistency_with_outline": {
+      "score": 95,
+      "issues": []
+    },
+    "interface_completeness": {
+      "score": 92,
+      "issues": []
+    },
+    "data_model_soundness": {
+      "score": 95,
+      "issues": []
+    },
+    "sequence_correctness": {
+      "score": 90,
+      "issues": []
+    },
+    "feature_granularity": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "features.json 第 30-52 行：F-002 仍单条 feature 含 _check_tty / _prompt_user / _write_scope / _audit_log / main 五个职责（estimate_days=1.5）；建议拆为 F-002a（tty + 4 档热键，配 T1-T6/U11-U12）+ F-002b（_write_scope + _audit_log + main，配 I1-I8 不变量），便于阶段 7 派发与回归定位。沿用 v1/v2/v3 minor，可保留作建议。"
+        }
+      ]
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "detailed-design.md 第 164-173 行 _parse_args docstring：--services 标 '可推断' 但未给推断算法。建议补一行：'缺省时取 git diff --name-only base..head 的顶层目录去重集合'，避免 F-001 实现时再次召集决策。沿用 v1/v2/v3。",
+    "detailed-design.md §2.2 INV-PLAN-1..4 已写入 RoutingPlan docstring，但 INV-PLAN-3/4 在 features.json F-001 acceptance 第 26 行 U-INV-1 仅显式覆盖 INV-PLAN-1/2；建议追加 U-INV-2/3 一并落到 acceptance，形成 INV ↔ U-INV 一对一映射。沿用 v2/v3。",
+    "detailed-design.md §3.1 第 322-329 行 skipped_checkers 注释已具备完整长度校验说明（I8）；进一步建议把示例分两段（accept 子例 + trivial-skipped 子例），各列完整 8 项 skipped_checkers，让读者一次看穿两种极端 scope 形态。沿用 v2/v3 非阻塞建议。",
+    "本次 v4 改动专项核验：仅修订两处 sourcing marker——§§概览第 27 行末尾追加 '（来源：tech-feasibility.md）' 锚定 'C1/C3/C4/C5 同源 PR + 5 新增 + 4 修改 = 9 处' 强约束数字断言；§yaml 路由表第 570 行 '**实现要求**' 段标题改为 '**实现要求**（来源：../plan.md）：' 锚定下方 V 编号 / must 段长度 7 / 5 等数字断言。两处来源路径均存在（tech-feasibility.md 与 ../plan.md 解析正常），check_sourcing 已 W002 清零。零语义变更：未触动 dataclass / 接口签名 / yaml schema / 时序图 / features.json 任一字段；features.json 与 outline-design.md 的 sha256 与 v3 完全一致——保持 looks_clean/90。"
+  ],
+  "scope": null,
+  "supersedes": "REV-REQ-2026-003-detail-design-003",
+  "features_json_validation": {
+    "valid": true,
+    "issues": [],
+    "enhancement_suggestions": [
+      "v4 未改动 features.json，机读字段集与 v3/v2 一致：F-001 含 U-INV-1 覆盖 INV-PLAN-1/2；建议追加 U-INV-2/3 锁定 INV-PLAN-3/4 与四条不变量一对一对齐。",
+      "F-002 已具备 complexity / depends_on_features / interfaces_frozen / touches 四个机读字段，阶段 7 派发友好；若日后拆分为 F-002a/b，记得给两个子 feature 各自填齐这四字段。",
+      "F-003 / F-004 已具备完整机读字段集，无需补充。"
+    ]
+  },
+  "human_signoff": {
+    "decision": "approved-trivial",
+    "signed_at": "2026-05-01T13:36:26.882646+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
+  }
+}

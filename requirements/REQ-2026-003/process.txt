@@ -37,3 +37,5 @@
 2026-05-01 12:50:32 [testing] pytest 370 passed / 7 skipped / 0 failed；e2e 3/3；benchmark 3/3 P95 余量 15-170×；stale tests/skills/test_code_review_prepare_routing.py 整文件 SKIP 兜底
 2026-05-01 12:52:29 [save] testing 验收通过：pytest 370/7 skip/0 fail；e2e 3/3；bench 3/3；test-report.md 落盘；待切 completed/开 PR
 2026-05-01 12:59:48 [testing] submitted PR #48 → develop (https://github.com/hjaaa/agentic-meta-engineering/pull/48)
+2026-05-01 13:36:26 [signoff] REV-REQ-2026-003-detail-design-004 approved-trivial by hj19961223@gmail.com
+2026-05-01 14:37:33 [testing] codex review 修复落地：P1-B 循环导入 / P1-A 异常路径 tuple / W002 衍生文档豁免 + REQ-2026-002 legacy:true / detail-design v4 supersede

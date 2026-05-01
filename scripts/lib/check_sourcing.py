@@ -49,6 +49,19 @@ RE_LIST_ITEM = re.compile(r"^\s*(?:[-*]|\d+\.)\s+\S")
 RE_HEADING = re.compile(r"^#{1,6}\s+\S")
 RE_TABLE_ROW = re.compile(r"^\s*\|.*\|\s*$")
 
+# W002（疑似第四态）只对"设计 spec 类"文档生效；衍生文档跳过。
+# 衍生文档的数字断言要么是引用上游设计的事实复述（tasks/*.md 复述 features.json 的
+# acceptance），要么是已 sign-off 的评审结论（review-*.md / retrospective.md），
+# 或测试结果汇总（test-report.md）——都不该再受"必须 + 数字 → 强制溯源"约束。
+# 设计 spec 文档（requirement.md / outline-design.md / detailed-design.md /
+# tech-feasibility.md / plan.md）仍然走 W002 全集。
+W002_DERIVED_FILENAME_PATTERNS = (
+    re.compile(r"^review-\d{8}-\d{6}\.md$"),    # /code-review 输出的评审报告
+    re.compile(r"^retrospective\.md$"),          # 阶段回顾
+    re.compile(r"^test-report\.md$"),            # testing 阶段验收报告
+)
+W002_DERIVED_PARENT_DIRS = ("tasks",)            # tasks/F-*.md 任务清单
+
 
 def _split_paragraphs(text: str) -> list[tuple[int, str]]:
     """按空行切段，返回 [(起始行号 1-based, 段内容), ...]。"""
@@ -87,6 +100,17 @@ def _has_any_marker(para: str) -> bool:
     return bool(
         RE_SRC.search(para) or RE_PENDING_USER.search(para) or RE_PENDING_FILL.search(para)
     )
+
+
+def _is_w002_exempt(md_file: Path) -> bool:
+    """判断文件是否属于 W002 豁免范围（衍生文档不需"数字断言必须三态标记"）。"""
+    name = md_file.name
+    for pat in W002_DERIVED_FILENAME_PATTERNS:
+        if pat.match(name):
+            return True
+    if md_file.parent.name in W002_DERIVED_PARENT_DIRS:
+        return True
+    return False
 
 
 def _count_elements(para: str) -> int:
@@ -200,6 +224,9 @@ def check_file(md_file: Path, report: Report) -> None:
         )
 
     # W002：疑似第四态（强约束数字断言且整段无三态标记）
+    # 衍生文档（review-*/retrospective/test-report/tasks/*）豁免——见 W002_DERIVED_*。
+    if _is_w002_exempt(md_file):
+        return
     for start, content in paras:
         if not RE_CONSTRAINT.search(content):
             continue

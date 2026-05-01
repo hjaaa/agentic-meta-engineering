@@ -24,7 +24,7 @@ refs-detail-design: true
 | `.claude/skills/code-review-prepare/reference/scope-schema.md` | 修改 | ~30 行净改 | 新增 `skipped` 顶层 + `routing_decision` + 修关键词遗留 |
 | `.github/workflows/quality-check.yml` | 修改 | 1 行 | `pip install` 加 `pathspec>=0.12,<1.0` |
 
-总改动：5 新增 + 4 修改 = 9 处。**所有改动必须同一 PR 提交**（C1/C3/C4/C5 同源 PR 已在 tech-feasibility R-2 强制）。
+总改动：5 新增 + 4 修改 = 9 处。**所有改动必须同一 PR 提交**（C1/C3/C4/C5 同源 PR）（来源：tech-feasibility.md）。
 
 ---
 
@@ -567,8 +567,7 @@ sequenceDiagram
 | 4 | `[routing] routing.yaml 加载失败：{file}:{line} {detail}\n  fix-hint：确认文件存在、yaml 语法正确、UTF-8 编码；可用 yamllint 离线校验。` |
 | 5 | `[routing] 本次审查已取消（{cause}）。`<br>cause ∈ {`用户主动按 q`, `连续 3 次无效输入`} |
 
-**实现要求**：
-
+**实现要求**（来源：../plan.md）：
 - yaml 语法错时 `RoutingYamlError` 必须捕获 `yaml.YAMLError.problem_mark.line` 写入 `{line}`
 - schema 错时 `RoutingSchemaError` 必须给出违反的具体 V 编号（如 `V3: must 段长度 7 超过 5`）
 - 退码 5 stderr 用 stdout 输出（用户主动 abort 不属于错误，避免 CI/wrapper 误判异常）—— 但 process.txt audit 一定写
