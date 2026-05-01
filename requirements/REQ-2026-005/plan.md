@@ -27,8 +27,8 @@
 | definition | 2026-05-01 | reviewer looks_clean 92 (REV-002, signed-off) |
 | tech-research | 2026-05-01 | tech-feasibility.md 11 人天估算；schema 不支持本阶段 reviewer，结论入 notes.md |
 | outline-design | 2026-05-01 | reviewer looks_clean 86 (REV-001, signed-off)；4 层架构影响视图 + 6 跨组接口契约 |
-| detail-design | 2026-05-01 | 接口签名 / features.json / 时序；2 项 major 收口（legacy 误用防护 / ruff 阈值表） |
-| task-planning | | 拆分到 features.json（每组 1~3 个 feature_id） |
+| detail-design | 2026-05-01 | reviewer looks_clean 92 (REV-002, signed-off)；6 finding 全修；S1-S10 兼容性收口 |
+| task-planning | 2026-05-01 | features.json 已在 detail-design 阶段产出，5 个 feature 共 10.7 人天 |
 | development | | 实施 + 单元测试 |
 | testing | | CI 全绿 + acceptance 验证 |
 

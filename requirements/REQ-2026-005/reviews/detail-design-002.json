@@ -57,5 +57,11 @@
       "F-002 仍可补 'interfaces_frozen: true'（单行 matcher 修改，接口完全锁定）便于阶段 7 派发器选用最低成本路径；不阻塞放行",
       "F-004 可补 'touches: [...]' 让派发器精确判断文件级影响范围；不阻塞放行"
     ]
+  },
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-01T19:31:28.245386+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
   }
 }
