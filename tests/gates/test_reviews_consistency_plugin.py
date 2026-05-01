@@ -122,15 +122,29 @@ def test_reviews_consistency_fails_json_only_includes_fix_hint():
 
 
 def test_reviews_consistency_skips_on_non_precommit_trigger():
-    """given_trigger_ci_when_precheck_then_skip（skip fixture：非 pre-commit）。"""
+    """given_trigger_phase_transition_when_precheck_then_skip（skip fixture：非 pre-commit 也非 ci）。
+
+    注意：FG-001 起 trigger=ci 不再 Skip 而是走全量扫描；此处改为用 phase-transition 验证 Skip 逻辑。
+    """
     gate = plugin_mod.ReviewsConsistencyGate()
     ctx = _make_ctx(
         changed_files=["requirements/REQ-2026-002/meta.yaml"],
-        trigger="ci",
+        trigger="phase-transition",
     )
     skip = gate.precheck(ctx)
     assert skip is not None
     assert "pre-commit" in skip.reason
+
+
+def test_reviews_consistency_does_not_skip_on_ci_trigger():
+    """given_trigger_ci_when_precheck_then_no_skip（FG-001 新增：CI 走全量扫描不跳过）。"""
+    gate = plugin_mod.ReviewsConsistencyGate()
+    ctx = _make_ctx(
+        changed_files=[],
+        trigger="ci",
+    )
+    skip = gate.precheck(ctx)
+    assert skip is None
 
 
 def test_reviews_consistency_skips_when_no_meta_or_reviews_in_staged():
@@ -245,7 +259,7 @@ def test_has_reviews_diff_returns_true_on_nonzero_returncode():
 def test_fix_hint_does_not_claim_ci_will_intercept():
     """given_meta_reviews_only_staged_when_fail_then_fix_hint_no_ci_intercept_claim。
 
-    fix_hint 不应声称'CI 仍会拦截'——本 gate 仅 pre-commit 触发，CI 不兜底（F-r2-01 修复验证）。
+    fix_hint 不应声称'CI 仍会拦截'——pre-commit 双向校验失败时应有更准确描述（F-r2-01 修复验证）。
     """
     gate = plugin_mod.ReviewsConsistencyGate()
     staged = ["requirements/REQ-2026-002/meta.yaml"]
@@ -255,3 +269,84 @@ def test_fix_hint_does_not_claim_ci_will_intercept():
     assert report.decision == Decision.FAIL
     # 确认 fix_hint 不再包含"CI 仍会拦截"的矛盾承诺
     assert "CI 仍会拦截" not in (report.fix_hint or "")
+
+
+# ====================== CI 全量扫描测试（FG-001 新增）======================
+
+
+def test_ci_full_scan_passes_when_all_consistent(tmp_path):
+    """given_all_reviews_json_present_when_ci_full_scan_then_pass。
+
+    场景：requirements/REQ-TEST/meta.yaml.reviews.code.latest=code-001，
+          requirements/REQ-TEST/reviews/code-001.json 存在 → PASS。
+    """
+    import yaml as _yaml
+
+    # 构造需求目录
+    req_dir = tmp_path / "requirements" / "REQ-TEST"
+    reviews_dir = req_dir / "reviews"
+    reviews_dir.mkdir(parents=True)
+
+    # 写 meta.yaml，含 reviews 段
+    meta = {
+        "id": "REQ-TEST",
+        "phase": "development",
+        "reviews": {
+            "code": {
+                "latest": "code-001",
+                "conclusion": "approved",
+            }
+        },
+    }
+    (req_dir / "meta.yaml").write_text(_yaml.dump(meta), encoding="utf-8")
+
+    # reviews/code-001.json 存在
+    (reviews_dir / "code-001.json").write_text('{"verdict": "approved"}', encoding="utf-8")
+
+    gate = plugin_mod.ReviewsConsistencyGate()
+    ctx = _make_ctx(changed_files=[], trigger="ci")
+
+    # monkeypatch _REPO_ROOT 为 tmp_path
+    import unittest.mock as _mock
+    with _mock.patch.object(plugin_mod, "_REPO_ROOT", tmp_path):
+        report = gate.run(ctx)
+
+    assert report.decision == Decision.PASS
+    assert report.gate_id == "GATE-REVIEWS-CONSISTENCY"
+
+
+def test_ci_full_scan_fails_when_json_missing(tmp_path):
+    """given_latest_json_missing_when_ci_full_scan_then_fail_r_reviews_inconsistent。
+
+    场景：meta.yaml.reviews.code.latest=code-001，但 reviews/code-001.json 不存在 → FAIL。
+    """
+    import yaml as _yaml
+
+    req_dir = tmp_path / "requirements" / "REQ-TEST"
+    reviews_dir = req_dir / "reviews"
+    reviews_dir.mkdir(parents=True)
+
+    meta = {
+        "id": "REQ-TEST",
+        "phase": "development",
+        "reviews": {
+            "code": {
+                "latest": "code-001",
+                "conclusion": "approved",
+            }
+        },
+    }
+    (req_dir / "meta.yaml").write_text(_yaml.dump(meta), encoding="utf-8")
+    # 故意不创建 reviews/code-001.json
+
+    gate = plugin_mod.ReviewsConsistencyGate()
+    ctx = _make_ctx(changed_files=[], trigger="ci")
+
+    import unittest.mock as _mock
+    with _mock.patch.object(plugin_mod, "_REPO_ROOT", tmp_path):
+        report = gate.run(ctx)
+
+    assert report.decision == Decision.FAIL
+    assert report.code == "R-REVIEWS-INCONSISTENT"
+    assert "code-001" in (report.message or "")
+    assert report.gate_id == "GATE-REVIEWS-CONSISTENCY"

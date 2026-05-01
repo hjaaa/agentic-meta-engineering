@@ -5,21 +5,25 @@
   防止主对话 LLM 或人工直接 Edit meta.yaml.reviews 段 / reviews/*.json，
   绕过 save-review.sh / check-reviews.sh 的唯一合法写入通道。
 
-  双向校验逻辑：
+  双向校验逻辑（pre-commit）：
   - 正向：staged meta.yaml.reviews 段有 diff → 同目录 reviews/*.json 必须同步 staged
   - 反向：staged reviews/*.json 有改动    → 同目录 meta.yaml 必须同步 staged
 
   review 子键白名单（同 PR3 D7-2）：
     latest / conclusion / reviewed_commit / artifact_hashes / history / stale / by_feature
 
-precheck：
-  - trigger 非 pre-commit 时直接 Skip（仅在提交阶段有意义）
-  - changed_files 中无 meta.yaml / reviews/*.json 时直接 Skip
+precheck（FG-001 更新）：
+  - trigger=ci 时直接继续（走 _run_ci_full_scan 全量扫描路径）
+  - trigger 非 pre-commit 且非 ci 时直接 Skip
+  - pre-commit 时：changed_files 中无 meta.yaml / reviews/*.json 时直接 Skip
+
+CI 全量扫描逻辑：
+  - 扫 requirements/*/meta.yaml，读取 reviews 段各 phase 的 latest 字段
+  - 确认 requirements/<id>/reviews/<latest>.json 文件存在
+  - 不一致 → FAIL，code=R-REVIEWS-INCONSISTENT
+  - 全部一致 → PASS
 
 side_effects：none（只做读检查，不写文件）
-
-注意：本 gate 仅在 pre-commit 路径生效（registry triggers=[pre-commit]）。
-CI 路径（--trigger=ci）不运行本 gate；绕过 --no-verify 后不会有 CI 兜底。
 """
 from __future__ import annotations
 
@@ -29,7 +33,11 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+import yaml
+
 from .base import Decision, Gate, GateContext, Report, Severity, Skip
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 
 # meta.yaml.reviews 段的子键白名单（与 PR3 D7-2 保持一致）
 _REVIEWS_SUBKEYS = re.compile(
@@ -46,16 +54,24 @@ class ReviewsConsistencyGate(Gate):
 
     id = "GATE-REVIEWS-CONSISTENCY"
     severity = Severity.ERROR
-    triggers = {"pre-commit"}
+    triggers = {"pre-commit", "ci"}
     side_effects = "none"
 
     def precheck(self, ctx: GateContext) -> Optional[Skip]:
-        """仅 pre-commit trigger 需要检查；无相关 staged 文件时跳过。
+        """决定本 gate 是否真跑。
 
-        参数约束：ctx.trigger 必须为 pre-commit；ctx.changed_files 由 runner 注入。
+        - trigger=ci：直接继续，走全量扫描
+        - trigger=pre-commit：staged 中无 meta.yaml / reviews/*.json 时跳过
+        - 其他 trigger：跳过
+
+        参数约束：ctx.trigger 由 runner 注入；ctx.changed_files 仅 pre-commit 时有效。
         """
+        if ctx.trigger == "ci":
+            # CI 走全量扫描，不需要 staged 文件过滤
+            return None
+
         if ctx.trigger != "pre-commit":
-            return Skip(f"trigger={ctx.trigger!r} 非 pre-commit；跳过双向一致性校验")
+            return Skip(f"trigger={ctx.trigger!r} 非 pre-commit 也非 ci；跳过双向一致性校验")
 
         # 快速过滤：staged 中无 meta.yaml 且无 reviews/*.json 时直接跳过
         has_meta = any(_META_PATTERN.match(f) for f in ctx.changed_files)
@@ -66,6 +82,85 @@ class ReviewsConsistencyGate(Gate):
         return None
 
     def run(self, ctx: GateContext) -> Report:
+        """根据 trigger 分流到不同扫描路径。
+
+        - trigger=ci：全量扫描（_run_ci_full_scan）
+        - trigger=pre-commit：双向 staged 一致性校验
+        """
+        if ctx.trigger == "ci":
+            return self._run_ci_full_scan(ctx)
+        return self._run_precommit_check(ctx)
+
+    def _run_ci_full_scan(self, ctx: GateContext) -> Report:
+        """CI 全量扫描：检查所有需求的 meta.yaml reviews 段与 reviews/*.json 文件的一致性。
+
+        扫 requirements/*/meta.yaml，读取 reviews 段各 phase 的 latest 字段，
+        确认对应的 reviews/<latest>.json 文件存在。
+
+        失败场景：
+          R-REVIEWS-INCONSISTENT — 某 phase 的 latest 对应的 json 文件不存在
+        """
+        req_root = _REPO_ROOT / "requirements"
+        if not req_root.exists():
+            return Report(
+                gate_id=self.id,
+                decision=Decision.PASS,
+                message="requirements/ 目录不存在；跳过 CI 全量扫描",
+            )
+
+        inconsistencies: list[str] = []
+
+        for meta_path in sorted(req_root.glob("*/meta.yaml")):
+            req_id = meta_path.parent.name
+            reviews_dir = meta_path.parent / "reviews"
+            try:
+                with meta_path.open(encoding="utf-8") as f:
+                    meta = yaml.safe_load(f) or {}
+            except Exception as exc:  # noqa: BLE001
+                # meta.yaml 读取失败：记为不一致项，继续扫其他需求
+                inconsistencies.append(f"{req_id}: 读取 meta.yaml 失败: {exc}")
+                continue
+
+            reviews_section = meta.get("reviews") or {}
+            if not isinstance(reviews_section, dict):
+                # reviews 段格式非预期，跳过
+                continue
+
+            for phase_key, phase_val in reviews_section.items():
+                if not isinstance(phase_val, dict):
+                    continue
+                latest = phase_val.get("latest")
+                if not latest:
+                    # 无 latest 字段：该 phase 尚未有 review，不报错
+                    continue
+                expected_json = reviews_dir / f"{latest}.json"
+                if not expected_json.exists():
+                    inconsistencies.append(
+                        f"{req_id}/{phase_key}: latest={latest!r} "
+                        f"但 reviews/{latest}.json 不存在"
+                    )
+
+        if inconsistencies:
+            return Report(
+                gate_id=self.id,
+                decision=Decision.FAIL,
+                code="R-REVIEWS-INCONSISTENT",
+                message="reviews 文件与 meta.yaml.reviews.latest 不一致：\n"
+                        + "\n".join(f"  - {item}" for item in inconsistencies),
+                fix_hint=(
+                    "meta.yaml.reviews.latest 必须与 reviews/ 目录下实际 json 文件名一致。\n"
+                    "请通过 save-review.sh 重新生成 review 记录，或手工修正 latest 字段。"
+                ),
+                vars={"inconsistencies": inconsistencies},
+            )
+
+        return Report(
+            gate_id=self.id,
+            decision=Decision.PASS,
+            message="所有需求的 reviews/*.json 与 meta.yaml.reviews.latest 一致",
+        )
+
+    def _run_precommit_check(self, ctx: GateContext) -> Report:
         """双向校验 staged reviews/*.json ↔ meta.yaml.reviews 段同步性。
 
         正向：meta.yaml.reviews 段被改 → 同目录 reviews/*.json 必须同步 staged。

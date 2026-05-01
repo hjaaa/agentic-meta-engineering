@@ -190,6 +190,7 @@ gates:
     severity: error
     triggers:
       - pre-commit
+      - ci
     applies_when:
       changed_files:
         - "requirements/*/meta.yaml"
