@@ -37,16 +37,25 @@ class TraceabilityGate(Gate):
     side_effects = "none"
 
     def precheck(self, ctx: GateContext) -> Optional[Skip]:
-        """仅 to_phase=testing 时真跑追溯链校验；其他情况直接跳过。
+        """放行两种路径：phase-transition→testing 以及 submit（含 requirement_id）。
 
-        参数：ctx.to_phase — 目标阶段；ctx.requirement_id — 需求 ID（必须非空）。
+        参数：ctx.trigger — 触发类型；ctx.to_phase — 目标阶段（phase-transition 时有效）；
+              ctx.requirement_id — 需求 ID（submit 路径必须非空）。
         返回：Skip（无需检查）或 None（继续执行 run）。
         """
-        if ctx.to_phase != "testing":
-            return Skip(f"traceability check only required when to_phase=testing (got {ctx.to_phase!r})")
-        if not ctx.requirement_id:
-            return Skip("no requirement_id in context; traceability check skipped")
-        return None
+        # 路径 1：阶段切换到 testing（既有逻辑保持不变）
+        if ctx.trigger == "phase-transition" and ctx.to_phase == "testing":
+            if not ctx.requirement_id:
+                return Skip("no requirement_id in context; traceability check skipped")
+            return None
+        # 路径 2：submit 时做追溯链快查（F-005 新增，确保 PR 前追溯已完整）
+        if ctx.trigger == "submit" and ctx.requirement_id:
+            return None
+        return Skip(
+            f"traceability check only required when to_phase=testing "
+            f"or trigger=submit with requirement_id (got trigger={ctx.trigger!r}, "
+            f"to_phase={ctx.to_phase!r})"
+        )
 
     def run(self, ctx: GateContext) -> Report:
         """串调私有检查方法：features.json 读取 → design 追溯检查。
@@ -158,8 +167,14 @@ def _check_design_traceability(
 
 
 def _feature_mentioned(feature_id: str, text: str) -> bool:
-    """检查 feature_id 是否在文本中被提到（宽松：只要字符串出现即算）。"""
-    return bool(re.search(re.escape(feature_id), text))
+    """检查 feature_id 是否在文本中被提到（单词边界：不匹配前/后有标识符字符的情况）。
+
+    使用 look-behind / look-ahead 实现单词边界，确保：
+      - "FG-001" 不匹配 "FG-0015" 或 "XFG-001Y"（F-005 收紧）
+      - 边界定义：前后不含字母、数字或连字符
+    """
+    pattern = r"(?<![A-Za-z0-9-])" + re.escape(feature_id) + r"(?![A-Za-z0-9-])"
+    return re.search(pattern, text) is not None
 
 
 # 模块级导出
