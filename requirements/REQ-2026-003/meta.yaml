@@ -1,6 +1,6 @@
 id: REQ-2026-003
 title: 代码审查人类必经卡点（路由确认 + 结论 sign-off）
-phase: development
+phase: testing
 created_at: '2026-04-29 17:05:53'
 branch: feat/req-2026-003
 base_branch: develop
@@ -80,6 +80,23 @@ gates_passed:
       - 'GATE-SOURCING W002: tasks/F-002.md 第 49 行 / F-003.md 第 32+67 行 / F-004.md
         第 79 行 数字断言缺三态标记（advisory）'
     notes: GATE-TRACEABILITY skipped（仅 to_phase=testing 时校验）
+  - phase: testing
+    at: '2026-05-01 12:40:38'
+    gates:
+      - GATE-META-SCHEMA
+      - GATE-INDEX-INTEGRITY
+      - GATE-SOURCING
+      - GATE-WORKSPACE-CLEAN
+      - GATE-REVIEW-VERDICT
+      - GATE-TRACEABILITY
+      - GATE-PLAN-FRESHNESS
+    warnings:
+      - 'GATE-SOURCING W002: detailed-design.md 第 27/572 行数字断言缺三态标记（advisory）'
+      - 'GATE-SOURCING W002: review-20260501-014002.md 第 90 行 / review-20260501-100038.md
+        第 20+148 行 数字断言缺三态标记（advisory）'
+      - 'GATE-SOURCING W002: tasks/F-002.md 第 49 行 / F-003.md 第 32+67 行 / F-004.md
+        第 103 行 数字断言缺三态标记（advisory）'
+    notes: GATE-TRACEABILITY 首次实跑（to_phase=testing 触发深度校验需求→设计→代码→测试链）
 pr_url: ''
 pr_number: 0
 log_layout: split

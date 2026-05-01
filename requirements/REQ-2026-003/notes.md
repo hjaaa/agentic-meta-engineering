@@ -72,3 +72,30 @@ hash drift 重审。
 transcript 仅包含 SessionStart hook、`/clear` 和 `/exit` 三条事件，没有任何用户与 AI 的实际工作交互。
 
 _本轮无新经验_
+
+
+## 2026-05-01 教训：重构核心模块要全仓 grep 旧符号 + 旧 CLI flag
+
+**现象**：testing 阶段首跑 pytest 报 6 个 failure，定位到 `tests/skills/test_code_review_prepare_routing.py`
+mock `_is_tty` / 调 `_run_default_mode` / CLI `--scope-out --all`——这些在 `code_review_routing.py`
+中**根本不存在**。
+
+**根因**：F-002 期间 commits `4502752`（加入这批测试）→ `3d46fcb`（移除 `_is_tty` 后门 + CLI 重构）
+之间，**漏改这一个测试文件**。核心 `tests/lib/test_code_review_routing.py` 已被同步重写、
+F-001/F-002 review 时跑的是 lib 那份，未触发 skills 那份的失败。
+
+**为什么 F-002 review 没拦住**：F-002 review 的 `pytest --feature-id=F-002` scope 只跑了
+`tests/lib/`，没扫 `tests/skills/`——因为路由配置（彼时尚未上线 routing.yaml）认为该文件
+在 trivial 白名单。直到 testing 阶段 `pytest -q` 全量回归才暴露。
+
+**规矩**：
+
+1. **重构核心模块时**——改函数名 / 改 CLI 必填参数 / 改返回类型——必须全仓 grep 旧符号名
+   和旧 CLI flag：`grep -rn '_is_tty\|--scope-out\|_run_default_mode' .`，单测目录、
+   skill 文档、command 引用全扫一遍。
+2. **review scope 不能完全替代全量回归**——routing.yaml 的 must/suggest 命中是子集，
+   有的"等价重复测试"会因路径偏离漏跑。**phase-transition 切 testing 时强制跑 `pytest -q`**
+   作为门禁兜底（已纳入 test-report.md §5 carry-over 建议）。
+3. **stale 测试发现后**——优先用 `pytestmark = pytest.mark.skip(reason=...)` 整文件标记
+   而不是直接 `rm`：保留 git 可见的占位 + 明确理由，等用户审视后再 `git rm`。直接 `rm`
+   会触发 hook 拦截"删除预存测试文件"，需要更高授权层级。

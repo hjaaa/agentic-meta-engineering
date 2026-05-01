@@ -33,3 +33,6 @@
 2026-05-01 12:35:42 [signoff] REV-REQ-2026-003-code-F-004-002 approved by hj19961223@gmail.com
 2026-05-01 12:36:19 [development] F-004 → done（looks_clean 90 / 4/4 features 全部完成；可切 testing）
 2026-05-01 12:37:32 [save] development 完成：F-001..F-004 全部 done+signoff（90/78/92/90）；35 commit / 1164+1100 行；待切 testing
+2026-05-01 12:41:14 [phase-transition] development → testing（7 gates 全跑全过；GATE-TRACEABILITY 首次实跑通过；9 W002 advisory 已入 gates_passed）
+2026-05-01 12:50:32 [testing] pytest 370 passed / 7 skipped / 0 failed；e2e 3/3；benchmark 3/3 P95 余量 15-170×；stale tests/skills/test_code_review_prepare_routing.py 整文件 SKIP 兜底
+2026-05-01 12:52:29 [save] testing 验收通过：pytest 370/7 skip/0 fail；e2e 3/3；bench 3/3；test-report.md 落盘；待切 completed/开 PR

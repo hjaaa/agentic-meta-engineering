@@ -1,23 +1,30 @@
 """code-review-prepare 路由 CLI 测试（TC-A1 ~ A6 + TC-A7 skip）。
 
-覆盖范围：
-  TC-A1  tty + accept → scope.json 写 AI 建议子集，decision=accept，returncode 0
-  TC-A2  tty + all    → scope.json 写 8 全集，decision=all，returncode 0
-  TC-A3  tty + abort  → scope.json 不存在，returncode 0，stderr 含 'aborted by user'
-  TC-A4  tty + 非法   → returncode 1，stderr 含 'invalid token'
-  TC-A5  非 tty       → returncode 2，stderr 含 'routing: stdin not a tty'
-  TC-A6  非 tty + --all → returncode 2（--all 同样拒绝非 tty）
+⚠️ 整文件 SKIP（2026-05-01 testing 阶段判定为 stale）。
 
-TC-A7（全空 issues 流水线 → quality-reviewer 出 looks_clean）属于 F-003 范畴，
-本期跳过——F-003 实施后启用。
+历史：
+  4502752 test(F-002) 加入 TC-A1..A7（mock _is_tty + 调 _run_default_mode + CLI --scope-out / --all）
+  3d46fcb fix(F-002)  移除 _is_tty FAKE_TTY 后门、CLI 重构，未同步本文件
 
-实现说明：
-  - TC-A1~A4（tty 交互场景）：函数级单测，用 monkeypatch mock _is_tty 和 stdin，
-    直接调脚本内部函数，不通过 subprocess，不依赖任何 env var 旁路。
-  - TC-A5/A6（非 tty 端到端拒收）：保留 subprocess，stdin=PIPE 自动为非 tty，
-    断言 returncode==2 + stderr 含 'routing: stdin not a tty'。
+当前实现无 _is_tty / _run_default_mode；CLI 必填 --mode / --requirement-id / --base-sha
+/ --head-sha / --base-branch / --current-branch（无 --scope-out 与 --all）。本文件用例
+与实现完全脱节。
+
+覆盖等价物已落在：
+  - TC-A1..A4（tty 4 档热键）≡ tests/lib/test_code_review_routing.py::TestPtyIntegration
+    （T1-T5 真实 pty 集成，已通过）
+  - TC-A5/A6（非 tty rc=2）≡ TestNonTtyRejection（T6 端到端，已通过）
+  - TC-A7 一直为 @pytest.mark.skip（F-003 已落地，不再需要）
+
+后续动作：经用户授权后用 `git rm` 删除整文件；保留期间整文件 SKIP 不参与统计。
 """
 from __future__ import annotations
+
+import pytest
+
+pytestmark = pytest.mark.skip(
+    reason="stale (F-002 重构后 API 全变；覆盖等价物在 tests/lib/test_code_review_routing.py 的 TestPtyIntegration / TestNonTtyRejection；待用户授权 git rm 删文件)"
+)
 
 import io
 import json
