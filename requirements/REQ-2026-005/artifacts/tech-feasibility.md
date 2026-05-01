@@ -442,12 +442,15 @@ FG-005（CI lint）      ─── 独立；ruff 历史问题先扫；建议与 
 
 ---
 
+## 9. 决议（tech-research 阶段）
+
+| 决议点 | 决策 | 依据 |
+|---|---|---|
+| FG-001 sourcing W 类 finding 在 strict 下行为 | strict 模式下 sourcing 的 W001/W002/W003 也升 exit 1，与 plan_freshness W003 同语义 | strict 的目的是收紧"刨根问底"纪律松懈；sourcing W 类反映的就是溯源问题，理应被 strict 拦下 |
+| FG-003 `applies_when.changed_files: []` 语义 | 空列表 = 不做 changed_files 过滤（任意均通过） | 与现有 GATE-WORKSPACE-CLEAN（来源：scripts/gates/registry.yaml:124）等 gate 的隐式行为一致；避免修改后破坏现状 |
+| meta.legacy 字段处理 | 复用 meta-schema.yaml 已定义的 optional boolean 字段（来源：context/team/engineering-spec/meta-schema.yaml:131），扩展语义到也豁免 GATE-TRACEABILITY | meta.legacy 已在 PR4 引入；统一作为"历史需求豁免新增校验"开关；不新增字段 |
+| FG-004 `GATE-AHEAD-OF-ORIGIN` 网络失败行为 | 降级 PASS + WARNING（与 `base_reachable` 同策略） | 网络类失败不应阻断本地 submit 流程；用户可看到 WARNING 后自行判断是否重试（来源：scripts/gates/plugins/base_reachable.py:89） |
+
 ## 待澄清清单
 
-1. **FG-001 sourcing W 类 finding 在 strict 下是否应升 exit 1**：需求场景 1（来源：requirements/REQ-2026-005/artifacts/requirement.md:35）提到的 W003 来自 `GATE-PLAN-FRESHNESS`（registry severity=warning）。`sourcing` 的 registry severity=error，其 W 类 finding（W001/W002/W003）目前报 PASS——strict 模式下 sourcing W 类是否也应升 exit 1？若只需修 plan_freshness，则 sourcing `_legacy_to_report` 保持现状。[待用户确认]
-
-2. **FG-003 `applies_when.changed_files: []` 的精确语义**：registry 中多个 gate（如 GATE-WORKSPACE-CLEAN，来源：scripts/gates/registry.yaml:124）的 `changed_files` 为空列表。新 `filter_gates` 逻辑中，空列表应视为"不做 changed_files 过滤（任意 changed_files 均通过）"，还是"没有 changed_files 时跳过该 gate"？推断为前者（与现有 GATE-WORKSPACE-CLEAN 行为一致），但需明确。[待用户确认]
-
-3. **meta.legacy 字段在 meta-schema.yaml 中是否已有显式定义**：plan.md D-007 引用"复用 meta-schema.yaml 已定义的 legacy 字段"（来源：requirements/REQ-2026-005/plan.md:98），但 meta-schema.yaml 全文（来源：context/team/engineering-spec/meta-schema.yaml:1）中未见 `legacy: true/false` 的枚举或字段定义（`legacy` 仅出现在 `log_layout` 枚举值中）。请确认：① `meta.legacy` 字段是否已在 meta-schema.yaml 中定义；② 若未定义，本需求是否需新增此 optional boolean 字段。[待用户确认]
-
-4. **FG-004 `GATE-AHEAD-OF-ORIGIN` gh 失败时的降级行为**：`git rev-list` 因网络不通或 origin 未配置失败时，是降级 PASS 还是 FAIL？建议与 `base_reachable` 一致（来源：scripts/gates/plugins/base_reachable.py:89）：网络类失败降级 PASS + WARNING，避免网络问题阻断 submit。[待用户确认]
+（无未决项；4 项原待确认问题已全部转为决策，见 §9）
