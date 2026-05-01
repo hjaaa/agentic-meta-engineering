@@ -20,3 +20,17 @@
 ## 不入范围
 
 - F3：已被 review-critic 驳回
+
+## tech-research 阶段 reviewer 评审结论
+
+requirement-quality-reviewer 给出 **looks_clean（86 分）**，但因 review-schema.yaml `enums.phase` 仅支持 [definition, outline-design, detail-design, code]，**tech-research 阶段无法落正式 verdict**——按 PHASE_REQUIREMENTS（scripts/lib/check_reviews.py:58）设计，tech-research 不是 reviewer 卡点（outline-design → 只要求 definition 评审通过）。本结论以 notes 形式记录，作为下游 outline-design 阶段的输入。
+
+### Finding（已全部修复）
+- **major**：§1.3 R1-1 / §3.3 R3-3 / §5.3 R5-3 末尾"详见待澄清清单第 N 条"悬空引用——已改为引用 §9 决议
+- **minor**：§1.1 未提示 audit log 副作用——已加"warning-only 入 FAIL 列 release notes 提示"
+- **minor**：§5.1C ruff `line-length=120` 与 `ignore=["E501"]` 矛盾——已删 ignore
+- **minor**：§4.1B argparse 双 add_argument 同 dest 风险——已在 R4-3 标注 Python 3.11/3.12 验证
+- **minor**：FG-001 验证命令 `<测试 REQ>` 占位符——已改为 REQ-2026-005 + sandbox 命名前缀提示
+
+### Schema 阻塞备忘
+review-schema.yaml 缺 tech-research 阶段。后续若希望强制 tech-research 评审，需扩 schema 枚举 + check_reviews.PHASE_REQUIREMENTS。本需求不在范围内。

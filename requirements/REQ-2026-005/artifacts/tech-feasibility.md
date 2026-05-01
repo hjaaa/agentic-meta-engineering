@@ -29,6 +29,8 @@ refs-tech-feasibility: true
 
 备选方案"修 `calc_exit_code` 额外读 `vars['warnings']`"被否：让 audit 层感知 PASS report 内部 vars 语义，违反 Report 契约的"PASS 即通过"语义。
 
+**副作用提示**：本修改后，audit log / 报告渲染中原本归入 PASS 列的 warning-only 情况会改入 FAIL 列（即便非 strict 下仍 exit 0），release notes 需明确说明此行为变化，避免运维侧误判。
+
 **F8（reviews_consistency 加入 CI trigger）**：
 
 修 `registry.yaml`（来源：scripts/gates/registry.yaml:190）的 `triggers` 加入 `ci`，同时修 plugin precheck（来源：scripts/gates/plugins/reviews_consistency.py:57）允许 `ci` trigger 通过。CI 路径下 `ctx.changed_files` 通常为空（非 pre-commit 不注入 `GATE_CHANGED_FILES`），plugin 的 `run` 方法将调用 `_get_staged_files()`（来源：scripts/gates/plugins/reviews_consistency.py:81），但 CI 环境 `git diff --cached` 返回空 → 提前 PASS。需在 CI trigger 下改为扫全量 `requirements/*/meta.yaml` + 对应 `reviews/*.json`（而非依赖 staged 列表）。
@@ -41,7 +43,7 @@ FG-001 独立，无依赖其他 FG。F8 需先改 registry.yaml 再改 plugin pr
 
 | # | 类别 | 描述 | 可能性 | 影响 | 缓解 |
 |---|---|---|---|---|---|
-| R1-1 | tech | `Decision.FAIL` 语义扩大后，sourcing（registry severity=error）的 W 类 finding 在非 strict 模式下也会触发 exit 1，可能改变现有行为 | medium | high | 确认 sourcing W 类 finding 是否应在 strict 下升 exit 1（场景 1 只明确 plan_freshness 的 W003，来源：requirements/REQ-2026-005/artifacts/requirement.md:35）；如不需要，sourcing 的 `_legacy_to_report` 保持 PASS 不改，只改 plan_freshness。详见待澄清清单第 1 条 |
+| R1-1 | tech | `Decision.FAIL` 语义扩大后，sourcing（registry severity=error）的 W 类 finding 在非 strict 模式下也会触发 exit 1，可能改变现有行为 | medium | high | 确认 sourcing W 类 finding 是否应在 strict 下升 exit 1（场景 1 只明确 plan_freshness 的 W003，来源：requirements/REQ-2026-005/artifacts/requirement.md:35）；如不需要，sourcing 的 `_legacy_to_report` 保持 PASS 不改，只改 plan_freshness。**已固化决议：sourcing W 类升 strict（详见 §9 决议第 1 行）**——R1-1 风险已被决议消解 |
 | R1-2 | tech | reviews_consistency CI 路径走全量扫描，逻辑分支与 pre-commit 不同，新增测试覆盖面 | low | low | 新增 `test_reviews_consistency_ci_trigger.py` 单测，mock `_get_staged_files` 返回值 |
 
 ### 1.4 工作量
@@ -55,13 +57,16 @@ FG-001 独立，无依赖其他 FG。F8 需先改 registry.yaml 再改 plugin pr
 ### 1.5 验证方式
 
 ```bash
-# 构造含 W003 的 plan.md 场景，strict 模式期望 exit 1
-python3 scripts/gates/run.py --trigger=ci --req=<测试 REQ> --strict
+# 用本需求 REQ-2026-005 做测试样本（plan.md 仍含 W003）
+# strict 模式期望 exit 1（修复后）
+python3 scripts/gates/run.py --trigger=ci --req=REQ-2026-005 --strict
 echo "exit=$?"  # 期望: 1
 
-# 同场景非 strict 期望 exit 0
-python3 scripts/gates/run.py --trigger=ci --req=<测试 REQ>
+# 同样本非 strict 期望 exit 0（向后兼容）
+python3 scripts/gates/run.py --trigger=ci --req=REQ-2026-005
 echo "exit=$?"  # 期望: 0
+
+# 沙盒 REQ（避免污染正式序列）：使用 REQ-2099-NNN 命名前缀
 
 # pytest
 pytest tests/gates/ -v -k "strict or reviews_consistency"
@@ -158,7 +163,7 @@ FG-003 无依赖其他 FG，可并行开发。内部约束：filter_gates 升级
 |---|---|---|---|---|---|
 | R3-1 | tech | pathspec glob 与旧 plugin fnmatch 行为不一致，导致部分 gate 过滤结果改变 | medium | high | 逐一核查现有 21 条 gate 的 `applies_when.changed_files`；新增"filter before/after"对比测试，确保 SKIP 集合变化仅限于预期范围 |
 | R3-2 | ops | FG-003 性能退化 > 20% | low | medium | 先抓 baseline；超标时保留 plugin 内 changed_files 副本（降级），registry 字段消费仅作可选优化（来源：requirements/REQ-2026-005/artifacts/requirement.md:75） |
-| R3-3 | tech | `changed_files: []` 语义歧义（不限制 vs 无文件则 skip） | medium | medium | 明确文档：空列表 = 不做 changed_files 过滤，与现有 gate 行为一致（如 GATE-WORKSPACE-CLEAN，来源：scripts/gates/registry.yaml:124）；详见待澄清清单第 2 条 |
+| R3-3 | tech | `changed_files: []` 语义歧义（不限制 vs 无文件则 skip） | medium | medium | 明确文档：空列表 = 不做 changed_files 过滤，与现有 gate 行为一致（如 GATE-WORKSPACE-CLEAN，来源：scripts/gates/registry.yaml:124）；详见 §9 决议第 2 行 |
 
 ### 3.4 工作量
 
@@ -274,7 +279,7 @@ FG-004 无依赖其他 FG。内部约束：registry.yaml 新增 `tags` 字段 + 
 |---|---|---|---|---|---|
 | R4-1 | tech | registry tags 字段是新增字段，schema 校验（S1-S10）可能拒绝含 tags 的 entry | medium | high | 先确认 S1-S10 是否有"禁止额外字段"规则；若有，同步更新 schema 定义允许 tags 可选字段 |
 | R4-2 | business | 现有调用 `--force-with-blockers` 的 CI/文档改动后语义变化，使原本可绕过的 gate 被真实拦截 | medium | high | 修改前搜索 `.claude/commands/`、CI workflow 中所有该 flag 调用场景，确认仅 review-blocker 场景 |
-| R4-3 | tech | argparse 两次同 dest `add_argument`，默认值冲突 | low | medium | 两处均设 `default=None`，实际提供的值覆盖 None，无冲突 |
+| R4-3 | tech | argparse 两次同 dest `add_argument`，默认值或 option string 冲突 | low | medium | 两处均设 `default=None`，实际提供的值覆盖 None；argparse 仅在 option string 重复时抛 `ArgumentError`，本场景两处 option string 不同（`--bypass-review-blockers` vs `--force-with-blockers`），不冲突。detail-design 阶段在 Python 3.11/3.12 各跑一次 unit test 确认 |
 
 ### 4.4 工作量
 
@@ -347,7 +352,8 @@ grandfather 机制：在 runner 的 `filter_gates`（而非 plugin 层，来源�
 [tool.ruff]
 select = ["E", "W", "F"]
 line-length = 120
-ignore = ["E501"]  # 避免历史行超长噪音；可后续收紧
+# 不在 ignore 列表中显式屏蔽 E501（行长度）——与 line-length=120 配合生效；
+# 若首次扫违反数 > 20 走 §5.1C 两步策略（auto-fix PR 先行，再加 CI step）。
 ```
 
 **首次历史问题处理策略**（两步，防首次 PR 红灯）：
@@ -374,7 +380,7 @@ FG-005 内三子项代码路径不重叠，按 requirement.md 归并依据（来
 |---|---|---|---|---|---|
 | R5-1 | ops | ruff 首次扫出大量历史问题，PR 红灯 | medium | medium | 先本地预扫 + auto-fix PR；加入 CI 前确认 0 error |
 | R5-2 | tech | traceability submit trigger 路径缺少 `to_phase` 值（submit 不传 --to），导致 precheck 逻辑异常 | medium | medium | submit trigger 的 traceability 校验不依赖 to_phase，只依赖 req_id；precheck 分支应为 `trigger == "submit" and ctx.requirement_id` |
-| R5-3 | tech | meta.legacy 字段在 meta-schema.yaml 中未有显式定义，filter_gates 读取时返回 None 而非 False，grandfather 判断 `== True` 需精确类型检查 | low | low | 使用 `ctx.meta.get("legacy") is True` 或 `bool(ctx.meta.get("legacy", False))`；同时在本需求中明确是否在 meta-schema.yaml 新增此字段（详见待澄清清单第 3 条） |
+| R5-3 | tech | meta.legacy 字段在 meta-schema.yaml 中未有显式定义，filter_gates 读取时返回 None 而非 False，grandfather 判断 `== True` 需精确类型检查 | low | low | 使用 `ctx.meta.get("legacy") is True` 或 `bool(ctx.meta.get("legacy", False))`；同时在本需求中明确是否在 meta-schema.yaml 新增此字段（详见 §9 决议第 3 行） |
 
 ### 5.4 工作量
 
