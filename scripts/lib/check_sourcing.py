@@ -161,7 +161,6 @@ def _clarify_section_stats(lines: list[str]) -> tuple[bool, int]:
 def check_file(md_file: Path, report: Report) -> None:
     raw_text = md_file.read_text(encoding="utf-8")
     text = _strip_code_blocks(raw_text)
-    lines = text.splitlines()
     paras = _split_paragraphs(text)
     file_label = rel(md_file)
 
