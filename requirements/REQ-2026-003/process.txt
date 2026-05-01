@@ -18,3 +18,6 @@
 2026-05-01 01:15:45 [phase-transition] task-planning → development（7 gates 候选 / 6 通过 / 1 skipped GATE-TRACEABILITY 仅 testing 校验；6 W002 advisory 已入 gates_passed）
 2026-05-01 01:20:14 [development] F-001 开始（派 subagent: sonnet / general-purpose）
 2026-05-01 02:43:35 [development] F-001 派修复 subagent（review needs_attention：F-1 _build_plan 拆分 / F-5 V4 编号去重 / F-7 _ERROR_MESSAGES 补全）
+2026-05-01 09:33:30 [signoff] REV-REQ-2026-003-code-F-001-002 approved by hj19961223@gmail.com
+2026-05-01 09:34:15 [signoff] REV-REQ-2026-003-code-F-001-002 approved by hj19961223@gmail.com (cli-tty)
+2026-05-01 09:34:15 [development] F-001 → done（looks_clean 90 / 0 major / 1 minor follow-up；review-002 supersedes 001）
