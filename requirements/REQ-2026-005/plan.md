@@ -29,8 +29,14 @@
 | outline-design | 2026-05-01 | reviewer looks_clean 86 (REV-001, signed-off)；4 层架构影响视图 + 6 跨组接口契约 |
 | detail-design | 2026-05-01 | reviewer looks_clean 92 (REV-002, signed-off)；6 finding 全修；S1-S10 兼容性收口 |
 | task-planning | 2026-05-01 | features.json 已在 detail-design 阶段产出，5 个 feature 共 10.7 人天 |
-| development | | 实施 + 单元测试 |
+| development | 进行中 | F-002 done (d7aaf74) / F-001 done (12354ca) / 剩 F-003 F-004 F-005 |
 | testing | | CI 全绿 + acceptance 验证 |
+
+## development 阶段进度（截至 2026-05-01）
+
+- F-002 / FG-002 `.claude/settings.json` matcher 加 MultiEdit — done（commit d7aaf74）
+- F-001 / FG-001 strict 模式 + reviews_consistency CI 兜底 — done（commits f453b67 / 8a3cdc8 / 12354ca），post-dev 验证待补
+- F-003 / F-004 / F-005 — pending
 
 ## 风险
 

@@ -9,3 +9,5 @@
 2026-05-01 19:31:28 [signoff] REV-REQ-2026-005-detail-design-002 approved by hj19961223@gmail.com
 2026-05-01 19:32:21 [phase-transition] detail-design → task-planning (post-signoff REV-detail-002 looks_clean 92)
 2026-05-01 19:33:19 [phase-transition] task-planning → development (实施开始)
+2026-05-01 19:34:55 [save] F-002 完成 commit d7aaf74；剩余 F-001/003/004/005 待用户选 A/B/C 推进策略
+2026-05-01 19:41:36 [save] F-001 派发 subagent（model=sonnet，FG-001 strict 升级 + reviews_consistency CI 兜底）
