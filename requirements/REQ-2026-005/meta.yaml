@@ -1,7 +1,7 @@
 # ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-005
 title: 门禁系统加固：strict 失效 / Hook 覆盖 / submit 门禁等 10 项缺陷修复
-phase: task-planning
+phase: development
 created_at: "2026-05-01 17:56:29"
 branch: feat/req-2026-005
 base_branch: develop
@@ -17,6 +17,8 @@ gates_passed:
   - {gate: phase-transition, from: outline-design, to: detail-design, at: "2026-05-01
       19:35:00", warnings: ["GATE-PLAN-FRESHNESS:W002"]}
   - {gate: phase-transition, from: detail-design, to: task-planning, at: "2026-05-01 20:00:00",
+    warnings: ["GATE-PLAN-FRESHNESS:W002"]}
+  - {gate: phase-transition, from: task-planning, to: development, at: "2026-05-01 20:05:00",
     warnings: ["GATE-PLAN-FRESHNESS:W002"]}
 pr_url: ""
 pr_number: 0
