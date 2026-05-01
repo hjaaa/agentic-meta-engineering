@@ -431,29 +431,37 @@ def _match_file(
 
 
 def _assert_plan_invariants(plan: RoutingPlan) -> None:
-    """校验 RoutingPlan 的 INV-PLAN-1..4 不变量，违反说明实现有 bug。"""
+    """RoutingPlan 不变量校验；违反抛 RoutingSchemaError 让 main 的 except RoutingError 捕获。
+
+    与 _assert_scope_invariants 同模式（H-11/I-1 修复后异常体系闭环）。
+    """
     # INV-PLAN-1: files_must_hit 的 key 集合必须等于 must_checkers
-    assert set(plan.files_must_hit.keys()) == plan.must_checkers, (
-        f"INV-PLAN-1 violated: files_must_hit.keys()={set(plan.files_must_hit.keys())} "
-        f"!= must_checkers={plan.must_checkers}"
-    )
+    if set(plan.files_must_hit.keys()) != plan.must_checkers:
+        raise RoutingSchemaError(
+            f"INV-PLAN-1: must_checkers ({plan.must_checkers}) ≠ files_must_hit.keys() ({set(plan.files_must_hit.keys())})",
+            exit_code=EXIT_SCHEMA_INVALID,
+        )
     # INV-PLAN-2: files_suggest_hit 的 key 集合必须等于 suggest_checkers
-    assert set(plan.files_suggest_hit.keys()) == plan.suggest_checkers, (
-        f"INV-PLAN-2 violated: files_suggest_hit.keys()={set(plan.files_suggest_hit.keys())} "
-        f"!= suggest_checkers={plan.suggest_checkers}"
-    )
+    if set(plan.files_suggest_hit.keys()) != plan.suggest_checkers:
+        raise RoutingSchemaError(
+            f"INV-PLAN-2: suggest_checkers ({plan.suggest_checkers}) ≠ files_suggest_hit.keys() ({set(plan.files_suggest_hit.keys())})",
+            exit_code=EXIT_SCHEMA_INVALID,
+        )
     # INV-PLAN-3: must_checkers ∪ suggest_checkers ⊆ ALL_CHECKERS
-    assert plan.must_checkers <= set(ALL_CHECKERS) and plan.suggest_checkers <= set(ALL_CHECKERS), (
-        "INV-PLAN-3 violated: checkers 超出 ALL_CHECKERS 范围"
-    )
+    invalid_must = plan.must_checkers - set(ALL_CHECKERS)
+    invalid_suggest = plan.suggest_checkers - set(ALL_CHECKERS)
+    if invalid_must or invalid_suggest:
+        raise RoutingSchemaError(
+            f"INV-PLAN-3: must/suggest 含未知 checker（must:{invalid_must} suggest:{invalid_suggest}）",
+            exit_code=EXIT_SCHEMA_INVALID,
+        )
     # INV-PLAN-4: trivial_only=True ⇒ must/suggest 全空 ∧ files_trivial == files_total > 0
     if plan.trivial_only:
-        assert (
-            len(plan.must_checkers) == 0
-            and len(plan.suggest_checkers) == 0
-            and plan.files_trivial == plan.files_total
-            and plan.files_total > 0
-        ), "INV-PLAN-4 violated"
+        if plan.must_checkers or plan.suggest_checkers or plan.files_trivial != plan.files_total or plan.files_total == 0:
+            raise RoutingSchemaError(
+                f"INV-PLAN-4: trivial_only=True 但 must={plan.must_checkers}/suggest={plan.suggest_checkers}/trivial={plan.files_trivial}/total={plan.files_total}",
+                exit_code=EXIT_SCHEMA_INVALID,
+            )
 
 
 def _build_plan(files: list[str], config: RoutingConfig) -> RoutingPlan:
