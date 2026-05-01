@@ -14,7 +14,7 @@ refs-requirement: true
 经一轮对抗式 review-critic 验证（10 条 finding 全部 `not_rebutted`，1 条 F3 被驳回），发现 5 类系统性弱化：
 
 1. **strict 模式形同虚设**：CI 用 `--strict` 期望把 warning 也 FAIL，但插件把 warning 装进 `Decision.PASS` 的 `vars["warnings"]`，runner `calc_exit_code` 从不读这个字段（来源：scripts/gates/audit.py:111）。
-2. **Hook matcher 漏 MultiEdit**：Claude Code 端 hook 配置 `matcher: "Bash|Edit|Write"`，但 `protect_branch.py` 内部的 `WRITE_TOOLS` 已支持 `MultiEdit`（来源：scripts/gates/plugins/protect_branch.py:27）；Hook 不被拉起则 plugin 永远没机会运行（来源：.claude/settings.json:27）。
+2. **Hook matcher 漏 MultiEdit**：Claude Code 端 hook 配置 `matcher: "Bash|Edit|Write"`，但 `protect_branch.py` 内部的 `WRITE_TOOLS` 已支持 `MultiEdit`（来源：scripts/gates/plugins/protect_branch.py:27）；Hook 不被拉起则 plugin 永远没机会运行（来源：.claude/settings.json:29）。
 3. **registry SoR 失效**：`filter_gates` 只按 `trigger` 过滤，`applies_when` 下的 `changed_files / target_phase / current_phase_in / transition / requires` 字段在 runner 主流程零消费（来源：scripts/gates/run.py:281）；语义靠 plugin 内部各自实现，registry 不是真正的 Single Source of Records。
 4. **escape hatch 命名误导**：`--force-with-blockers` 字面像"只绕过 review blocker"，但 `_handle_escape_hatch` 命中后任何 `error` 级 gate 失败一律返 0（来源：scripts/gates/run.py:516）；对比 `legacy-requirement` 有 `skips_gates_with_tag: [review-verdict]` 限定（来源：scripts/gates/registry.yaml:307）。
 5. **submit/CI/降级路径松懈**：submit.md 列了 7 条门禁但 `submit.py` 仅透传 `--trigger=submit --req=<id>`（来源：scripts/gates/triggers/submit.py:74）；`base_reachable.py` 不读 `cli_flags.target`（来源：scripts/gates/plugins/base_reachable.py:58）；`reviews_consistency` 只在 pre-commit 跑无 CI 兜底（来源：scripts/gates/plugins/reviews_consistency.py:21）；`pr_state` gh 失败/CLOSED 都降级 PASS（来源：scripts/gates/plugins/pr_state.py:82）；`traceability` 仅 `to_phase=="testing"` 真跑（来源：scripts/gates/plugins/traceability.py:39）；CI workflow 仅 5 step 无 build/test/lint（来源：.github/workflows/quality-check.yml:31）。
@@ -40,14 +40,14 @@ refs-requirement: true
 - **角色**：开发者（Claude Code 用户）
 - **前置**：当前在 `develop / main / master` 分支
 - **主流程**：调用 MultiEdit 批量改代码
-- **期望结果**：被 `protect_branch` plugin 拦截并提示切 feature 分支；当前行为是 hook 不被拉起→改动直接落地（来源：.claude/settings.json:27）（来源：scripts/gates/plugins/protect_branch.py:27）
+- **期望结果**：被 `protect_branch` plugin 拦截并提示切 feature 分支；当前行为是 hook 不被拉起→改动直接落地（来源：.claude/settings.json:29）（来源：scripts/gates/plugins/protect_branch.py:27）
 
 ### 场景 3：从 bootstrap 直接跳 testing 必须被拒
 
 - **角色**：开发者 / lifecycle Skill
 - **前置**：需求 phase = `bootstrap`
 - **主流程**：执行 `python3 scripts/gates/run.py --trigger=phase-transition --from=bootstrap --to=testing --req=<id>`
-- **期望结果**：runner 查相邻表后报 `INVALID-PHASE-TRANSITION` 错误并 exit 1；当前行为是 `_validate_phase_args` 仅查 phase 是否在 canonical 集合内，跨阶段跳跃放行（来源：scripts/gates/run.py:333）
+- **期望结果**：runner 查相邻表后报 `INVALID-PHASE-TRANSITION` 错误并 exit 1；当前行为是 `_validate_phase_args` 仅查 phase 是否在 canonical 集合内，跨阶段跳跃放行（来源：scripts/gates/run.py:349）
 
 ### 场景 4：`--force-with-blockers` 不应放过非 review-blocker 类 error
 
@@ -61,14 +61,14 @@ refs-requirement: true
 - **角色**：开发者执行 `/requirement:submit`
 - **前置**：当前分支 ≠ `meta.branch`（误推到非配套分支）
 - **主流程**：跑 submit 流程
-- **期望结果**：被 `GATE-BRANCH-MATCH`（新增）拦下；当前行为是 submit.py 仅透传 trigger，无独立 gate 校验分支匹配（来源：scripts/gates/triggers/submit.py:74）
+- **期望结果**：被新增 `GATE-BRANCH-MATCH` 拦下，exit code = 1，错误码 `R-BRANCH-MISMATCH`，stderr 含 `当前分支 <X> 与 meta.branch <Y> 不一致`；当前行为是 submit.py 仅透传 trigger，无独立 gate 校验分支匹配（来源：scripts/gates/triggers/submit.py:74）
 
 ### 场景 6：CI 跑出 Python 静态错误 / 测试失败 / lint 异常要拦下
 
 - **角色**：CI 系统
 - **前置**：PR 改动了 `scripts/gates/plugins/`
 - **主流程**：CI workflow 跑全套门禁
-- **期望结果**：除门禁 runner 外，还跑 `pytest tests/gates/`（已存在 16 个测试文件，来源：tests/gates/ 目录）+ `ruff check scripts/`（新增依赖）；任一失败即 PR 红灯。当前行为是 quality-check.yml 仅 5 step 无 build/test/lint（来源：.github/workflows/quality-check.yml:31）
+- **期望结果**：除门禁 runner 外，CI 还跑两步——`pytest tests/gates/ -v`（已存在 16 个测试文件，来源：tests/gates/ 目录）+ `ruff check scripts/ --select=E,W,F`（规则集起步仅 E/W/F，pyproject.toml 落配置）；任一失败 exit code = 1，PR 红灯。当前行为是 quality-check.yml 仅 5 step 无 build/test/lint（来源：.github/workflows/quality-check.yml:31）
 
 ## 非功能需求
 
@@ -94,14 +94,14 @@ refs-requirement: true
   - 把 `GATE-REVIEWS-CONSISTENCY` 加入 CI trigger（修 `scripts/gates/registry.yaml` 的 `triggers:` + `scripts/gates/plugins/reviews_consistency.py:21` 的 trigger 校验）
 
 - **FG-002 Hook matcher 覆盖**（覆盖 F2，仅 .claude 侧）
-  - 修 `.claude/settings.json:27` matcher 加 `MultiEdit`
+  - 修 `.claude/settings.json:29` matcher 加 `MultiEdit`
   - 不修改 `.codex/hooks.json`（项目决策不维护 codex 双轨）
   - 复用 `protect_branch.py:27` 既有 `WRITE_TOOLS` 集合（无需改插件代码）
 
 - **FG-003 registry SoR + phase 相邻表**（覆盖 F4 + F5）
   - 修 `scripts/gates/run.py:281` `filter_gates`：消费 `applies_when.changed_files / target_phase / current_phase_in / transition / requires`
   - 一刀切删除各 plugin 内部的 changed_files 过滤逻辑（来源：scripts/gates/plugins/meta_schema.py:54）（来源：scripts/gates/plugins/sourcing.py:48）（来源：scripts/gates/plugins/index_integrity.py:49）（来源：scripts/gates/plugins/plan_freshness.py:52）；为防漂移彻底单源
-  - 在 `scripts/lib/phase_enum.py` 或 phase-rules.md 新增 `ADJACENT_PHASES` 数据；修 `scripts/gates/run.py:333` `_validate_phase_args` 校验 from→to 必须在邻接表中
+  - 在 `scripts/lib/phase_enum.py` 或 phase-rules.md 新增 `ADJACENT_PHASES` 数据；修 `scripts/gates/run.py:349` `_validate_phase_args` 校验 from→to 必须在邻接表中
 
 - **FG-004 escape hatch + submit 门禁链路**（覆盖 F6 + F7）
   - F6：`registry.yaml:313` 的 `force-with-blockers` escape hatch 加 `skips_gates_with_tag: [review-verdict]`；新增 alias `--bypass-review-blockers`；旧名命中打 stderr deprecation warning
@@ -111,7 +111,7 @@ refs-requirement: true
     - `GATE-AHEAD-OF-ORIGIN`（本地 commit 数 > 远端）
   - F7：修 `scripts/gates/plugins/base_reachable.py:58` `_resolve_base_branch` 优先读 `ctx.cli_flags.get("target")` fallback 到 `ctx.meta.get("base_branch")`；修 `scripts/gates/triggers/submit.py:74` 透传 `--target` 参数
 
-- **FG-005 降级路径收紧 + CI build/test/lint**（覆盖 F9 + F10 + F11）
+- **FG-005 降级路径收紧 + CI build/test/lint**（覆盖 F9 + F10 + F11；**归并依据**：与 FG-001~004 不同，本组按 **P2 优先级 + CI workflow 调整窗口** 归并——三处文件路径虽不重叠，但都需要在同一波 CI workflow 调整 + 同一次回归测试中验证，拆开会引入多次 CI 回归噪音）
   - F9：扩展 `scripts/gates/plugins/traceability.py:39-49`：submit trigger 也跑（不再只 testing）；`_feature_mentioned`（line 160）从纯 `re.search` 升级为"段落级 + feature_id 单词边界"匹配以减少误报
   - F10：修 `scripts/gates/plugins/pr_state.py:82-93`：gh 失败时 fall through 到本地 `git ls-remote` 检查；CLOSED 状态从 PASS 改为 `WARNING + 提示用户确认是否重开 PR`；MERGED 仍保持 FAIL
   - F11：在 `.github/workflows/quality-check.yml:31` 后追加两个 step：
@@ -139,6 +139,7 @@ refs-requirement: true
 | F10 CLOSED PR 状态升级路径 | PASS / WARNING（参与 strict 升级）/ INFO（不升级） | INFO 不升级 | CLOSED 是用户决策点不是代码缺陷；strict 应升级"代码质量类 warning"而非"PR 状态类提示"；用户已确认 |
 | F9 历史 REQ 回归处理 | 全量回溯 / meta.legacy=true grandfather / 仅未来 REQ 校验 | grandfather 机制 | REQ-2026-001~003 已 completed，不应被新校验逻辑回溯卡住；复用 meta-schema.yaml 已定义的 legacy 字段；用户已确认 |
 | FG-003 baseline 是否硬要求 | 必须抓 / 推荐抓 / 可选 | 必须抓 | 不抓无法验证 ≤+20% 非功能需求；纳入 FG-003 acceptance；用户已确认 |
+| F9 grandfather 与 F4 单源张力的判定层 | runner 层（filter_gates 阶段判 legacy） / plugin 层各自判 / 双层冗余 | runner 层统一判 | 与 F4「一刀切删 plugin 内 changed_files」原则一致——所有"是否跳过 gate"的逻辑全部上移到 runner / registry SoR；plugin 仅做执行，不做过滤决策；用户倾向 |
 
 ## 待澄清清单
 
