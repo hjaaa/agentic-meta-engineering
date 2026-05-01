@@ -126,7 +126,7 @@ tags:
   - token-saving
 outcome: shipped
 completed_at: '2026-05-01 14:47:00'
-lessons_extracted: false
+lessons_extracted: true
 reviews:
   definition:
     latest: REV-REQ-2026-003-definition-001
