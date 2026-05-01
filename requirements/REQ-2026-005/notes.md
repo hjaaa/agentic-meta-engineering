@@ -34,3 +34,20 @@ requirement-quality-reviewer 给出 **looks_clean（86 分）**，但因 review-
 
 ### Schema 阻塞备忘
 review-schema.yaml 缺 tech-research 阶段。后续若希望强制 tech-research 评审，需扩 schema 枚举 + check_reviews.PHASE_REQUIREMENTS。本需求不在范围内。
+
+## outline-design 阶段 reviewer 评审结论
+
+REV-REQ-2026-005-outline-design-001 → **looks_clean 86**（已写入 meta.yaml，待 sign-off）。
+
+reviewer 明确 5 条 finding **均不阻断 looks_clean**，其中 2 条 major 是 detail-design 必须解决的开放点，3 条 minor 是建议。本次按"reviewer looks_clean 后不再改主产出"原则，全部留 detail-design 阶段处理（避免改 outline-design.md 触发 stale 重审死循环）。
+
+### detail-design 必须收口的 2 条 major
+
+1. **meta.legacy 误用防护**（outline-design.md §5 X3）：未来 REQ 可能误设 `meta.legacy=true` 跳过 traceability 校验。**detail-design 需补强制校验点**：例如 `meta_schema` plugin 检查 `legacy=true` 仅当 `phase ∈ {completed, archived}` 才允许，否则报 `R-LEGACY-MISUSE`。
+2. **ruff 预扫量化阈值**（outline-design.md §5 X4）：缓解仅写"auto-fix PR 先行"不可执行。**detail-design 需给阈值表**：例如 < 50 直接 auto-fix；50-200 独立 PR；> 200 降级到 `select=["F"]` 起步再渐进。
+
+### detail-design 可选优化的 3 条 minor
+
+1. §3.1 strict 升级 vs §3.4 INFO 语义共享 `vars` 字段——两套语义的字段命名/优先级在 detail-design 接口契约表中明确（如 `vars["warnings"]` vs `vars["severity_hint"]` 不会冲突）
+2. §4 实施 DAG 视觉箭头与"5 组无强依赖"措辞冲突——detail-design 可改为正交 DAG 图 + 实施顺序建议两节分开
+3. §3.2 + 待澄清 1：detail-design 在动 registry tags 字段前先定位 S1-S10 schema 校验代码位置（候选：`scripts/gates/registry.py` 或 `scripts/lib/check_registry.py`）
