@@ -81,6 +81,13 @@ class MetaSchemaGate(Gate):
         legacy_report = LegacyReport()
         for path in meta_paths:
             check_meta.check_one(path, schema, legacy_report)
+            # F-005：在 check_meta 之后追加 legacy 误用检查（共用同一 legacy_report）
+            try:
+                meta_data = check_meta._load_yaml(path)
+            except Exception:  # noqa: BLE001
+                # _load_yaml 失败时 check_meta 已记录错误，此处静默跳过
+                meta_data = {}
+            _check_legacy_misuse(meta_data, legacy_report)
 
         # 行为契约（详细设计 §5.1）：把 legacy 完整 render 输出到 stdout，
         # 经 normalize-stderr.sh 关键前缀过滤后与旧入口等价。
@@ -172,6 +179,33 @@ def _legacy_to_report(gate_id: str, legacy: LegacyReport) -> Report:
         decision=Decision.PASS,
         vars={},
     )
+
+
+def _check_legacy_misuse(meta: dict, report: LegacyReport) -> None:
+    """F-005：legacy=true 仅当 phase ∈ {completed, archived} 才合法。
+
+    在活跃开发阶段（如 development / task-planning 等）误加 legacy=true，
+    会导致部分 gate 检查被豁免，引入安全盲区。本函数在 check_meta 后追加检查。
+
+    参数：
+      meta   — 已解析的 meta.yaml dict（若 _load_yaml 失败则传 {}）
+      report — LegacyReport 实例，finding 追加写入（共用 check_one 的 report）
+    """
+    _LEGACY_ALLOWED_PHASES = {"completed", "archived"}
+
+    if meta.get("legacy") is True:
+        phase = meta.get("phase")
+        if phase not in _LEGACY_ALLOWED_PHASES:
+            report.add(
+                "meta.yaml",
+                LegacySeverity.ERROR,
+                "R-LEGACY-MISUSE",
+                (
+                    f"legacy=true 不允许在 phase={phase!r} 阶段使用；"
+                    f"仅 completed/archived 阶段可标记历史豁免。"
+                    f"修复：移除 meta.legacy 字段，或确认需求确实已 completed/archived"
+                ),
+            )
 
 
 # 模块级导出：runner 通过 module.GATE_CLASS 拿到子类
