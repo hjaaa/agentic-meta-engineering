@@ -331,7 +331,7 @@ def instantiate(entry: dict[str, Any]) -> Gate:
 
 
 def _validate_phase_args(args: argparse.Namespace) -> Optional[str]:
-    """校验 --from / --to 是否在 canonical phase 枚举内。
+    """校验 --from / --to 是否在 canonical phase 枚举内 + 前进方向相邻。
 
     返回：None 表示通过；非空 str 为错误消息（调用方打 stderr 后退 2）。
 
@@ -342,9 +342,15 @@ def _validate_phase_args(args: argparse.Namespace) -> Optional[str]:
         2. ReviewVerdictGate.run 同样落到 PASS 分支
       入口处先做白名单校验，把 typo 在最早一关拦下，比下游 plugin 各自防御更稳。
 
+      REQ-2026-005 F-003 扩展：仅 typo 拦截不够——前进跨阶段（如 bootstrap→testing）
+      会跳过中间 6 个阶段的所有评审 / 设计产物，必须在入口处再加"相邻校验"。
+
     校验规则：
       - args.from_phase / args.to_phase 任一为空时跳过（合法用法：CI 模式不传）
-      - 非空且不在 canonical phases 时返回错误消息
+      - 非空且不在 canonical phases 时返回错误消息（typo 拦截）
+      - 两端都在 canonical 内 + to 在 from 之后（前进方向）：必须为相邻对
+        - 回退方向（to_idx <= from_idx）不校验，rollback 场景豁免
+        - 错误码 R-INVALID-PHASE-TRANSITION（severity: error）
     """
     canonical = phase_enum.load_canonical_phases()
     for label, val in (("--from", args.from_phase), ("--to", args.to_phase)):
@@ -354,6 +360,25 @@ def _validate_phase_args(args: argparse.Namespace) -> Optional[str]:
                 f"({sorted(canonical)})；可能 phase 名拼写有误，"
                 f"参考 context/team/engineering-spec/meta-schema.yaml:38"
             )
+
+    # 两端非空 + 都已通过 canonical 校验时，做前进方向相邻校验
+    if args.from_phase and args.to_phase:
+        ordered = phase_enum.load_canonical_phases_ordered()
+        try:
+            from_idx = ordered.index(args.from_phase)
+            to_idx = ordered.index(args.to_phase)
+        except ValueError:
+            # 已在上方 canonical 校验拦下；保险兜底，理论不会到此
+            return None
+        if to_idx > from_idx:  # 前进方向才校验相邻
+            adjacent = phase_enum.load_adjacent_phases()
+            if (args.from_phase, args.to_phase) not in adjacent:
+                return (
+                    f"R-INVALID-PHASE-TRANSITION "
+                    f"非法 phase 跳跃 {args.from_phase}→{args.to_phase}（前进方向必须相邻）；"
+                    f"canonical 顺序参考 context/team/engineering-spec/meta-schema.yaml:38"
+                )
+        # 回退方向（to_idx <= from_idx）不校验，rollback / 同 phase 重跑均合法
     return None
 
 
