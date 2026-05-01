@@ -1,0 +1,101 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-003-code-F-001-001",
+  "requirement_id": "REQ-2026-003",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-01 01:36:47",
+  "reviewed_commit": "82b6217",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "ffad16bd8a4abd36ef31fc679d232e4b629fa98a569dfc382bed2e70c9aec23a"
+    },
+    {
+      "path": "artifacts/tasks/F-001.md",
+      "sha256": "a9abb40ac57acb4ed355ba49e3213925758c2cf65d999f49c69aa57c82069820"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 78,
+  "dimensions": {
+    "design_consistency": {
+      "score": 70,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/code_review_routing.py:42-46 _ERROR_MESSAGES 5 条均为简短串，缺详设 §6 规定的 fix-hint 段 + {detail}/{file}:{line} 插值模板"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/code_review_routing.py:65-101 异常类用 __init__ 注入 exit_code 而非详设 §2.1 类属性写法（语义等价）"
+        },
+        {
+          "severity": "minor",
+          "description": "tests/lib/test_code_review_routing.py:225-247 U8 用 14 文件而非详设 §10.1 的 12 文件（字面偏离）"
+        }
+      ]
+    },
+    "security": {
+      "score": 90,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 92,
+      "issues": []
+    },
+    "complexity": {
+      "score": 75,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/code_review_routing.py:319-419 _build_plan 函数体 93 行（含 docstring + 4 段 INV assert），超 §1.2 60 行硬阈值，嵌套 4 层"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 78,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/code_review_routing.py:196-260 _validate_schema 中 V4 编号在 must 段 / suggest 段类型校验逻辑未抽出复用，存在重复实现"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 82,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/code_review_routing.py:426-456 __all__ 含 6 个 _ 前缀私有符号（_ERROR_MESSAGES / _load_yaml / _validate_schema / _enumerate_diff_files / _build_plan），违反 Python __all__ 公开 API 惯例"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/code_review_routing.py:168 _load_yaml docstring 含英文短语 'file:line detail'，与项目中文注释规范不一致"
+        },
+        {
+          "severity": "minor",
+          "description": "tests/lib/test_code_review_routing.py 测试类名 MusTooLong 拼写漏字母（应为 MustTooLong）"
+        }
+      ]
+    },
+    "performance": {
+      "score": 90,
+      "issues": []
+    },
+    "history_context": {
+      "score": 92,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "design_consistency 与 error_handling 叠加：_ERROR_MESSAGES 缺 fix-hint 段会让 F-002 main() 直接 import 后用户可见 stderr 文案空洞；建议先把详设 §6 表格 5 条文案完整内联，再让 F-002 复用",
+    "complexity 与 design_consistency 叠加：_build_plan 93 行内嵌 4 段 INV assert，建议把不变量校验抽到独立 _assert_plan_invariants(plan) 私有函数，函数体可压回 60 行内并提升可测性",
+    "auxiliary_spec：__all__ 含 _ 私有符号是为 F-002 import 故意设计，建议要么去掉 _ 前缀让其成为正式公开 API，要么从 __all__ 移除并让 F-002 通过模块级 import 直接引用——保持现状会让 lint 工具持续告警"
+  ],
+  "scope": {
+    "feature_id": "F-001"
+  },
+  "supersedes": null
+}

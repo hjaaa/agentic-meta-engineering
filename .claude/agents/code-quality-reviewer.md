@@ -65,7 +65,7 @@ tools: Read, Grep, Bash
   "reviewed_artifacts": [
     {"path": "artifacts/features.json", "sha256": "0000000000000000000000000000000000000000000000000000000000000000"}
   ],
-  "conclusion": "approved",
+  "conclusion": "looks_clean",
   "score": 85,
   "dimensions": {
     "design_consistency": {"score": 90, "issues": []},
@@ -102,7 +102,7 @@ tools: Read, Grep, Bash
 
 ```json
 {
-  "conclusion": "approved | needs_revision | rejected",
+  "conclusion": "looks_clean | needs_attention | blocked",
   "severity_distribution": { "critical": 0, "major": 0, "minor": 0 },
   "merged_issues": [
     {
@@ -196,10 +196,15 @@ EOF
 - ❌ **禁止空话裁决**：rationale 禁止出现"证据充分""证据不足"，必须引用 `file:line` / spec 条目 / git 提交
 - ❌ **禁止盲从 critic**：critic 的 `rejected` 仍需自研验证；自研发现 critic 反证不成立要翻回 `keep`
 - ✅ **去重规则**：同文件同行 + 描述语义相近 → 合并，tags 汇合，保留最高 severity
-- ✅ **结论规则**：
-  - 无 keep 的 critical + keep 的 major ≤ 5 + keep 的 minor ≤ 20 → `approved`
-  - 有 keep 的 major 或 keep 的 minor > 20 → `needs_revision`
-  - 有 keep 的 critical → `rejected`
+- ✅ **结论规则**（AI 三档机器评估，禁止输出"通过"语义）：
+  - 无 keep 的 critical + keep 的 major ≤ 5 + keep 的 minor ≤ 20 → `looks_clean`
+  - 有 keep 的 major 或 keep 的 minor > 20 → `needs_attention`
+  - 有 keep 的 critical → `blocked`
+
+- ✅ **明文禁止**（双卡点合规约束）：
+  - ❌ 输出 `approved`：旧枚举名，已被 F-001 schema 层 CR-7 拒收；reviewer 输入空间也禁止——合并通过的语义现在归人类 sign-off 承载
+  - ❌ 输出 `needs_revision` / `rejected`：旧枚举名，已替换为 `needs_attention` / `blocked`
+  - ❌ 写入 `human_signoff` 字段：这是卡点 B（人类 sign-off）专属字段，AI verdict 输出**必须缺省**该字段
 - ✅ **跨维度洞察必须从数据得出**（如并发 + 错误处理 finding 同行 → 叠加加重）
 - ✅ **`final_verdict` 必须明确**哪些 issue 是"可接受"、哪些"必须修"
 - ✅ **双输出一致性**：Step 1 与 Step 2 的 `conclusion` 严格相等；14 字段 `required_fixes[]` 条数 = `merged_issues` 中 keep+critical 项数（描述对齐）

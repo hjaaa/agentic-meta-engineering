@@ -440,3 +440,51 @@ def test_build_audit_exit_code_zero_when_no_failures_with_plan():
     ctx = GateContext(trigger="ci", requirement_id="REQ-2099-010")
     audit = build_audit(ctx, [pass_report], rollback_failed=False, plan=plan, strict=False)
     assert audit["exit_code"] == 0
+
+
+# ====================== canonical phase 枚举校验（REQ-2026-003 工程债修复） ======================
+# 历史 bug：meta.yaml.phase 写成 'technical-research'（非 canonical）后，phase-transition
+# 门禁链路上的 R001 / ReviewVerdictGate 都因 PHASE_REQUIREMENTS.get(..., []) 默认空 list
+# 而 vacuous pass。修复：runner 入口 + check_reviews + review_verdict plugin 三层 fail-closed。
+
+
+def test_main_returns_two_when_to_phase_not_in_canonical_enum(capsys):
+    """given_invalid_to_phase_when_main_then_exit_2（typo 拦在最早一关）。"""
+    rc = runner_mod.main([
+        "--trigger=phase-transition",
+        "--req=REQ-2099-001",
+        "--from=tech-research",
+        "--to=technical-research",  # 非 canonical（应为 tech-research）
+    ])
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "--to='technical-research'" in err
+    assert "canonical phase 枚举内" in err
+
+
+def test_main_returns_two_when_from_phase_not_in_canonical_enum(capsys):
+    """given_invalid_from_phase_when_main_then_exit_2。"""
+    rc = runner_mod.main([
+        "--trigger=phase-transition",
+        "--req=REQ-2099-001",
+        "--from=technical-research",  # 非 canonical
+        "--to=outline-design",
+    ])
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "--from='technical-research'" in err
+    assert "meta-schema.yaml" in err  # 错误消息指向事实源文档
+
+
+def test_validate_phase_args_returns_none_when_both_empty():
+    """given_no_phase_args_when_validate_then_none（CI 模式不传 --from/--to 是合法用法）。"""
+    import argparse
+    args = argparse.Namespace(from_phase=None, to_phase=None)
+    assert runner_mod._validate_phase_args(args) is None
+
+
+def test_validate_phase_args_returns_none_for_canonical_phases():
+    """given_canonical_phases_when_validate_then_none。"""
+    import argparse
+    args = argparse.Namespace(from_phase="tech-research", to_phase="outline-design")
+    assert runner_mod._validate_phase_args(args) is None

@@ -18,26 +18,31 @@ argument-hint: "[scope]（可选，默认 git diff main..HEAD）"
 
 本命令编排顺序流（不委托单一 Skill，自身协调四步）：
 
-### 1. 预检：`code-review-prepare` Skill
+### 1. 预检：`code-review-prepare` Skill → 路由器
 
+两步串行：
+
+**Step 1-prepare**：
 - 识别模式（embedded / standalone）
-- 取 diff / 确定 services / 写 `.review-scope.json`
+- 取 diff / 确定 services（不写盘）
 - 输出预检摘要，用户确认继续
+
+**Step 2-pre（卡点 A）：路由器 `routing.py` 交互**
+
+调用 `python3 scripts/lib/code_review_routing.py --mode embedded --requirement-id <id> --base-sha <sha> --head-sha <sha> --base-branch develop --current-branch <branch>`
+
+处理 5 个退码分支：
+- `EXIT_OK (0)` — 正常完成，读 `.review-scope.json`；若 `skipped==true` 输出最小报告（trivial-skip）并 return
+- `EXIT_NON_TTY (2)` — 检测到非 tty 调用（AI / 管道），报错并 abort
+- `EXIT_SCHEMA_INVALID (3)` — routing.yaml 语义错，报错并 abort
+- `EXIT_YAML_LOAD_ERROR (4)` — routing.yaml IO/解析失败，报错并 abort
+- `EXIT_USER_ABORT (5)` — 用户主动取消或连续 3 次无效，audit 已写，abort
+
+若 skipped 不为 true，继续 Step 2。
 
 ### 2. 并行 checker
 
-主 Agent 在一条消息里并行调用 8 个专项 checker Agent：
-
-- `design-consistency-checker`
-- `security-checker`
-- `concurrency-checker`
-- `complexity-checker`
-- `error-handling-checker`
-- `auxiliary-spec-checker`
-- `performance-checker`
-- `history-context-checker`
-
-**零 finding 快速路径**：若 8 个 checker 全部返回空 issues，直接跳到第 4 步输出 `approved` 报告，不调 critic / 不调综合 reviewer。
+读 `.review-scope.json` 中 `checker_route` 字段，按该列表并行调用 N 个 checker Agent（N=1..8，动态）
 
 ### 3. 对抗验证 + 综合裁决
 
@@ -56,7 +61,7 @@ critic 输出每条 finding 的 verdict（`rejected / not_proven / not_rebutted`
 ### 4. 报告：`code-review-report` Skill
 
 - 合并 issue（按 critic verdict 处置：rejected → drop；not_proven → 降级 + 标注；not_rebutted → 保留）
-- 应用综合裁决结论（approved / needs_revision / rejected）
+- 应用综合裁决结论（looks_clean / needs_attention / blocked）
 - 生成"裁决明细"段（F-id / checker / severity / critic verdict / 最终处置）
 - 写入文件：
   - 嵌入：`requirements/<id>/artifacts/review-YYYYMMDD-HHMMSS.md`

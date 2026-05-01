@@ -175,7 +175,7 @@ def run_r_rules(
     """
     check_reviews._r001_review_exists(meta, target_phase, report, label)
     check_reviews._r002_schema_recheck(meta, target_phase, report, label, req_id)
-    check_reviews._r003_not_rejected(meta, target_phase, report, label)
+    check_reviews._r003_blocked_or_unsigned(meta, target_phase, report, label, req_id)
     check_reviews._r004_needs_revision(meta, target_phase, report, label)
     check_reviews._r005_hash_drift(meta, target_phase, report, label, req_id, staged_writes)
     check_reviews._r006_supersedes_chain(meta, target_phase, report, label, req_id)

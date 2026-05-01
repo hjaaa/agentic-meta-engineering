@@ -35,6 +35,26 @@ Agent 写入 `requirements/<id>/artifacts/*.md` 的每条关键信息必须属�
 
 禁止一次性输出完整长文档。
 
+### 规则三：sign-off 是人类专属动作
+
+**Sign-off 唯一入口**（人类在 tty 终端执行）：
+
+```bash
+python3 scripts/lib/code_review_signoff.py --rev-id <REV-ID> --decision <approved|approved-trivial|rejected>
+# slash command 糖（等价）：/code-review:signoff <REV-ID> --decision=<v>
+```
+
+Agent 在主对话或子 Agent 中，**禁止**调用上述入口，也**禁止**调用其底层实现以防绕过 tty 校验深防御层：
+
+- `python3 scripts/lib/code_review_signoff.py ...`（唯一用户入口）
+- `/code-review:signoff <REV-ID>`（slash command 糖，最终也调上面入口）
+- `python3 scripts/lib/save_review.py signoff ...`（底层实现，绕过 code_review_signoff.py 的预检层）
+
+> 注：`scripts/save-review.sh` 是**写 verdict** 的入口（reviewer Agent 用），不接受 `signoff` 子命令；用户不要把它当作 sign-off 入口。
+
+调用前的 tty 校验（`sys.stdin.isatty()`）会拒绝 AI shell，但 AI 不得通过假 tty / pipe trick / heredoc 等方式绕过。
+违反视为流程违规——人类发现即回滚 verdict 字段并在需求 notes.md 记录。
+
 ## 人的最小行动路径（5 步）
 
 1. **说出场景** — "我要开发一个新需求" / "继续之前的需求" / "帮我审查一下这段代码"

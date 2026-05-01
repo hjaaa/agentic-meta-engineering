@@ -1,0 +1,85 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-003-outline-design-001",
+  "requirement_id": "REQ-2026-003",
+  "phase": "outline-design",
+  "reviewer": "outline-design-quality-reviewer",
+  "reviewed_at": "2026-04-30 21:06:52",
+  "reviewed_commit": "e58c055",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "b70ccd43ec129b8de44c781b4f43aae95d1a17c3481e1f449df3df64bfd67fba"
+    },
+    {
+      "path": "artifacts/requirement.md",
+      "sha256": "15648b2724d1a4535b6761acc9d409f75d8ec062b4e1426a4ecf4b0d2d7b6049"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 88,
+  "dimensions": {
+    "alignment_with_requirement": {
+      "score": 92,
+      "issues": []
+    },
+    "module_decomposition": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 98 行：§2.2 must 段第 5 条标为 'buffer 槽'（'detail-design 阶段视实际 5 类合并粒度决定填什么'）的描述偏弱——这是 must ≤5 硬兜底的最后一槽，留白不写明候选会让 detail-design 阶段失去对照。建议至少给出 1-2 个候选关键词（如 'requirements/*/meta.yaml schema 守护' 或 'scripts/lib/check_*.py 校验逻辑'）作为 detail-design 输入，避免该槽到了详设阶段无人认领"
+        },
+        {
+          "severity": "minor",
+          "description": "第 215-220 行：§3.2 的 .review-scope.json 示例 skipped_checkers 仅列一项 concurrency-checker，但同节字段约束第 239 行明确 'skipped=true 时含全部 8 个'。示例展示的是非 skipped 路径，但与下方约束并列展示易让读者误以为 'skipped_checkers 总长度任意'。建议在示例旁注明 '此处为 decision=accept 路径示例，skipped=true 时本数组将含全部 8 个 checker'"
+        }
+      ]
+    },
+    "tech_choice_rationale": {
+      "score": 90,
+      "issues": []
+    },
+    "scalability": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 254 行：§3.3 routing.yaml schema 中 version=1 字段已为未来 schema 变更预留升级位，但全文未说明 routing.py 在遇到 version != 1 时的行为（是退码 3 还是宽容跳过未知字段）。建议在 §3.1 退码表或 §3.3 schema 段补充一句 'version 不识别 → 退码 3'，避免 v1 → v2 升级时实现侧自由发挥"
+        }
+      ]
+    },
+    "integration_with_existing": {
+      "score": 86,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 422 行：§5.4 'routing.py 自己 append 审计行，与 requirement-progress-logger 通道并存' 的并存策略仅一句话带过。建议补充并存的写入顺序约定（routing.py 是否需要避免与 requirement-progress-logger 同一秒写盘竞争）或明确 process.txt 是 append-only 无竞态——detail-design 阶段如忽略此点容易出现两路写入交叉污染日志"
+        },
+        {
+          "severity": "minor",
+          "description": "第 415 行：§5.3 仅提到 .github/workflows/quality-check.yml:25 加 pathspec，未涉及本地开发者环境（如 requirements*.txt / pyproject.toml / 是否有 dev-deps 锁文件）。tech-feasibility.md:112 前置条件 1 明确要求 '本地开发同步安装'，建议在 §5.3 补一行 '本地开发环境同步：见 detail-design'，避免 CI 通过但本地路由器跑不起来"
+        }
+      ]
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "§2.2 must 第 5 条 'buffer 槽' 建议至少给候选关键词，避免 detail-design 失去对照",
+    "§3.2 的 .review-scope.json 示例与字段约束并列时，建议在示例旁加 'decision=accept 路径示例' 注释，防止读者误以为 skipped_checkers 长度任意",
+    "§3.1 或 §3.3 增补 'routing.yaml version 不识别 → 退码 3' 的兜底描述，为未来 schema 升级预留行为契约",
+    "§5.3 补充本地开发同步 pathspec 的指引（即使指针到 detail-design），与 tech-feasibility.md:112 前置条件对齐",
+    "§5.4 补一句 process.txt 与 requirement-progress-logger 并存写入的竞态/顺序约定（或显式标注 'append-only 无竞态'）"
+  ],
+  "scope": null,
+  "supersedes": null,
+  "architectural_concerns": [
+    "§5.1 的设计依赖 '主 Agent 在 commands/code-review.md Step 2 后立即判 scope.skipped' 这一行为契约——但目前主 Agent 是 LLM，其行为最终由 commands/code-review.md 提示词约束（非代码强制）。短期可控，但若未来 critic/judge/report 改为独立 Skill 自助调用，'skipped 短路只在主 Agent 一处判' 的隐式约定可能成为脆弱点。detail-design 阶段建议补一行 'skipped 短路是否需要在 critic/judge/report 入口加防御性检查' 的明确决策"
+  ],
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-04-30T21:14:04.434551+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
+  }
+}

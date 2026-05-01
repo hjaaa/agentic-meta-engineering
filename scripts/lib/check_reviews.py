@@ -25,11 +25,35 @@ from common import REPO_ROOT, Report, Severity, paint, rel
 
 # save_review 同目录，scripts/lib 已在 sys.path 中（脚本入口由 sh 启动）
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+# ─── REQ-2026-003 双卡点 sign-off 判定 ──────────────────────────────────────
+# 所有调用方（feature-lifecycle-manager / GATE-REVIEW-VERDICT / save_review.CR 检查）
+# 共用此常量+helper，严禁在各自逻辑里重复比对字符串（避免双轨 D-008）。
+#
+# 注意：SIGNOFF_PASS / is_signed_off 必须定义在 `import save_review` 之前——
+# save_review 顶层会 `from check_reviews import is_signed_off`，若放在 import
+# save_review 之后，循环导入会让 save_review 拿到 ImportError 并永久绑定 stub
+# `return False`，导致 CR-1 / CR-4 静默失效（Codex P1-B verified bug）。
+SIGNOFF_PASS: set[str] = {"approved", "approved-trivial"}
+
+
+def is_signed_off(verdict: dict) -> bool:
+    """REQ-2026-003 双卡点 sign-off 判定。
+    所有调用方必须共用此 helper（feature-lifecycle-manager / GATE-REVIEW-VERDICT）。
+    True 当且仅当 verdict.human_signoff.decision ∈ {approved, approved-trivial}。
+    缺字段 / decision 为 rejected / 空字符串 → False。
+    """
+    sig = verdict.get("human_signoff") or {}
+    return sig.get("decision") in SIGNOFF_PASS
+
+
 import save_review
+import phase_enum  # canonical phase 枚举单一事实源
 
 REQUIREMENTS_DIR = REPO_ROOT / "requirements"
 
-# target-phase → 必须存在的 review phase 列表
+
+# ─── target-phase → 必须存在的 review phase 列表 ────────────────────────────
 PHASE_REQUIREMENTS: dict[str, list[str]] = {
     "tech-research":  ["definition"],
     "outline-design": ["definition"],
@@ -50,7 +74,21 @@ def _load_meta(req: str) -> dict[str, Any]:
 
 
 def _r001_review_exists(meta: dict, target_phase: str, report: Report, label: str) -> None:
-    """R001: target-phase 要求的 review 必须存在（latest != null）"""
+    """R001: target-phase 要求的 review 必须存在（latest != null）
+
+    fail-closed 防御：target_phase 必须在 canonical 枚举内，否则视为 typo / 非法值
+    直接报 R001 错误。避免历史 bug：non-canonical phase 名（如 'technical-research'）
+    通过 PHASE_REQUIREMENTS.get(..., []) 返回空 list → 静默 vacuous pass。
+    """
+    canonical_phases = phase_enum.load_canonical_phases()
+    if target_phase and target_phase not in canonical_phases:
+        report.add(
+            label, Severity.ERROR, "R001",
+            f"target-phase '{target_phase}' 不在 canonical phase 枚举内 "
+            f"({sorted(canonical_phases)})；可能 phase 名拼写有误，"
+            f"参考 context/team/engineering-spec/meta-schema.yaml:38",
+        )
+        return
     required_phases = PHASE_REQUIREMENTS.get(target_phase, [])
     reviews = meta.get("reviews") or {}
     for phase in required_phases:
@@ -62,17 +100,49 @@ def _r001_review_exists(meta: dict, target_phase: str, report: Report, label: st
                        f"切到 {target_phase} 需要 {phase} 阶段的 review，但 reviews.{phase}.latest 为空")
 
 
-def _r003_not_rejected(meta: dict, target_phase: str, report: Report, label: str) -> None:
-    """R003: latest.conclusion != rejected"""
+def _r003_blocked_or_unsigned(
+    meta: dict, target_phase: str, report: Report, label: str, req: str
+) -> None:
+    """R003: latest.conclusion != blocked（D-008 旧 rejected 等价）且必须有 human_signoff。
+
+    升级口径（REQ-2026-003 D-008）：
+    - 旧 schema 里 conclusion=rejected → 新 schema 里 conclusion=blocked；两者都阻断
+    - 新要求：所有非 code phase 的 latest verdict 必须经过人类 sign-off 才允许切阶段
+    """
     required_phases = PHASE_REQUIREMENTS.get(target_phase, [])
     reviews = meta.get("reviews") or {}
     for phase in required_phases:
         if phase == "code":
             continue
         entry = reviews.get(phase) or {}
-        if entry.get("conclusion") == "rejected":
+        # 兼容旧 schema：conclusion=rejected 等价于新 blocked
+        if entry.get("conclusion") in ("blocked", "rejected"):
             report.add(label, Severity.ERROR, "R003",
-                       f"reviews.{phase}.conclusion=rejected，禁止切阶段")
+                       f"reviews.{phase}.conclusion={entry.get('conclusion')}，禁止切阶段")
+        # 读 verdict 文件做 sign-off 判定（参考 _r002_schema_recheck 文件读取模式）
+        latest_id = entry.get("latest")
+        if not latest_id:
+            continue
+        prefix = f"REV-{req}-"
+        if not latest_id.startswith(prefix):
+            # 格式异常交由 R002 报告，R003 跳过
+            continue
+        suffix = latest_id[len(prefix):]
+        review_path = REQUIREMENTS_DIR / req / "reviews" / f"{suffix}.json"
+        if not review_path.exists():
+            # 文件缺失交由 R002 报告，R003 跳过
+            continue
+        try:
+            verdict = json.load(review_path.open(encoding="utf-8"))
+        except json.JSONDecodeError:
+            # 解析失败交由 R002 报告，R003 跳过
+            continue
+        # 升级判定：必须有 human_signoff.decision ∈ SIGNOFF_PASS 才放行
+        if not is_signed_off(verdict):
+            report.add(
+                label, Severity.ERROR, "R003",
+                f"reviews.{phase}.latest 缺 human_signoff 或 decision=rejected，未签字禁止切阶段",
+            )
 
 
 def _r002_schema_recheck(meta: dict, target_phase: str, report: Report, label: str, req: str) -> None:
@@ -115,15 +185,19 @@ def _r002_schema_recheck(meta: dict, target_phase: str, report: Report, label: s
 
 
 def _r004_needs_revision(meta: dict, target_phase: str, report: Report, label: str) -> None:
-    """R004: latest.conclusion = needs_revision → 默认 WARNING，--strict 升 ERROR"""
+    """R004: latest.conclusion = needs_attention → 默认 WARNING，--strict 升 ERROR
+
+    F-001/F-003 schema 升级后，旧 conclusion 值 needs_revision 已替换为
+    needs_attention（AI 三档机器评估）。R004 同步级联到新枚举值。
+    """
     reviews = meta.get("reviews") or {}
     for phase in PHASE_REQUIREMENTS.get(target_phase, []):
         if phase == "code":
             continue
         entry = reviews.get(phase) or {}
-        if entry.get("conclusion") == "needs_revision":
+        if entry.get("conclusion") == "needs_attention":
             report.add(label, Severity.WARNING, "R004",
-                       f"reviews.{phase}.conclusion=needs_revision，建议先修后切阶段")
+                       f"reviews.{phase}.conclusion=needs_attention，建议先修后切阶段")
 
 
 def _r005_hash_drift(
@@ -243,12 +317,35 @@ def _r007_code_by_feature_coverage(meta: dict, target_phase: str, report: Report
     by_feature = code_seg.get("by_feature") or {}
     for fid in done_features:
         entry = by_feature.get(fid) or {}
-        if not entry.get("latest"):
+        latest_id = entry.get("latest")
+        if not latest_id:
             report.add(label, Severity.ERROR, "R007",
                        f"feature {fid} status=done 但 reviews.code.by_feature.{fid}.latest 为空")
-        elif entry.get("conclusion") == "rejected":
+            continue
+        # 兼容旧 schema：conclusion=rejected 等价于新 blocked
+        if entry.get("conclusion") in ("rejected", "blocked"):
             report.add(label, Severity.ERROR, "R007",
-                       f"feature {fid} 的 code review conclusion=rejected")
+                       f"feature {fid} 的 code review conclusion={entry.get('conclusion')}")
+        # 升级判定：code review 也必须经过 human sign-off（REQ-2026-003 D-008）
+        prefix = f"REV-{req}-"
+        if not latest_id.startswith(prefix):
+            continue
+        suffix = latest_id[len(prefix):]
+        review_path = REQUIREMENTS_DIR / req / "reviews" / f"code-{suffix}.json"
+        # 兼容两种路径模式：code-<suffix>.json 与 <suffix>.json
+        if not review_path.exists():
+            review_path = REQUIREMENTS_DIR / req / "reviews" / f"{suffix}.json"
+        if not review_path.exists():
+            continue
+        try:
+            verdict = json.load(review_path.open(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        if not is_signed_off(verdict):
+            report.add(
+                label, Severity.ERROR, "R007",
+                f"feature {fid} 的 code review 缺 human_signoff 或 decision=rejected，未签字禁止切阶段",
+            )
 
 
 def main() -> int:
@@ -275,7 +372,7 @@ def main() -> int:
 
     _r001_review_exists(meta, args.target_phase, report, label)
     _r002_schema_recheck(meta, args.target_phase, report, label, args.req)
-    _r003_not_rejected(meta, args.target_phase, report, label)
+    _r003_blocked_or_unsigned(meta, args.target_phase, report, label, args.req)
     _r004_needs_revision(meta, args.target_phase, report, label)
     _r005_hash_drift(meta, args.target_phase, report, label, args.req)
     _r006_supersedes_chain(meta, args.target_phase, report, label, args.req)

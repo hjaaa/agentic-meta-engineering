@@ -115,18 +115,34 @@ def _patch_check_reviews(monkeypatch, tmp_path: Path, req_id: str) -> None:
 
 
 def test_review_verdict_passes_when_all_reviews_approved(tmp_path, monkeypatch):
-    """given_all_required_reviews_approved_when_run_then_pass（pass fixture）."""
+    """given_all_required_reviews_approved_when_run_then_pass（pass fixture）.
+
+    F-001/F-003 schema 升级后：verdict.conclusion 用 looks_clean（AI 机器评估），
+    human_signoff.decision=approved 才算签字通过。
+    """
     req_id = "REQ-2026-999"
     req_dir = _make_req(tmp_path, req_id)
     _patch_check_reviews(monkeypatch, tmp_path, req_id)
 
     # 切到 tech-research 需要 definition 阶段 review
     review_id = _write_review_json(req_dir, "definition-001", req_id, "definition")
+    # 升级 fixture 到新 schema：conclusion=looks_clean + human_signoff 完整字段
+    rp = req_dir / "reviews" / "definition-001.json"
+    rv = json.loads(rp.read_text())
+    rv["conclusion"] = "looks_clean"
+    rv["human_signoff"] = {
+        "decision": "approved",
+        "signed_at": "2026-04-30T10:00:00+08:00",
+        "signed_by": "test@test.com",
+        "source": "cli-tty",
+    }
+    rp.write_text(json.dumps(rv))
+
     meta = _base_meta(req_id, "tech-research")
     meta["reviews"] = {
         "definition": {
             "latest": review_id,
-            "conclusion": "approved",
+            "conclusion": "looks_clean",
             "artifact_hashes": {},
         }
     }
@@ -331,23 +347,33 @@ def test_review_verdict_skips_when_legacy_true():
 
 
 def test_review_verdict_r004_needs_revision_is_warning(tmp_path, monkeypatch):
-    """R004: needs_revision → warning（不阻断，review.vars 记录）。"""
+    """R004: needs_attention → warning（不阻断，review.vars 记录）。
+
+    F-001/F-003 schema 升级：旧 needs_revision 已替换为 needs_attention。
+    R004 函数同步升级查 needs_attention（详见 check_reviews._r004_needs_revision）。
+    """
     req_id = "REQ-2026-994"
     req_dir = _make_req(tmp_path, req_id)
     _patch_check_reviews(monkeypatch, tmp_path, req_id)
 
     review_id = _write_review_json(req_dir, "definition-001", req_id, "definition")
-    # 把 conclusion 改为 needs_revision
+    # 把 conclusion 改为 needs_attention（新枚举）+ 加 human_signoff 让 R003 不触发
     rp = req_dir / "reviews" / "definition-001.json"
     rv = json.loads(rp.read_text())
-    rv["conclusion"] = "needs_revision"
+    rv["conclusion"] = "needs_attention"
+    rv["human_signoff"] = {
+        "decision": "approved",
+        "signed_at": "2026-04-30T10:00:00+08:00",
+        "signed_by": "test@test.com",
+        "source": "cli-tty",
+    }
     rp.write_text(json.dumps(rv))
 
     meta = _base_meta(req_id, "tech-research")
     meta["reviews"] = {
         "definition": {
             "latest": review_id,
-            "conclusion": "needs_revision",
+            "conclusion": "needs_attention",
             "artifact_hashes": {},
         }
     }
@@ -375,6 +401,17 @@ def test_review_verdict_r007_missing_code_review(tmp_path, monkeypatch):
 
     # 准备 detail-design review（testing 需要 detail-design + code）
     dd_review_id = _write_review_json(req_dir, "detail-design-001", req_id, "detail-design")
+    # 升级 fixture 到新 schema：让 R002/CR-7/R003 都通过，落在 R007 上
+    rp = req_dir / "reviews" / "detail-design-001.json"
+    rv = json.loads(rp.read_text())
+    rv["conclusion"] = "looks_clean"
+    rv["human_signoff"] = {
+        "decision": "approved",
+        "signed_at": "2026-04-30T10:00:00+08:00",
+        "signed_by": "test@test.com",
+        "source": "cli-tty",
+    }
+    rp.write_text(json.dumps(rv))
 
     # 准备 features.json（含一个 done feature）
     artifacts_dir = req_dir / "artifacts"
@@ -388,7 +425,7 @@ def test_review_verdict_r007_missing_code_review(tmp_path, monkeypatch):
     meta["reviews"] = {
         "detail-design": {
             "latest": dd_review_id,
-            "conclusion": "approved",
+            "conclusion": "looks_clean",
             "artifact_hashes": {},
         },
         # code.by_feature 为空 → R007 触发
@@ -406,3 +443,59 @@ def test_review_verdict_r007_missing_code_review(tmp_path, monkeypatch):
     report = gate.run(ctx)
     assert report.decision == Decision.FAIL
     assert "R007" in (report.code or "")
+
+
+# ====================== canonical phase 枚举校验（REQ-2026-003 工程债修复） ======================
+# 历史 bug：to_phase 写成 'technical-research' 等非 canonical 名时，plugin 的
+# `effective_phase not in _PHASE_REQUIREMENTS` 分支返回 PASS（"无对应 review 要求"），
+# 让 typo 静默通过。修复：先用 phase_enum.load_canonical_phases() 区分"typo"和
+# "合法但无 review 要求"两种情况，前者直接 FAIL。
+
+
+def test_review_verdict_fails_on_typo_phase(tmp_path, monkeypatch):
+    """given_typo_to_phase_when_run_then_fail（不再 vacuous PASS）。"""
+    req_id = "REQ-2026-991"
+    req_dir = _make_req(tmp_path, req_id)
+    _patch_check_reviews(monkeypatch, tmp_path, req_id)
+
+    meta = _base_meta(req_id, "tech-research")
+    _write_meta(req_dir, meta)
+
+    gate = plugin_mod.ReviewVerdictGate()
+    ctx = GateContext(
+        trigger="phase-transition",
+        requirement_id=req_id,
+        to_phase="technical-research",  # 非 canonical（应为 tech-research）
+        meta=meta,
+    )
+    report = gate.run(ctx)
+    assert report.decision == Decision.FAIL
+    assert report.code == "REVIEW-INVALID-PHASE"
+    assert "technical-research" in (report.message or "")
+
+
+def test_review_verdict_passes_on_canonical_phase_without_review_requirement(
+    tmp_path, monkeypatch
+):
+    """given_canonical_phase_without_review_requirement_when_run_then_pass。
+
+    bootstrap / definition 是合法 phase 但不在 PHASE_REQUIREMENTS 中（无前置 review
+    要求）→ 维持原 PASS 语义，与 typo 分支区分开。
+    """
+    req_id = "REQ-2026-990"
+    req_dir = _make_req(tmp_path, req_id)
+    _patch_check_reviews(monkeypatch, tmp_path, req_id)
+
+    meta = _base_meta(req_id, "definition")
+    _write_meta(req_dir, meta)
+
+    gate = plugin_mod.ReviewVerdictGate()
+    ctx = GateContext(
+        trigger="phase-transition",
+        requirement_id=req_id,
+        to_phase="definition",  # 合法但无前置 review 要求
+        meta=meta,
+    )
+    report = gate.run(ctx)
+    assert report.decision == Decision.PASS
+    assert "无对应 review 要求" in (report.message or "")

@@ -1,0 +1,64 @@
+# 路由器规则库 — /code-review 卡点 A 引擎读取
+# Schema 校验：scripts/lib/code_review_routing.py:_validate_schema
+# 修改后效：本仓库下次 /code-review 直接生效；CI 不缓存
+version: 1
+
+# ─────── must 段：高风险路径，强制全跑相关 checker（≤ 5 条，D-001 fail-closed 校验）───────
+must:
+  # Q1-1：审查管道核心鉴权脚本（含本需求自身的 routing.py）
+  - pattern: "scripts/lib/{save_review,code_review_signoff,code_review_routing,check_signoff_audit}.py"
+    checkers: [security-checker, design-consistency-checker]
+
+  # Q1-2：门禁系统（registry / runner / plugin），改动直接影响所有需求的 phase 切换
+  - pattern: "scripts/gates/**"
+    checkers: [security-checker, concurrency-checker]
+
+  # Q1-3：所有 slash commands 是 AI 工具的对外契约
+  - pattern: ".claude/commands/**"
+    checkers: [design-consistency-checker, auxiliary-spec-checker]
+
+  # Q1-4：所有 SKILL.md 是 AI 工具契约入口；reference/ 详细规则不在 must（量大且变化频繁）
+  - pattern: ".claude/skills/**/SKILL.md"
+    checkers: [design-consistency-checker, auxiliary-spec-checker]
+
+  # Q1-5：Hook 脚本运行在每个 PreToolUse / Stop 事件，错一行影响所有会话
+  - pattern: ".claude/hooks/**"
+    checkers: [security-checker, concurrency-checker]
+
+# ─────── suggest 段：推荐路径，命中后建议跑（用户可在 custom 中去掉，无上限）───────
+suggest:
+  # 团队规范文档（影响面广，但语义为说明性，不强制）
+  - pattern: "context/team/engineering-spec/**"
+    checkers: [design-consistency-checker]
+
+  # check_*.py 等校验逻辑（被 plugins 直接 import；非鉴权但属于审查管道支撑）
+  - pattern: "scripts/lib/check_*.py"
+    checkers: [design-consistency-checker, error-handling-checker]
+
+  # SKILL reference/ 详细规则（非入口，但容易写错被 LLM 误导）
+  - pattern: ".claude/skills/**/reference/**"
+    checkers: [design-consistency-checker]
+
+  # Agent 定义（影响子 Agent 行为）
+  - pattern: ".claude/agents/**"
+    checkers: [design-consistency-checker, auxiliary-spec-checker]
+
+  # 项目级 INDEX（位置即语义的入口，必须保持索引完整）
+  - pattern: "context/**/INDEX.md"
+    checkers: [auxiliary-spec-checker]
+
+# ─────── trivial_whitelist：100% 命中即 skipped=true，跳过整个 review ───────
+trivial_whitelist:
+  - "**/*.md"                       # 所有 Markdown 默认豁免
+  - "docs/**"
+  - "**/*.txt"
+  - "**/*.rst"
+  - "**/.gitignore"
+  - "**/*.yaml.example"
+
+  # Q2 决策：notes.md 默认豁免（过程文档，跨需求改动相互独立；含 hook artifact 自动生成内容）
+  - "requirements/*/notes.md"
+
+  # 例外提醒（写在 plan.md 决策记录而非 yaml）：
+  # 跨需求 ai-collaboration.md / context/team/*.md 改动必须用 /code-review 独立模式手动审，
+  # 不靠 trivial 白名单豁免——这两类改动属于"协作元规则"，必须经 design-consistency 检查。

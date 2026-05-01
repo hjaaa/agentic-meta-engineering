@@ -48,8 +48,11 @@ pending → in-progress → done
    - 退出码 ≠ 0 → status 保持 `in-progress`，列出失败项让用户/subagent 修，**禁止进入下一步**
 3. 触发 `/code-review` scope = 该 feature
 4. 审查结果：
-   - `approved` → 更新 task 文件 status 到 `done`，记录 review 报告路径；`process.txt` 追加 `[development] F-xxx 完成（review: xxx.md）`
-   - `needs_revision` / `rejected` → status 保持 `in-progress`，把 review 结果交给**同一 subagent 重派修复**（不是主 Agent 亲自修）
+   - 调用 wrapper 脚本判定 sign-off 状态（不允许自行 grep / 一行式）：
+       bash scripts/check-signoff.sh requirements/<id>/reviews/<rev-id>.json
+   - 退出码 0 → human_signoff.decision ∈ {approved, approved-trivial} → 转 done
+   - 退出码 1 → 未签字 / decision=rejected / 缺字段 → 保持 in-progress，提示开发者执行 /code-review:signoff
+   - `needs_revision` / `blocked` → status 保持 `in-progress`，把 review 结果交给**同一 subagent 重派修复**（不是主 Agent 亲自修）
 
 ## 硬约束
 

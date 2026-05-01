@@ -44,13 +44,44 @@ enums:
     - detail-design-quality-reviewer
     - code-quality-reviewer
   conclusion:
+    - looks_clean
+    - needs_attention
+    - blocked
+  signoff_decision:
     - approved
-    - needs_revision
+    - approved-trivial
     - rejected
+  signoff_source:
+    - cli-tty
   severity:
     - blocker
     - major
     - minor
+
+# ---------- 字段定义（文档化用途；CR 规则以 _check_cr_rules 实现为准） ----------
+fields:
+  conclusion:
+    type: enum
+    enum: conclusion
+    required: true          # 已在 required_fields 声明
+  human_signoff:
+    required: false         # 可选子 schema；不进 required_fields 列表
+    description: "人工签字记录；由 cli-tty 交互写入（D-004 out of scope 的其他 source 待扩）"
+    properties:
+      decision:
+        type: enum
+        enum: signoff_decision
+        required: true
+      signed_at:
+        format: iso8601
+        required: true
+      signed_by:
+        format: email
+        required: true
+      source:
+        type: enum
+        enum: signoff_source
+        required: true
 
 # ---------- 字段格式 ----------
 format:
@@ -69,23 +100,29 @@ ranges:
 # 违反任一条 → save-review.sh 拒收，返回 ERROR
 cr_rules:
   CR-1:
-    description: "conclusion=approved 时 required_fixes 必须为空"
-    rule: "approved => required_fixes == []"
+    description: "已签字（is_signed_off）时 required_fixes 必须为空"
+    rule: "is_signed_off(verdict) => required_fixes == []"
   CR-2:
-    description: "required_fixes 非空时 conclusion 必须 ∈ {needs_revision, rejected}"
-    rule: "len(required_fixes) > 0 => conclusion in [needs_revision, rejected]"
+    description: "required_fixes 非空时 conclusion 必须 ∈ {needs_attention, blocked}"
+    rule: "len(required_fixes) > 0 => conclusion in [needs_attention, blocked]"
   CR-3:
-    description: "任一 dimensions.*.score < 60 时 conclusion 不能为 approved"
-    rule: "any dim.score < 60 => conclusion != approved"
+    description: "任一 dimensions.*.score < 60 时 conclusion 不能为 looks_clean"
+    rule: "any dim.score < 60 => conclusion != looks_clean"
   CR-4:
-    description: "总评 score < 70 时 conclusion 不能为 approved"
-    rule: "score < 70 => conclusion != approved"
+    description: "总评 score < 70 时 conclusion 不能为 looks_clean 且不能已签字"
+    rule: "score < 70 => conclusion != looks_clean AND is_signed_off(verdict) == False"
   CR-5:
     description: "dimensions.*.issues[] 每项必须有合法 severity 和非空 description"
     rule: "for issue in dim.issues: issue.severity in enums.severity AND issue.description != ''"
   CR-6:
-    description: "任一 issue.severity = blocker 时 conclusion 不能为 approved"
-    rule: "any issue.severity == blocker => conclusion != approved"
+    description: "任一 issue.severity = blocker 时 conclusion 必须为 blocked"
+    rule: "any issue.severity == blocker => conclusion == blocked"
+  CR-7:
+    description: "conclusion 必须命中新枚举 {looks_clean, needs_attention, blocked}；阻断 AI 残留写旧值 approved"
+    rule: "conclusion in {looks_clean, needs_attention, blocked}"
+  CR-8:
+    description: "human_signoff.source 若存在必须 ∈ signoff_source 枚举（当前仅 cli-tty）"
+    rule: "human_signoff.source in [cli-tty] (if human_signoff present)"
 
 # ---------- scope 约束 ----------
 # phase=code 必须有 scope.feature_id；其他 phase 必须 scope=null
