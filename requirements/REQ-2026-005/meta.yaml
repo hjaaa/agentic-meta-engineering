@@ -10,8 +10,8 @@ services: []
 gates_passed:
   - {gate: phase-transition, from: bootstrap, to: definition, at: "2026-05-01 18:01:30",
     warnings: ["GATE-PLAN-FRESHNESS:W003"]}
-  - {gate: phase-transition, from: definition, to: tech-research, at: "2026-05-01 18:35:00",
-    warnings: []}
+  - {gate: phase-transition, from: definition, to: tech-research, at: "2026-05-01
+      18:35:00", warnings: []}
 pr_url: ""
 pr_number: 0
 log_layout: split
@@ -33,12 +33,13 @@ completed_at: ""               # ISO8601，completed 时填
 lessons_extracted: false       # /knowledge:extract-experience 是否已跑
 reviews:
   definition:
-    latest: REV-REQ-2026-005-definition-001
+    latest: REV-REQ-2026-005-definition-002
     conclusion: looks_clean
-    reviewed_commit: 7199ee8
+    reviewed_commit: 64560eb
     artifact_hashes:
       artifacts/requirement.md: 
-        9d5136469da30e1becdf410bdf6c599756966870f028b77553d4821eedf7256b
+        2d5269b633ef943ac56f5be6f8b29936c45cc62288327d86c509585b41cb8539
     history:
       - REV-REQ-2026-005-definition-001
+      - REV-REQ-2026-005-definition-002
     stale: false
