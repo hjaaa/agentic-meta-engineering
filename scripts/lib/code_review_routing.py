@@ -20,7 +20,7 @@ import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -47,6 +47,9 @@ ROUTING_YAML_PATH = Path(".claude/code-review-routing.yaml")
 SCOPE_JSON_PATH = Path(".review-scope.json")
 MAX_INVALID_PROMPTS = 3
 MAX_MUST_RULES = 5
+
+# H-10 fix: 合法 email 正则（比 "@" in email 更严格，防止 a@b 这类通过）
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 # 退出码（F-002 main() 实际使用，这里定义让 F-002 直接 import）
 EXIT_OK = 0
@@ -589,9 +592,11 @@ def _resolve_confirmed_by() -> str:
     except subprocess.CalledProcessError:
         email = ""
 
-    if not email or "@" not in email:
+    # H-10 fix: 使用 EMAIL_RE 完整正则校验，防止 a@b 这类格式通过
+    if not email or not EMAIL_RE.fullmatch(email):
         raise RoutingError(
-            f"git config user.email 未设置或格式非法（实际为 {email!r}）。"
+            f"git config user.email 格式不合法"
+            f"（需匹配 ^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$）：{email!r}。"
             "请先执行：git config user.email 'your@email.com'",
             exit_code=EXIT_BAD_ARGS,
         )
@@ -629,6 +634,34 @@ def _parse_custom_input(
     # must 强制保留：即便用户未选，也要自动加回
     selected.update(plan.must_checkers)
     return selected
+
+
+def _classify_input(
+    line: str,
+    plan: RoutingPlan,
+    recommended_indexed: list[str],
+) -> tuple[str, set[str] | None]:
+    """对单次用户输入进行分类与解析（H-2 fix：从 _prompt_user 抽出以降低圈复杂度）。
+
+    返回 (kind, payload)，kind 为以下之一：
+      "accept"  — 直接回车（payload=None）
+      "all"     — 输入 'a'/'A'（payload=None）
+      "abort"   — 输入 'q'/'Q'（payload=None）
+      "custom"  — 合法数字子集（payload=set[str]，已强制含 must_checkers）
+      "invalid" — 其他无效输入（payload=None）
+    """
+    if line == "":
+        return ("accept", None)
+    if line.lower() == "a":
+        return ("all", None)
+    if line.lower() == "q":
+        return ("abort", None)
+
+    selected = _parse_custom_input(line, plan, recommended_indexed)
+    if selected:
+        return ("custom", selected)
+
+    return ("invalid", None)
 
 
 def _prompt_user(plan: RoutingPlan, req_id: str = "") -> RoutingDecision:
@@ -682,8 +715,9 @@ def _prompt_user(plan: RoutingPlan, req_id: str = "") -> RoutingDecision:
             # stdin 被关闭，视为 abort
             raise RoutingAbort("[routing] stdin 关闭，视为 abort")
 
-        if raw == "":
-            # 直接回车 → accept
+        kind, payload = _classify_input(raw, plan, recommended)
+
+        if kind == "accept":
             return RoutingDecision(
                 decision="accept",
                 confirmed_at=_now_shanghai(),
@@ -692,8 +726,7 @@ def _prompt_user(plan: RoutingPlan, req_id: str = "") -> RoutingDecision:
                 final_route=recommended[:],
             )
 
-        if raw.lower() == "a":
-            # 升全集
+        if kind == "all":
             return RoutingDecision(
                 decision="all",
                 confirmed_at=_now_shanghai(),
@@ -702,7 +735,7 @@ def _prompt_user(plan: RoutingPlan, req_id: str = "") -> RoutingDecision:
                 final_route=list(ALL_CHECKERS),
             )
 
-        if raw.lower() == "q":
+        if kind == "abort":
             # 用户主动取消：先 audit 再 raise
             if req_id:
                 _audit_log(req_id, "[code-review-aborted] 用户主动取消 (q)")
@@ -710,12 +743,9 @@ def _prompt_user(plan: RoutingPlan, req_id: str = "") -> RoutingDecision:
                 _ERROR_MESSAGES[EXIT_USER_ABORT].format(cause="用户主动取消 (q)")
             )
 
-        # 尝试解析为数字子集
-        selected = _parse_custom_input(raw, plan, recommended)
-        if selected:
-            # 按 ALL_CHECKERS 顺序排列
-            final_route = [c for c in ALL_CHECKERS if c in selected]
-            invalid_count = 0
+        if kind == "custom":
+            assert payload is not None  # _classify_input 保证
+            final_route = [c for c in ALL_CHECKERS if c in payload]
             return RoutingDecision(
                 decision="custom",
                 confirmed_at=_now_shanghai(),
@@ -724,7 +754,7 @@ def _prompt_user(plan: RoutingPlan, req_id: str = "") -> RoutingDecision:
                 final_route=final_route,
             )
 
-        # 无效输入
+        # kind == "invalid"
         invalid_count += 1
         remaining = MAX_INVALID_PROMPTS - invalid_count
         if invalid_count >= MAX_INVALID_PROMPTS:
@@ -750,7 +780,11 @@ def _now_shanghai() -> str:
 
 
 def _now_shanghai_display() -> str:
-    """返回 YYYY-MM-DD HH:MM:SS 格式（写入 scope.json routing_decision.confirmed_at）。"""
+    """返回 YYYY-MM-DD HH:MM:SS 格式（写入 scope.json routing_decision.confirmed_at）。
+
+    H-18 fix: scope.json 的 confirmed_at 用人类可读格式，与 audit 日志的 ISO8601 格式分离，
+    是刻意设计——audit 日志面向机器排序，scope.json 面向人工审阅。
+    """
     tz_shanghai = timezone(timedelta(hours=8))
     return datetime.now(tz=tz_shanghai).strftime("%Y-%m-%d %H:%M:%S")
 
@@ -772,6 +806,59 @@ def _audit_log(req_id: str, line: str) -> None:
         print(f"[routing] audit_log 写入失败（{exc}），继续执行", file=sys.stderr)
 
 
+def _assert_scope_invariants(
+    plan: RoutingPlan,
+    decision: RoutingDecision,
+    skipped_checkers: list[dict],
+) -> None:
+    """校验 _write_scope 写盘前的 I1-I8 不变量。
+
+    H-9/H-11 fix：全部用 raise RoutingSchemaError 替代 assert，
+    防止 AssertionError 穿透 main() 的 except RoutingError 捕获层。
+    """
+    is_trivial_skipped = decision.decision == "trivial-skipped"
+    is_all = decision.decision == "all"
+    is_custom = decision.decision == "custom"
+
+    # I1: trivial-skipped ⇔ final_route=[] ∧ len(skipped_checkers)==8（H-9 fix：修复恒真断言）
+    if is_trivial_skipped != (decision.final_route == [] and len(skipped_checkers) == 8):
+        raise RoutingSchemaError(
+            f"I1 violated: trivial_skipped={is_trivial_skipped} "
+            f"but final_route={decision.final_route} skipped_count={len(skipped_checkers)}",
+        )
+
+    # I2: decision="all" ⇒ checker_route == list(ALL_CHECKERS)
+    if is_all and decision.final_route != list(ALL_CHECKERS):
+        raise RoutingSchemaError(
+            f"I2 violated: decision=all 但 final_route={decision.final_route}",
+        )
+
+    # I3: decision="custom" → must_checkers ⊆ checker_route
+    if is_custom and not plan.must_checkers.issubset(set(decision.final_route)):
+        raise RoutingSchemaError(
+            f"I3 violated: must_checkers={plan.must_checkers} not ⊆ final_route={decision.final_route}",
+        )
+
+    # I5: tty_verified is True
+    if not decision.tty_verified:
+        raise RoutingSchemaError("I5 violated: tty_verified 必须为 True")
+
+    # I7: trivial-skipped ⇒ final_route==[] ∧ len(skipped_checkers)==8
+    if is_trivial_skipped and not (decision.final_route == [] and len(skipped_checkers) == 8):
+        raise RoutingSchemaError(
+            f"I7 violated: trivial-skipped 但 final_route={decision.final_route} "
+            f"skipped_count={len(skipped_checkers)}",
+        )
+
+    # I8: len(checker_route) + len(skipped_checkers) == 8
+    total = len(decision.final_route) + len(skipped_checkers)
+    if total != 8:
+        raise RoutingSchemaError(
+            f"I8 violated: len(final_route)={len(decision.final_route)} "
+            f"+ len(skipped_checkers)={len(skipped_checkers)} = {total} ≠ 8",
+        )
+
+
 def _write_scope(
     plan: RoutingPlan,
     decision: RoutingDecision,
@@ -781,15 +868,18 @@ def _write_scope(
 
     使用 tempfile + os.replace 保证写盘原子性：
     不会出现外部进程读到半写状态的 JSON。
-    写盘前校验 I1-I8 不变量，违反视为实现 bug（raise AssertionError）。
+    写盘前调用 _assert_scope_invariants 校验 I1-I8，违反视为实现 bug（raise RoutingSchemaError）。
     """
     # ---- 构造 skipped_checkers ----
-    all_checkers_set = set(ALL_CHECKERS)
+    all_checkers_set = set(ALL_CHECKERS)  # noqa: F841（保留供未来扩展参考）
     route_set = set(decision.final_route)
+    is_trivial_skipped = decision.decision == "trivial-skipped"
 
     if decision.decision == "trivial-skipped":
+        # H-5 fix: 字段名 checker → name（§3.1 schema / scope-schema.md L88）
+        # H-6 fix: reason 使用 §3.3 三选一字面字符串
         skipped_checkers = [
-            {"checker": c, "reason": "diff 全在 trivial 白名单内（skipped=true 全 8 个）"}
+            {"name": c, "reason": "diff 全在 trivial 白名单内（skipped=true 全 8 个）"}
             for c in ALL_CHECKERS
         ]
     else:
@@ -797,43 +887,20 @@ def _write_scope(
         skipped_checkers = []
         for c in ALL_CHECKERS:
             if c not in route_set:
-                if c in plan.suggest_checkers:
-                    reason = "suggest 命中但用户未选"
-                elif c not in plan.must_checkers and c not in plan.suggest_checkers:
-                    reason = "routing 规则未命中（灰色），未纳入审查路由"
+                # H-6 fix: reason 严格按 §3.3 三选一字面字符串，不允许自造
+                if c not in plan.must_checkers and c not in plan.suggest_checkers:
+                    # 灰色：该 checker 对应规则未命中 diff 中任何文件
+                    reason = "路径未命中 must/suggest 任何规则"
+                elif decision.decision == "custom" and c in plan.suggest_checkers:
+                    # custom 路径：suggest 命中但用户未在自定义子集中选择
+                    reason = "用户在 custom 子集中未选择"
                 else:
-                    reason = "用户手动去除"
-                skipped_checkers.append({"checker": c, "reason": reason})
+                    # 兜底（理论上 accept=must∪suggest 全包，all=全8路，不应触达此分支）
+                    reason = "路径未命中 must/suggest 任何规则"
+                skipped_checkers.append({"name": c, "reason": reason})
 
-    # ---- I1-I8 不变量校验 ----
-    is_trivial_skipped = decision.decision == "trivial-skipped"
-    is_all = decision.decision == "all"
-    is_custom = decision.decision == "custom"
-
-    # I1: trivial-skipped ⇔ skipped=true ∧ checker_route=[] ∧ len(skipped_checkers)==8
-    assert is_trivial_skipped == (
-        is_trivial_skipped and decision.final_route == [] and len(skipped_checkers) == 8
-    ), "I1 violated"
-
-    # I2: decision="all" ⇔ skipped=false ∧ checker_route == list(ALL_CHECKERS)
-    if is_all:
-        assert decision.final_route == list(ALL_CHECKERS), "I2 violated"
-
-    # I3: decision="custom" → set(must_checkers) ⊆ checker_route
-    if is_custom:
-        assert plan.must_checkers.issubset(set(decision.final_route)), "I3 violated"
-
-    # I5: tty_verified is True
-    assert decision.tty_verified is True, "I5 violated"
-
-    # I7: skipped=true ⇔ checker_route==[] ∧ len(skipped_checkers)==8
-    if is_trivial_skipped:
-        assert decision.final_route == [] and len(skipped_checkers) == 8, "I7 violated"
-
-    # I8: len(checker_route) + len(skipped_checkers) == 8
-    assert len(decision.final_route) + len(skipped_checkers) == 8, (
-        f"I8 violated: {len(decision.final_route)} + {len(skipped_checkers)} != 8"
-    )
+    # ---- I1-I8 不变量校验（H-9/H-11 fix: assert → raise RoutingSchemaError，穿透堆栈风险消除）----
+    _assert_scope_invariants(plan, decision, skipped_checkers)
 
     # ---- 构造 stats / diff_summary（调用 git diff --shortstat / --numstat）----
     stats, diff_summary = _git_diff_stats(args.base_sha, args.head_sha)
@@ -862,8 +929,9 @@ def _write_scope(
             "confirmed_at": decision.confirmed_at,
             "confirmed_by": decision.confirmed_by,
             "tty_verified": decision.tty_verified,
-            "files_must_hit": plan.files_must_hit,
-            "files_suggest_hit": plan.files_suggest_hit,
+            # H-8 fix: §3.1 schema 要求 int（命中文件唯一数），而非 dict[str, list[str]]
+            "files_must_hit": len({p for paths in plan.files_must_hit.values() for p in paths}),
+            "files_suggest_hit": len({p for paths in plan.files_suggest_hit.values() for p in paths}),
             "files_trivial": plan.files_trivial,
             "files_total": plan.files_total,
         },
@@ -926,10 +994,61 @@ def _git_diff_stats(base_sha: str, head_sha: str) -> tuple[dict, str]:
                 ins, dl, fname = parts
                 lines.append(f"{fname} (+{ins} -{dl})")
         diff_summary = "\n".join(lines)
-    except Exception:
-        pass  # 降级：保持空结构
+    except Exception as exc:
+        # H-15 fix: 降级但不静默吞没，打印到 stderr 让用户知晓（stats 仅展示用，非关键路径）
+        print(f"[routing] git diff stats 获取失败（{exc}），使用空结构", file=sys.stderr)
+        return {"files_changed": 0, "insertions": 0, "deletions": 0, "diff_summary": ""}
 
     return stats, diff_summary
+
+
+def _handle_routing_result(
+    plan: RoutingPlan,
+    args: argparse.Namespace,
+    confirmed_by: str,
+) -> None:
+    """处理 routing 结果的四个分支（trivial-skipped / accept / all / custom）。
+
+    H-4 fix：从 main() 抽出，降低 main 嵌套层级，使 main 只保留 8 步骨架。
+    abort 路径由 _prompt_user 内部 raise RoutingAbort，由 main 的 except 捕获。
+    """
+    if plan.trivial_only:
+        # 全 trivial，自动跳过，无需人工确认
+        decision = RoutingDecision(
+            decision="trivial-skipped",
+            confirmed_at=_now_shanghai_display(),
+            confirmed_by=confirmed_by,
+            tty_verified=True,
+            final_route=[],
+        )
+        _write_scope(plan, decision, args)
+        _audit_log(
+            args.requirement_id,
+            f"[code-review-skipped] {plan.files_total} 文件全在 trivial 白名单内（routing-auto）",
+        )
+        return
+
+    # 需要人工确认；abort 路径由 _prompt_user 内部 raise RoutingAbort
+    decision_raw = _prompt_user(plan, req_id=args.requirement_id)
+
+    # 补充 confirmed_by（_prompt_user 不做 git 调用，避免在交互过程中阻塞）
+    decision = RoutingDecision(
+        decision=decision_raw.decision,
+        confirmed_at=_now_shanghai_display(),
+        confirmed_by=confirmed_by,
+        tty_verified=True,
+        final_route=decision_raw.final_route,
+    )
+
+    _write_scope(plan, decision, args)
+
+    if decision.decision == "custom":
+        checker_list = ", ".join(decision.final_route)
+        _audit_log(
+            args.requirement_id,
+            f"[code-review-route-custom] 用户自定义子集：{checker_list}",
+        )
+    # accept / all 不写 audit（§8.4）
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -957,52 +1076,18 @@ def main(argv: list[str] | None = None) -> int:
         # 步骤 6：构造路由计划
         plan = _build_plan(files, config)
 
-        # 步骤 7：分支处理
+        # 步骤 7：分支处理（H-4 fix：委托给 _handle_routing_result，main 只保留 8 步骨架）
         confirmed_by = _resolve_confirmed_by()
-
-        if plan.trivial_only:
-            # 全 trivial，自动跳过
-            decision = RoutingDecision(
-                decision="trivial-skipped",
-                confirmed_at=_now_shanghai_display(),
-                confirmed_by=confirmed_by,
-                tty_verified=True,
-                final_route=[],
-            )
-            _write_scope(plan, decision, args)
-            _audit_log(
-                args.requirement_id,
-                f"[code-review-skipped] {plan.files_total} 文件全在 trivial 白名单内（routing-auto）",
-            )
-        else:
-            # 需要人工确认；abort 路径由 _prompt_user 内部 raise RoutingAbort
-            decision_raw = _prompt_user(plan, req_id=args.requirement_id)
-
-            # 补充 confirmed_by（_prompt_user 不做 git 调用，避免在交互过程中阻塞）
-            decision = RoutingDecision(
-                decision=decision_raw.decision,
-                confirmed_at=_now_shanghai_display(),
-                confirmed_by=confirmed_by,
-                tty_verified=True,
-                final_route=decision_raw.final_route,
-            )
-
-            _write_scope(plan, decision, args)
-
-            if decision.decision == "custom":
-                checker_list = ", ".join(decision.final_route)
-                _audit_log(
-                    args.requirement_id,
-                    f"[code-review-route-custom] 用户自定义子集：{checker_list}",
-                )
-            # accept / all 不写 audit（§8.4）
+        _handle_routing_result(plan, args, confirmed_by)
 
         return EXIT_OK
 
     except RoutingError as e:
         if e.exit_code == EXIT_USER_ABORT:
+            # H-7 fix: RoutingAbort.detail 已是 _ERROR_MESSAGES[5].format(cause=...) 完整字符串
+            # 不能再套一层 format，否则输出嵌套消息（如"已取消（已取消（...））"）
             # 用户主动 abort 不算错误，输出到 stdout（§6）
-            print(_ERROR_MESSAGES[EXIT_USER_ABORT].format(cause=str(e)))
+            print(str(e))
         else:
             # 其他错误输出到 stderr
             try:
@@ -1066,8 +1151,14 @@ __all__ = [
     "_check_tty",
     "_resolve_confirmed_by",
     "_parse_custom_input",
+    "_classify_input",
     "_prompt_user",
+    "_assert_scope_invariants",
+    "_handle_routing_result",
     "_write_scope",
     "_audit_log",
+    # H-20 fix: 私有工具函数补入 __all__，与同模块其他私有符号保持一致
+    "_now_shanghai",
+    "_now_shanghai_display",
     "main",
 ]
