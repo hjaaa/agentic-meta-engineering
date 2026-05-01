@@ -182,6 +182,9 @@ gates:
       env_var: null
       requires_reason: true
       audit: true
+    # F-003：legacy=true 的历史 REQ 没有完整追溯链，runner 层 grandfather 跳过。
+    # 仅本 gate 加该 tag；其他 gate 保守不加（detailed-design.md §3.5）。
+    tags: [legacy-bypass]
     tests:
       fixtures: [pass, fail, skip]
 
