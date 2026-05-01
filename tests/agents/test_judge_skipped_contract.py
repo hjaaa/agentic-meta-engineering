@@ -12,8 +12,6 @@ from __future__ import annotations
 
 import json
 
-import pytest
-
 
 def _make_skipped_scope() -> dict:
     """构造 skipped=true 的合法 scope JSON（与 T-CRITIC-1 同结构，独立定义避免 import 耦合）。"""
@@ -58,14 +56,16 @@ def _make_skipped_scope() -> dict:
 
 
 class TestJudgeSkippedContract:
-    def should_accept_skipped_scope_as_valid_json(self):
+    def should_accept_skipped_scope_as_valid_json(self) -> None:
         """skipped=true 的 scope 是合法 JSON，judge 可无异常解析。"""
         scope = _make_skipped_scope()
         serialized = json.dumps(scope, ensure_ascii=False)
         deserialized = json.loads(serialized)
-        assert deserialized == scope
+        assert deserialized == scope, (
+            f"JSON 往返不一致: deserialized={deserialized!r} scope={scope!r}"
+        )
 
-    def should_have_routing_decision_with_trivial_skipped(self):
+    def should_have_routing_decision_with_trivial_skipped(self) -> None:
         """routing_decision.decision 必须是 'trivial-skipped'，judge 据此推断 conclusion='skipped'。
 
         judge 的逻辑：若 routing_decision.decision == 'trivial-skipped'，
@@ -77,21 +77,27 @@ class TestJudgeSkippedContract:
             f"期望 decision='trivial-skipped'，实际 {decision!r}"
         )
 
-    def should_have_empty_checker_route_when_skipped(self):
+    def should_have_empty_checker_route_when_skipped(self) -> None:
         """checker_route=[] ⇒ judge 无 verdict 可聚合，直接短路输出 skipped 结论。"""
         scope = _make_skipped_scope()
-        assert scope["checker_route"] == []
+        assert scope["checker_route"] == [], (
+            f"期望 checker_route=[]，实际 {scope['checker_route']!r}"
+        )
 
-    def should_have_tty_verified_true(self):
+    def should_have_tty_verified_true(self) -> None:
         """tty_verified=True 确保 trivial-skipped 路径的 scope 仍然通过了人类卡点 A 的格式校验。
 
         judge 不额外校验 tty_verified；但 contract test 确保 skipped scope 不是伪造数据。
         """
         scope = _make_skipped_scope()
-        assert scope["routing_decision"]["tty_verified"] is True
+        assert scope["routing_decision"]["tty_verified"] is True, (
+            f"期望 tty_verified=True，实际 {scope['routing_decision']['tty_verified']!r}"
+        )
 
-    def should_satisfy_scope_skipped_field_consistency(self):
+    def should_satisfy_scope_skipped_field_consistency(self) -> None:
         """skipped=True 与 routing_decision.decision='trivial-skipped' 必须同时成立（一致性约束）。"""
         scope = _make_skipped_scope()
-        assert scope["skipped"] is True
-        assert scope["routing_decision"]["decision"] == "trivial-skipped"
+        assert scope["skipped"] is True, f"期望 skipped=True，实际 {scope['skipped']!r}"
+        assert scope["routing_decision"]["decision"] == "trivial-skipped", (
+            f"期望 decision='trivial-skipped'，实际 {scope['routing_decision']['decision']!r}"
+        )

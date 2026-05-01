@@ -11,8 +11,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 
 # commands/code-review.md 的绝对路径（F-003 已在此加入短路逻辑）
 _COMMANDS_MD = Path(__file__).parents[2] / ".claude" / "commands" / "code-review.md"
@@ -61,14 +59,16 @@ def _make_skipped_scope() -> dict:
 
 
 class TestReportSkippedContract:
-    def should_accept_skipped_scope_as_valid_json(self):
+    def should_accept_skipped_scope_as_valid_json(self) -> None:
         """skipped=true 的 scope 是合法 JSON，report SKILL 可无异常解析。"""
         scope = _make_skipped_scope()
         serialized = json.dumps(scope, ensure_ascii=False)
         deserialized = json.loads(serialized)
-        assert deserialized == scope
+        assert deserialized == scope, (
+            f"JSON 往返不一致: deserialized={deserialized!r} scope={scope!r}"
+        )
 
-    def should_have_skipped_short_circuit_in_commands_md(self):
+    def should_have_skipped_short_circuit_in_commands_md(self) -> None:
         """commands/code-review.md Step 2 必须含 skipped==true 短路逻辑（防御：被误删时此处先报红）。
 
         F-003 已在 code-review.md 加入：
@@ -90,19 +90,25 @@ class TestReportSkippedContract:
             "（期望 'return' / '短路' / '最小报告' 之一）"
         )
 
-    def should_have_skipped_checkers_field_in_scope(self):
+    def should_have_skipped_checkers_field_in_scope(self) -> None:
         """skipped_checkers 字段存在且为非空列表，report SKILL 需用此字段渲染 trivial 报告摘要。"""
         scope = _make_skipped_scope()
-        assert "skipped_checkers" in scope
-        assert isinstance(scope["skipped_checkers"], list)
-        assert len(scope["skipped_checkers"]) > 0
+        assert "skipped_checkers" in scope, "scope 缺少 skipped_checkers 字段"
+        assert isinstance(scope["skipped_checkers"], list), (
+            f"期望 skipped_checkers 为 list，实际 {type(scope['skipped_checkers'])!r}"
+        )
+        assert len(scope["skipped_checkers"]) > 0, "skipped_checkers 不应为空列表"
 
-    def should_have_consistent_skipped_fields(self):
+    def should_have_consistent_skipped_fields(self) -> None:
         """skipped=True 时，checker_route=[] 且 routing_decision.decision='trivial-skipped'。
 
         report SKILL 依赖这三个字段联合判断输出最小报告还是完整报告。
         """
         scope = _make_skipped_scope()
-        assert scope["skipped"] is True
-        assert scope["checker_route"] == []
-        assert scope["routing_decision"]["decision"] == "trivial-skipped"
+        assert scope["skipped"] is True, f"期望 skipped=True，实际 {scope['skipped']!r}"
+        assert scope["checker_route"] == [], (
+            f"期望 checker_route=[]，实际 {scope['checker_route']!r}"
+        )
+        assert scope["routing_decision"]["decision"] == "trivial-skipped", (
+            f"期望 decision='trivial-skipped'，实际 {scope['routing_decision']['decision']!r}"
+        )
