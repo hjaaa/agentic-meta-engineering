@@ -44,7 +44,7 @@
     {
       "id": "F-003",
       "title": "FG-003 registry applies_when 字段消费 + phase 相邻表",
-      "description": "在 run.py:281 filter_gates 一次性消费 5 个 applies_when 字段（changed_files 用 pathspec、target_phase、current_phase_in、transition、requires），同时一刀切删除 4 个 plugin 内的 changed_files precheck。新增 phase_enum.load_adjacent_phases() 从 enums.phase 有序列表推导相邻关系；run.py:333 _validate_phase_args 校验 from→to 前进方向必须相邻。runner 层 grandfather：meta.legacy=true 时跳过 tags 含 'legacy-bypass' 的 gate。**前置**：抓 baseline 5 次取中位数；FG-003 前后对比，超 +20% 触发降级方案。",
+      "description": "在 run.py:281 filter_gates 一次性消费 5 个 applies_when 字段（changed_files 用 pathspec、target_phase、current_phase_in、transition、requires），同时一刀切删除 4 个 plugin 内的 changed_files precheck。新增 phase_enum.load_adjacent_phases() 从 enums.phase 有序列表推导相邻关系；run.py:333 _validate_phase_args 校验 from→to 前进方向必须相邻。runner 层 grandfather：meta.legacy=true 时跳过 tags 含 'legacy-bypass' 的 gate。**前置**：抓 baseline 5 次取中位数；FG-003 前后对比，超 +20% 触发降级方案。**串行约束**：F-003 与 F-001 修改同样 4 个 plugin（meta_schema/sourcing/index_integrity/plan_freshness），depends_on=F-001 避免合并冲突。",
       "modules": [
         "scripts/gates/run.py",
         "scripts/gates/plugins/meta_schema.py",
@@ -54,7 +54,7 @@
         "scripts/lib/phase_enum.py",
         "tests/gates/"
       ],
-      "depends_on": [],
+      "depends_on": ["F-001"],
       "estimate_days": 2.9,
       "complexity": "high",
       "acceptance": [

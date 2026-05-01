@@ -14,8 +14,8 @@ gates_passed:
       18:35:00", warnings: []}
   - {gate: phase-transition, from: tech-research, to: outline-design, at: "2026-05-01
       19:10:00", warnings: ["GATE-PLAN-FRESHNESS:W002"]}
-  - {gate: phase-transition, from: outline-design, to: detail-design, at: "2026-05-01 19:35:00",
-    warnings: ["GATE-PLAN-FRESHNESS:W002"]}
+  - {gate: phase-transition, from: outline-design, to: detail-design, at: "2026-05-01
+      19:35:00", warnings: ["GATE-PLAN-FRESHNESS:W002"]}
 pr_url: ""
 pr_number: 0
 log_layout: split
@@ -56,4 +56,18 @@ reviews:
         e1aabd60289dd3a37426a44ea20f17d5ae131c35887b5d478b5714e794c1f197
     history:
       - REV-REQ-2026-005-outline-design-001
+    stale: false
+  detail-design:
+    latest: REV-REQ-2026-005-detail-design-001
+    conclusion: needs_attention
+    reviewed_commit: 0c5ac1e
+    artifact_hashes:
+      artifacts/detailed-design.md: 
+        51061cfad140dd27213559f6d251668bb506c4d85f6de7c941cfb30e795f7be1
+      artifacts/features.json: 
+        907f763095599c043a066d3593ca225fe6b409210c84ea2b9f3ad0a49389056c
+      artifacts/outline-design.md: 
+        e1aabd60289dd3a37426a44ea20f17d5ae131c35887b5d478b5714e794c1f197
+    history:
+      - REV-REQ-2026-005-detail-design-001
     stale: false

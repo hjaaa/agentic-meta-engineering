@@ -167,16 +167,20 @@ gates:
   - id: GATE-REVIEW-VERDICT
     severity: error
     triggers: [phase-transition, submit, ci]
-    tags: [review-verdict]   # 新增可选字段
+    tags: [review-verdict]   # 新增可选字段（gate entry 之前不带 tags 字段）
     ...
 escape_hatches:
   force-with-blockers:
     triggers: [submit, phase-transition]
-    skips_gates_with_tag: [review-verdict]   # 新增
+    skips_gates_with_tag: [review-verdict]   # 新增（复用 legacy-requirement 既有字段语义）
     require_reason: true
 ```
 
-S1-S10 schema 校验需放行 `tags` 字段（如当前禁止额外字段）。具体校验代码位置候选 `scripts/gates/registry.py`，详见末尾"待澄清清单"第 1 条。
+**关键约束**：`registry.yaml:313` 的 force-with-blockers entry 当前**不含** `skips_gates_with_tag` 字段，本次必须新增；不加则 `_handle_escape_hatch` 的 tags 交集判定永远空集 → 永远不放行 → 该 escape hatch 实际失效。
+
+`skips_gates_with_tag` 字段本身**不是新概念**——`registry.yaml:309` 的 `legacy-requirement` 已使用同字段（来源：scripts/gates/registry.yaml:309）；本次只是把它扩到 `force-with-blockers`，并在 gate entry 上新增 `tags: list[str]` 可选字段做绑定。
+
+**S1-S10 兼容性已确认**：经核查 `_validate_one_entry`（来源：scripts/gates/registry.py:157），S1-S10 仅做"必填字段 + 枚举值 + 格式"正向校验，**无白名单严格模式**，因此 entry 多写一个 `tags` 字段不会被拒绝——本需求不需要改 `registry.py` 的 schema 校验代码。
 
 ### 4.2 `_handle_escape_hatch` 升级
 
@@ -221,10 +225,12 @@ if any(a.startswith("--force-with-blockers") for a in (argv or sys.argv[1:])):
 
 ```python
 # scripts/gates/plugins/branch_match.py
+from .base import Gate, GateContext, Report, Decision, Severity
+
 class GateBranchMatch(Gate):
     id = "GATE-BRANCH-MATCH"
     triggers = {"submit"}
-    severity = "error"
+    severity = Severity.ERROR  # 类型必须是 Severity 枚举（base.py:110）不是字符串
 
     def run(self, ctx: GateContext) -> Report:
         current = subprocess.check_output(
@@ -241,7 +247,7 @@ class GateBranchMatch(Gate):
         return Report(decision=Decision.PASS)
 ```
 
-类似 `GateBypassPhaseInSet`（`R-PHASE-NOT-SUBMITTABLE`）和 `GateAheadOfOrigin`（`R-NOTHING-TO-PUSH`）。
+类似 `GateBypassPhaseInSet`（`R-PHASE-NOT-SUBMITTABLE`）和 `GateAheadOfOrigin`（`R-NOTHING-TO-PUSH`）—— 三 plugin 均 `severity = Severity.ERROR`、`triggers = {"submit"}`、`Report.vars = {}` 不写额外字段（仅 fail-or-pass，无需向 reporter 传递信息）。
 
 ### 4.5 `base_reachable._resolve_base_branch` 修复
 
@@ -395,8 +401,9 @@ def _check_legacy_misuse(meta: dict, report) -> None:
 | `pr_state_closed` | bool | FG-005 pr_state | UI 提示 |
 | `gh_call_failed` | bool | FG-005 pr_state | log + reporter |
 | `ls_remote_ok` / `ls_remote_failed` | bool | FG-005 pr_state | log |
+| （无）| FG-004 三个新 plugin（branch_match / phase_in_set / ahead_of_origin）**不写** Report.vars | — | — |
 
-无字段冲突；`severity_hint` 不参与 strict 升级判定（参见本文 §1 FG-001 设计：strict 升级仅判 `decision != PASS`）。
+无字段冲突；`severity_hint` 不参与 strict 升级判定（参见本文 §1 FG-001 设计：strict 升级仅判 `decision != PASS`）。FG-004 三 plugin 仅做 fail-or-pass 判定，无需向下游传递额外字段。
 
 ## 7. 时序图：phase-transition gate 执行流（FG-003 + FG-004 组合）
 
@@ -436,8 +443,4 @@ user: /requirement:next
 
 ## 待澄清清单
 
-1. **S1-S10 registry schema 校验代码位置**：FG-004 引入 `tags` 字段需放行；候选位置 `scripts/gates/registry.py` 或 `scripts/lib/check_registry.py`。**实施前需先 grep 确认**：[待补充]
-   - 内容：`grep -rln "S1\|tags\|extra_keys\|allowed_keys" scripts/gates/registry.py scripts/lib/` 定位 schema 校验入口
-   - 依据：S1-S10 在 outline-design.md §3.2 提及但具体函数未确认
-   - 风险：若校验是"白名单严格 enum"风格则需同步加 `tags`，否则放行
-   - 验证时机：FG-004 实施前的第一个 commit
+（无未决项；原 S1-S10 schema 兼容性问题已在本阶段 grep 收口——见 §4.1 关键约束段：S1-S10 仅做正向必填校验，无白名单严格模式，新增 `tags` 字段天然兼容，本需求不需要改 `registry.py` 校验代码。）
