@@ -104,3 +104,13 @@
 - **Decision**：复用 meta-schema.yaml 已定义的 `legacy: true` 字段；runner 层（filter_gates 阶段）判定
 - **Consequences**：历史需求豁免；新需求严格校验；不对称是合理的
 - **时间**：2026-05-01 18:30:00
+
+### D-008 ruff --select 起步降级到 F（Spec 偏离决策记录）
+
+- **Context**：详细设计 §5.3 + features.json TC-FG5-3 验收原文写 `ruff check scripts/ --select=E,W,F`。F-005 实施前本地跑 `ruff check scripts/ --select=E,W,F --statistics`，输出 E501=289 / E402=13 / F401=2 / F841=2，总计 306 条历史问题，命中详设阈值表「>200 → 降级 select=F 起步」。
+- **Decision**：本次 PR 落地 `pyproject.toml [tool.ruff.lint] select=["F"]` + `quality-check.yml --select=F`，与详设伪码字面不一致；F 类问题 4 条已在本 PR 一并 fix（commit 92c8cb8）。
+- **Consequences**：
+  - 起步只拦 pyflakes 类（未用变量 / 未用 import）
+  - E501 / E402 后续以独立 REQ 渐进收紧（ruff `--select=E` → `--select=W` → `--select=E,W,F` 三步走）
+  - 详设字面与实现不一致是临时承担，本 ADR 即唯一决策记录；不修改 detailed-design.md 避免触发 detail-design 阶段 stale 重审
+- **时间**：2026-05-01 22:37:25

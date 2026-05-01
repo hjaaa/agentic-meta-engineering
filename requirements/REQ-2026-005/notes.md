@@ -51,3 +51,7 @@ reviewer 明确 5 条 finding **均不阻断 looks_clean**，其中 2 条 major 
 1. §3.1 strict 升级 vs §3.4 INFO 语义共享 `vars` 字段——两套语义的字段命名/优先级在 detail-design 接口契约表中明确（如 `vars["warnings"]` vs `vars["severity_hint"]` 不会冲突）
 2. §4 实施 DAG 视觉箭头与"5 组无强依赖"措辞冲突——detail-design 可改为正交 DAG 图 + 实施顺序建议两节分开
 3. §3.2 + 待澄清 1：detail-design 在动 registry tags 字段前先定位 S1-S10 schema 校验代码位置（候选：`scripts/gates/registry.py` 或 `scripts/lib/check_registry.py`）
+
+## F-005 development 阶段补充 / D-008 见 plan.md（ruff select 起步降级）
+
+一审（REV-REQ-2026-005-code-F-005-001）发现 quality-check.yml `--select=F` 与详设 §5.3 字面 `--select=E,W,F` 不一致。降级原因（E501=289 条历史问题，命中 >200 阈值）属合理实施决策，已在 plan.md D-008 小节补完整 ADR。不修改 detailed-design.md / features.json，避免 detail-design 阶段 stale 重审循环。
