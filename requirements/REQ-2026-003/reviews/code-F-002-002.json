@@ -1,0 +1,78 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-003-code-F-002-002",
+  "requirement_id": "REQ-2026-003",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-01 10:15:13",
+  "reviewed_commit": "6995bb5",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "ffad16bd8a4abd36ef31fc679d232e4b629fa98a569dfc382bed2e70c9aec23a"
+    },
+    {
+      "path": "artifacts/tasks/F-002.md",
+      "sha256": "bd5ee79bcba7864d0a13adfe5429ed2abe188774733915ad14d8b38214f3abc4"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 78,
+  "dimensions": {
+    "design_consistency": {
+      "score": 92,
+      "issues": []
+    },
+    "security": {
+      "score": 90,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 92,
+      "issues": []
+    },
+    "complexity": {
+      "score": 65,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/code_review_routing.py:667 _prompt_user 主体 104 行 cc≈13，超 60/10 上限：UI 渲染 L693-708 + 4 档分支 L720-755 内联未拆"
+        },
+        {
+          "severity": "major",
+          "description": "scripts/lib/code_review_routing.py:862 _write_scope 主体 96 行 cc≈12：skipped_checkers 构造 L873-900 / scope dict L912-938 / 原子写 L941-957 三段未拆"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 72,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/code_review_routing.py:436 _assert_plan_invariants INV-PLAN-1..4 仍用 assert；main → _build_plan → _assert_plan_invariants 调用链中 AssertionError 穿透 except RoutingError，与已修的 H-11 同根问题在另一处遗漏"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 95,
+      "issues": []
+    },
+    "performance": {
+      "score": 90,
+      "issues": []
+    },
+    "history_context": {
+      "score": 92,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "I-1 与 review-001 H-11 同根：异常体系一致性应一次性扫齐所有 _assert_* 函数，避免逐处发现",
+    "I-2/I-3 复杂度超限但功能正确，建议作为 F-003 收口任务或独立 refactor commit；若本轮再派 subagent 第二刀，需额外回归测试覆盖 _prompt_user 4 档分支与 _write_scope 三选一 reason"
+  ],
+  "scope": {
+    "feature_id": "F-002"
+  },
+  "supersedes": "REV-REQ-2026-003-code-F-002-001"
+}

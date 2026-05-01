@@ -155,9 +155,10 @@ reviews:
       F-002:
         history:
           - REV-REQ-2026-003-code-F-002-001
-        latest: REV-REQ-2026-003-code-F-002-001
-        conclusion: blocked
-        reviewed_commit: 922db63
+          - REV-REQ-2026-003-code-F-002-002
+        latest: REV-REQ-2026-003-code-F-002-002
+        conclusion: needs_attention
+        reviewed_commit: 6995bb5
         artifact_hashes:
           artifacts/features.json: 
             ffad16bd8a4abd36ef31fc679d232e4b629fa98a569dfc382bed2e70c9aec23a
