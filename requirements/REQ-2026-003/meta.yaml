@@ -97,8 +97,8 @@ gates_passed:
       - 'GATE-SOURCING W002: tasks/F-002.md 第 49 行 / F-003.md 第 32+67 行 / F-004.md
         第 103 行 数字断言缺三态标记（advisory）'
     notes: GATE-TRACEABILITY 首次实跑（to_phase=testing 触发深度校验需求→设计→代码→测试链）
-pr_url: ''
-pr_number: 0
+pr_url: https://github.com/hjaaa/agentic-meta-engineering/pull/48
+pr_number: 48
 log_layout: split
 feature_area: review
 change_type: feature
