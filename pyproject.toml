@@ -1,0 +1,3 @@
+[tool.pytest.ini_options]
+# H-22 fix: 支持 should_xxx_when_yyy 命名规范（与 CLAUDE.md 测试规范对齐）
+python_functions = ["test_*", "should_*"]

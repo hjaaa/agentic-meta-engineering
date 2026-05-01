@@ -482,7 +482,7 @@ class TestParseCustomInputMustForced:
 def _setup_test_repo(tmp_path: Path) -> Path:
     """在 tmp_path 创建最小 git 仓库 + routing.yaml + 两个 commit。
 
-    返回 (base_sha, head_sha, repo_path) 供集成测试使用。
+    H-21 fix: 返回 (repo_path, base_sha, head_sha) 供集成测试使用。
     """
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -682,7 +682,7 @@ def _run_with_pty(
 class TestPtyIntegration:
     """T1-T5: pty 集成测试，验证 4 档热键 + abort 场景。"""
 
-    def test_t1_enter_produces_accept_decision(self, tmp_path: Path):
+    def should_write_accept_decision_when_user_presses_enter(self, tmp_path: Path):
         """T1: 直接回车 → .review-scope.json 中 decision=accept，退码 0。"""
         repo, base_sha, head_sha = _setup_test_repo(tmp_path)
         argv = _build_argv(base_sha, head_sha)
@@ -698,7 +698,7 @@ class TestPtyIntegration:
             f"期望 decision=accept，实际: {scope['routing_decision']['decision']}"
         )
 
-    def test_t2_a_produces_all_decision(self, tmp_path: Path):
+    def should_write_all_decision_when_user_presses_a(self, tmp_path: Path):
         """T2: 输入 'a' → decision=all，final_route 包含全 8 个 checker。"""
         repo, base_sha, head_sha = _setup_test_repo(tmp_path)
         argv = _build_argv(base_sha, head_sha)
@@ -711,7 +711,7 @@ class TestPtyIntegration:
         assert scope["routing_decision"]["decision"] == "all"
         assert set(scope["checker_route"]) == set(ALL_CHECKERS)
 
-    def test_t3_custom_index_produces_custom_decision_with_must_forced(self, tmp_path: Path):
+    def should_force_keep_must_when_user_picks_custom_subset(self, tmp_path: Path):
         """T3: 输入 '1' → decision=custom，security-checker (must) 强制保留。"""
         repo, base_sha, head_sha = _setup_test_repo(tmp_path)
         argv = _build_argv(base_sha, head_sha)
@@ -725,7 +725,7 @@ class TestPtyIntegration:
         # security-checker 是 must，必须在 final_route
         assert "security-checker" in scope["checker_route"]
 
-    def test_t4_q_produces_exit_code_5_with_audit(self, tmp_path: Path):
+    def should_exit_5_with_audit_when_user_presses_q(self, tmp_path: Path):
         """T4: 输入 'q' → 退码 5，stdout 含 §6 取消提示，audit 含 '用户主动取消'。"""
         repo, base_sha, head_sha = _setup_test_repo(tmp_path)
         argv = _build_argv(base_sha, head_sha)
@@ -739,7 +739,7 @@ class TestPtyIntegration:
         content = process_txt.read_text(encoding="utf-8")
         assert "用户主动取消" in content, f"process.txt 应含 '用户主动取消'，实际: {content!r}"
 
-    def test_t5_three_invalid_inputs_produce_exit_code_5_with_audit(self, tmp_path: Path):
+    def should_exit_5_with_audit_when_three_invalid_inputs(self, tmp_path: Path):
         """T5: 连续 3 次无效输入 → 退码 5，audit 含 '连续 3 次无效输入'。"""
         repo, base_sha, head_sha = _setup_test_repo(tmp_path)
         argv = _build_argv(base_sha, head_sha)
