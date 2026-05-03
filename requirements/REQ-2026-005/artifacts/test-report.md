@@ -83,7 +83,7 @@
 | TC-FG5-1 | pytest `test_traceability_word_boundary`（FG-001 不误匹配 FG-0015）+ `test_pr_state_fallback`（gh fail → ls-remote → CLOSED INFO 化）全过 | `test_traceability_word_boundary.py`（15 用例）+ `test_pr_state_fallback.py`（7 用例）全过 | ✅ |
 | TC-FG5-2 | pytest `test_legacy_misuse`（legacy=true + phase=development → R-LEGACY-MISUSE / phase=completed → 通过）全过 | `test_legacy_misuse.py`（8 用例全过） | ✅ |
 | TC-FG5-3 | quality-check.yml CI 跑 pytest tests/gates/ -v 全绿 + ruff check scripts/ 0 error | `quality-check.yml` 含 `pytest tests/gates/ -v` step 和 `ruff check scripts/ --select=F` step；本地双验证均 0 failure / 0 error | ✅ |
-| - | ruff 历史问题预扫：本地 statistics 后按阈值表选择策略 | 本地 `ruff check scripts/ --select=E,W,F --statistics` 得 E402×13 + E501×11 = 24 errors（≤50 阈值）；CI 降级为 --select=F（0 error）；E/W 修复策略已在 quality-check.yml 注释记录 | ✅ |
+| - | ruff 历史问题预扫：本地 statistics 后按阈值表选择策略 | 实施前本地 `ruff check scripts/ --select=E,W,F --statistics` 得 E501=289 + E402=13 + F401=2 + F841=2 = 306 条，命中详设阈值表「>200 → 降级 select=F」；落地时 F 类 4 条已修复（commit 92c8cb8），最终 CI `--select=F` 0 error；实施后 E/W 残余 24 条（E402×13 / E501×11）以独立 REQ 渐进收紧；策略 ADR D-008 见 plan.md:108 | ✅ |
 | - | meta.legacy 字段在 meta_schema plugin 校验生效；新需求误设 legacy=true 必报错 | `test_legacy_misuse.py::test_gate_run_fails_when_legacy_misuse_in_development` 通过 | ✅ |
 
 **F-005 验收进度：5/5 ✅**

@@ -254,21 +254,22 @@ meta.yaml 中全部 7 处 `stale:` 字段均为 `false`，分别位于 meta.yaml
 |---|---|---|---|---|---|
 | P-01 | major（已闭合） | 维度 5 | F-002 完全缺失 code review。本报告首版发现，testing 阶段补做闭合。 | 已补做：REV-REQ-2026-005-code-F-002-001 looks_clean(95) approved 2026-05-03T12:04:04。 | **CLOSED** |
 | P-02 | minor | 维度 5 | 4 个 task 文件（F-001/003/004/005.md）当前 hash 与 meta.yaml code review artifact_hashes 记录不符，但差异来源均为 code review 后写入的 status/review_report/updated_at 元数据更新。当前 stale=false 判断正确。 | 无需立即修复；可在体系改进中区分"业务字段 hash"与"元数据字段 hash"的 stale 判定逻辑 | OPEN（不阻塞） |
-| P-03 | minor | 维度 4 | test-report.md:86 描述 ruff statistics 触发阈值时写「≤50 阈值」，但实际触发的是 「>200 降级」策略（plan.md D-008：实施前统计 306 条）。test-report 描述的是实施后残余 24 条 E/W 错误，措辞与降级决策依据不对应，易造成读者对降级原因的误解。 | 修订 test-report.md:86 的措辞为"实施前 statistics 306 条（E501=289 / E402=13），命中 >200 阈值，触发降级 select=F；实施后 E/W 残余 24 条（E402×13 / E501×11）" | OPEN（不阻塞） |
-| P-04 | minor | 维度 6 | 3 处历史孤儿「待补充」/「待用户确认」标记残留（requirement.md:83 / :146；outline-design.md:155）。下游阶段均已实质解决但未回写清除。 | 清除孤儿标记（可批量在一次 chore commit 中处理，不影响 hash 敏感文件） | OPEN（不阻塞） |
+| P-03 | minor（已闭合） | 维度 4 | test-report.md:86 描述 ruff statistics 触发阈值时写「≤50 阈值」，但实际触发的是 「>200 降级」策略（plan.md D-008：实施前统计 306 条）。 | 已修订：实施前 306 条命中 >200 阈值触发降级 select=F；F 类 4 条 PR 内修复；实施后 E/W 残余 24 条（E402×13 / E501×11）以独立 REQ 渐进收紧 | **CLOSED** |
+| P-04 | minor | 维度 6 | 3 处历史孤儿「待补充」/「待用户确认」标记残留（requirement.md:83 / :146；outline-design.md:155）。下游阶段均已实质解决但未回写清除。 | **修订评估**：3 处文件全部命中 reviews.{definition / outline-design / detail-design}.artifact_hashes（来源：requirements/REQ-2026-005/meta.yaml），任何修改都会触发 R005 hash drift（来源：scripts/lib/check_reviews.py:203），三轮 review 全部 stale 需重审。修订成本（3 轮评审 + 3 次 sign-off）远高于清孤儿标记的收益。**留作 follow-up REQ：当下游需求需要回退到 definition 阶段时一并清理；或开专项 REQ 时一次性补 stale-tolerant 字段元数据 hash 区分逻辑（同 P-02 体系改进项）** | OPEN（知情债务，PR 不阻塞） |
 
 ---
 
 ## 待澄清清单
 
-本报告首版（2026-05-03 11:32）输出 WITH_WARNINGS，列出 4 项 P-XX。截至当前更新（2026-05-03 12:10）：
+本报告首版（2026-05-03 11:32）输出 WITH_WARNINGS，列出 4 项 P-XX。截至当前更新（2026-05-03 12:18）：
 
-- P-01 已闭合（F-002 补 review + signoff），维度 5 升为 PASS
-- P-02 / P-03 / P-04 均为 minor，不阻塞 testing → completed 切换；建议合并到提 PR 前的 chore commit 一并处理或留作 follow-up REQ
+- P-01 已闭合：F-002 补 review + signoff，维度 5 升为 PASS
+- P-03 已闭合：test-report.md:86 措辞修订，维度 4 描述准确性恢复
+- P-02 / P-04 留作知情债务：均为体系改进项（hash stale 颗粒度区分），单独修复成本远高于本需求收益，留作 follow-up REQ；PR 不阻塞
 
 ## 结论
 
-**总体结论：PASS（P-01 闭合后升级，原 WITH_WARNINGS 仅剩 3 项 minor 不阻塞）**
+**总体结论：PASS（P-01 / P-03 闭合后，剩 P-02 / P-04 为知情债务，均不阻塞 PR）**
 
 主要判断：
 
@@ -280,5 +281,5 @@ meta.yaml 中全部 7 处 `stale:` 字段均为 `false`，分别位于 meta.yaml
 
 4. 3 项待人工验收（M-01/M-02/M-03）已明确列出验收路径，是测试方式限制而非缺口。
 
-5. 剩余 P-02 / P-03 / P-04 均为 minor 文档级问题，不阻塞门禁。
+5. 剩余 P-02 / P-04 均为体系改进项（hash stale 颗粒度区分能力缺失），修复成本（3 轮评审重审）远高于清理收益，留作 follow-up REQ；PR 不阻塞。
 
