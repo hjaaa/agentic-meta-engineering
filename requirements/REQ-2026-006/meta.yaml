@@ -1,13 +1,23 @@
 # ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-006
 title: 门禁系统 A+B 重构实施（pre-tool-use 热路径解耦 + 全局逃生 + 异步 audit）
-phase: bootstrap
+phase: definition
 created_at: "2026-05-03 22:10:26"     # 格式 YYYY-MM-DD HH:MM:SS（Asia/Shanghai），见 context/team/engineering-spec/time-format.md
 branch: feat/req-REQ-2026-006
 base_branch: develop
 project: agentic-meta-engineering     # 关联 context/project/<project>/
 services: []                           # 涉及的服务仓库
-gates_passed: []
+gates_passed:
+  - phase: bootstrap-to-definition
+    at: "2026-05-03 22:25:00"
+    gates:
+      - GATE-META-SCHEMA
+      - GATE-INDEX-INTEGRITY
+      - GATE-SOURCING
+      - GATE-WORKSPACE-CLEAN
+      - GATE-REVIEW-VERDICT
+      - GATE-TRACEABILITY
+      - GATE-PLAN-FRESHNESS
 pr_url: ""                             # /requirement:submit 成功后回写
 pr_number: 0                           # /requirement:submit 成功后回写
 log_layout: split                      # split（默认，工具日志→process.tool.log / 语义事件→process.txt） | legacy（老格式，全写 process.txt）
