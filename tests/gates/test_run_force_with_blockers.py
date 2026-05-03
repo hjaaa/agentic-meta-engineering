@@ -209,22 +209,18 @@ def test_validate_force_reason_tab_newline_allowed():
 
 
 def test_force_escape_hatch_cleans_snapshots_and_staged_writes(monkeypatch, tmp_path):
-    """G-3：force-with-blockers 路径命中时，.bak 快照被清理且 staged_writes 被清空。
+    """G-3：force-with-blockers 命中时清理 .bak 快照 + 清空 staged_writes。
 
-    模拟 phase-transition 触发 + blocker fail + --force-with-blockers 命中场景，
-    验证 _cleanup_snapshots 已调用（.bak 文件不存在）且 ctx.staged_writes == []。
+    F-004（FG-004）升级：命中条件改为「失败 gate.tags ∩ escape.skips_gates_with_tag ≠ ∅」。
+    本测试用 GATE-REVIEW-VERDICT（registry.yaml 真实有 tags=[review-verdict]）+ 传 mock
+    registry_data，确保 tag 命中走 force_used=True 路径，验证资源清理仍然生效。
     """
-    import sys
-    from pathlib import Path
     from unittest.mock import MagicMock
 
-    # 创建一个临时 .bak 文件模拟 snapshot
     bak_file = tmp_path / "meta.yaml.bak"
     bak_file.write_text("backup content")
-    # snapshots dict：key=原始路径字符串，value=.bak Path
     fake_snapshots = {str(tmp_path / "meta.yaml"): bak_file}
 
-    # 构造一个最小 GateContext mock
     from plugins.base import GateContext
     ctx = GateContext(
         trigger="phase-transition",
@@ -235,24 +231,25 @@ def test_force_escape_hatch_cleans_snapshots_and_staged_writes(monkeypatch, tmp_
         changed_files=[],
         env={},
     )
-    # 预填一条假暂存写态，验证 clear 后为空
     ctx.staged_writes.append(("meta.yaml", "some_key", "some_value"))
 
-    # 构造 GateFailed mock
     gate_fail = MagicMock()
-    gate_fail.report.gate_id = "GATE-PLAN-FRESH"
+    gate_fail.report.gate_id = "GATE-REVIEW-VERDICT"
 
-    # 调用 _handle_escape_hatch
+    # F-004：传 registry_data 让 tag 命中（review-verdict ∩ skips_gates_with_tag）
+    fake_registry = {
+        "gates": [{"id": "GATE-REVIEW-VERDICT", "tags": ["review-verdict"]}],
+        "escape_hatches": [
+            {"id": "force-with-blockers", "skips_gates_with_tag": ["review-verdict"]}
+        ],
+    }
+
     force_used, rollback_failed = runner_mod._handle_escape_hatch(
-        ctx, gate_fail, executed=[], snapshots=fake_snapshots
+        ctx, gate_fail, executed=[], snapshots=fake_snapshots,
+        registry_data=fake_registry,
     )
 
-    # 断言 escape_hatch 命中
     assert force_used is True
     assert rollback_failed is False
-
-    # 断言 .bak 快照文件已被删除（_cleanup_snapshots 已调）
     assert not bak_file.exists(), ".bak 快照文件应被 _cleanup_snapshots 删除"
-
-    # 断言 staged_writes 已清空
     assert len(ctx.staged_writes) == 0, "ctx.staged_writes 应被 clear() 清空"

@@ -158,11 +158,12 @@ def test_submit_forwards_force_with_blockers_to_runner(monkeypatch):
     assert rc == 0
     assert len(captured_argv) == 1
     forwarded = captured_argv[0]
-    # 关键断言：runner 收到了 --force-with-blockers='<reason>'，不是 env var 兜底
-    force_flags = [a for a in forwarded if a.startswith("--force-with-blockers=")]
-    assert force_flags, f"runner argv 缺 --force-with-blockers='...': {forwarded}"
-    assert "临时绕过：已有 Jira-1234 跟进" in force_flags[0], (
-        f"reason 文本未透传给 runner: {force_flags[0]}"
+    # F-004：submit.py 把旧名收的 reason 走推荐别名 --bypass-review-blockers 透传给 runner
+    # （旧名 deprecation 提示由 runner 自身基于 raw argv 检测，不依赖 submit.py 转发原字面量）
+    bypass_flags = [a for a in forwarded if a.startswith("--bypass-review-blockers=")]
+    assert bypass_flags, f"runner argv 缺 --bypass-review-blockers='...': {forwarded}"
+    assert "临时绕过：已有 Jira-1234 跟进" in bypass_flags[0], (
+        f"reason 文本未透传给 runner: {bypass_flags[0]}"
     )
 
 
