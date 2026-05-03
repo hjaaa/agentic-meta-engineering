@@ -148,42 +148,54 @@ def test_sourcing_fails_on_e001_violation(tmp_path):
     assert "E001" in (report.message or "") or "E001" in str(report.vars)
 
 
-# ====================== skip 用例 ======================
+# ====================== skip 语义（F-003：搬到 runner filter_gates） ======================
 
 
-def test_sourcing_skips_on_pre_commit_without_artifact_change():
-    """given_pre_commit_without_artifacts_md_when_precheck_then_skip（skip fixture）."""
-    gate = plugin_mod.SourcingGate()
+def test_sourcing_filtered_on_pre_commit_without_artifact_change():
+    """given_pre_commit_without_artifacts_md_when_filter_gates_then_excluded（skip fixture）."""
+    import run as runner_mod
+    data = runner_mod.load_registry()
     ctx = GateContext(
         trigger="pre-commit",
         changed_files=["scripts/foo.py", "requirements/REQ-001/meta.yaml"],
     )
-    skip = gate.precheck(ctx)
-    assert skip is not None
-    assert "no artifacts" in skip.reason
+    ids = {e["id"] for e in runner_mod.filter_gates(data, ctx)}
+    assert "GATE-SOURCING" not in ids
 
 
-def test_sourcing_does_not_skip_when_artifacts_in_changed():
-    gate = plugin_mod.SourcingGate()
+def test_sourcing_kept_when_artifacts_in_changed():
+    """given_pre_commit_with_artifacts_change_when_filter_gates_then_included。"""
+    import run as runner_mod
+    data = runner_mod.load_registry()
     ctx = GateContext(
         trigger="pre-commit",
         changed_files=["requirements/REQ-001/artifacts/requirement.md"],
     )
-    assert gate.precheck(ctx) is None
+    ids = {e["id"] for e in runner_mod.filter_gates(data, ctx)}
+    assert "GATE-SOURCING" in ids
 
 
-def test_sourcing_does_not_skip_on_ci_trigger():
+def test_sourcing_precheck_returns_none_after_f003():
+    """F-003 双轨清理后 precheck 不再过滤；保 None 返回行为契约。"""
     gate = plugin_mod.SourcingGate()
-    ctx = GateContext(trigger="ci")
+    ctx = GateContext(trigger="pre-commit", changed_files=["scripts/foo.py"])
     assert gate.precheck(ctx) is None
+    ctx2 = GateContext(trigger="ci")
+    assert gate.precheck(ctx2) is None
 
 
-# ====================== _has_artifact_md_change 边界 ======================
+# ====================== _changed_artifact_paths 边界（IO 选路 helper） ======================
+# F-003：原 _has_artifact_md_change 已删除（双轨清理）；保留 _changed_artifact_paths
+# 测试，因为 run() 内 _resolve_targets 仍用它做 IO 选路。
 
 
-def test_has_artifact_md_change_true_for_nested():
-    assert plugin_mod._has_artifact_md_change(["requirements/REQ-001/artifacts/tasks/F-001.md"])
+def test_changed_artifact_paths_picks_nested():
+    from plugins._helpers import _changed_artifact_paths
+    paths = _changed_artifact_paths(["requirements/REQ-001/artifacts/tasks/F-001.md"])
+    assert len(paths) == 1
+    assert paths[0].name == "F-001.md"
 
 
-def test_has_artifact_md_change_false_for_meta():
-    assert not plugin_mod._has_artifact_md_change(["requirements/REQ-001/meta.yaml"])
+def test_changed_artifact_paths_skips_meta_yaml():
+    from plugins._helpers import _changed_artifact_paths
+    assert _changed_artifact_paths(["requirements/REQ-001/meta.yaml"]) == []

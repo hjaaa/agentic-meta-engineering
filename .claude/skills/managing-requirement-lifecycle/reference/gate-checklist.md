@@ -40,6 +40,9 @@
 - [ ] **GATE-PR-MERGED-STATE** (`error`) — GATE-PR-MERGED-STATE 失败：{message}
 - [ ] **GATE-GH-AUTH** (`error`) — GATE-GH-AUTH 失败：{message}
 - [ ] **GATE-BASE-REACHABLE** (`error`) — GATE-BASE-REACHABLE 失败：{message}
+- [ ] **GATE-BRANCH-MATCH** (`error`) — GATE-BRANCH-MATCH 失败：{message}
+- [ ] **GATE-BYPASS-PHASE-IN-SET** (`error`) — GATE-BYPASS-PHASE-IN-SET 失败：{message}
+- [ ] **GATE-AHEAD-OF-ORIGIN** (`error`) — GATE-AHEAD-OF-ORIGIN 失败：{message}
 - [ ] **GATE-PLAN-FRESHNESS** (`warning`) — GATE-PLAN-FRESHNESS 失败：{message}
 
 ## ci（持续集成）
@@ -48,6 +51,7 @@
 - [ ] **GATE-INDEX-INTEGRITY** (`error`) — GATE-INDEX-INTEGRITY 失败：{message}
 - [ ] **GATE-SOURCING** (`error`) — GATE-SOURCING 失败：{message}
 - [ ] **GATE-REVIEW-VERDICT** (`error`) — GATE-REVIEW-VERDICT 失败：{message}
+- [ ] **GATE-REVIEWS-CONSISTENCY** (`error`) — GATE-REVIEWS-CONSISTENCY 失败：{message}
 - [ ] **GATE-PLAN-FRESHNESS** (`warning`) — GATE-PLAN-FRESHNESS 失败：{message}
 
 ## post-dev（开发完成后）

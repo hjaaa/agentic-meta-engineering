@@ -7,8 +7,10 @@
   - 仅 WARNING finding → Decision.PASS（severity=warning 由 registry 决定）
   - 无 finding         → Decision.PASS
 
-precheck：当 trigger=pre-commit 且无 artifacts/*.md 改动时直接 Skip。
-其他 trigger 由 registry.yaml 的 applies_when 过滤。
+F-003：changed_files 过滤双轨清理——pre-commit 时 runner 已通过
+registry.yaml.applies_when.changed_files 过滤；本 plugin 不再 precheck 内重复
+判定（避免双轨腐化）。run() 内 _resolve_targets 仍按 changed_files 选择性扫描，
+是 IO 选路而非过滤，保留不动。
 """
 from __future__ import annotations
 
@@ -39,14 +41,11 @@ class SourcingGate(Gate):
     side_effects = "none"
 
     def precheck(self, ctx: GateContext) -> Optional[Skip]:
-        """pre-commit 时若无 artifacts/*.md 改动则跳过；其他 trigger 一律继续。
+        """F-003 起本 plugin 不在 precheck 做 changed_files 过滤（runner 一处消费）。
 
-        参数：ctx.changed_files — staged 文件列表（pre-commit 由 runner 注入）。
-        返回：Skip（无需检查）或 None（继续执行 run）。
+        留空实现仅为满足 Gate 抽象方法契约；过滤完全交给 runner 的
+        filter_gates(applies_when.changed_files) 一次性处理。
         """
-        if ctx.trigger == "pre-commit":
-            if not _has_artifact_md_change(ctx.changed_files):
-                return Skip("no artifacts/*.md changes in this commit")
         return None
 
     def run(self, ctx: GateContext) -> Report:
@@ -85,11 +84,6 @@ class SourcingGate(Gate):
         return _legacy_to_report(self.id, legacy_report)
 
 
-def _has_artifact_md_change(changed_files: list[str]) -> bool:
-    """changed_files 命中 requirements/*/artifacts/**/*.md → True。"""
-    return bool(_changed_artifact_paths(changed_files))
-
-
 def _resolve_targets(ctx: GateContext) -> list[Path]:
     """决定本次需要扫描的 artifacts/*.md 路径列表。
 
@@ -120,7 +114,13 @@ def _resolve_targets(ctx: GateContext) -> list[Path]:
 
 
 def _legacy_to_report(gate_id: str, legacy: LegacyReport) -> Report:
-    """把 common.Report 的 findings 列表降维成单条 Report。"""
+    """把 common.Report 的 findings 列表降维成单条 Report。
+
+    转换规则：
+      - 任一 ERROR finding → Decision.FAIL，code=R-SOURCING
+      - 仅 WARNING finding → Decision.FAIL，code=R-WARNING-ONLY（strict 模式下 has_warning_fail 触发 exit=1）
+      - 无 finding         → Decision.PASS
+    """
     findings = legacy.findings()
     errors = [f for f in findings if f[1] == LegacySeverity.ERROR]
     warnings = [f for f in findings if f[1] == LegacySeverity.WARNING]
@@ -140,10 +140,22 @@ def _legacy_to_report(gate_id: str, legacy: LegacyReport) -> Report:
             },
         )
 
+    # 纯 warning 分支：gate severity=warning，strict 模式下由 audit.calc_exit_code 升级 exit=1
+    if warnings:
+        first = warnings[0]
+        return Report(
+            gate_id=gate_id,
+            decision=Decision.FAIL,
+            code="R-WARNING-ONLY",
+            message=f"{first[0]}: {first[2]}: {first[3]}",
+            fix_hint="该 gate 仅含 warning；strict 模式下视为失败",
+            vars={"warnings": [list(f) for f in warnings]},
+        )
+
     return Report(
         gate_id=gate_id,
         decision=Decision.PASS,
-        vars={"warnings": [list(f) for f in warnings]} if warnings else {},
+        vars={},
     )
 
 

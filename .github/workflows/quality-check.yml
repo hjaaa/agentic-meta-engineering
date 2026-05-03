@@ -22,7 +22,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install pyyaml ruamel.yaml "pathspec>=0.12,<1.0"
+        run: pip install pyyaml ruamel.yaml "pathspec>=0.12,<1.0" ruff pytest
 
       # 该 step 通过 scripts/gates/run.py --trigger=ci --strict 收敛旧 5 step。
       # 如需临时放行 INDEX warning，应优先加 scripts/lib/index-config.yaml 的 ignore 白名单
@@ -30,6 +30,14 @@ jobs:
       # 新增 gate：在 registry.yaml 注册后自动参与 CI 扫描，无需修改本 workflow。
       - name: Run unified gate runner
         run: python scripts/gates/run.py --trigger=ci --strict
+
+      # F-005：单元测试门禁；确保 gates/ 所有 plugin 测试全绿
+      - name: pytest
+        run: pytest tests/gates/ -v
+
+      # F-005：ruff 静态检查（select=F 起步，历史 E501 > 200 条触发降级策略，后续独立 PR 扩展）
+      - name: ruff lint
+        run: ruff check scripts/ --select=F
 
       # D-007 强校验：gate-checklist.md 必须与 registry.yaml 保持同步。
       # 手工改 gate-checklist.md 后 PR 立即变红；需运行 make gates-render 重新生成。

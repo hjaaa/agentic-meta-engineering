@@ -26,7 +26,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash|Edit|Write",
+        "matcher": "Bash|Edit|Write|MultiEdit",
         "hooks": [{"type": "command", "command": ".claude/hooks/protect-branch.sh"}]
       }
     ],

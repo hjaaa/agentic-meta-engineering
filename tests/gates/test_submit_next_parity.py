@@ -21,7 +21,12 @@ import run as runner
 
 
 def _make_min_req(tmp_path: Path, req_id: str = "REQ-2099-001") -> Path:
-    """构造最小可加载的 REQ 目录，满足 build_context 读 meta.yaml 不抛错。"""
+    """构造最小可加载的 REQ 目录，满足 build_context 读 meta.yaml 不抛错。
+
+    F-003：filter_gates 升级后 GATE-PR-MERGED-STATE 的 applies_when.requires
+    含 'meta.pr_number'；为满足"submit 计划包含该 gate"断言，meta 写入占位
+    pr_number=999999（dry-run 不会真调 gh）。
+    """
     repo_root = Path(runner._REPO_ROOT)
     # 临时把 REQ 目录建到 repo_root/requirements 下；注意：
     # _validate_requirement_id 只放行 REQ-YYYY-NNN，所以这里用 REQ-2099-001
@@ -35,6 +40,8 @@ def _make_min_req(tmp_path: Path, req_id: str = "REQ-2099-001") -> Path:
                 "title": "submit/next parity test",
                 "phase": "development",
                 "branch": f"feat/{req_id.lower()}",
+                # F-003：让 GATE-PR-MERGED-STATE.applies_when.requires=[meta.pr_number] 命中
+                "pr_number": 999999,
             },
             allow_unicode=True,
         ),
@@ -151,11 +158,12 @@ def test_submit_forwards_force_with_blockers_to_runner(monkeypatch):
     assert rc == 0
     assert len(captured_argv) == 1
     forwarded = captured_argv[0]
-    # 关键断言：runner 收到了 --force-with-blockers='<reason>'，不是 env var 兜底
-    force_flags = [a for a in forwarded if a.startswith("--force-with-blockers=")]
-    assert force_flags, f"runner argv 缺 --force-with-blockers='...': {forwarded}"
-    assert "临时绕过：已有 Jira-1234 跟进" in force_flags[0], (
-        f"reason 文本未透传给 runner: {force_flags[0]}"
+    # F-004：submit.py 把旧名收的 reason 走推荐别名 --bypass-review-blockers 透传给 runner
+    # （旧名 deprecation 提示由 runner 自身基于 raw argv 检测，不依赖 submit.py 转发原字面量）
+    bypass_flags = [a for a in forwarded if a.startswith("--bypass-review-blockers=")]
+    assert bypass_flags, f"runner argv 缺 --bypass-review-blockers='...': {forwarded}"
+    assert "临时绕过：已有 Jira-1234 跟进" in bypass_flags[0], (
+        f"reason 文本未透传给 runner: {bypass_flags[0]}"
     )
 
 

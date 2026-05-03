@@ -1,0 +1,113 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-005-code-F-005-001",
+  "requirement_id": "REQ-2026-005",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-01 22:22:23",
+  "reviewed_commit": "c72d8e5",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "26e961c8b131d6dc958f09d860db29b80fa3f19bb4aa019f525120b51a67cde4"
+    },
+    {
+      "path": "artifacts/tasks/F-005.md",
+      "sha256": "901f9b5e9b3b9cd6920241919d013f5c0d0f3cf5a0eb1f1858aa73c578dcb3dc"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 78,
+  "dimensions": {
+    "design_consistency": {
+      "score": 70,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/gates/plugins/pr_state.py:82-93 详设 §5.2 + tech-feasibility:338 + features.json:99 + TC-FG5-1 验收均明确要求 'gh 失败 → git ls-remote origin HEAD fallback'，实现仅 PASS+gh_call_failed=True，无 ls-remote 调用；commit/notes 也未记录跳过决策，design-implementation gap"
+        },
+        {
+          "severity": "major",
+          "description": ".github/workflows/quality-check.yml:40 ruff --select=F 与详设/feature.json 字面要求 --select=E,W,F 不符；>200 历史问题降级 select=F 决策合理，但需在 commit message / notes / detailed-design 任一处显式记录降级 + 后续收紧计划"
+        },
+        {
+          "severity": "minor",
+          "description": "tests/gates/test_pr_state_fallback.py:1-103 文件名带 fallback 但未覆盖 ls-remote 路径；TC-FG5-1 验收写 'gh fail → ls-remote 探测' 与实际测试不符"
+        }
+      ]
+    },
+    "security": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": ".github/workflows/quality-check.yml:25 pip install ruff/pytest 未锁版本（pathspec 已 >=0.12,<1.0 锁定，三者风格不一致；CI 行为可能随上游版本漂移）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/gates/plugins/meta_schema.py:196 _check_legacy_misuse 用 is True 严格类型；YAML 字符串 'true' 不进入 misuse 分支也不报类型错（schema 未约束 legacy 类型，理论存在用户写 legacy: \"true\" 时静默不警告的极端情况）"
+        }
+      ]
+    },
+    "concurrency": {
+      "score": 92,
+      "issues": []
+    },
+    "complexity": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/gates/plugins/meta_schema.py:204-207 R-LEGACY-MISUSE 错误信息把 '修复：...' 嵌入 message 字符串，与项目 LegacyReport 现有的 (severity, code, message, fix_hint?) 模式不一致；建议拆分到独立 fix_hint"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 78,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/gates/plugins/meta_schema.py:85-89 裸 except 静默吞 _load_yaml 二次失败；同进程紧邻调用且 _load_yaml 无 cache，文件依然存在的可能性高，但磁盘瞬时故障/权限突变下会静默漏报 misuse；建议至少 logging.warning 留痕"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/gates/plugins/pr_state.py:125-139 vars[severity_hint=info] 在 audit/run/任何下游消费方均无引用（已 grep 全仓），仅测试断言字段存在；属悬挂扩展点。CLOSED 时 user-facing message 已可见提示，severity_hint 本身不阻塞功能但需补消费方或显式注释为审计留痕"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "tests/gates/test_legacy_misuse.py 未覆盖 legacy=true + phase=None / legacy=非布尔类型 / legacy='true' 字符串等边界，与 _check_legacy_misuse 严格 is True 实现配合形成测试盲点"
+        }
+      ]
+    },
+    "performance": {
+      "score": 90,
+      "issues": []
+    },
+    "history_context": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "requirements/REQ-2026-005/notes.md + 5 commits 缺少对 ls-remote 跳过 / ruff 降级 select=F 的决策记录（commit message 仅描述实施，未提为何偏离详设）"
+        }
+      ]
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "F-9/F-10 联动：详设 §5.2 + features.json 的 ls-remote fallback 与 ruff --select=E,W,F 是同一份强收口承诺；若决定不实施需在 detailed-design.md 加 ADR 段落 + commit message 显式说明，避免静默偏离",
+    "F-3/F-4 联动：error_handling 维度两条 minor 同源——都是写了字段/捕获了异常但下游不消费/不留痕的静默化反模式；建议引入团队约定：所有 vars[k] 必须在 PR 描述里说明消费方；所有 except: pass 必须改成 except Exception as e: logging.warning(...) 至少",
+    "F-12 测试矩阵：test_pr_state_fallback.py 只测 CLOSED 一条路径，建议改名 test_pr_state_closed.py 或补 ls-remote 探测分支；同时 TC-FG5-1 验收文案与实际测试不一致，下个 PR 至少改一处对齐",
+    "F-1 CI 依赖锁版本：ruff/pytest 未来若大版本破坏行为，CI 会突然变红；建议 pip install ruff==X.Y.* pytest==A.B.* 或挪进 pyproject [project.optional-dependencies]",
+    "F-2 schema 增强：meta-schema.yaml legacy 字段建议加 type: boolean，让 schema 层就拒绝 'true' 字符串，_check_legacy_misuse 不必再处理这个边界"
+  ],
+  "scope": {
+    "feature_id": "F-005"
+  },
+  "supersedes": null
+}

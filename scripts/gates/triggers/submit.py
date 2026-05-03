@@ -45,15 +45,30 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     """
     p = argparse.ArgumentParser(description="submit trigger（统一调 run.py）")
     p.add_argument("--req", dest="requirement_id", required=True, help="需求 ID，如 REQ-2026-002")
+    # F-004：推荐别名（与 run.py 同款双 dest 模式）
+    p.add_argument(
+        "--bypass-review-blockers",
+        dest="force_with_blockers",
+        default=None,
+        metavar="REASON",
+        help=(
+            "（推荐）允许 review-verdict tag 类失败仍开 PR；不放行 workspace_clean 等非 review 类失败。"
+            "必须提供非空 reason；透传给 runner（run.py:_validate_force_reason）"
+        ),
+    )
     p.add_argument(
         "--force-with-blockers",
         dest="force_with_blockers",
         default=None,
-        help=(
-            "允许在有 blocker 级审查问题时仍开 PR；必须提供非空 reason，"
-            "如 --force-with-blockers='临时绕过：已有 Jira 跟进'。"
-            "透传给 runner 的 escape_hatch 校验链（run.py:_validate_force_reason）"
-        ),
+        metavar="REASON",
+        help="[DEPRECATED 2026-11-01] 等价于 --bypass-review-blockers",
+    )
+    p.add_argument(
+        "--target",
+        dest="target",
+        default=None,
+        metavar="BRANCH",
+        help="目标 base 分支，覆盖 meta.base_branch（透传给 runner --target）",
     )
     p.add_argument("--strict", action="store_true", help="warning 也视为失败")
     p.add_argument("--dry-run", action="store_true", help="只打印执行计划，不跑 gate")
@@ -84,7 +99,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     if args.force_with_blockers is not None:
         # F-004 round-5：直接透传给 runner（含 reason），由 run.py:_validate_force_reason
         # 做三段校验（非空 / ≤1024 / 控制字符过滤）。runner 校验失败时返回 2。
-        runner_argv.append(f"--force-with-blockers={args.force_with_blockers}")
+        # F-004（FG-004）：推荐别名走同 dest，runner 处通过 raw argv 检测旧名打 deprecation。
+        runner_argv.append(f"--bypass-review-blockers={args.force_with_blockers}")
+    if args.target is not None:
+        # F-004：透传 --target 给 runner；base_reachable / ahead_of_origin 优先用此值
+        runner_argv.append(f"--target={args.target}")
 
     return runner.main(runner_argv)
 

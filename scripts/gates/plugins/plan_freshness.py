@@ -12,7 +12,10 @@
   只有 E001（plan.md 不存在）才作 fail，severity 由 registry 声明为 warning，
   让 runner 在 strict 模式才真阻断。
 
-precheck：当 trigger=pre-commit 且无 plan.md 改动时直接 Skip。
+F-003：changed_files 过滤双轨清理——pre-commit 时 runner 已通过
+registry.yaml.applies_when.changed_files 过滤；本 plugin 不再 precheck 内重复
+判定。run() 内 _resolve_req_dirs 仍用 changed_files 选择性扫描需求目录，是 IO
+选路而非过滤，保留不动。
 """
 from __future__ import annotations
 
@@ -43,14 +46,7 @@ class PlanFreshnessGate(Gate):
     side_effects = "none"
 
     def precheck(self, ctx: GateContext) -> Optional[Skip]:
-        """pre-commit 时若无 plan.md 改动则跳过；其他 trigger 一律继续。
-
-        参数：ctx.changed_files — staged 文件列表（pre-commit 由 runner 注入）。
-        返回：Skip（无需检查）或 None（继续执行 run）。
-        """
-        if ctx.trigger == "pre-commit":
-            if not _has_plan_change(ctx.changed_files):
-                return Skip("no plan.md changes in this commit")
+        """F-003 起本 plugin 不在 precheck 做 changed_files 过滤（runner 一处消费）。"""
         return None
 
     def run(self, ctx: GateContext) -> Report:
@@ -89,15 +85,6 @@ class PlanFreshnessGate(Gate):
         return _legacy_to_report(self.id, legacy_report)
 
 
-def _has_plan_change(changed_files: list[str]) -> bool:
-    """changed_files 命中 requirements/*/plan.md → True。"""
-    for f in changed_files:
-        parts = Path(f).parts
-        if len(parts) == 3 and parts[0] == "requirements" and parts[2] == "plan.md":
-            return True
-    return False
-
-
 def _resolve_req_dirs(ctx: GateContext) -> list[Path]:
     """决定本次需要检查的需求目录列表。
 
@@ -133,7 +120,11 @@ def _resolve_req_dirs(ctx: GateContext) -> list[Path]:
 def _legacy_to_report(gate_id: str, legacy: LegacyReport) -> Report:
     """把 common.Report 的 findings 列表降维成单条 Report。
 
-    E001（plan.md 不存在）是 error → FAIL；W 类软警告 → PASS（strict 由 runner 决定）。
+    转换规则：
+      - E001（plan.md 不存在）→ Decision.FAIL，code=R-PLAN
+      - 仅 WARNING finding（W001/W002/W003）→ Decision.FAIL，code=R-WARNING-ONLY
+        （gate severity=warning，strict 模式下 has_warning_fail 触发 exit=1）
+      - 无 finding → Decision.PASS
     """
     findings = legacy.findings()
     errors = [f for f in findings if f[1] == LegacySeverity.ERROR]
@@ -154,10 +145,22 @@ def _legacy_to_report(gate_id: str, legacy: LegacyReport) -> Report:
             },
         )
 
+    # 纯 warning 分支：gate severity=warning，strict 模式下由 audit.calc_exit_code 升级 exit=1
+    if warnings:
+        first = warnings[0]
+        return Report(
+            gate_id=gate_id,
+            decision=Decision.FAIL,
+            code="R-WARNING-ONLY",
+            message=f"{first[0]}: {first[2]}: {first[3]}",
+            fix_hint="该 gate 仅含 warning；strict 模式下视为失败",
+            vars={"warnings": [list(f) for f in warnings]},
+        )
+
     return Report(
         gate_id=gate_id,
         decision=Decision.PASS,
-        vars={"warnings": [list(f) for f in warnings]} if warnings else {},
+        vars={},
     )
 
 

@@ -11,10 +11,10 @@
 完整 render 输出到 stdout（与旧入口一致），让 normalize-stderr.sh 的关键前缀过滤
 得到同样的行集合。
 
-precheck 决定本 gate 是否真跑：当 trigger=pre-commit 且无任何
-`requirements/*/meta.yaml` 命中 ctx.changed_files 时直接 Skip。
-其他 trigger 由 runner 通过 registry.yaml 的 applies_when 过滤，
-本 plugin 内的 precheck 仅做 trigger 局部短路。
+F-003：changed_files 过滤双轨清理——pre-commit 时 runner 已通过
+registry.yaml.applies_when.changed_files 一次性过滤掉无 meta.yaml 改动的场景，
+本 plugin 不再 precheck 内重复判定（避免双轨腐化）；run() 内 _resolve_meta_paths
+仍按 changed_files 选择性扫描，是 IO 选路而非过滤，保留不动。
 """
 from __future__ import annotations
 
@@ -45,14 +45,11 @@ class MetaSchemaGate(Gate):
     side_effects = "none"
 
     def precheck(self, ctx: GateContext) -> Optional[Skip]:
-        """pre-commit 时若无 meta.yaml 改动则跳过；其他 trigger 一律继续。
+        """F-003 起本 plugin 不在 precheck 做 changed_files 过滤（runner 一处消费）。
 
-        参数：ctx.changed_files — staged 文件列表（pre-commit 由 runner 注入）。
-        返回：Skip（无需检查）或 None（继续执行 run）。
+        留空实现仅为满足 Gate 抽象方法契约（base.py:115）；过滤完全交给 runner
+        的 filter_gates(applies_when.changed_files) 一次性处理，避免双轨腐化。
         """
-        if ctx.trigger == "pre-commit":
-            if not _has_meta_yaml_change(ctx.changed_files):
-                return Skip("no meta.yaml changes in this commit")
         return None
 
     def run(self, ctx: GateContext) -> Report:
@@ -81,6 +78,13 @@ class MetaSchemaGate(Gate):
         legacy_report = LegacyReport()
         for path in meta_paths:
             check_meta.check_one(path, schema, legacy_report)
+            # F-005：在 check_meta 之后追加 legacy 误用检查（共用同一 legacy_report）
+            try:
+                meta_data = check_meta._load_yaml(path)
+            except Exception:  # noqa: BLE001
+                # _load_yaml 失败时 check_meta 已记录错误，此处静默跳过
+                meta_data = {}
+            _check_legacy_misuse(meta_data, legacy_report)
 
         # 行为契约（详细设计 §5.1）：把 legacy 完整 render 输出到 stdout，
         # 经 normalize-stderr.sh 关键前缀过滤后与旧入口等价。
@@ -88,15 +92,6 @@ class MetaSchemaGate(Gate):
             print(legacy_report.render())
 
         return _legacy_to_report(self.id, legacy_report)
-
-
-def _has_meta_yaml_change(changed_files: list[str]) -> bool:
-    """changed_files 命中 requirements/*/meta.yaml glob → True。"""
-    for f in changed_files:
-        parts = Path(f).parts
-        if len(parts) >= 3 and parts[0] == "requirements" and parts[-1] == "meta.yaml":
-            return True
-    return False
 
 
 def _resolve_meta_paths(ctx: GateContext) -> list[Path]:
@@ -128,7 +123,13 @@ def _resolve_meta_paths(ctx: GateContext) -> list[Path]:
 
 
 def _legacy_to_report(gate_id: str, legacy: LegacyReport) -> Report:
-    """把 common.Report 的 findings 列表降维成单条 Report。"""
+    """把 common.Report 的 findings 列表降维成单条 Report。
+
+    转换规则：
+      - 任一 ERROR finding → Decision.FAIL，code=R-META
+      - 仅 WARNING finding → Decision.FAIL，code=R-WARNING-ONLY（strict 模式下 has_warning_fail 触发 exit=1）
+      - 无 finding         → Decision.PASS
+    """
     findings = legacy.findings()
     errors = [f for f in findings if f[1] == LegacySeverity.ERROR]
     warnings = [f for f in findings if f[1] == LegacySeverity.WARNING]
@@ -149,11 +150,50 @@ def _legacy_to_report(gate_id: str, legacy: LegacyReport) -> Report:
             },
         )
 
+    # 纯 warning 分支：gate severity=warning，strict 模式下由 audit.calc_exit_code 升级 exit=1
+    if warnings:
+        first = warnings[0]
+        return Report(
+            gate_id=gate_id,
+            decision=Decision.FAIL,
+            code="R-WARNING-ONLY",
+            message=f"{first[0]}: {first[2]}: {first[3]}",
+            fix_hint="该 gate 仅含 warning；strict 模式下视为失败",
+            vars={"warnings": [list(f) for f in warnings]},
+        )
+
     return Report(
         gate_id=gate_id,
         decision=Decision.PASS,
-        vars={"warnings": [list(f) for f in warnings]} if warnings else {},
+        vars={},
     )
+
+
+def _check_legacy_misuse(meta: dict, report: LegacyReport) -> None:
+    """F-005：legacy=true 仅当 phase ∈ {completed, archived} 才合法。
+
+    在活跃开发阶段（如 development / task-planning 等）误加 legacy=true，
+    会导致部分 gate 检查被豁免，引入安全盲区。本函数在 check_meta 后追加检查。
+
+    参数：
+      meta   — 已解析的 meta.yaml dict（若 _load_yaml 失败则传 {}）
+      report — LegacyReport 实例，finding 追加写入（共用 check_one 的 report）
+    """
+    _LEGACY_ALLOWED_PHASES = {"completed", "archived"}
+
+    if meta.get("legacy") is True:
+        phase = meta.get("phase")
+        if phase not in _LEGACY_ALLOWED_PHASES:
+            report.add(
+                "meta.yaml",
+                LegacySeverity.ERROR,
+                "R-LEGACY-MISUSE",
+                (
+                    f"legacy=true 不允许在 phase={phase!r} 阶段使用；"
+                    f"仅 completed/archived 阶段可标记历史豁免。"
+                    f"修复：移除 meta.legacy 字段，或确认需求确实已 completed/archived"
+                ),
+            )
 
 
 # 模块级导出：runner 通过 module.GATE_CLASS 拿到子类

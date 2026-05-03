@@ -879,7 +879,7 @@ def _write_scope(
     写盘前调用 _assert_scope_invariants 校验 I1-I8，违反视为实现 bug（raise RoutingSchemaError）。
     """
     # ---- 构造 skipped_checkers ----
-    all_checkers_set = set(ALL_CHECKERS)  # noqa: F841（保留供未来扩展参考）
+    all_checkers_set = set(ALL_CHECKERS)  # 保留供未来扩展参考  # noqa: F841
     route_set = set(decision.final_route)
     is_trivial_skipped = decision.decision == "trivial-skipped"
 

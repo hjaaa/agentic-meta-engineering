@@ -157,6 +157,10 @@ gates:
       env_var: null
       requires_reason: true
       audit: true
+    # F-004：标记 review-verdict 类 gate；force-with-blockers / bypass-review-blockers
+    # escape hatch 命中后只放行该 tag 的 gate，避免对 workspace_clean / meta_schema 等
+    # 非 review 类失败一律放行（F6 缺陷修复）。
+    tags: [review-verdict]
     tests:
       fixtures: [pass, fail, skip]
 
@@ -182,6 +186,9 @@ gates:
       env_var: null
       requires_reason: true
       audit: true
+    # F-003：legacy=true 的历史 REQ 没有完整追溯链，runner 层 grandfather 跳过。
+    # 仅本 gate 加该 tag；其他 gate 保守不加（detailed-design.md §3.5）。
+    tags: [legacy-bypass]
     tests:
       fixtures: [pass, fail, skip]
 
@@ -190,6 +197,7 @@ gates:
     severity: error
     triggers:
       - pre-commit
+      - ci
     applies_when:
       changed_files:
         - "requirements/*/meta.yaml"
@@ -302,6 +310,64 @@ gates:
     tests:
       fixtures: [pass, fail, skip]
 
+  # F-004：submit 链路三件套——分支匹配 / phase 可提交 / 本地领先 origin
+  - id: GATE-BRANCH-MATCH
+    plugin: branch_match
+    severity: error
+    triggers:
+      - submit
+    applies_when:
+      changed_files: []
+      target_phase: null
+      current_phase_in: []
+      transition: null
+      requires: []
+    dependencies: []
+    side_effects: none
+    failure_message: |
+      {gate_id} 失败：{message}
+      修复建议：{fix_hint}
+    tests:
+      fixtures: [pass, fail, skip]
+
+  - id: GATE-BYPASS-PHASE-IN-SET
+    plugin: phase_in_set
+    severity: error
+    triggers:
+      - submit
+    applies_when:
+      changed_files: []
+      target_phase: null
+      current_phase_in: []
+      transition: null
+      requires: []
+    dependencies: []
+    side_effects: none
+    failure_message: |
+      {gate_id} 失败：{message}
+      修复建议：{fix_hint}
+    tests:
+      fixtures: [pass, fail, skip]
+
+  - id: GATE-AHEAD-OF-ORIGIN
+    plugin: ahead_of_origin
+    severity: error
+    triggers:
+      - submit
+    applies_when:
+      changed_files: []
+      target_phase: null
+      current_phase_in: []
+      transition: null
+      requires: []
+    dependencies: []
+    side_effects: none
+    failure_message: |
+      {gate_id} 失败：{message}
+      修复建议：{fix_hint}
+    tests:
+      fixtures: [pass, fail, skip]
+
 # 全局 escape 策略（流程级，非 gate 级）—— F-002 补全
 escape_hatches:
   - id: legacy-requirement
@@ -313,6 +379,10 @@ escape_hatches:
   - id: force-with-blockers
     cli_flag: --force-with-blockers
     triggers: [submit, phase-transition]   # round-2 新增 phase-transition（与 run.py:_handle_escape_hatch 对齐）
+    # F-004：与 legacy-requirement 同款 tag 限定——命中后**仅**放行 review-verdict 类 gate；
+    # 对 workspace_clean / meta_schema / branch_match 等非 review 类失败一律不放行。
+    # 修复 F6（来源：notes.md:13）"任意 error fail 一律返 0"的越权逻辑。
+    skips_gates_with_tag: [review-verdict]
     requires_reason: true
     audit: true
 
