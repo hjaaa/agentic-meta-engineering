@@ -5,3 +5,4 @@
 2026-05-04 01:09:06 [phase-transition] tech-research → outline-design；7 条门禁全通过
 2026-05-04 01:33:39 [review:approved] outline-design-quality-reviewer score=88 looks_clean（5 minor 0 major 0 blocker）
 2026-05-04 01:34:11 [signoff] REV-REQ-2026-006-outline-design-001 approved by hj19961223@gmail.com
+2026-05-04 01:34:46 [phase-transition] outline-design → detail-design；7 条门禁全通过
