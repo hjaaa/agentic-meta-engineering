@@ -56,11 +56,17 @@ class BaseReachableGate(Gate):
 
 
 def _resolve_base_branch(ctx: GateContext) -> str:
-    """解析目标 base 分支名（来源：meta.base_branch；不存在则 fallback develop/main）。
+    """解析目标 base 分支名。
 
-    注：cli_flags 可能含 target 参数，submit.py 会在调用 run.py 前传入 meta；
-    当前实现直接读 ctx.meta，与 detailed-design.md §4.2 时序一致。
+    解析顺序（F-004 升级）：
+      1. ctx.cli_flags["target"] — 用户显式 --target；submit.py / phase-transition 透传
+      2. ctx.meta["base_branch"] — meta.yaml 配置
+      3. _FALLBACK_BRANCHES[0] — 兜底（develop）
     """
+    cli_flags = ctx.cli_flags or {}
+    target = cli_flags.get("target")
+    if target:
+        return target
     return ctx.meta.get("base_branch") or _FALLBACK_BRANCHES[0]
 
 
