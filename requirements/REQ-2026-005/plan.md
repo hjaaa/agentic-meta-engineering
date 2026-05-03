@@ -47,6 +47,8 @@
 - 2026-05-03 12:04 REV-REQ-2026-005-code-F-002-001 approved by hj19961223@gmail.com
 - 2026-05-03 12:10 traceability-report.md 修订为 PASS（P-01 CLOSED；P-02/03/04 minor 不阻塞）
 - 待人工验收：M-01（develop 分支 MultiEdit 拦截）/ M-02（argparse Python 3.11/3.12 专项）/ M-03（force-with-blockers 调用清查写到 PR 描述）
+- 2026-05-03 12:18 chore commit 47a9d7c：闭合 P-03（test-report.md:86 措辞）+ 修订 P-04 评估为知情债务（hash stale 重审成本远高于清孤儿标记收益，留作 follow-up REQ）
+- 2026-05-03 16:13 phase 回退 completed → testing：submit 入口要求 phase ∈ {development, testing}；completed 需要 outcome / completed_at 字段，应在 PR 合并 + lessons 提取后由人工最终切换
 
 ## 风险
 

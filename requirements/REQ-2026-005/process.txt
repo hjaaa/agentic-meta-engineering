@@ -35,3 +35,5 @@
 2026-05-03 11:32:36 [save] traceability-report.md 生成 / WITH_WARNINGS / 6 维 5 PASS 1 FAIL（维度5）/ P-01 major: F-002 缺 code review（commit d7aaf74）/ P-02..P-04 minor
 2026-05-03 11:54:15 [review:looks_clean] code-quality-reviewer 出 looks_clean 95（F-002 补做 / 8 维全空 issues / critic 无候选 / verdict REV-REQ-2026-005-code-F-002-001 落盘）
 2026-05-03 12:04:05 [signoff] REV-REQ-2026-005-code-F-002-001 approved by hj19961223@gmail.com
+2026-05-03 12:10:17 [phase-transition] testing → completed (7 gate 全 PASS 无 warning / pytest 375 passed / traceability PASS / 5 feature signed-off)
+2026-05-03 16:13:39 [phase-transition] completed → testing (rollback：submit 只允许在 development/testing；completed 应在 PR 合并 + lessons 提取后由人工切换)
