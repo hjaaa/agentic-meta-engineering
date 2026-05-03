@@ -40,3 +40,14 @@ tags:                                    # 可选；长尾标签，不归一化
 outcome: ""                    # shipped / abandoned / rolled-back
 completed_at: ""               # ISO8601，completed 时填
 lessons_extracted: false       # /knowledge:extract-experience 是否已跑
+reviews:
+  definition:
+    latest: REV-REQ-2026-006-definition-001
+    conclusion: looks_clean
+    reviewed_commit: 87ea14a
+    artifact_hashes:
+      artifacts/requirement.md: 
+        24a8626b77c7adaf6eeb5638286f670edf7187b37510f273c7ad53785ca8e406
+    history:
+      - REV-REQ-2026-006-definition-001
+    stale: false
