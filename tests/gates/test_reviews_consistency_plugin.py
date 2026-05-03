@@ -147,6 +147,62 @@ def test_reviews_consistency_does_not_skip_on_ci_trigger():
     assert skip is None
 
 
+def test_ci_full_scan_resolves_short_filename_when_latest_has_full_id_prefix(tmp_path, monkeypatch):
+    """REQ-2026-005 实测 bug 回归：latest=REV-{REQ-ID}-{phase}-{seq} 时
+    save_review.py:257 写文件用短名 {phase}-{seq}.json；plugin 必须解析前缀去找短名文件。
+    """
+    req_root = tmp_path / "requirements"
+    req_dir = req_root / "REQ-2026-099"
+    reviews_dir = req_dir / "reviews"
+    reviews_dir.mkdir(parents=True)
+    # save_review 实际写盘的短名
+    (reviews_dir / "definition-002.json").write_text("{}", encoding="utf-8")
+    (reviews_dir / "code-F-001-001.json").write_text("{}", encoding="utf-8")
+    (req_dir / "meta.yaml").write_text(
+        "id: REQ-2026-099\n"
+        "reviews:\n"
+        "  definition:\n"
+        "    latest: REV-REQ-2026-099-definition-002\n"
+        "  code:\n"
+        "    by_feature:\n"
+        "      F-001:\n"
+        "        latest: REV-REQ-2026-099-code-F-001-001\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(plugin_mod, "_REPO_ROOT", tmp_path)
+
+    gate = plugin_mod.ReviewsConsistencyGate()
+    ctx = _make_ctx(changed_files=[], trigger="ci")
+    report = gate.run(ctx)
+    assert report.decision == Decision.PASS, report.message
+
+
+def test_ci_full_scan_fails_when_short_filename_missing(tmp_path, monkeypatch):
+    """given_meta_latest_but_short_file_absent_when_ci_then_fail。"""
+    req_root = tmp_path / "requirements"
+    req_dir = req_root / "REQ-2026-098"
+    (req_dir / "reviews").mkdir(parents=True)
+    # 缺 definition-001.json 文件
+    (req_dir / "meta.yaml").write_text(
+        "id: REQ-2026-098\n"
+        "reviews:\n"
+        "  definition:\n"
+        "    latest: REV-REQ-2026-098-definition-001\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(plugin_mod, "_REPO_ROOT", tmp_path)
+
+    gate = plugin_mod.ReviewsConsistencyGate()
+    ctx = _make_ctx(changed_files=[], trigger="ci")
+    report = gate.run(ctx)
+    assert report.decision == Decision.FAIL
+    assert report.code == "R-REVIEWS-INCONSISTENT"
+    # 错误信息应明确提到短名文件路径
+    assert "definition-001.json" in (report.message or "")
+
+
 def test_reviews_consistency_skips_when_no_meta_or_reviews_in_staged():
     """given_no_relevant_staged_files_when_precheck_then_skip（skip fixture：无相关文件）。"""
     gate = plugin_mod.ReviewsConsistencyGate()

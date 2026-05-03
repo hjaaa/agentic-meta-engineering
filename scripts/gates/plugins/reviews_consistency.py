@@ -126,19 +126,39 @@ class ReviewsConsistencyGate(Gate):
                 # reviews 段格式非预期，跳过
                 continue
 
+            # save_review.py:257 文件名约定：去掉 REV-{REQ-ID}- 前缀
+            # latest=REV-REQ-2026-005-definition-002 → 文件 definition-002.json
+            prefix = f"REV-{req_id}-"
+
+            def _resolve_stem(latest: str) -> str:
+                return latest[len(prefix):] if latest.startswith(prefix) else latest
+
+            def _check_one(phase_key: str, latest: str) -> None:
+                stem = _resolve_stem(latest)
+                expected_json = reviews_dir / f"{stem}.json"
+                if not expected_json.exists():
+                    inconsistencies.append(
+                        f"{req_id}/{phase_key}: latest={latest!r} "
+                        f"对应文件 reviews/{stem}.json 不存在"
+                    )
+
             for phase_key, phase_val in reviews_section.items():
                 if not isinstance(phase_val, dict):
                     continue
+                # code 阶段实际生产格式是 by_feature 嵌套；同时兼容顶层 latest 写法
+                if phase_key == "code" and isinstance(phase_val.get("by_feature"), dict):
+                    for fid, fval in phase_val["by_feature"].items():
+                        if not isinstance(fval, dict):
+                            continue
+                        latest = fval.get("latest")
+                        if latest:
+                            _check_one(f"code/{fid}", latest)
+                    # by_feature 走完仍然 fallthrough 检查顶层 latest（如果存在）
                 latest = phase_val.get("latest")
                 if not latest:
                     # 无 latest 字段：该 phase 尚未有 review，不报错
                     continue
-                expected_json = reviews_dir / f"{latest}.json"
-                if not expected_json.exists():
-                    inconsistencies.append(
-                        f"{req_id}/{phase_key}: latest={latest!r} "
-                        f"但 reviews/{latest}.json 不存在"
-                    )
+                _check_one(phase_key, latest)
 
         if inconsistencies:
             return Report(
