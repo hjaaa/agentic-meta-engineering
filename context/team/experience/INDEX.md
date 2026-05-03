@@ -18,6 +18,11 @@
 - [`circular-import-stub-binding.md`](circular-import-stub-binding.md) — `try/except ImportError` 兜底循环导入会让模块永久绑定 stub，规则静默失效；解法是消除循环（重排 import 顺序）+ 回归测试
 - [`schema-rule-upgrade-needs-migration-plan.md`](schema-rule-upgrade-needs-migration-plan.md) — schema/CR 规则升级前必须明确数据迁移路径或 legacy escape，否则破坏历史已 completed 需求的 CI
 - [`lint-rule-spec-vs-derived-docs.md`](lint-rule-spec-vs-derived-docs.md) — lint 规则按文档性质分层：spec 文档强校验 / 衍生文档（tasks/reviews/test-report）豁免，避免 source 责任错位
+- [`plugin-multi-trigger-shared-naming-convention.md`](plugin-multi-trigger-shared-naming-convention.md) — plugin 加新触发路径时命名假设要对齐下游产物实际写盘约定；用共享 helper 强制双路径同源
+- [`auto-generated-artifact-needs-pre-commit-not-just-ci.md`](auto-generated-artifact-needs-pre-commit-not-just-ci.md) — 「源文件 → 自动生成派生文件 + CI 校验」组合必须挂 pre-commit / pre-submit，CI 兜底太晚浪费 round-trip
+- [`r005-hash-drift-deadlock-after-reviewer-signoff.md`](r005-hash-drift-deadlock-after-reviewer-signoff.md) — reviewer sign-off 后改 hash 敏感 spec 文档触发 R005 死循环，需 3 轮重审；优先 ADR/notes 记录而非改文件
+- [`perf-baseline-sample-size-jitter-trap.md`](perf-baseline-sample-size-jitter-trap.md) — 性能 baseline 「N 次中位数」模板要先量被测时长量级；ms 级被测项 N≥10 + perf_counter，否则 50ms 抖动会放大成误判
+- [`runner-fail-without-stdout-message.md`](runner-fail-without-stdout-message.md) — multi-plugin runner FAIL 必须把 plugin message 渲染到 stderr，不能只写 audit log；CI 看不到原因极拖慢调试
 
 ## 什么值得沉淀
 

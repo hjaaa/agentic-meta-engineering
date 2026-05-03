@@ -42,7 +42,7 @@ tags:
 # ============ 结果组（completed 时才填） ============
 outcome: shipped
 completed_at: "2026-05-03 17:55:31"  # PR #50 mergedAt (Asia/Shanghai)
-lessons_extracted: false       # /knowledge:extract-experience 是否已跑
+lessons_extracted: true        # /knowledge:extract-experience 已跑（5 条沉淀到 context/team/experience/）
 reviews:
   definition:
     latest: REV-REQ-2026-005-definition-002
