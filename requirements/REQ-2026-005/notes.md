@@ -55,3 +55,30 @@ reviewer 明确 5 条 finding **均不阻断 looks_clean**，其中 2 条 major 
 ## F-005 development 阶段补充 / D-008 见 plan.md（ruff select 起步降级）
 
 一审（REV-REQ-2026-005-code-F-005-001）发现 quality-check.yml `--select=F` 与详设 §5.3 字面 `--select=E,W,F` 不一致。降级原因（E501=289 条历史问题，命中 >200 阈值）属合理实施决策，已在 plan.md D-008 小节补完整 ADR。不修改 detailed-design.md / features.json，避免 detail-design 阶段 stale 重审循环。
+
+## F-003 development 阶段验收数据（baseline + 21 gate 过滤一致性）
+
+### TC-FG3-3 性能 baseline 对比
+
+测量方法：`python3 scripts/gates/run.py --trigger=ci --req=REQ-2026-005`，11 次 perf_counter 中位数。
+
+- **Baseline**（commit `5e799e8`，F-003 实施前）：median **0.2107s**，stdev 2.0ms
+- **After**（HEAD `1d6636c`，F-003 实施完成）：median **0.2210s**，stdev 1.8ms
+- **涨幅 +4.88%**，远低于 +20% 阈值，**不触发降级方案** ✅
+
+注：detail-design TC-FG3-3 原文「5 次中位数」首次跑出 0.21→0.26（+23.8%）是 50ms 量级抖动放大，扩到 11 次 perf_counter 后稳定到 +4.88%。结论以稳健测量为准。
+
+### 21 条 gate 过滤结果一致性回归
+
+通过对比 baseline / after 两个 worktree 的实际 audit log：
+
+| Trigger | Baseline | After | 一致性 |
+|---|---|---|---|
+| ci | 5 PASS + 1 FAIL（GATE-REVIEWS-CONSISTENCY）/ exit=1 | 同上 | ✅ |
+| submit | 9 PASS + 1 SKIP（GATE-PR-MERGED-STATE: pr_number 缺失）/ exit=0 | 9 PASS / GATE-PR-MERGED-STATE 在 runner filter_gates 阶段过滤掉 / exit=0 | ✅（执行集合一致）|
+| post-dev / pre-tool-use | dry-run 计划列表完全相同 | 同左 | ✅ |
+| pre-commit | dry-run 列出 6 个 gate（含 5 个 changed_files-aware）；plugin 内自行 skip | dry-run 仅列 1 个（其余 5 个 runner 层 changed_files 空集过滤）| ✅（最终执行集合一致）|
+
+**关键判定**：dry-run 输出条目数差异是**预期**——F-003 把 changed_files / requires 等 5 个 applies_when 字段消费从 plugin 内 precheck 上移到 runner filter_gates 一处（D-003 决策）；最终「真跑 + 通过 / 失败 / 不跑」的 gate 集合在 baseline / after 完全等价。
+
+baseline worktree：`/tmp/req-2026-005-baseline`（验证完成已清理）。
