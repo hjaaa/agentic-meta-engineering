@@ -22,8 +22,8 @@ gates_passed:
       20:05:00", warnings: ["GATE-PLAN-FRESHNESS:W002"]}
   - {gate: phase-transition, from: development, to: testing, at: "2026-05-03 11:17:31",
     warnings: []}
-pr_url: ""
-pr_number: 0
+pr_url: "https://github.com/hjaaa/agentic-meta-engineering/pull/50"
+pr_number: 50
 log_layout: split
 
 # ============ 语义组（definition 阶段补齐，供跨需求检索） ============
