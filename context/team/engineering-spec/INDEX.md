@@ -8,6 +8,7 @@
 - [`design-guidance/context-engineering.md`](design-guidance/context-engineering.md) — 上下文工程原则
 - [`design-guidance/compounding.md`](design-guidance/compounding.md) — 复利工程原则
 - [`design-guidance/hook-fail-open.md`](design-guidance/hook-fail-open.md) — Hook 必须区分业务 fail 与基础设施故障；后者 fail-open 防止反向 brick 工具链
+- [`design-guidance/gate-system-architecture.md`](design-guidance/gate-system-architecture.md) — 门禁系统架构：热路径 / 低频路径分离、CLAUDE_GATES_GLOBAL_BYPASS 全局逃生、异步 audit（兼 A+B 重构 spec，待实施）
 
 ## 工具设计规范
 
