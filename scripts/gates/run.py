@@ -150,15 +150,32 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--dry-run", action="store_true", help="不执行 gate.run，仅打印执行计划")
     p.add_argument("--validate-registry", action="store_true", help="仅校验 registry，不跑 gate")
     p.add_argument("--legacy", help="adapter 模式：包装某个旧 plugin（如 check-meta / check-index）")
+    # F-004：推荐别名（语义更准确：仅放行 review-verdict tag 类 gate，非"任意 blocker"）
+    p.add_argument(
+        "--bypass-review-blockers",
+        dest="force_with_blockers",
+        default=None,
+        metavar="REASON",
+        help=(
+            "submit / phase-transition trigger 专用 escape_hatch：仅放行 review-verdict tag "
+            "类 gate（GATE-REVIEW-VERDICT 等），不放行 workspace_clean / meta_schema 等非 review 类失败；"
+            "必须提供非空 reason；使用情况写入 audit log（escape_used: force-with-blockers）"
+        ),
+    )
+    # F-004：旧名保留 6 个月迁移窗口（D-004 决策：2026-11-01 无条件删旧名）
     p.add_argument(
         "--force-with-blockers",
         dest="force_with_blockers",
         default=None,
-        help=(
-            "submit / phase-transition trigger 专用 escape_hatch：强制跳过 blocker 级失败；"
-            "必须提供非空 reason（如 --force-with-blockers='临时绕过：已有 Jira 跟进'）；"
-            "使用情况会写入 audit log（escape_used: force-with-blockers）"
-        ),
+        metavar="REASON",
+        help="[DEPRECATED 2026-11-01] 等价于 --bypass-review-blockers；命中时打 stderr deprecation 提示",
+    )
+    p.add_argument(
+        "--target",
+        dest="target",
+        default=None,
+        metavar="BRANCH",
+        help="目标 base 分支，覆盖 meta.base_branch（submit / phase-transition trigger 专用）",
     )
     p.add_argument("paths", nargs="*", help="adapter 模式下传入的目标文件（如 meta.yaml 路径）")
     return p.parse_args(argv)
@@ -269,6 +286,8 @@ def build_context(args: argparse.Namespace) -> GateContext:
             "dry_run": args.dry_run,
             "legacy": args.legacy,
             "force_with_blockers": getattr(args, "force_with_blockers", None),
+            # F-004：--target 透传给 base_reachable / ahead_of_origin 解析 base 分支
+            "target": getattr(args, "target", None),
         },
         extra=extra,
         changed_files=changed_files,
@@ -596,7 +615,15 @@ def main(argv: Optional[list[str]] = None) -> int:
       - 缺 trigger 且未带 --validate-registry → 打 ERROR 后退 2
       - plugin 抛未捕获异常 → 由 _handle_runner_exception 兜底退 2 + 写 audit
     """
-    args = parse_args(argv if argv is not None else sys.argv[1:])
+    raw_argv = argv if argv is not None else sys.argv[1:]
+    args = parse_args(raw_argv)
+
+    # F-004：旧名 --force-with-blockers 命中 → stderr deprecation 提示（不阻断）
+    if any(a == "--force-with-blockers" or a.startswith("--force-with-blockers=") for a in raw_argv):
+        print(
+            "[DEPRECATED] use --bypass-review-blockers instead, removed at 2026-11-01",
+            file=sys.stderr,
+        )
 
     # F-018：pre-tool-use 高频路径冷启动优化
     validate_only_ids: Optional[set[str]] = None
@@ -639,8 +666,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     if args.dry_run:
         return _print_dry_run(ctx, plan)
 
-    # 真实执行
-    return _execute_plan(ctx, plan, strict=args.strict)
+    # 真实执行（registry_data 透传给 _execute_plan → _handle_escape_hatch，
+    # 用于 escape_hatches[*].skips_gates_with_tag 与失败 gate.tags 做交集判定）
+    return _execute_plan(ctx, plan, args.strict, registry_data=registry_data)
 
 
 def _print_dry_run(ctx: GateContext, plan: list[dict[str, Any]]) -> int:
@@ -665,44 +693,104 @@ def _print_dry_run(ctx: GateContext, plan: list[dict[str, Any]]) -> int:
 # ====================== 执行 plan（F-011 round-2 拆分） ======================
 
 
+def _resolve_failed_gate_tags(
+    gate_fail: "GateFailed",
+    registry_data: Optional[dict[str, Any]],
+) -> set[str]:
+    """从 registry_data 取出失败 gate 的 tags 集合（缺失时返回空集）。
+
+    F-004：用于 _handle_escape_hatch 的 tag 交集判定；registry_data=None 时
+    返回空集 → 必然不命中 → escape hatch 不放行（safe default）。
+    """
+    if not registry_data:
+        return set()
+    failed_id = gate_fail.report.gate_id
+    for entry in registry_data.get("gates", []):
+        if entry.get("id") == failed_id:
+            return set(entry.get("tags") or [])
+    return set()
+
+
+def _resolve_escape_skips_tags(
+    escape_id: str,
+    registry_data: Optional[dict[str, Any]],
+) -> set[str]:
+    """从 registry_data 取出 escape_hatch 的 skips_gates_with_tag 集合。
+
+    F-004：与 _resolve_failed_gate_tags 对称；registry_data=None 时返回空集。
+    """
+    if not registry_data:
+        return set()
+    for entry in registry_data.get("escape_hatches", []) or []:
+        if entry.get("id") == escape_id:
+            return set(entry.get("skips_gates_with_tag") or [])
+    return set()
+
+
 def _handle_escape_hatch(
     ctx: GateContext,
     gate_fail: "GateFailed",
     executed: "list[Gate]",
     snapshots: dict,
+    *,
+    registry_data: Optional[dict[str, Any]] = None,
 ) -> tuple[bool, bool]:
-    """处理 GateFailed 时的 force-with-blockers 分支判定。
+    """处理 GateFailed 时的 force-with-blockers 分支判定（F-004 升级：tag 限定）。
 
     force-with-blockers 是流程级 escape_hatch，仅 phase-transition / submit trigger 生效
-    （与 registry.yaml escape_hatches.triggers 对齐）。命中时打 WARNING 日志，不执行 rollback。
+    （与 registry.yaml escape_hatches.triggers 对齐）。
+
+    F-004 收紧：原实现命中后无脑放行任何 error fail（F6 缺陷），改为：
+      - 必须命中：trigger ∈ {phase-transition, submit} ∧ force_reason 非空
+      - 必须命中：失败 gate.tags ∩ escape.skips_gates_with_tag ≠ ∅
+      不命中 → 走 _handle_gate_failed rollback 路径
+
+    registry_data 缺省 None 时（旧调用站 / 测试场景），tag 集合视为空 → 不命中 →
+    走 rollback 路径，与 F-004 设计语义一致（safe default）。
 
     参数：
-      ctx       — 当前执行上下文（含 cli_flags.force_with_blockers）。
-      gate_fail — 触发失败的 GateFailed 异常（含 report.gate_id 用于日志）。
-      executed  — 已执行的 Gate 列表（非命中路径执行 rollback 用）。
-      snapshots — 事务快照（非命中时传给 _handle_gate_failed 执行 rollback）。
+      ctx           — 当前执行上下文（含 cli_flags.force_with_blockers）。
+      gate_fail     — 触发失败的 GateFailed 异常（含 report.gate_id 用于日志）。
+      executed      — 已执行的 Gate 列表（非命中路径执行 rollback 用）。
+      snapshots     — 事务快照（非命中时传给 _handle_gate_failed 执行 rollback）。
+      registry_data — registry.yaml 加载后的 dict，用于查 tags / skips_gates_with_tag。
 
     返回：(force_used, rollback_failed)
-      force_used      — True 表示 escape_hatch 命中，允许继续。
-      rollback_failed — True 表示 rollback 执行但失败（仅非命中路径有效）。
     """
     force_reason = ctx.cli_flags.get("force_with_blockers")
-    if force_reason and ctx.trigger in ("phase-transition", "submit"):
-        # escape_hatch 命中：记录 WARNING；audit log 由 _build_audit_extra 标记
+    if not (force_reason and ctx.trigger in ("phase-transition", "submit")):
+        rollback_failed = _handle_gate_failed(ctx, executed, snapshots)
+        return False, rollback_failed
+
+    # F-004：失败 gate 必须有 tag 命中 escape_hatch.skips_gates_with_tag 才放行
+    failed_tags = _resolve_failed_gate_tags(gate_fail, registry_data)
+    skips_tags = _resolve_escape_skips_tags("force-with-blockers", registry_data)
+    if not (failed_tags & skips_tags):
+        # 无 tag 交集（含 registry_data=None 的 safe default）→ 不放行
         print(
-            f"WARNING ESCAPE-HATCH force-with-blockers 触发："
+            f"INFO ESCAPE-HATCH force-with-blockers 未命中："
             f"gate_id={gate_fail.report.gate_id} "
-            f"trigger={ctx.trigger} req={ctx.requirement_id or '-'} "
-            f"reason={force_reason!r}",
+            f"failed_tags={sorted(failed_tags)} "
+            f"skips_tags={sorted(skips_tags)}；走正常 rollback 路径",
             file=sys.stderr,
         )
-        # G-3 round-3：force 路径也要清理快照和暂存写态，
-        # 避免 .bak 文件残留 + ctx 跨调用复用时 staged_writes 幻态
-        _cleanup_snapshots(snapshots)
-        ctx.staged_writes.clear()
-        return True, False
-    rollback_failed = _handle_gate_failed(ctx, executed, snapshots)
-    return False, rollback_failed
+        rollback_failed = _handle_gate_failed(ctx, executed, snapshots)
+        return False, rollback_failed
+
+    # tag 命中：放行
+    print(
+        f"WARNING ESCAPE-HATCH force-with-blockers 触发："
+        f"gate_id={gate_fail.report.gate_id} "
+        f"trigger={ctx.trigger} req={ctx.requirement_id or '-'} "
+        f"matched_tags={sorted(failed_tags & skips_tags)} "
+        f"reason={force_reason!r}",
+        file=sys.stderr,
+    )
+    # G-3 round-3：force 路径也要清理快照和暂存写态，
+    # 避免 .bak 文件残留 + ctx 跨调用复用时 staged_writes 幻态
+    _cleanup_snapshots(snapshots)
+    ctx.staged_writes.clear()
+    return True, False
 
 
 def _build_audit_extra(force_used: bool, force_reason: str) -> dict[str, Any]:
@@ -801,7 +889,13 @@ def _finalize_audit(
         )
 
 
-def _execute_plan(ctx: GateContext, plan: list[dict[str, Any]], strict: bool) -> int:
+def _execute_plan(
+    ctx: GateContext,
+    plan: list[dict[str, Any]],
+    strict: bool,
+    *,
+    registry_data: Optional[dict[str, Any]] = None,
+) -> int:
     """执行 plan：init_snapshots → run/commit → escape_hatch → finalize_audit → exit_code。
 
     H1 事务化（F-002 round-2 修复）：
@@ -811,6 +905,8 @@ def _execute_plan(ctx: GateContext, plan: list[dict[str, Any]], strict: bool) ->
     F-011 round-2：把"跑 gate / commit 写态 / GateFailed 处理"三段抽到子例程。
     F-007 round-2：拆出 _handle_escape_hatch + _build_audit_extra 降低复杂度。
     F-004 round-3：抽 _init_snapshots + _finalize_audit，函数降至 ≤ 50 行 / CC ≤ 10。
+    F-004（FG-004）：透传 registry_data 给 _handle_escape_hatch，做 tag 交集判定。
+      registry_data=None 时（旧调用站）→ tag 集合空集 → escape hatch 不命中 → safe default。
     """
     snapshots = _init_snapshots(ctx, plan)
     executed: list[Gate] = []
@@ -824,7 +920,9 @@ def _execute_plan(ctx: GateContext, plan: list[dict[str, Any]], strict: bool) ->
         _commit_write_state(ctx, executed, _current_plugin)
         _cleanup_snapshots(snapshots)
     except GateFailed as gate_fail:
-        force_used, rollback_failed = _handle_escape_hatch(ctx, gate_fail, executed, snapshots)
+        force_used, rollback_failed = _handle_escape_hatch(
+            ctx, gate_fail, executed, snapshots, registry_data=registry_data
+        )
     except Exception as exc:  # noqa: BLE001
         return _handle_runner_exception(ctx, snapshots, reports, _current_plugin[0], exc)
 
