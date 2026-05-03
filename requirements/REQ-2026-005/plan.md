@@ -38,6 +38,16 @@
 - F-001 / FG-001 strict 模式 + reviews_consistency CI 兜底 — done（commits f453b67 / 8a3cdc8 / 12354ca），post-dev 验证待补
 - F-003 / F-004 / F-005 — pending
 
+## testing 阶段进度（截至 2026-05-03）
+
+- 2026-05-03 11:17 phase-transition development → testing 通过（7 gate 全 PASS，无 warning）
+- 2026-05-03 11:22 test-runner 跑出 pytest 375 passed / 0 failed / 1 skipped；CI trigger 非 strict exit=0；strict exit=1（plan.md W002 升阻断符合 F-001 设计）；ruff `--select=F` 0 error；artifacts/test-report.md 落盘
+- 2026-05-03 11:32 traceability-consistency-checker 首版 WITH_WARNINGS（6 维 5 PASS / 维度 5 FAIL）；artifacts/traceability-report.md 落盘
+- 2026-05-03 11:51 P-01 闭合：F-002 补 /code-review 出 looks_clean(95)；REV-REQ-2026-005-code-F-002-001 落盘
+- 2026-05-03 12:04 REV-REQ-2026-005-code-F-002-001 approved by hj19961223@gmail.com
+- 2026-05-03 12:10 traceability-report.md 修订为 PASS（P-01 CLOSED；P-02/03/04 minor 不阻塞）
+- 待人工验收：M-01（develop 分支 MultiEdit 拦截）/ M-02（argparse Python 3.11/3.12 专项）/ M-03（force-with-blockers 调用清查写到 PR 描述）
+
 ## 风险
 
 - **风险 1**：escape hatch / phase 校验改动可能影响现有合法流程，需回归所有已有需求的门禁通过路径（含 REQ-2026-001~003 的 submit 流程）
