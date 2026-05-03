@@ -73,5 +73,11 @@
   "supersedes": null,
   "project_specific_issues": [
     "项目索引未声明特殊并发/合规约束；本需求改的是门禁系统自身，最大项目级约束是「自举死锁」——requirement.md 第 17 行已显式列入背景缺陷 #2，并在场景 3（A1 全局逃生）+ D-007（PR-1 先合保留新旧并行窗口）双重兜底，对应 spec §1.2.2 与 §5 顺序约束，无遗漏。"
-  ]
+  ],
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-04T00:13:01.802563+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
+  }
 }
