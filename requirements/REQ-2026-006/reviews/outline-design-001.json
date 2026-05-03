@@ -69,5 +69,11 @@
   "architectural_concerns": [
     "长期隐患：§2.5 决定 jq 缺失即 fail-open（不实现 python3 fallback），这在 macOS Homebrew 默认装 / ubuntu-latest 预装 jq 的当前环境下风险极小；但如果未来 CI runner 切到不预装 jq 的镜像（如某些精简版 Alpine），fail-open 会让 reviews/*.json 写保护规则静默失效，建议在 PR-1 的 CI 中加一行 `command -v jq` 显式校验作为冒烟兜底。",
     "长期隐患：§3 bypass 三入口统一签名设计正确，但 audit 行格式中 entry-name 是字符串字面量（如 `trigger:phase-transition`），未来新增 trigger 时容易漏改入口的 entry-name 字符串，导致 audit 入口归类失真。detail-design 阶段可考虑把 entry-name 收敛到 audit_async.sh 的辅助函数（如 `audit_log_with_entry <entry-name> <reason>`），避免散落字符串字面量。"
-  ]
+  ],
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-04T01:34:11.873499+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
+  }
 }
