@@ -29,3 +29,4 @@
 2026-05-03 10:52:19 [save] F-004 实现完成（4 commits 0f57857/1a9d676/eb9efaa/2642e42；post-dev exit=0；pytest 375 passed；卡点 A 待 tty 跑 /code-review）
 2026-05-03 11:11:42 [review:looks_clean] code-quality-reviewer 出 looks_clean 87（F-004 / 4 finding: 2 drop 2 follow-up / REV-REQ-2026-005-code-F-004-001 落盘）
 2026-05-03 11:12:07 [signoff] REV-REQ-2026-005-code-F-004-001 approved by hj19961223@gmail.com
+2026-05-03 11:14:01 [save] 全部 5 feature done (F-001/002/003/004/005) / post-dev exit=0 / 待选 testing 或 submit
