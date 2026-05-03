@@ -1,7 +1,7 @@
 # ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-006
 title: 门禁系统 A+B 重构实施（pre-tool-use 热路径解耦 + 全局逃生 + 异步 audit）
-phase: definition
+phase: tech-research
 created_at: "2026-05-03 22:10:26"     # 格式 YYYY-MM-DD HH:MM:SS（Asia/Shanghai），见 context/team/engineering-spec/time-format.md
 branch: feat/req-REQ-2026-006
 base_branch: develop
@@ -10,6 +10,16 @@ services: []                           # 涉及的服务仓库
 gates_passed:
   - phase: bootstrap-to-definition
     at: "2026-05-03 22:25:00"
+    gates:
+      - GATE-META-SCHEMA
+      - GATE-INDEX-INTEGRITY
+      - GATE-SOURCING
+      - GATE-WORKSPACE-CLEAN
+      - GATE-REVIEW-VERDICT
+      - GATE-TRACEABILITY
+      - GATE-PLAN-FRESHNESS
+  - phase: definition-to-tech-research
+    at: "2026-05-04 00:15:00"
     gates:
       - GATE-META-SCHEMA
       - GATE-INDEX-INTEGRITY
