@@ -25,3 +25,4 @@
 2026-05-03 09:43:23 [save] F-003 验收数据落盘：baseline +4.88% / 21 gate audit log 一致 / 卡点 A 待 tty 跑 /code-review
 2026-05-03 10:05:12 [review:looks_clean] code-quality-reviewer 出 looks_clean 92（F-003 / 1 minor critic rejected drop / REV-REQ-2026-005-code-F-003-001 落盘）
 2026-05-03 10:05:47 [signoff] REV-REQ-2026-005-code-F-003-001 approved by hj19961223@gmail.com
+2026-05-03 10:09:03 [save] F-004 派发 subagent (model=opus，FG-004 escape hatch tag + 3 新 plugin + argparse alias + submit --target)
