@@ -6,3 +6,4 @@
 2026-05-04 01:33:39 [review:approved] outline-design-quality-reviewer score=88 looks_clean（5 minor 0 major 0 blocker）
 2026-05-04 01:34:11 [signoff] REV-REQ-2026-006-outline-design-001 approved by hj19961223@gmail.com
 2026-05-04 01:34:46 [phase-transition] outline-design → detail-design；7 条门禁全通过
+2026-05-04 11:46:19 [save] detail-design 产出物落盘：detailed-design.md + features.json（F-001~F-004，5.9 人天）；待评审
