@@ -32,3 +32,4 @@
 2026-05-04 16:40:26 [signoff] REV-REQ-2026-006-code-F-004-002 approved by hj19961223@gmail.com
 2026-05-04 16:40:26 [development] F-004 done（commits: e04b96d native / 87830b3 carryover-F003 / 7d8ea2a fixup / 6710247 must-fix-F1+F5 / 3932a25 R1-report / f630e11 R2-report；R1 blocked→R2 looks_clean；F-3/F-4 carryover→F-005）
 2026-05-04 16:40:26 [development] 4/4 PR all done（F-001 / F-002 / F-003 / F-004）；F-003 携 4 minor carryover→F-004（已修），F-004 携 F-3+F-4 carryover→F-005（如需）
+2026-05-04 16:41:24 [save] development 4/4 PR 全部 done；F-3+F-4 minor carryover→F-005（如发起）；下一步 /requirement:next 进 testing
