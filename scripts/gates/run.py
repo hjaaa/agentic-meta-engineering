@@ -202,6 +202,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         metavar="BRANCH",
         help="目标 base 分支，覆盖 meta.base_branch（submit / phase-transition trigger 专用）",
     )
+    p.add_argument(
+        "--draft",
+        action="store_true",
+        help="submit trigger 专用：草稿 PR 模式；GATE-REVIEW-VERDICT 命中时跳过",
+    )
     p.add_argument("paths", nargs="*", help="adapter 模式下传入的目标文件（如 meta.yaml 路径）")
     return p.parse_args(argv)
 
@@ -308,6 +313,8 @@ def build_context(args: argparse.Namespace) -> GateContext:
             "force_with_blockers": getattr(args, "force_with_blockers", None),
             # F-004：--target 透传给 base_reachable / ahead_of_origin 解析 base 分支
             "target": getattr(args, "target", None),
+            # F-001 B 案：--draft 透传给 review_verdict 放宽门禁
+            "draft": getattr(args, "draft", False),
         },
         extra=extra,
         changed_files=changed_files,

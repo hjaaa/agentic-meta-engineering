@@ -21,6 +21,7 @@ base 解析顺序（与 base_reachable._resolve_base_branch 同款）：
 """
 from __future__ import annotations
 
+import json
 import subprocess
 from typing import Optional
 
@@ -39,15 +40,66 @@ class AheadOfOriginGate(Gate):
     side_effects = "none"
 
     def precheck(self, ctx: GateContext) -> Optional[Skip]:
-        """仅 submit trigger 生效；其他 trigger 直接跳过。"""
+        """仅 submit trigger 生效；非 submit 直接跳过。
+        B 案放宽：submit 时若当前分支已有 open PR → Skip（避免重复推导致冲突）。
+        """
         if ctx.trigger != "submit":
             return Skip(f"trigger={ctx.trigger!r} 非 submit；跳过 ahead-of-origin")
+        branch = _detect_source_branch(ctx)
+        if branch and _pr_open_for_branch(branch):
+            return Skip(f"分支 {branch!r} 已有 open PR；跳过 ahead-of-origin")
         return None
 
     def run(self, ctx: GateContext) -> Report:
         """解析 base 后跑 git rev-list --count origin/<base>..HEAD。"""
         base = _resolve_base(ctx)
         return _check_ahead_of_origin(base)
+
+
+def _detect_source_branch(ctx: GateContext) -> str:
+    """优先 ctx.cli_flags.source_branch；回退 git symbolic-ref --short HEAD。
+
+    空字符串表示无法确定当前分支（detached HEAD / git 不可用）。
+    """
+    cli_flags = ctx.cli_flags or {}
+    explicit = cli_flags.get("source_branch")
+    if explicit:
+        return str(explicit)
+    try:
+        result = subprocess.run(
+            ["git", "symbolic-ref", "--short", "HEAD"],
+            capture_output=True, text=True, check=False, timeout=_GIT_TIMEOUT_SEC,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return ""
+    if result.returncode != 0:
+        return ""
+    return (result.stdout or "").strip()
+
+
+def _pr_open_for_branch(branch: str) -> bool:
+    """gh pr list --head <branch> --state open --limit 1 --json number；命中即 True。
+
+    fail-closed：gh 缺失 / returncode≠0 / JSON 解析失败 / branch 为空 → False
+    （不放行 skip，让主路径继续校验；避免 gh 鉴权问题导致假豁免）。
+    """
+    if not branch:
+        return False
+    try:
+        result = subprocess.run(
+            ["gh", "pr", "list", "--head", branch, "--state", "open",
+             "--limit", "1", "--json", "number"],
+            capture_output=True, text=True, check=False, timeout=_GIT_TIMEOUT_SEC,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return False
+    if result.returncode != 0:
+        return False
+    try:
+        data = json.loads(result.stdout or "[]")
+    except json.JSONDecodeError:
+        return False
+    return isinstance(data, list) and len(data) > 0
 
 
 def _resolve_base(ctx: GateContext) -> str:

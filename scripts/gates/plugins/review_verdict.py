@@ -65,6 +65,11 @@ class ReviewVerdictGate(Gate):
           - phase-transition：缺 to_phase 时跳过（无目标 phase 无法判定 review 要求）
           - legacy=true：历史治理需求豁免 R001~R007
         """
+        # B 案：submit --draft 模式跳过 review verdict（必须放最顶，先于 ci/legacy 等所有判断）
+        # 草稿 PR 场景下 review 尚未完成属预期，不应阻断推送
+        if ctx.trigger == "submit" and (ctx.cli_flags or {}).get("draft"):
+            return Skip("submit --draft 模式；跳过 review-verdict 校验")
+
         # ci trigger：扫全部需求，不需要 requirement_id 和 to_phase
         if ctx.trigger == "ci":
             return None
