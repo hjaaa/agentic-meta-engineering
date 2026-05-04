@@ -27,7 +27,7 @@
 | definition | 2026-05-04 | 2026-05-04 ✓ |
 | tech-research | 2026-05-05 | 2026-05-04 ✓ |
 | outline-design | 2026-05-05 | 2026-05-04 ✓（reviewer 二审 looks_clean，13 项待办移交 detail-design）|
-| detail-design | 2026-05-06 | — |
+| detail-design | 2026-05-06 | 2026-05-04 ✓（reviewer 二审 looks_clean，sign-off approved，门禁就绪）|
 | task-planning | 2026-05-06 | — |
 | development | 2026-05-08 | — |
 | testing | 2026-05-09 | — |
