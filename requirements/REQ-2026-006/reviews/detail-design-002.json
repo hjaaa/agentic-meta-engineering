@@ -72,5 +72,11 @@
       "F-002 / F-003 已标 complexity=low，建议补 touches=[模块路径列表] 辅助派发器策略",
       "features.json description 字段超长（最长 F-004=888 字），建议拆到 implementation_notes 或仅引用 detail-design 章节路径"
     ]
+  },
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-04T12:02:46.976891+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
   }
 }
