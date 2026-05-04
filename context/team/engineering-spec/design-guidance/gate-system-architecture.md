@@ -255,6 +255,12 @@ main "$@"
 | jq 解析 JSON | 比 bash regex 健壮；jq 不可用时回退 python3 |
 | pattern 写在脚本里 | YAGNI——一年改不到一次，YAML 化是过度抽象 |
 
+**已知限制**
+
+| 项 | 说明 |
+|---|---|
+| 字面量匹配 | 12 类正则仅匹配命令行中字面量出现的 review 路径；变量间接引用是已知绕过通道，由 BYPASS reason 长度 ≥ 8 + audit reason 全文 + PR review 人工检查共同兜底（REQ-2026-006 F-002 决策） |
+
 ### 4.2 `scripts/lib/audit_async.sh`
 
 提供两个函数，供 `run.py`（Python 通过 subprocess 调用）和未来其他 trigger 脚本（bash 直接 source）使用。

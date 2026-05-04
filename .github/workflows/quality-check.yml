@@ -47,6 +47,24 @@ jobs:
       - name: pytest
         run: pytest tests/gates/ -v
 
+      - name: Verify settings.json hook references exist
+        run: |
+          python3 -c "
+          import json, os, sys
+          s = json.load(open('.claude/settings.json'))
+          missing = []
+          for evt, hooks in s.get('hooks', {}).items():
+              for hg in hooks:
+                  for h in hg.get('hooks', []):
+                      cmd = h.get('command', '')
+                      if cmd and not os.path.isfile(cmd):
+                          missing.append(f'{evt}: {cmd}')
+          if missing:
+              print('ERROR: settings.json references missing files:')
+              for m in missing: print(f'  - {m}')
+              sys.exit(1)
+          "
+
       - name: bats hook tests
         run: bats tests/hooks/
 

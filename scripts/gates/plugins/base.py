@@ -23,7 +23,6 @@ from typing import Literal, Optional
 # Trigger 枚举（S3 schema 校验白名单的事实源）。
 # 注意：`adapter` 不在此枚举内，仅作为 run.py 的特殊 CLI 标志（snapshot 行为契约用）。
 TRIGGERS: tuple[str, ...] = (
-    "pre-tool-use",
     "pre-commit",
     "phase-transition",
     "submit",
@@ -53,7 +52,6 @@ class GateContext:
     """runner 注入到 Gate 的执行上下文。"""
 
     trigger: Literal[
-        "pre-tool-use",
         "pre-commit",
         "phase-transition",
         "submit",

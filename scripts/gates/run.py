@@ -122,9 +122,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
           strict / dry_run / validate_registry / legacy / paths 字段。
 
     支持的 flag：
-      --trigger             触发器名，白名单 ∈ {pre-tool-use, pre-commit, phase-transition,
-                            submit, ci, post-dev, adapter}（adapter 在 _resolve_trigger 归一化为 ci）。
-                            未给且未带 --validate-registry 时 main 退 2。
+      --trigger             触发器名，白名单 ∈ {pre-commit, phase-transition, submit, ci,
+                            post-dev, adapter}（adapter 在 _resolve_trigger 归一化为 ci；
+                            F-002：pre-tool-use 已删除）。未给且未带 --validate-registry 时 main 退 2。
       --req                 需求 ID，必须匹配 ^REQ-\\d{4}-\\d{3}$（防路径穿越；非法格式直接 SystemExit(2)）。
       --from / --to         phase-transition 专用：源 phase / 目标 phase（其他 trigger 忽略）。
       --strict              warning 级 Decision.FAIL 也升为进程退出 1（默认仅 error 级失败升 1）。
@@ -135,14 +135,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                             过滤 plan 后只保留对应 plugin。
       paths                 adapter 模式位置参数：旧入口要处理的目标文件（如 meta.yaml 路径）。
 
-    退出码语义（main 返回 → triggers/pre_tool_use.sh 透传给 hook）：
+    退出码语义：
       0  全部 gate 通过（含 SKIP / PASS）
       1  存在 severity=error 的 Decision.FAIL；strict 下 warning 级 fail 也升 1
       2  runner 自身异常 / 非法 trigger / 非法 requirement_id / registry 加载失败
          / 非法 --force-with-blockers reason（CLI 入参非法统一归 2）
+    （F-002：pre-tool-use trigger 已删除，不再作为 hook 入口）
     """
     p = argparse.ArgumentParser(description="统一门禁 runner")
-    p.add_argument("--trigger", help="触发器：pre-tool-use|pre-commit|phase-transition|submit|ci|post-dev|adapter")
+    p.add_argument("--trigger", help="触发器：pre-commit|phase-transition|submit|ci|post-dev|adapter")
     p.add_argument("--req", dest="requirement_id", help="目标需求 ID，如 REQ-2026-002")
     p.add_argument("--from", dest="from_phase", help="phase-transition: 源 phase")
     p.add_argument("--to", dest="to_phase", help="phase-transition: 目标 phase")
@@ -230,17 +231,12 @@ def _load_meta_for_req(req_id: Optional[str]) -> dict[str, Any]:
 def _build_extra(args: argparse.Namespace, trigger: str) -> dict[str, Any]:
     """构造 ctx.extra（F-011 round-2 抽出）。
 
-    包含 adapter 模式的 meta_paths + pre-tool-use 的 tool_name/file_path/command。
+    包含 adapter 模式的 meta_paths。
+    （F-002：pre-tool-use trigger 已删除）
     """
     extra: dict[str, Any] = {}
     if args.legacy and args.paths:
         extra["meta_paths"] = args.paths
-    # pre-tool-use trigger：从环境变量取 tool_name / file_path / command
-    # （由 triggers/pre_tool_use.sh 解析 stdin 后注入；不让 plugin 自己读 os.environ）
-    if trigger == "pre-tool-use":
-        extra.setdefault("tool_name", os.environ.get("CLAUDE_HOOK_TOOL_NAME", ""))
-        extra.setdefault("file_path", os.environ.get("CLAUDE_HOOK_FILE_PATH", ""))
-        extra.setdefault("command", os.environ.get("CLAUDE_HOOK_COMMAND", ""))
     return extra
 
 
@@ -625,10 +621,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             file=sys.stderr,
         )
 
-    # F-018：pre-tool-use 高频路径冷启动优化
+    # F-002：pre-tool-use 高频路径优化已删除
     validate_only_ids: Optional[set[str]] = None
-    if args.trigger == "pre-tool-use":
-        validate_only_ids = {"GATE-PROTECT-BRANCH", "GATE-BASH-WRITE-PROTECT"}
 
     try:
         registry_data = load_registry(validate_only_ids=validate_only_ids)

@@ -10,7 +10,11 @@ exec 2>>/tmp/guard-error.log     # 自身错误隔离，避免污染 hook 协议
 # 入口名常量（用于 audit 行 entry 字段；与 audit_async.sh 中 ENTRY_* 约定一致）
 readonly ENTRY="pre-tool-use-guard"
 
-# 12 类写入正则（抄自 scripts/gates/plugins/bash_write_protect.py:58 _ALTS）
+# 12 类写入正则（F-002 之前抄自已删除的 scripts/gates/plugins/bash_write_protect.py:58 _ALTS；
+# 现在 guard.sh 是 live 路径单点防御）
+# ⚠️ 已知绕过通道（carryover-A 决策接受）：变量间接引用形式无法被这 12 类正则命中，例如
+#     P=requirements/.../reviews/x.json; echo > "$P"
+#   防御层次：BYPASS reason 长度 >= 8 + audit reason 全文 + PR review 人工（REQ-2026-006 F-002）
 readonly REVIEW_PATH='requirements/[^/]+/reviews/[^/]+\.json'
 # 单一长正则；以 ALT 形式连接 12 条 pattern；与 bash_write_protect.py 在 PR-1/PR-2 过渡期内为双轨
 readonly WRITE_OPS_PATTERN="(\
