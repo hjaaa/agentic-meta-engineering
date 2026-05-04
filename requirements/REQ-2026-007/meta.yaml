@@ -14,11 +14,11 @@ gates_passed:
   - {phase: tech-research, at: "2026-05-04 20:30:00", gates: [GATE-META-SCHEMA, 
           GATE-INDEX-INTEGRITY, GATE-SOURCING, GATE-PLAN-FRESHNESS, 
           GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY]}
-  - {phase: outline-design, at: "2026-05-04 20:02:55", gates: [GATE-META-SCHEMA,
-          GATE-INDEX-INTEGRITY, GATE-SOURCING, GATE-PLAN-FRESHNESS,
+  - {phase: outline-design, at: "2026-05-04 20:02:55", gates: [GATE-META-SCHEMA, 
+          GATE-INDEX-INTEGRITY, GATE-SOURCING, GATE-PLAN-FRESHNESS, 
           GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY]}
-  - {phase: detail-design, at: "2026-05-04 21:27:11", gates: [GATE-META-SCHEMA,
-          GATE-INDEX-INTEGRITY, GATE-SOURCING, GATE-PLAN-FRESHNESS,
+  - {phase: detail-design, at: "2026-05-04 21:27:11", gates: [GATE-META-SCHEMA, 
+          GATE-INDEX-INTEGRITY, GATE-SOURCING, GATE-PLAN-FRESHNESS, 
           GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY]}
 pr_url: ""                            # /requirement:submit 成功后回写
 pr_number: 0                          # /requirement:submit 成功后回写
@@ -51,4 +51,18 @@ reviews:
     history:
       - REV-REQ-2026-007-outline-design-001
       - REV-REQ-2026-007-outline-design-002
+    stale: false
+  detail-design:
+    latest: REV-REQ-2026-007-detail-design-001
+    conclusion: needs_attention
+    reviewed_commit: 4de34e6
+    artifact_hashes:
+      artifacts/detailed-design.md: 
+        9432ec828cf2d2a18497dde55cd91a3120b8f3cc9f42f267bc8a5e71ac93ac00
+      artifacts/features.json: 
+        3ec58ed52edb89f129befcf3a95de439e2e62f6fb05879e3d0439413ee6521a3
+      artifacts/outline-design.md: 
+        d4d0b442555c8dcd7f153ed7f1a2f7639155e3d2422cbf91399a069bfd609c47
+    history:
+      - REV-REQ-2026-007-detail-design-001
     stale: false

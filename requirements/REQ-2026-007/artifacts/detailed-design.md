@@ -39,7 +39,7 @@ refs-spec: context/team/engineering-spec/specs/2026-05-04-submit-codex-loop-and-
 
 - **Context**：outline-design §5.4 推荐 B 案，tech-feasibility §2.2（来源：requirements/REQ-2026-007/artifacts/tech-feasibility.md:100）确认 B 案 ~0.3 人天且零 schema 风险，A 案需扩 S9 校验 + ContextResolver +1 人天。
 - **Decision**：两 gate 同走 B 案——`AheadOfOriginGate.precheck` 内查 `pr_open_for_branch(ctx)`，命中即返回 `Skip`；`ReviewVerdictGate.precheck` 内查 `ctx.cli_flags.get("draft") is True` 且 `ctx.trigger == "submit"`，命中即返回 `Skip`。registry.yaml schema 不动。
-- **Consequences**：好——零 schema 变更、回归面最小、与 spec §3.1/§3.2 完全对齐；差——若未来放宽场景超 2 处，每个 plugin 各写一份谓词；按 D-012 兜底约定，超限即升级为 A 案。
+- **Consequences**：好——零 schema 变更、回归面最小、与 spec §3.1/§3.2 完全对齐；差——若未来放宽场景超 2 处，每个 plugin 各写一份谓词；按 outline-design.md:393 兜底升级阈值（同样指 「超 2 处即升级 A 案」），超限即升级为 A 案。
 - **时间**：2026-05-04 21:30:00
 
 #### #2 `pr_open_for_branch` 谓词签名
@@ -107,6 +107,13 @@ p.add_argument("paths", nargs="*", help="adapter 模式下传入的目标文件 
 #### #10 feature_area 主标 `lifecycle`
 
 按 tech-feasibility §5.5（来源：requirements/REQ-2026-007/artifacts/tech-feasibility.md:308）建议沿用——主标 `lifecycle`，`affected_modules` 同时列 `gate-system`（已在 meta.yaml 行 27-31 兑现）。
+
+#### D-016 archive 三问交互通道：A 案锁死（callback + 三个 yes flag 兜底）
+
+- **Context**：reviewer 一审指出 §3.5.5 留 [待用户确认] 不应跨阶段——这是 detail-design 内可决议项；F-003 编码者拿到的签名缺通道入口。
+- **Decision**：A 案锁死——`archive_requirement` 入参加 `prompts_callback: Callable[[ArchivePrompt], bool]`（主对话场景，伞形 Skill 装配交互链）+ `yes_experience` / `yes_local_branch` / `yes_remote_branch` 三个 flag（CLI 自动化场景）；callback 与 yes_* 同传时 yes_* 优先级更高（避免歧义）。详见 §3.1 签名 + §3.5.5 决议。
+- **Consequences**：好——F-003 编码者按签名落 callback + flag 即可，主对话/CLI 双场景统一；ArchivePrompt 数据结构小，扩展性强；差——多一个 callable 入参，testcase 需注入 mock callback。
+- **时间**：2026-05-04 22:30:00
 
 #### D-015 round-N.md frontmatter 不扩 `must_fix_count`
 
@@ -184,14 +191,35 @@ done
 def archive_requirement(
     req_id: str,
     *,
+    # CLI 跳问 flag（CLI 自动化场景）
     force: bool = False,            # --force：跳过 PR merged 校验
     keep_branch: bool = False,      # --keep-branch：跳过本地+远程分支提示（两个一起跳）
     no_experience: bool = False,    # --no-experience：跳过经验沉淀提示
+    # A 案 stdin 交互通道（D-016 锁死，主对话场景）
+    yes_experience: bool = False,   # --yes-experience：经验问 → 跳问，等价用户答 y
+    yes_local_branch: bool = False, # --yes-local-branch：本地分支问 → 跳问，答 y
+    yes_remote_branch: bool = False,# --yes-remote-branch：远程分支问 → 跳问，答 y
+    prompts_callback: Optional[Callable[[ArchivePrompt], bool]] = None,
+    # 主 Agent 串行问的回调；callback 接受 ArchivePrompt（§3.5.5），返回 True/False。
+    # 主对话场景由调用层（伞形 Skill）注入；CLI 场景为 None，由 yes_* / no_experience / keep_branch 决定。
 ) -> ArchiveResult:
     """archive 子动作入口；4 预检 → 原子写 meta → 三问串行。
 
     返回 ArchiveResult（见 §3.1.1），含每个副作用动作的 outcome（不抛异常）。
+
+    交互通道选择（D-016 A 案）：
+      1. 若 yes_<x> 已设：跳问，按 y 处理
+      2. 否则若 prompts_callback 注入：调 callback，由主 Agent 串行问
+      3. 否则（CLI 自动化无回调）：默认按 N 处理（保守不删/不沉淀）
     """
+
+
+@dataclass
+class ArchivePrompt:
+    """三问串行的单条问句契约（A 案 callback 入参）。"""
+    kind: Literal["experience", "local_branch", "remote_branch"]
+    question: str             # 显示给用户的问句原文
+    default: bool = False     # 默认 N
 ```
 
 #### 3.1.1 `ArchiveResult` 数据结构
@@ -362,12 +390,29 @@ CODEX_REVIEWER_USER_TYPE     = "Bot"
 ```python
 import time, re, json
 
+class GhApiAbort(Exception):
+    """连续 5xx 超阈值，调用方走 exit 1 路径。"""
+
 def _poll_codex(pr_num: int, triggered_at_iso: str,
                 interval: int, timeout: int) -> Optional[dict]:
+    """返回值：dict（命中 codex review）/ None（timeout，含 429 短路）。
+    抛 GhApiAbort：连续 5xx ≥ 3 次，调用方按 §3.4.1 文案走 exit 1。
+    """
     deadline = time.monotonic() + timeout
     pattern = re.compile(r"codex", re.IGNORECASE)   # CODEX_REVIEWER_LOGIN_PATTERN
+    consecutive_5xx = 0
     while time.monotonic() < deadline:
-        reviews = _gh_pr_reviews(pr_num)            # gh api repos/.../pulls/N/reviews
+        try:
+            reviews = _gh_pr_reviews(pr_num)        # gh api repos/.../pulls/N/reviews
+            consecutive_5xx = 0                     # 成功一次即清零
+        except GhApi5xx:
+            consecutive_5xx += 1
+            if consecutive_5xx >= 3:
+                raise GhApiAbort("gh api repeated 5xx during poll")
+            time.sleep(interval)
+            continue
+        except GhApi429:
+            return None                             # 429 → 短路 timeout 路径，不重试
         for r in reviews:
             user = r.get("user") or {}
             if user.get("type") != "Bot":
@@ -385,7 +430,11 @@ def _is_passed(body: str) -> bool:
     return "Didn't find any major issues." in (body or "")
 ```
 
-429（限流）按 spec §10 直接走 timeout 退出，不重试。
+错误路径契约：
+
+- 连续 5xx ≥ 3 次：抛 `GhApiAbort`，调用方按 §3.4.1 文案输出 `❌ gh api repeated 5xx during poll; aborting` + exit 1。计数遇任意 200 即清零。
+- 429（限流）：直接 `return None` 走 timeout 分支，verdict=timeout，**不重试**。
+- 其他网络错（连接失败 / DNS / SSL）：按 spec §10 视为 5xx 同档处理，进入计数器。
 
 ### 3.4 命令 markdown 精确 patch
 
@@ -488,16 +537,16 @@ PR 合并后做收尾闭环：phase=completed + archived_at + 经验沉淀 + 删
 
 副作用动作 outcome 全部记录到 `ArchiveResult`，archive 命令始终 exit 0（除非 4 项预检挂）。
 
-#### 3.5.5 [待澄清] 三问的 stdin 交互通道
+#### 3.5.5 D-016 三问 stdin 交互通道：A 案锁死
 
 outline-design 待澄清 #3：archive 三问串行的 y/N 在 Claude Code 主对话里如何走？候选两案：
 
 - A. 「主对话渲染问句 → 用户在对话回复 y/n → Skill 解析」——符合主对话不直接读 stdin 的事实
 - B. 「Skill 用 `input()` 直接读 stdin」——CLI 用法直观，但主对话中无 stdin
 
-**临时倾向 A 案**（主对话场景）+ **额外提供 `--yes-experience` / `--yes-local-branch` / `--yes-remote-branch` 三个跳问 flag**（CLI 自动化场景），由调用上下文自行选择。
+**决议（D-016）**：A 案落地——`archive_requirement(prompts_callback=...)` 注入 callback，主对话场景由伞形 Skill 装配「渲染问句 → 用户回 y/n → 解析后回填 callback 返回」的串行交互；CLI 自动化场景调用方传 `yes_experience` / `yes_local_branch` / `yes_remote_branch` 三个 flag 直接跳问。两条通道同时支持，由调用上下文按需选择。
 
-**收口时机**：detail-design 收尾前与用户确认 A 案是否落地；A 案落地需 archive Skill 在执行前把三个问句作为返回值给主 Agent，由主 Agent 串行问用户。
+签名见 §3.1：`ArchivePrompt` 契约 + 三个 yes_* flag + `prompts_callback` 入参。F-003 编码者按 §3.1 落 callback 链路即可，无需再纠结通道。
 
 ### 3.6 submit-rules.md §7.5 状态机骨架（F-004）
 
@@ -506,13 +555,16 @@ outline-design 待澄清 #3：archive 三问串行的 y/N 在 Claude Code 主对
 [pr-opened/updated] --post @codex review--> [poll-loop]
 [poll-loop] --hit codex review--> [persist round-N.md]
 [poll-loop] --elapsed > timeout--> [persist round-N.md verdict=timeout]
+[poll-loop] --gh 429--> [persist round-N.md verdict=timeout]    # 短路 timeout，不重试
+[poll-loop] --gh 5xx x3--> [error-exit-1]                       # 连续 3 次 5xx 中止
 [persist round-N.md] --judge body--> [done]
 [done] --verdict=passed--> exit 0 (silent stderr)
 [done] --verdict=not_passed--> exit 0 (stderr ⚠️ summary)
 [done] --verdict=timeout--> exit 0 (stderr ⚠️ TIMEOUT)
+[error-exit-1] --> exit 1 (stderr ❌ gh api repeated 5xx during poll; aborting)
 ```
 
-`pr-opened/updated` 复用既有 submit §7 第 7 步；`poll-loop` 走 §3.3.3 伪码。
+`pr-opened/updated` 复用既有 submit §7 第 7 步；`poll-loop` 走 §3.3.3 伪码（含 5xx 计数器 + 429 短路）。429 与 elapsed-timeout 都走 `[persist round-N.md verdict=timeout]`，frontmatter 中 verdict=timeout 不区分原因（如需区分可在 v2 frontmatter 加 timeout_reason 字段，本 v1 不扩——D-015）。
 
 ---
 
@@ -538,10 +590,10 @@ archived_at: ""    # ISO8601 with offset；archive 命令成功后写入；空�
 ```yaml
 ---
 round: 1                                   # int，必填，文件名 round-<N>.md 的 N
-triggered_at: 2026-05-04T19:30:00+08:00    # str ISO8601，必填，@codex review 评论时间
+triggered_at: "2026-05-04T19:30:00+08:00"  # str ISO8601，必填，@codex review 评论时间
 review_id: 12345678                        # int，timeout 时省略
-reviewer: chatgpt-codex-connector[bot]     # str，命中的 user.login，timeout 时省略
-submitted_at: 2026-05-04T19:32:14+08:00    # str ISO8601，timeout 时省略
+reviewer: "chatgpt-codex-connector[bot]"   # str，命中的 user.login，timeout 时省略；含 [bot] 后缀必须 quote
+submitted_at: "2026-05-04T19:32:14+08:00"  # str ISO8601，timeout 时省略
 verdict: passed                            # str ∈ {passed, not_passed, timeout}，必填
 state: COMMENTED                           # str，GitHub review state 原值，timeout 时省略
 ---
@@ -552,6 +604,7 @@ state: COMMENTED                           # str，GitHub review state 原值，
 字段约束：
 
 - `round` ≥ 1，与 `requirements/<id>/artifacts/codex-reviews/round-*.md` 文件名严格一致（不允许重号、跳号）
+- `reviewer` 含 `[bot]` 后缀的 GitHub App login 必须 **quote**（YAML safe_load 否则把 `[bot]` 视为 flow-style list）；同理 ISO8601 含 `:` 的字段也建议 quote 防解析为 sexagesimal
 - 必填字段缺失或类型错误 → submit --codex 后续解析直接 exit 1
 - timeout verdict 时仅 `round / triggered_at / verdict` 三字段必填，其他可省
 
@@ -567,7 +620,10 @@ D-015：v1 不扩 `must_fix_count`。
 | `[codex-review-received]` | `verdict=passed\|not_passed\|timeout round=N` | 单轮轮询结束（命中或超时） | F-004 |
 | `[archived]` | `(PR #num merged at <ts>)` | archive 命令完成第 1 步原子写 meta 后 | F-003 |
 
-**注意**：`[archived]` 不依赖副作用动作的 outcome——只要原子写 meta 成功就追加事件。副作用 outcome 仅写 stdout 终端反馈，不进 process.txt（避免事件爆炸）。
+**注意**：
+
+- `[archived]` 不依赖副作用动作的 outcome——只要原子写 meta 成功就追加事件。副作用 outcome 仅写 stdout 终端反馈，不进 process.txt（避免事件爆炸）。
+- **幂等约束**：archive 命令应在追加 `[archived]` 前先 grep 现有 process.txt——若已存在 `[archived]` 行（即首次 archive 已成功写 meta），则**不再追加**。这覆盖三个场景：(1) 用户重跑 archive（如三动作 failed 想重试）；(2) `--force` 强制重跑；(3) 双窗口并发误触。第 1 步原子写 meta 与第 2 步追加 process.txt 之间若崩溃，重跑可重新追加（grep 也会防去重失败时双写）。
 
 ---
 
@@ -658,7 +714,7 @@ sequenceDiagram
 
 继承 outline-design「待澄清」+ tech-feasibility「待澄清」共 7 条，本阶段新增 1 条：
 
-1. **三问 stdin 交互通道**（§3.5.5）：A 案（主 Agent 串行问）vs B 案（Skill `input()` 直读）；倾向 A + 三个跳问 flag 兜底 [待用户确认]。
+1. **三问 stdin 交互通道**（§3.5.5）：A 案（主 Agent 串行问）vs B 案（Skill `input()` 直读）→ D-016 已决（A 案 + callback + 三个 yes_* flag），本条关闭。
 2. Codex bot 实际 `user.login` 值 → §2.1 实测后回填 [待用户确认]
 3. Codex GitHub App 安装状态 → §2.2 实测后回填 [待用户确认]
 4. GitHub API 速率限制配额 → V-01 沙盒 e2e 内顺手实测 [待用户确认]
