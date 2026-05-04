@@ -16,3 +16,5 @@
 2026-05-04 12:48:30 [development] F-001 R1 修复落盘（commit 8b627d1，bats 30/30 + V-06 hyperfine < 5ms）；F-3/F-9 carryover 写入 F-002 任务卡（含 A/B/C 决策提示）
 2026-05-04 12:50:17 [signoff] REV-REQ-2026-006-code-F-001-001 approved by hj19961223@gmail.com
 2026-05-04 12:50:39 [development] F-001 done（commits: 32fb026 init / 8b627d1 R1-fix / 60532a8 F-002-carryover；review needs_attention→signoff approved by hj19961223@gmail.com）
+2026-05-04 12:52:29 [development] F-002 派发 implementer subagent（complexity=low → general-purpose + haiku；carryover 决策=A 接受单点防御）
+2026-05-04 13:12:26 [review:looks_clean] REV-REQ-2026-006-code-F-002-001 score=86（0 critical / 0 major / 6 minor）；6 条全为 nice_to_have，4 条 carryover→F-003/F-004（stale 注释清理）
