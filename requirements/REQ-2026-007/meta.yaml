@@ -14,10 +14,14 @@ pr_number: 0                          # /requirement:submit 成功后回写
 log_layout: split                     # split（默认，工具日志→process.tool.log / 语义事件→process.txt） | legacy（老格式，全写 process.txt）
 
 # ============ 语义组（definition 阶段补齐，供跨需求检索） ============
-feature_area: ""                      # definition 起必填；值必须在 context/project/<project>/areas.yaml 白名单内
-change_type: ""                       # definition 起必填；枚举：feature / bugfix / refactor / perf / security
-affected_modules: []                  # definition 起必填；自由词，建议与 services 子模块对齐
-tags: []                              # 可选；长尾标签，不归一化
+feature_area: lifecycle               # 主体是 archive 命令 + submit --codex；门禁放宽是次要影响
+change_type: feature                  # 主体是新增能力，夹带门禁条件 refactor 与文档修复
+affected_modules:                     # 横跨需求生命周期 + 门禁体系 + 命令/Skill 定义
+  - lifecycle
+  - gate-system
+  - commands
+  - skills
+tags: [codex-review, archive, pr-loop]
 
 # ============ 结果组（completed 时才填） ============
 outcome: ""                           # shipped / abandoned / rolled-back
