@@ -12,6 +12,7 @@
 | 6 | `task-planning` | 任务规划 | 功能点拆分、进入开发门禁 |
 | 7 | `development` | 开发实施 | 编码、代码审查、提交 |
 | 8 | `testing` | 测试验收 | 测试用例生成、执行、追溯链校验 |
+| 9 | `completed` | 完成 | 需求闭环、总结成果、可选归档 |
 
 ## 合法切换
 
@@ -23,6 +24,20 @@ bootstrap → definition → tech-research → outline-design → detail-design
 ```
 
 回退允许跨阶段，但必须执行回退流程（归档 artifacts + 写 notes.md）。
+
+## archived_at 字段语义
+
+`meta.yaml` 的 `archived_at` 字段（可选）用于标记需求的归档时间戳。语义规则：
+
+- **何时写入**：当需求进入 `phase=completed` 且执行归档操作时，记录归档时间
+- **格式**：ISO 8601 with offset（如 `2026-04-23 15:30:00`），参考 `context/team/engineering-spec/time-format.md`
+- **合法性约束**：
+  - 仅当 `phase=completed` 时允许 `archived_at` 非空
+  - 若 `phase != completed` 且 `archived_at` 非空，视为状态机违反
+- **与 completed 的关系**：
+  - `phase=completed && archived_at=""` — 完成但未归档
+  - `phase=completed && archived_at="2026-04-23 15:30:00"` — 完成并已归档
+  - `phase != completed && archived_at=*` — 非法
 
 ## 特殊分支场景
 
