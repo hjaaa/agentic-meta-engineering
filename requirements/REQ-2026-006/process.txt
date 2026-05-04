@@ -20,3 +20,4 @@
 2026-05-04 13:12:26 [review:looks_clean] REV-REQ-2026-006-code-F-002-001 score=86（0 critical / 0 major / 6 minor）；6 条全为 nice_to_have，4 条 carryover→F-003/F-004（stale 注释清理）
 2026-05-04 13:13:37 [signoff] REV-REQ-2026-006-code-F-002-001 approved by hj19961223@gmail.com
 2026-05-04 13:14:07 [development] F-002 done（commits: 0c0ebd3 init / 46a40d8 tech-feasibility refs；review looks_clean→signoff approved by hj19961223@gmail.com）
+2026-05-04 13:17:06 [save] development 阶段进度——F-001+F-002 已 done（2/4 PR）；next: F-003 PR-3 全局 BYPASS 三处入口 + 4 处 carryover stale 注释清理；F-004 PR-4 待派
