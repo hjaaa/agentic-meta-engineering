@@ -22,15 +22,15 @@
 
 ## 里程碑
 
-| 阶段 | 预期完成 |
-|---|---|
-| definition | 2026-05-04 |
-| tech-research | 2026-05-05 |
-| outline-design | 2026-05-05 |
-| detail-design | 2026-05-06 |
-| task-planning | 2026-05-06 |
-| development | 2026-05-08 |
-| testing | 2026-05-09 |
+| 阶段 | 预期完成 | 实际完成 |
+|---|---|---|
+| definition | 2026-05-04 | 2026-05-04 ✓ |
+| tech-research | 2026-05-05 | 2026-05-04 ✓ |
+| outline-design | 2026-05-05 | 2026-05-04 ✓（reviewer 二审 looks_clean，13 项待办移交 detail-design）|
+| detail-design | 2026-05-06 | — |
+| task-planning | 2026-05-06 | — |
+| development | 2026-05-08 | — |
+| testing | 2026-05-09 | — |
 
 ## 风险
 
@@ -116,3 +116,15 @@
 - **Decision**：双条件 AND——`user.type == "Bot"` **且** `user.login` 正则匹配 `/codex/i`；该判定写入 `submit-rules.md` 的 `CODEX_REVIEWER_LOGIN_PATTERN` + `CODEX_REVIEWER_USER_TYPE` 两个常量，detail-design 首日实测 `gh api .../reviews | jq '.[].user'` 校准
 - **Consequences**：好——不锁死 login 字符串、对 bot 用户名漂移有韧性；差——需要在 detail-design 阶段联动确认两条常量，多一处实测步骤（V-01 沙盒 e2e 前置）
 - **时间**：2026-05-04 19:56:21
+
+### D-012 detail-design 推进策略：13 项待办按出处分组、V-01 沙盒 e2e 硬前置
+- **Context**：outline-design 留下 13 项 detail-design 待办（§7）+ 4 条待澄清；要避免一次性塞 13 节降低评审可读性
+- **Decision**：detail-design.md 按「契约 / 决议 / 实测 / 命令文案 / 规则修订」5 组组织——
+  - **契约组**：#5（命令 markdown）+ #6（archive-rules.md）+ #7（submit-rules.md §7.5 + 三常量）
+  - **决议组**：#1（applies_when 路径）+ #2（pr_open_for_branch 签名，依赖 #1）+ #12（squash merge 策略复评）
+  - **实测组**：#3（Codex login 实测）+ #4（Codex App 安装确认，V-01 沙盒 e2e 硬前置）+ #11（F-001 回归基线快照）
+  - **命令文案组**：参数表 / 示例 / 异常路径文案（合 #5 的扩展）
+  - **规则修订组**：#8（phase-rules.md #9 completed patch）+ #9（run.py `--draft` flag 落点）+ #10（feature_area 主标）+ #13（round-N.md frontmatter 是否扩字段，可选）
+  - V-01 沙盒 e2e（#4）作为本阶段硬前置，未确认则 detail-design 不出阶段
+- **Consequences**：好——13 项有结构化归属，评审能按组逐节看；差——首日要先跑 V-01 沙盒 e2e，可能挤压契约组进度
+- **时间**：2026-05-04 21:30:00
