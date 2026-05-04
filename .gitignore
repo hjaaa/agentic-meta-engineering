@@ -29,5 +29,8 @@ requirements/**/process.tool.log
 .claude/scheduled_tasks.lock
 
 # 统一门禁 audit 日志（运行时产出，仅保留目录占位）
+# 旧路径（保留 .gitkeep 占位）
 scripts/gates/audit/*
 !scripts/gates/audit/.gitkeep
+# 新路径（F-004 异步 audit，仓库根 audit/）
+/audit/
