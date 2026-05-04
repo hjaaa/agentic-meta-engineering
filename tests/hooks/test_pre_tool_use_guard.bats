@@ -6,7 +6,10 @@ bats_require_minimum_version 1.5.0
 setup() {
   TMP="$(mktemp -d)"
   cd "$TMP"
-  git init -q
+  # 显式 init.defaultBranch=main——CI runner 老版 git 默认 master，会让
+  # "blocks Write on main branch"（依赖初始为 main）/"blocks MultiEdit on master branch"
+  # （依赖 master 不存在）两个用例双双失败。
+  git -c init.defaultBranch=main init -q
   # 临时仓库本地配置 user 身份——CI runner 默认不带全局 git config，
   # 否则 git commit 报 fatal: empty ident name
   git config user.email "test@example.com"
