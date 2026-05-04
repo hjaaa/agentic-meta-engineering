@@ -9,12 +9,15 @@ F-004 §4.3 / TC-F4-5 验收测试覆盖：
   - 同名文件 dup<N> 命名
   - --dry-run 不动文件
   - main 永不抛异常（任何异常均被 swallow）
+  - [F-1] entry 路径穿越被拒绝：../../evil 整行跳过
+  - [F-7] 并发 flush 不重复写：双进程并发，JSON 行数 = 原始 .log 记录数
 
 隔离策略：使用 tmp_path + monkeypatch 替换 _QUEUE_DIR / _AUDIT_DIR / _QUEUE_DONE_DIR。
 """
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from collections import defaultdict
 from datetime import date, datetime
@@ -272,3 +275,131 @@ def test_same_day_multiple_flushes_append(isolated_dirs):
     content = expected_json.read_text(encoding="utf-8")
     assert "event-1" in content
     assert "event-2" in content
+
+
+# ====================== TC（F-1）：entry 路径穿越被拒绝 ======================
+
+
+def test_parse_lines_rejects_path_traversal_entry(tmp_path):
+    """given_malicious_entry_with_path_traversal_when_parse_lines_then_record_not_in_result.
+
+    F-1 回归：entry=../../evil 含 '/' 不匹配白名单 regex，整行被跳过，
+    不进入 records 列表，不会传给 _write_buckets。
+    """
+    log_file = tmp_path / "test.log"
+    # 恶意 entry：含路径穿越字符
+    evil_line = "2026-05-04T10:00:00+08:00 /repo some-event @ entry=../../evil"
+    # 合法 entry：正常行
+    valid_line = "2026-05-04T10:00:00+08:00 /repo some-event @ entry=runner"
+    log_file.write_text(evil_line + "\n" + valid_line + "\n", encoding="utf-8")
+
+    records = audit_flush._parse_lines(log_file)
+
+    # 恶意 entry 行必须被过滤
+    entries = [r["entry"] for r in records]
+    assert "../../evil" not in entries, "路径穿越 entry 不应出现在解析结果中"
+    # 合法行应保留
+    assert "runner" in entries, "合法 entry 应正常解析"
+
+
+def test_write_buckets_no_escape_outside_audit_dir(isolated_dirs):
+    """given_malicious_entry_when_main_then_no_file_outside_audit_dir.
+
+    F-1 端到端回归：构造含 ../../evil 的 .log → 跑 main() →
+    audit_dir 外没有 evil-* 文件，audit_dir 内也没有路径穿越产生的文件。
+    """
+    queue_dir, audit_dir, queue_done_dir = isolated_dirs
+
+    evil_line = "2026-05-04T10:00:00+08:00 /repo some-event @ entry=../../evil"
+    valid_line = _make_log_line(entry="runner")
+    _write_log(queue_dir, "2026-05-04.log", [evil_line, valid_line])
+
+    rc = audit_flush.main([])
+    assert rc == 0
+
+    # audit_dir 外（tmp_path 根目录）不应出现 evil-*.json
+    tmp_root = audit_dir.parent
+    evil_files = list(tmp_root.glob("evil-*.json"))
+    assert len(evil_files) == 0, f"audit_dir 外出现了路径穿越文件: {evil_files}"
+
+    # audit_dir 内也不应有含 "evil" 的文件（路径穿越路径）
+    evil_in_audit = list(audit_dir.rglob("*evil*"))
+    assert len(evil_in_audit) == 0, f"audit_dir 内出现了 evil 文件: {evil_in_audit}"
+
+    # 合法 runner 条目应正常写入
+    yyyy_mm = "2026-05"
+    assert (audit_dir / yyyy_mm / "runner-2026-05-04.json").exists()
+
+
+# ====================== TC（F-7）：并发 flush 不重复写 ======================
+
+
+def test_concurrent_flush_no_duplicate(tmp_path):
+    """given_two_concurrent_flush_processes_when_done_then_json_line_count_equals_original.
+
+    F-5/F-7 回归：用 subprocess.Popen 并发跑两个 audit_flush.main()，
+    验证 audit/<entry>-<日期>.json 行数 = 原始 .log 记录数（不是 2x）。
+
+    使用 subprocess.Popen + cwd 参数确保子进程路径正确（macOS spawn 模式下
+    子进程不继承父进程的 chdir，用绝对路径 cwd 更稳）。
+    """
+    # 建立隔离目录结构
+    queue_dir = tmp_path / "audit" / ".queue"
+    audit_dir = tmp_path / "audit"
+    queue_done_dir = tmp_path / "audit" / ".queue.done"
+    queue_dir.mkdir(parents=True, exist_ok=True)
+
+    # 写入 5 条有效日志行
+    log_lines = [
+        _make_log_line(ts=f"2026-05-04T10:0{i}:00+08:00", event=f"event-{i}", entry="runner")
+        for i in range(5)
+    ]
+    log_file = queue_dir / "2026-05-04.log"
+    log_file.write_text("\n".join(log_lines) + "\n", encoding="utf-8")
+
+    # 编写子进程脚本：动态传入 audit_dir 路径，避免依赖仓库全局常量
+    helper_script = tmp_path / "run_flush.py"
+    helper_script.write_text(
+        f"""\
+import sys
+sys.path.insert(0, {str(_LIB_DIR)!r})
+import audit_flush
+from pathlib import Path
+
+# 覆盖路径常量为隔离目录
+audit_flush._QUEUE_DIR = Path({str(queue_dir)!r})
+audit_flush._AUDIT_DIR = Path({str(audit_dir)!r})
+audit_flush._QUEUE_DONE_DIR = Path({str(queue_done_dir)!r})
+sys.exit(audit_flush.main([]))
+""",
+        encoding="utf-8",
+    )
+
+    # 并发启动两个子进程
+    p1 = subprocess.Popen(
+        [sys.executable, str(helper_script)],
+        cwd=str(tmp_path),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    p2 = subprocess.Popen(
+        [sys.executable, str(helper_script)],
+        cwd=str(tmp_path),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    p1.wait()
+    p2.wait()
+
+    # 验证 JSON 文件行数 = 原始记录数（5 行），不是 2x（10 行）
+    yyyy_mm = "2026-05"
+    result_json = audit_dir / yyyy_mm / "runner-2026-05-04.json"
+    assert result_json.exists(), f"JSON 文件不存在: {result_json}"
+
+    written_lines = [
+        ln for ln in result_json.read_text(encoding="utf-8").splitlines() if ln.strip()
+    ]
+    assert len(written_lines) == len(log_lines), (
+        f"并发 flush 导致重复写：期望 {len(log_lines)} 行，实际 {len(written_lines)} 行\n"
+        f"内容：{written_lines}"
+    )
