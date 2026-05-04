@@ -109,7 +109,7 @@ tags:                                    # 可选；长尾标签，不归一化
 # ============ 结果组（completed 时才填） ============
 outcome: shipped               # shipped / abandoned / rolled-back
 completed_at: "2026-05-04 18:14:02"  # ISO8601，completed 时填
-lessons_extracted: false       # /knowledge:extract-experience 是否已跑
+lessons_extracted: true        # /knowledge:extract-experience 是否已跑
 reviews:
   definition:
     latest: REV-REQ-2026-006-definition-001

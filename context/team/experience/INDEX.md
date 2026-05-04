@@ -23,6 +23,10 @@
 - [`r005-hash-drift-deadlock-after-reviewer-signoff.md`](r005-hash-drift-deadlock-after-reviewer-signoff.md) — reviewer sign-off 后改 hash 敏感 spec 文档触发 R005 死循环，需 3 轮重审；优先 ADR/notes 记录而非改文件
 - [`perf-baseline-sample-size-jitter-trap.md`](perf-baseline-sample-size-jitter-trap.md) — 性能 baseline 「N 次中位数」模板要先量被测时长量级；ms 级被测项 N≥10 + perf_counter，否则 50ms 抖动会放大成误判
 - [`runner-fail-without-stdout-message.md`](runner-fail-without-stdout-message.md) — multi-plugin runner FAIL 必须把 plugin message 渲染到 stderr，不能只写 audit log；CI 看不到原因极拖慢调试
+- [`cross-language-pipeline-path-anchor.md`](cross-language-pipeline-path-anchor.md) — bash + Python 混合管道默认锚定语义不同，producer/consumer 在 cwd vs `__file__` 间分叉时审计静默丢；显式声明锚定 + env override + cwd≠root 回归用例
+- [`code-deletion-breaks-archival-references.md`](code-deletion-breaks-archival-references.md) — 删除被档案需求引用的代码会触发 CI 全量 sourcing 回归；checker 对 `phase=completed` 区按"档案冻结"语义豁免
+- [`local-pass-vs-ci-pass-rounds.md`](local-pass-vs-ci-pass-rounds.md) — 本地全过 vs CI 5 轮修复（git config / defaultBranch / ruff / auto-render 同步）；submit 前必跑本地 CI 模拟清单 + 测试 fixture 自给自足
+- [`external-ai-reviewer-finds-internal-blindspots.md`](external-ai-reviewer-finds-internal-blindspots.md) — 8 内部 checker + critic + judge 全 pass 后 Codex 仍抓 P1（跨语言路径 / hook cwd 假设）；外部 AI reviewer 是互补层不是冗余
 
 ## 什么值得沉淀
 
