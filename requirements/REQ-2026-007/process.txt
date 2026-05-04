@@ -9,3 +9,4 @@
 2026-05-04 21:26:28 [signoff] REV-REQ-2026-007-outline-design-002 approved by hj19961223@gmail.com
 2026-05-04 21:27:53 [phase-transition] outline-design → detail-design (7 gates ✓)
 2026-05-04 21:52:14 [review:approved] detail-design-quality-reviewer 二审 looks_clean (1 major + 6 minor 修完，3 minor 顺手收)
+2026-05-04 21:53:27 [signoff] REV-REQ-2026-007-detail-design-002 approved by hj19961223@gmail.com

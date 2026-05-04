@@ -74,5 +74,11 @@
       "F-001 ~ F-004 四个 feature 的 complexity / depends_on_features / touches / interfaces_frozen 字段全部到位，阶段 7 派发器可直接读机读字段，无需退化为保守模式",
       "F-003 自举 V-08 的 TC-F3-9 已补可执行验证命令（yq + grep | wc -l 双校验），符合可机读验收标准"
     ]
+  },
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-04T21:53:27.598755+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
   }
 }
