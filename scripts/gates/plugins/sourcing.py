@@ -91,7 +91,8 @@ def _resolve_targets(ctx: GateContext) -> list[Path]:
       1. ctx.extra["sourcing_paths"]（显式注入）
       2. trigger=pre-commit 时使用 changed_files 中命中 artifacts/*.md 的文件
       3. ctx.requirement_id 存在则扫 requirements/<id>/artifacts/**/*.md
-      4. 兜底：扫全部 requirements/*/artifacts/**/*.md
+      4. 兜底：扫全部 requirements/*/artifacts/**/*.md，但 phase=completed 的需求豁免
+         （档案需求的引用在 shipped 时刻已冻结；后续删除被引用文件不应触发 CI 回归）
     """
     explicit = ctx.extra.get("sourcing_paths")
     if explicit:
@@ -110,7 +111,36 @@ def _resolve_targets(ctx: GateContext) -> list[Path]:
     req_root = _REPO_ROOT / "requirements"
     if not req_root.exists():
         return []
-    return sorted(req_root.glob("*/artifacts/**/*.md"))
+    results: list[Path] = []
+    for p in sorted(req_root.glob("*/artifacts/**/*.md")):
+        if _is_completed_req(p, req_root):
+            continue
+        results.append(p)
+    return results
+
+
+def _is_completed_req(artifact_path: Path, req_root: Path) -> bool:
+    """判断 artifact 所属需求是否已 completed（meta.yaml.phase == "completed"）。
+
+    解析失败 / meta.yaml 缺失 → 视为未完成（保守，避免误豁免）。
+    """
+    try:
+        rel = artifact_path.relative_to(req_root)
+    except ValueError:
+        return False
+    if not rel.parts:
+        return False
+    req_dir = req_root / rel.parts[0]
+    meta_path = req_dir / "meta.yaml"
+    if not meta_path.exists():
+        return False
+    try:
+        import yaml
+        with meta_path.open("r", encoding="utf-8") as f:
+            meta = yaml.safe_load(f) or {}
+        return meta.get("phase") == "completed"
+    except Exception:
+        return False
 
 
 def _legacy_to_report(gate_id: str, legacy: LegacyReport) -> Report:

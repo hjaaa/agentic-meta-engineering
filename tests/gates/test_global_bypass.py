@@ -80,10 +80,9 @@ def test_run_py_no_bypass_normal(tmp_path):
         text=True,
     )
 
-    # 不因 bypass 提前 exit；可能因缺 registry 报错，但返回码不是 0
-    assert result.returncode != 0, f"Expected non-zero exit (normal flow), got {result.returncode}"
-
-    # audit 目录可能不存在或无 BYPASS 行
+    # 不因 bypass 提前 exit——契约靠"audit 无 BYPASS 行"来证明（returncode 受
+    # 项目 registry 实际状态影响，不是 bypass 路径的可靠代理；REQ-2026-006/F-005
+    # 之后 sourcing 跳过 completed 需求，CI 模拟可能返回 0）
     today = dt.now().strftime("%Y-%m-%d")
     audit_log = tmp_path / "audit" / ".queue" / f"{today}.log"
     if audit_log.exists():
@@ -336,11 +335,7 @@ def test_run_py_bypass_whitespace_only_reason_rejected(tmp_path):
         text=True,
     )
 
-    # bypass 不触发 → 正常 gate 流程（无 registry.yaml → exit 非 0）
-    assert result.returncode != 0, (
-        f"纯空白 reason 应不 bypass（exit 非 0），got {result.returncode}"
-    )
-    # audit log 不应存在或不含 BYPASS 行
+    # bypass 不触发 → audit log 不应含 BYPASS 行（returncode 不可靠，见上）
     today = dt.now().strftime("%Y-%m-%d")
     audit_log = tmp_path / "audit" / ".queue" / f"{today}.log"
     if audit_log.exists():
@@ -363,9 +358,6 @@ def test_run_py_bypass_short_reason_rejected(tmp_path):
         text=True,
     )
 
-    assert result.returncode != 0, (
-        f"短 reason 应不 bypass（exit 非 0），got {result.returncode}"
-    )
     today = dt.now().strftime("%Y-%m-%d")
     audit_log = tmp_path / "audit" / ".queue" / f"{today}.log"
     if audit_log.exists():
