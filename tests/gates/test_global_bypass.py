@@ -39,6 +39,7 @@ def test_run_py_bypass_exits_zero(tmp_path):
     """
     env = os.environ.copy()
     env["CLAUDE_GATES_GLOBAL_BYPASS"] = "fix-test"
+    env["CLAUDE_GATES_AUDIT_ROOT"] = str(tmp_path)
 
     result = subprocess.run(
         [sys.executable, str(_GATES_DIR / "run.py"), "--trigger=ci"],
@@ -105,6 +106,7 @@ def test_submit_py_bypass_logs_and_exits(tmp_path):
     """
     env = os.environ.copy()
     env["CLAUDE_GATES_GLOBAL_BYPASS"] = "fix-test-submit"
+    env["CLAUDE_GATES_AUDIT_ROOT"] = str(tmp_path)
 
     result = subprocess.run(
         [sys.executable, str(_GATES_DIR / "triggers" / "submit.py"), "--req=REQ-TEST"],
@@ -175,6 +177,7 @@ def test_guard_sh_bypass_exits_zero(tmp_path):
     env = os.environ.copy()
     # guard.sh 要求 reason >= 8 字符
     env["CLAUDE_GATES_GLOBAL_BYPASS"] = "emergency-fix"
+    env["CLAUDE_GATES_AUDIT_ROOT"] = str(tmp_path)
 
     # 构造合法的 jq 输入（但 guard.sh 会在 bypass 检查就 exit，不会真正解析 jq）
     input_json = '{"tool_name": "Edit", "tool_input": {"file_path": "test.py"}}'
@@ -213,6 +216,7 @@ def test_guard_sh_bypass_too_short_reason(tmp_path):
 
     env = os.environ.copy()
     env["CLAUDE_GATES_GLOBAL_BYPASS"] = "short"  # < 8 chars
+    env["CLAUDE_GATES_AUDIT_ROOT"] = str(tmp_path)
 
     input_json = '{"tool_name": "Edit", "tool_input": {"file_path": "test.py"}}'
 
@@ -239,6 +243,7 @@ def test_audit_line_format(tmp_path):
     """
     env = os.environ.copy()
     env["CLAUDE_GATES_GLOBAL_BYPASS"] = "format-test-12345"
+    env["CLAUDE_GATES_AUDIT_ROOT"] = str(tmp_path)
 
     result = subprocess.run(
         [sys.executable, str(_GATES_DIR / "run.py"), "--trigger=ci"],
@@ -292,6 +297,7 @@ def test_run_py_bypass_reason_with_newline_escaped(tmp_path):
     env = os.environ.copy()
     # 换行前后分别是合法字符；转义后仍 >= 8 字符
     env["CLAUDE_GATES_GLOBAL_BYPASS"] = "fix\nFAKE_ENTRY"
+    env["CLAUDE_GATES_AUDIT_ROOT"] = str(tmp_path)
 
     result = subprocess.run(
         [sys.executable, str(_GATES_DIR / "run.py"), "--trigger=ci"],
@@ -326,6 +332,7 @@ def test_run_py_bypass_whitespace_only_reason_rejected(tmp_path):
     """
     env = os.environ.copy()
     env["CLAUDE_GATES_GLOBAL_BYPASS"] = "   "  # 纯空白，strip 后 < 8
+    env["CLAUDE_GATES_AUDIT_ROOT"] = str(tmp_path)
 
     result = subprocess.run(
         [sys.executable, str(_GATES_DIR / "run.py"), "--trigger=ci"],
@@ -349,6 +356,7 @@ def test_run_py_bypass_short_reason_rejected(tmp_path):
     """
     env = os.environ.copy()
     env["CLAUDE_GATES_GLOBAL_BYPASS"] = "abc"  # 3 字符 < 8
+    env["CLAUDE_GATES_AUDIT_ROOT"] = str(tmp_path)
 
     result = subprocess.run(
         [sys.executable, str(_GATES_DIR / "run.py"), "--trigger=ci"],
@@ -371,6 +379,7 @@ def test_run_py_bypass_oversized_reason_safe(tmp_path):
     """
     env = os.environ.copy()
     env["CLAUDE_GATES_GLOBAL_BYPASS"] = "x" * 5000  # 超长，但合法（>= 8 字符）
+    env["CLAUDE_GATES_AUDIT_ROOT"] = str(tmp_path)
 
     result = subprocess.run(
         [sys.executable, str(_GATES_DIR / "run.py"), "--trigger=ci"],
@@ -390,3 +399,75 @@ def test_run_py_bypass_oversized_reason_safe(tmp_path):
     # 含 BYPASS 行且 reason 完整（未截断）
     assert "BYPASS used:" in log_content
     assert "x" * 100 in log_content  # 5000 个 x 的前 100 个仍在
+
+
+# ====================== test_audit_root_is_repo_anchored_not_cwd ======================
+
+
+def test_run_py_audit_anchors_to_audit_root_not_cwd(tmp_path):
+    """given_cwd_neq_audit_root_when_run_py_then_audit_lands_in_audit_root.
+
+    Codex P1 回归：早期 producer 用 cwd-relative `audit/.queue/...`，consumer
+    audit_flush.py 锚到 repo 根，cwd≠repo 时记录被丢。修复后所有 producer 必须
+    锚到同一 root（默认 repo 根，env=CLAUDE_GATES_AUDIT_ROOT 测试时覆盖）。
+    """
+    cwd_dir = tmp_path / "elsewhere"
+    cwd_dir.mkdir()
+    audit_root = tmp_path / "fake-repo"
+    audit_root.mkdir()
+
+    env = os.environ.copy()
+    env["CLAUDE_GATES_GLOBAL_BYPASS"] = "anchor-regression"
+    env["CLAUDE_GATES_AUDIT_ROOT"] = str(audit_root)
+
+    result = subprocess.run(
+        [sys.executable, str(_GATES_DIR / "run.py"), "--trigger=ci"],
+        cwd=str(cwd_dir),
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0
+
+    today = dt.now().strftime("%Y-%m-%d")
+    # 必须落在 audit_root（env override），不是 cwd
+    expected = audit_root / "audit" / ".queue" / f"{today}.log"
+    cwd_relative = cwd_dir / "audit" / ".queue" / f"{today}.log"
+    assert expected.exists(), f"Expected audit at {expected}"
+    assert not cwd_relative.exists(), (
+        f"Regression: audit fell back to cwd-relative path {cwd_relative}"
+    )
+
+
+def test_guard_sh_audit_anchors_to_audit_root_not_cwd(tmp_path):
+    """given_cwd_neq_audit_root_when_guard_sh_bypass_then_audit_lands_in_audit_root."""
+    guard_sh = _REPO_ROOT / ".claude" / "hooks" / "pre-tool-use-guard.sh"
+    if not guard_sh.exists():
+        pytest.skip(f"{guard_sh} not found")
+
+    cwd_dir = tmp_path / "elsewhere"
+    cwd_dir.mkdir()
+    audit_root = tmp_path / "fake-repo"
+    audit_root.mkdir()
+
+    env = os.environ.copy()
+    env["CLAUDE_GATES_GLOBAL_BYPASS"] = "anchor-regression-guard"
+    env["CLAUDE_GATES_AUDIT_ROOT"] = str(audit_root)
+
+    result = subprocess.run(
+        ["bash", str(guard_sh)],
+        cwd=str(cwd_dir),
+        env=env,
+        input='{"tool_name":"Edit","tool_input":{"file_path":"a.txt"}}',
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0
+
+    today = dt.now().strftime("%Y-%m-%d")
+    expected = audit_root / "audit" / ".queue" / f"{today}.log"
+    cwd_relative = cwd_dir / "audit" / ".queue" / f"{today}.log"
+    assert expected.exists(), f"Expected audit at {expected}"
+    assert not cwd_relative.exists(), (
+        f"Regression: audit fell back to cwd-relative path {cwd_relative}"
+    )

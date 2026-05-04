@@ -32,12 +32,26 @@ install[[:space:]]+(-[^[:space:]]+[[:space:]]+)*[^[:space:]]+[[:space:]]+['\"]?[
 python3?[[:space:]]+-c[[:space:]]+['\"].*${REVIEW_PATH}.*?\\.write_(text|bytes)\\(\
 )"
 
+# audit root：env 优先，回退到脚本所在仓库根（Codex P1：必须与 audit_flush.py
+# 的 _REPO_ROOT 一致，否则 hook 在 cwd≠repo 时记录被丢）。
+_audit_root() {
+  if [[ -n "${CLAUDE_GATES_AUDIT_ROOT:-}" ]]; then
+    printf '%s' "${CLAUDE_GATES_AUDIT_ROOT}"
+    return
+  fi
+  local _src_dir
+  _src_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+  # .claude/hooks/pre-tool-use-guard.sh → repo root = ../../
+  printf '%s' "$( cd "$_src_dir/../.." && pwd )"
+}
+
 # audit 行格式：<ts> <cwd> BYPASS|<event> <details> @ entry=<name>
 audit_log() {
-  local line
+  local line root
   line="$(date -Iseconds 2>/dev/null) $(pwd) $1 @ entry=${ENTRY}"
-  mkdir -p audit/.queue 2>/dev/null || return 0
-  echo "$line" >>"audit/.queue/$(date +%Y-%m-%d).log" 2>/dev/null || true
+  root="$(_audit_root)"
+  mkdir -p "${root}/audit/.queue" 2>/dev/null || return 0
+  echo "$line" >>"${root}/audit/.queue/$(date +%Y-%m-%d).log" 2>/dev/null || true
 }
 
 main() {

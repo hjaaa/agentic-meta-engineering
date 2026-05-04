@@ -11,13 +11,28 @@ readonly ENTRY_TRIGGER_PHASE="trigger:phase-transition"
 readonly ENTRY_TRIGGER_SAVE_REVIEW="trigger:save-review"
 readonly ENTRY_TRIGGER_MANUAL="trigger:manual"
 
+# 取 audit root：env 优先，回退到脚本所在仓库根（Codex P1：consumer 在 repo 根，
+# producer 不能用 cwd-relative，否则 hook 在 cwd≠repo 时记录被丢）。
+_audit_root() {
+  if [[ -n "${CLAUDE_GATES_AUDIT_ROOT:-}" ]]; then
+    printf '%s' "${CLAUDE_GATES_AUDIT_ROOT}"
+    return
+  fi
+  local _src_dir
+  _src_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+  # scripts/lib/audit_async.sh → repo root = ../../
+  printf '%s' "$( cd "$_src_dir/../.." && pwd )"
+}
+
 # audit_append_async <event-line> [entry-name]
 # 行格式：<ISO ts> <cwd> <event-line> @ entry=<name>
-# 写入 audit/.queue/<YYYY-MM-DD>.log；失败完全静默（best-effort）。
+# 写入 <audit-root>/audit/.queue/<YYYY-MM-DD>.log；失败完全静默（best-effort）。
 audit_append_async() {
   local line="$1"
   local entry="${2:-${ENTRY_RUNNER}}"
-  local f="audit/.queue/$(date +%Y-%m-%d).log"
+  local root
+  root="$(_audit_root)"
+  local f="${root}/audit/.queue/$(date +%Y-%m-%d).log"
   local ts
   ts="$(date -Iseconds 2>/dev/null)"
   mkdir -p "$(dirname "$f")" 2>/dev/null || return 0

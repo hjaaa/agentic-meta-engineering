@@ -34,8 +34,13 @@ from typing import Any
 # 用模块级缓存避免每行重新编译
 _ENTRY_RE = re.compile(r"^[A-Za-z0-9:_-]+$")
 
-# 仓库根（scripts/lib/ 的父目录的父目录）
-_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+# Audit root：env 优先，回退到仓库根（scripts/lib/ 的父目录的父目录）。
+# Codex P1 修复后 producer 也走同一锚定逻辑，env override 只为测试隔离用。
+import os as _os
+_REPO_ROOT = Path(
+    _os.environ.get("CLAUDE_GATES_AUDIT_ROOT")
+    or Path(__file__).resolve().parent.parent.parent
+)
 _QUEUE_DIR = _REPO_ROOT / "audit" / ".queue"
 _QUEUE_DONE_DIR = _REPO_ROOT / "audit" / ".queue.done"
 _AUDIT_DIR = _REPO_ROOT / "audit"
