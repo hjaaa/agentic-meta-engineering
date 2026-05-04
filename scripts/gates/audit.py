@@ -5,20 +5,38 @@
 职责：
   1. _build_audit：把 reports 列表转结构化 audit dict（含 passed / bypassed /
      failed / skipped / rollback_failed / exit_code 等字段）
-  2. write_audit：把 audit dict 落盘到 audit/<YYYY-MM>/<trigger>-<timestamp>.json
+  2. write_audit：把 audit dict 通过 subprocess 异步写入 audit/.queue（F-004 §4.2）
   3. _calc_exit_code：基于 reports + 严格度计算最终 exit code
 
 F-012 round-2 拆出：从 run.py 抽出，run.py 通过 re-export 保持向后兼容。
+F-004：write_audit 改为调 audit_async.sh audit_append_async（best-effort，失败静默）。
 """
 from __future__ import annotations
 
 import json
-import os
+import shlex
+import subprocess
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from plugins.base import Decision, Report
+
+
+def _validate_bypass_reason(raw: str | None) -> str | None:
+    """校验并清洗 bypass reason 环境变量。
+
+    返回 None 表示不 bypass（reason 不合法）；返回处理后的 reason 表示可 bypass。
+    合法条件：非 None、trim 后 >= 8 字符。同时转义换行符防止 audit log 行污染。
+    """
+    if raw is None:
+        return None
+    # 转义控制字符，防止 audit log 行被注入换行
+    cleaned = raw.replace("\n", " ").replace("\r", " ")
+    if len(cleaned.strip()) < 8:
+        return None
+    return cleaned
+
 
 _PKG_ROOT = Path(__file__).resolve().parent
 AUDIT_DIR = _PKG_ROOT / "audit"
@@ -95,17 +113,31 @@ def build_audit(
 
 
 def write_audit(audit: dict[str, Any]) -> Path:
-    """写 audit JSON 到 audit/<YYYY-MM>/<trigger>-<timestamp>.json。"""
-    ts = datetime.now()
-    sub = AUDIT_DIR / ts.strftime("%Y-%m")
-    sub.mkdir(parents=True, exist_ok=True)
-    fname = f"{audit['trigger']}-{ts.strftime('%Y%m%d-%H%M%S-%f')}.json"
-    path = sub / fname
-    with path.open("w", encoding="utf-8") as f:
-        json.dump(audit, f, ensure_ascii=False, indent=2)
-        f.flush()
-        os.fsync(f.fileno())
-    return path
+    """异步写 audit：通过 subprocess 调 audit_async.sh audit_append_async（best-effort）。
+
+    F-004 §4.2：把 audit dict 序列化为 JSON 单行，追加到 audit/.queue/<日期>.log。
+    entry 名 hard-code 为 'runner'（ENTRY_RUNNER 是 bash readonly 常量，
+    Python 跨语言无法引用；spec §4.3 D-006 规定 audit_async.sh 是单一事实源）。
+    失败完全静默（D-005 best-effort）；timeout=2 防止 audit 写入卡住整个 gate 流程。
+    返回默认 Path 保持签名向后兼容（callers 处 write_audit 返回值不被使用）。
+    """
+    try:
+        # 序列化为紧凑 JSON（不换行）
+        audit_line = json.dumps(audit, ensure_ascii=False, separators=(",", ":"))
+        # shlex.quote 防注入（R2 修订）
+        event_line = f"audit {shlex.quote(audit_line)}"
+        # 定位 audit_async.sh 相对路径（相对于仓库根）
+        audit_async_sh = Path(__file__).resolve().parent.parent / "lib" / "audit_async.sh"
+        subprocess.run(
+            ["bash", "-c",
+             f"source {shlex.quote(str(audit_async_sh))} && audit_append_async {event_line} runner"],
+            timeout=2,
+            capture_output=True,
+        )
+    except Exception:  # noqa: BLE001
+        # best-effort：失败静默，不阻断 gate 流程
+        pass
+    return Path("/dev/null")
 
 
 def calc_exit_code(reports: list[Report], plan: list[dict[str, Any]], strict: bool) -> int:

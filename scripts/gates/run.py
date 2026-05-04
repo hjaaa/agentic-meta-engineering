@@ -37,15 +37,19 @@ from typing import Any, Optional
 # 必须在第一个项目内 import（pathspec / yaml）之前——避免被 plugin 加载异常拦截。
 if os.environ.get("CLAUDE_GATES_GLOBAL_BYPASS"):
     _reason = os.environ["CLAUDE_GATES_GLOBAL_BYPASS"]
-    try:
-        from datetime import datetime as _dt
-        _q = Path(f"audit/.queue/{_dt.now():%Y-%m-%d}.log")
-        _q.parent.mkdir(parents=True, exist_ok=True)
-        with _q.open("a") as _f:
-            _f.write(f"{_dt.now().isoformat()} {os.getcwd()} BYPASS used: {_reason} @ entry=runner\n")
-    except Exception:
-        pass
-    sys.exit(0)
+    # F-004 carryover-1：转义换行符（防止 audit log 行被注入）+ 长度校验（guard.sh 三入口一致性）
+    _reason = _reason.replace("\n", " ").replace("\r", " ")
+    if len(_reason.strip()) >= 8:
+        try:
+            from datetime import datetime as _dt
+            _q = Path(f"audit/.queue/{_dt.now():%Y-%m-%d}.log")
+            _q.parent.mkdir(parents=True, exist_ok=True)
+            with _q.open("a") as _f:
+                _f.write(f"{_dt.now().isoformat()} {os.getcwd()} BYPASS used: {_reason} @ entry=runner\n")
+        except Exception:
+            pass
+        sys.exit(0)
+    # reason 不合法（太短或纯空白）：不 bypass，继续走正常 gate 流程
 # ---- END: REQ-2026-006 ----
 
 import pathspec
@@ -607,7 +611,7 @@ def _validate_force_reason(reason: Optional[str]) -> Optional[str]:
     return None
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def _real_main(argv: Optional[list[str]] = None) -> int:
     """runner 主入口（F-022 round-3 补 docstring，与 submit.py:60 风格一致）。
 
     参数：argv — CLI 参数列表；None 时取 sys.argv[1:]（CLI 直跑场景）。
@@ -1048,6 +1052,30 @@ def _log_gate_start(ctx: GateContext, gate_id: str) -> None:
         f"requirement_id={ctx.requirement_id or '-'}",
         file=sys.stderr,
     )
+
+
+def main(argv: Optional[list[str]] = None) -> int:
+    """顶层包装：拦截非 SystemExit 的 BaseException → 写 /tmp/run-py-error.log → return 2。
+
+    F-004 native §4.1：trigger 层把退 2 视为 fail-open（不锁死 Claude）。
+    submit.py 已用 runner.main() 调用——签名/行为不变。
+    """
+    try:
+        return _real_main(argv)
+    except SystemExit:
+        # argparse 正常 exit，不拦截
+        raise
+    except BaseException:  # noqa: BLE001
+        import datetime as _datetime
+        import traceback as _traceback
+        try:
+            ts = _datetime.datetime.now().isoformat()
+            trace = _traceback.format_exc()
+            with open("/tmp/run-py-error.log", "a", encoding="utf-8") as _ef:
+                _ef.write(f"[{ts}]\n{trace}\n")
+        except Exception:
+            pass
+        return 2
 
 
 if __name__ == "__main__":

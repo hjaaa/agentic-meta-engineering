@@ -208,8 +208,13 @@ def test_topological_sort_respects_dependencies(tmp_registry):
 
 
 def test_write_audit_creates_file_with_schema(tmp_path, monkeypatch):
-    monkeypatch.setattr(runner_mod, "AUDIT_DIR", tmp_path / "audit")
-    audit = {
+    """F-004：write_audit 改为异步 subprocess 调 audit_async.sh（best-effort）。
+
+    不再同步写文件；验证 subprocess.run 被调用（audit 数据已提交给异步管道），
+    且返回值为 Path 类型（向后兼容签名）。
+    """
+    from unittest.mock import patch, MagicMock
+    audit_dict = {
         "schema_version": "1.0",
         "trigger": "ci",
         "timestamp": "2026-04-27 21:35:00",
@@ -224,11 +229,13 @@ def test_write_audit_creates_file_with_schema(tmp_path, monkeypatch):
         "rollback_failed": False,
         "exit_code": 0,
     }
-    path = runner_mod.write_audit(audit)
-    data = json.loads(path.read_text(encoding="utf-8"))
-    assert data["schema_version"] == "1.0"
-    assert data["trigger"] == "ci"
-    assert data["passed"] == ["GATE-META-SCHEMA"]
+    import audit as _audit_mod
+    with patch.object(_audit_mod, "subprocess") as mock_subprocess:
+        mock_subprocess.run.return_value = MagicMock(returncode=0)
+        path = runner_mod.write_audit(audit_dict)
+        assert mock_subprocess.run.call_count == 1, "write_audit 应通过 subprocess 调 audit_async.sh"
+    from pathlib import Path as _Path
+    assert isinstance(path, _Path), f"write_audit 应返回 Path 类型，got {type(path)}"
 
 
 # ====================== exit code（pass / fail / skip 三态） ======================
