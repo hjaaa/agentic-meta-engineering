@@ -18,3 +18,5 @@
 2026-05-04 22:28:25 [review:needs_revision] code-F-002-001 5 must-fix（F-2/F-3/F-4/F-12/F-541）+ 6 follow-up
 2026-05-04 22:28:56 [development] F-002 修复派发（5 must-fix: F-2/F-3/F-4/F-12/F-541, model=haiku 重派）
 2026-05-04 22:33:46 [review:approved] code-F-002-002 looks_clean (5 must-fix 全修，6 follow-up 单独 PR)
+2026-05-04 22:34:52 [signoff] REV-REQ-2026-007-code-F-002-002 approved by hj19961223@gmail.com
+2026-05-04 22:35:24 [development] F-002 done（commit 9ebdeef，verdict 002 looks_clean + sign-off approved）
