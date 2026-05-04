@@ -33,6 +33,21 @@ from graphlib import TopologicalSorter
 from pathlib import Path
 from typing import Any, Optional
 
+# ---- BEGIN: REQ-2026-006 全局逃生通道（A1，spec §4.3 改动 1） ----
+# 必须在第一个项目内 import（pathspec / yaml）之前——避免被 plugin 加载异常拦截。
+if os.environ.get("CLAUDE_GATES_GLOBAL_BYPASS"):
+    _reason = os.environ["CLAUDE_GATES_GLOBAL_BYPASS"]
+    try:
+        from datetime import datetime as _dt
+        _q = Path(f"audit/.queue/{_dt.now():%Y-%m-%d}.log")
+        _q.parent.mkdir(parents=True, exist_ok=True)
+        with _q.open("a") as _f:
+            _f.write(f"{_dt.now().isoformat()} {os.getcwd()} BYPASS used: {_reason} @ entry=runner\n")
+    except Exception:
+        pass
+    sys.exit(0)
+# ---- END: REQ-2026-006 ----
+
 import pathspec
 import yaml
 
@@ -366,9 +381,10 @@ def _matches_applies_when(
     aw = entry.get("applies_when") or {}
 
     # changed_files：pathspec 任一命中（仅 pre-commit trigger 起作用）
-    # 设计依据：ci / phase-transition / submit / post-dev / pre-tool-use 不通过 staged
+    # 设计依据：ci / phase-transition / submit / post-dev 不通过 staged
     # 文件列表过滤；changed_files 只在 pre-commit 路径短路那些与改动无关的 gate（保
     # 与 4 plugin 旧 precheck"if ctx.trigger == 'pre-commit'"一致的语义）。
+    # pre-tool-use 已于 F-002 退役。
     if (
         ctx.trigger == "pre-commit"
         and not ignore_changed_files
@@ -599,8 +615,7 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     流程：
       1. parse_args → trigger 白名单 / req-id 路径穿越校验在 build_context 内做
-      2. load_registry：S1~S10 schema 校验；pre-tool-use 触发器开 validate_only_ids
-         冷启动优化（只 import 候选 plugin，节省 ~12ms）
+      2. load_registry：S1~S10 schema 校验（pre-tool-use 已于 F-002 退役，冷启动优化已移除）
       3. --validate-registry：仅跑 S 校验，打印 OK 行后退 0
       4. dry-run：不执行 gate.run，按拓扑序打印执行计划后退 0
       5. 真实执行：进入 _execute_plan，含事务化 stash / commit_staged_writes / rollback /

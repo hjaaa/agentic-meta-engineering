@@ -157,7 +157,7 @@ def _validate_one_entry(entry: dict[str, Any], skip_import: bool = False) -> Non
 
     skip_import=True 时跳过 S2 的 importlib.import_module + GATE_CLASS 检查，
     仅做纯字符串字段校验（plugin 必填 + plugin_path 文件存在）。
-    用于 pre-tool-use 高频路径冷启动优化（F-018），白名单外 gate 不触发模块加载。
+    保留以支持按需加载优化；pre-tool-use 已于 F-002 退役。
 
     F-013 round-3：把 6 段独立 if 链拆为 _validate_s2_plugin / _validate_s3_triggers /
     _validate_s4_severity / _validate_s8_fixtures / _validate_s9_requires /
