@@ -24,3 +24,5 @@
 2026-05-04 22:40:14 [development] F-001 派发（model=sonnet, complexity=medium, 用户指定升档）
 2026-05-04 22:58:48 [review:approved] code-F-001-001 looks_clean (0 critical / 0 major / 2 minor + 4 follow-up，待 sign-off)
 2026-05-04 23:09:29 [review:approved] code-F-001-002 looks_clean (4 doc follow-up 零回归 + 1 minor doc-drift 入 backlog)
+2026-05-04 23:10:08 [signoff] REV-REQ-2026-007-code-F-001-002 approved by hj19961223@gmail.com
+2026-05-04 23:11:47 [development] F-001 done（commit 6741541，verdict 002 looks_clean + sign-off approved，1 doc-drift 入 backlog）
