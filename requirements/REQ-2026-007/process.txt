@@ -22,3 +22,4 @@
 2026-05-04 22:35:24 [development] F-002 done（commit 9ebdeef，verdict 002 looks_clean + sign-off approved）
 2026-05-04 22:36:33 [development] [save] F-002 done（verdict 002 looks_clean + sign-off approved），下步派 F-001
 2026-05-04 22:40:14 [development] F-001 派发（model=sonnet, complexity=medium, 用户指定升档）
+2026-05-04 22:58:48 [review:approved] code-F-001-001 looks_clean (0 critical / 0 major / 2 minor + 4 follow-up，待 sign-off)
