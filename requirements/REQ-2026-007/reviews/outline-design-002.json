@@ -51,5 +51,11 @@
     "§7 第 1 项「applies_when 实现路径决议」措辞当前仍为「A 案 DSL 选型 / 降级 B 案」，§5.4 推荐已翻转为 B 案优先；detail-design 首日决议时建议改为「B 案落地 / 升级 A 案」对称表述。"
   ],
   "scope": null,
-  "supersedes": "REV-REQ-2026-007-outline-design-001"
+  "supersedes": "REV-REQ-2026-007-outline-design-001",
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-04T21:26:28.092918+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
+  }
 }
