@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import argparse
 import fcntl
-import json
 import re
 import shutil
 from collections import defaultdict
