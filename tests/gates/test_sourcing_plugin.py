@@ -199,3 +199,60 @@ def test_changed_artifact_paths_picks_nested():
 def test_changed_artifact_paths_skips_meta_yaml():
     from plugins._helpers import _changed_artifact_paths
     assert _changed_artifact_paths(["requirements/REQ-001/meta.yaml"]) == []
+
+
+# ====================== completed 需求 CI 豁免（REQ-2026-006/F-002 后续修复） ======================
+
+
+def _make_req(req_root: Path, req_id: str, phase: str) -> Path:
+    """在 tmp 下造一个最小需求骨架：meta.yaml + artifacts/requirement.md。"""
+    req_dir = req_root / req_id
+    artifacts = req_dir / "artifacts"
+    artifacts.mkdir(parents=True, exist_ok=True)
+    (req_dir / "meta.yaml").write_text(
+        f"id: {req_id}\nphase: {phase}\n", encoding="utf-8"
+    )
+    md = artifacts / "requirement.md"
+    md.write_text(_valid_md(), encoding="utf-8")
+    return md
+
+
+def test_resolve_targets_skips_completed_reqs_in_ci(tmp_path, monkeypatch):
+    """given_completed_req_when_ci_full_scan_then_excluded_from_targets（completed 档案豁免）。"""
+    req_root = tmp_path / "requirements"
+    req_root.mkdir()
+    active_md = _make_req(req_root, "REQ-ACTIVE", "testing")
+    completed_md = _make_req(req_root, "REQ-DONE", "completed")
+
+    monkeypatch.setattr(plugin_mod, "_REPO_ROOT", tmp_path)
+
+    ctx = GateContext(trigger="ci")
+    targets = plugin_mod._resolve_targets(ctx)
+
+    assert active_md in targets
+    assert completed_md not in targets
+
+
+def test_resolve_targets_includes_completed_when_explicit(tmp_path, monkeypatch):
+    """given_completed_req_when_explicit_sourcing_paths_then_kept（显式注入仍扫描）。"""
+    req_root = tmp_path / "requirements"
+    req_root.mkdir()
+    completed_md = _make_req(req_root, "REQ-DONE", "completed")
+
+    monkeypatch.setattr(plugin_mod, "_REPO_ROOT", tmp_path)
+
+    ctx = GateContext(trigger="ci", extra={"sourcing_paths": [str(completed_md)]})
+    targets = plugin_mod._resolve_targets(ctx)
+
+    assert targets == [Path(str(completed_md))]
+
+
+def test_is_completed_req_handles_missing_meta(tmp_path):
+    """given_artifact_without_meta_when_check_then_treated_as_active（保守策略）。"""
+    req_root = tmp_path / "requirements"
+    artifacts = req_root / "REQ-ORPHAN" / "artifacts"
+    artifacts.mkdir(parents=True)
+    md = artifacts / "requirement.md"
+    md.write_text(_valid_md(), encoding="utf-8")
+
+    assert plugin_mod._is_completed_req(md, req_root) is False

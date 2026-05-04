@@ -5,11 +5,6 @@
 本文件由 `scripts/gates/migration/render-docs.py` 从 `scripts/gates/registry.yaml` 自动生成。
 **请勿手动编辑**——如需修改门禁规则，请更新 registry.yaml 后重新生成。
 
-## pre-tool-use（工具调用前）
-
-- [ ] **GATE-PROTECT-BRANCH** (`error`) — GATE-PROTECT-BRANCH 失败：{message}
-- [ ] **GATE-BASH-WRITE-PROTECT** (`error`) — GATE-BASH-WRITE-PROTECT 失败：{message}
-
 ## pre-commit（提交前）
 
 - [ ] **GATE-META-SCHEMA** (`error`) — GATE-META-SCHEMA 失败：{message}

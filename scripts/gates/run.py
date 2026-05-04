@@ -33,6 +33,30 @@ from graphlib import TopologicalSorter
 from pathlib import Path
 from typing import Any, Optional
 
+# ---- BEGIN: REQ-2026-006 全局逃生通道（A1，spec §4.3 改动 1） ----
+# 必须在第一个项目内 import（pathspec / yaml）之前——避免被 plugin 加载异常拦截。
+if os.environ.get("CLAUDE_GATES_GLOBAL_BYPASS"):
+    _reason = os.environ["CLAUDE_GATES_GLOBAL_BYPASS"]
+    # F-004 carryover-1：转义换行符（防止 audit log 行被注入）+ 长度校验（guard.sh 三入口一致性）
+    _reason = _reason.replace("\n", " ").replace("\r", " ")
+    if len(_reason.strip()) >= 8:
+        try:
+            from datetime import datetime as _dt
+            # Codex P1：audit root 必须与 audit_flush.py 一致——锚到 repo 根而非 cwd，
+            # 允许 CLAUDE_GATES_AUDIT_ROOT 覆盖（测试隔离用）。
+            _audit_root = os.environ.get("CLAUDE_GATES_AUDIT_ROOT") or str(
+                Path(__file__).resolve().parent.parent.parent
+            )
+            _q = Path(_audit_root) / "audit" / ".queue" / f"{_dt.now():%Y-%m-%d}.log"
+            _q.parent.mkdir(parents=True, exist_ok=True)
+            with _q.open("a") as _f:
+                _f.write(f"{_dt.now().isoformat()} {os.getcwd()} BYPASS used: {_reason} @ entry=runner\n")
+        except Exception:
+            pass
+        sys.exit(0)
+    # reason 不合法（太短或纯空白）：不 bypass，继续走正常 gate 流程
+# ---- END: REQ-2026-006 ----
+
 import pathspec
 import yaml
 
@@ -122,9 +146,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
           strict / dry_run / validate_registry / legacy / paths 字段。
 
     支持的 flag：
-      --trigger             触发器名，白名单 ∈ {pre-tool-use, pre-commit, phase-transition,
-                            submit, ci, post-dev, adapter}（adapter 在 _resolve_trigger 归一化为 ci）。
-                            未给且未带 --validate-registry 时 main 退 2。
+      --trigger             触发器名，白名单 ∈ {pre-commit, phase-transition, submit, ci,
+                            post-dev, adapter}（adapter 在 _resolve_trigger 归一化为 ci；
+                            F-002：pre-tool-use 已删除）。未给且未带 --validate-registry 时 main 退 2。
       --req                 需求 ID，必须匹配 ^REQ-\\d{4}-\\d{3}$（防路径穿越；非法格式直接 SystemExit(2)）。
       --from / --to         phase-transition 专用：源 phase / 目标 phase（其他 trigger 忽略）。
       --strict              warning 级 Decision.FAIL 也升为进程退出 1（默认仅 error 级失败升 1）。
@@ -135,14 +159,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                             过滤 plan 后只保留对应 plugin。
       paths                 adapter 模式位置参数：旧入口要处理的目标文件（如 meta.yaml 路径）。
 
-    退出码语义（main 返回 → triggers/pre_tool_use.sh 透传给 hook）：
+    退出码语义：
       0  全部 gate 通过（含 SKIP / PASS）
       1  存在 severity=error 的 Decision.FAIL；strict 下 warning 级 fail 也升 1
       2  runner 自身异常 / 非法 trigger / 非法 requirement_id / registry 加载失败
          / 非法 --force-with-blockers reason（CLI 入参非法统一归 2）
+    （F-002：pre-tool-use trigger 已删除，不再作为 hook 入口）
     """
     p = argparse.ArgumentParser(description="统一门禁 runner")
-    p.add_argument("--trigger", help="触发器：pre-tool-use|pre-commit|phase-transition|submit|ci|post-dev|adapter")
+    p.add_argument("--trigger", help="触发器：pre-commit|phase-transition|submit|ci|post-dev|adapter")
     p.add_argument("--req", dest="requirement_id", help="目标需求 ID，如 REQ-2026-002")
     p.add_argument("--from", dest="from_phase", help="phase-transition: 源 phase")
     p.add_argument("--to", dest="to_phase", help="phase-transition: 目标 phase")
@@ -230,17 +255,12 @@ def _load_meta_for_req(req_id: Optional[str]) -> dict[str, Any]:
 def _build_extra(args: argparse.Namespace, trigger: str) -> dict[str, Any]:
     """构造 ctx.extra（F-011 round-2 抽出）。
 
-    包含 adapter 模式的 meta_paths + pre-tool-use 的 tool_name/file_path/command。
+    包含 adapter 模式的 meta_paths。
+    （F-002：pre-tool-use trigger 已删除）
     """
     extra: dict[str, Any] = {}
     if args.legacy and args.paths:
         extra["meta_paths"] = args.paths
-    # pre-tool-use trigger：从环境变量取 tool_name / file_path / command
-    # （由 triggers/pre_tool_use.sh 解析 stdin 后注入；不让 plugin 自己读 os.environ）
-    if trigger == "pre-tool-use":
-        extra.setdefault("tool_name", os.environ.get("CLAUDE_HOOK_TOOL_NAME", ""))
-        extra.setdefault("file_path", os.environ.get("CLAUDE_HOOK_FILE_PATH", ""))
-        extra.setdefault("command", os.environ.get("CLAUDE_HOOK_COMMAND", ""))
     return extra
 
 
@@ -370,9 +390,10 @@ def _matches_applies_when(
     aw = entry.get("applies_when") or {}
 
     # changed_files：pathspec 任一命中（仅 pre-commit trigger 起作用）
-    # 设计依据：ci / phase-transition / submit / post-dev / pre-tool-use 不通过 staged
+    # 设计依据：ci / phase-transition / submit / post-dev 不通过 staged
     # 文件列表过滤；changed_files 只在 pre-commit 路径短路那些与改动无关的 gate（保
     # 与 4 plugin 旧 precheck"if ctx.trigger == 'pre-commit'"一致的语义）。
+    # pre-tool-use 已于 F-002 退役。
     if (
         ctx.trigger == "pre-commit"
         and not ignore_changed_files
@@ -595,7 +616,7 @@ def _validate_force_reason(reason: Optional[str]) -> Optional[str]:
     return None
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def _real_main(argv: Optional[list[str]] = None) -> int:
     """runner 主入口（F-022 round-3 补 docstring，与 submit.py:60 风格一致）。
 
     参数：argv — CLI 参数列表；None 时取 sys.argv[1:]（CLI 直跑场景）。
@@ -603,8 +624,7 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     流程：
       1. parse_args → trigger 白名单 / req-id 路径穿越校验在 build_context 内做
-      2. load_registry：S1~S10 schema 校验；pre-tool-use 触发器开 validate_only_ids
-         冷启动优化（只 import 候选 plugin，节省 ~12ms）
+      2. load_registry：S1~S10 schema 校验（pre-tool-use 已于 F-002 退役，冷启动优化已移除）
       3. --validate-registry：仅跑 S 校验，打印 OK 行后退 0
       4. dry-run：不执行 gate.run，按拓扑序打印执行计划后退 0
       5. 真实执行：进入 _execute_plan，含事务化 stash / commit_staged_writes / rollback /
@@ -625,10 +645,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             file=sys.stderr,
         )
 
-    # F-018：pre-tool-use 高频路径冷启动优化
+    # F-002：pre-tool-use 高频路径优化已删除
     validate_only_ids: Optional[set[str]] = None
-    if args.trigger == "pre-tool-use":
-        validate_only_ids = {"GATE-PROTECT-BRANCH", "GATE-BASH-WRITE-PROTECT"}
 
     try:
         registry_data = load_registry(validate_only_ids=validate_only_ids)
@@ -1039,6 +1057,30 @@ def _log_gate_start(ctx: GateContext, gate_id: str) -> None:
         f"requirement_id={ctx.requirement_id or '-'}",
         file=sys.stderr,
     )
+
+
+def main(argv: Optional[list[str]] = None) -> int:
+    """顶层包装：拦截非 SystemExit 的 BaseException → 写 /tmp/run-py-error.log → return 2。
+
+    F-004 native §4.1：trigger 层把退 2 视为 fail-open（不锁死 Claude）。
+    submit.py 已用 runner.main() 调用——签名/行为不变。
+    """
+    try:
+        return _real_main(argv)
+    except SystemExit:
+        # argparse 正常 exit，不拦截
+        raise
+    except BaseException:  # noqa: BLE001
+        import datetime as _datetime
+        import traceback as _traceback
+        try:
+            ts = _datetime.datetime.now().isoformat()
+            trace = _traceback.format_exc()
+            with open("/tmp/run-py-error.log", "a", encoding="utf-8") as _ef:
+                _ef.write(f"[{ts}]\n{trace}\n")
+        except Exception:
+            pass
+        return 2
 
 
 if __name__ == "__main__":

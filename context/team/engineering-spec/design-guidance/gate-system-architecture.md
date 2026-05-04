@@ -150,7 +150,7 @@ PreToolUse Hook
 | 输入 | stdin 为 Claude Code Hook JSON：`tool_name` / `tool_input.{file_path,command}` |
 | 输出 | `exit 0` = 放行；`exit 2` = 阻断（stderr 文本回传给 Agent）；任何意外 → trap → `exit 0` |
 | stderr 用途 | 阻断时输出"为什么阻断 + 怎么规避"；fail-open 自身错误不写 stderr，写 `/tmp/guard-error.log` |
-| 依赖 | `bash 4+`、`git`、`grep`、`jq`（如 jq 不可用，回退到 `python3 -c "import json,sys;..."`） |
+| 依赖 | `bash 4+`、`git`、`grep`、`jq`（如 jq 不可用：`jq` 命令失败 → 赋值非零 → ERR trap → exit 0 fail-open；不实现 python3 fallback，REQ-2026-006 detail-design §2.5 决议） |
 
 **实现骨架（按短路顺序）**
 
@@ -254,6 +254,12 @@ main "$@"
 | 自定义错误信息含"规避方式" | 避免 Agent 反复重试浪费 token |
 | jq 解析 JSON | 比 bash regex 健壮；jq 不可用时回退 python3 |
 | pattern 写在脚本里 | YAGNI——一年改不到一次，YAML 化是过度抽象 |
+
+**已知限制**
+
+| 项 | 说明 |
+|---|---|
+| 字面量匹配 | 12 类正则仅匹配命令行中字面量出现的 review 路径；变量间接引用是已知绕过通道，由 BYPASS reason 长度 ≥ 8 + audit reason 全文 + PR review 人工检查共同兜底（REQ-2026-006 F-002 决策） |
 
 ### 4.2 `scripts/lib/audit_async.sh`
 

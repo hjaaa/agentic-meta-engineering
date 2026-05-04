@@ -58,7 +58,8 @@ def test_deprecation_warning_when_old_name_used(capsys):
     `[DEPRECATED] use --bypass-review-blockers instead, removed at 2026-11-01`。
     """
     runner_mod.main([
-        "--trigger=pre-tool-use",
+        "--trigger=submit",
+        "--req=REQ-2099-001",
         "--force-with-blockers=旧",
     ])
     captured = capsys.readouterr()
@@ -67,7 +68,8 @@ def test_deprecation_warning_when_old_name_used(capsys):
 
 def test_no_deprecation_when_new_name_used(capsys):
     runner_mod.main([
-        "--trigger=pre-tool-use",
+        "--trigger=submit",
+        "--req=REQ-2099-001",
         "--bypass-review-blockers=新",
     ])
     captured = capsys.readouterr()
@@ -75,7 +77,7 @@ def test_no_deprecation_when_new_name_used(capsys):
 
 
 def test_no_deprecation_when_neither_provided(capsys):
-    runner_mod.main(["--trigger=pre-tool-use"])
+    runner_mod.main(["--trigger=submit", "--req=REQ-2099-001"])
     captured = capsys.readouterr()
     assert "DEPRECATED" not in captured.err
 

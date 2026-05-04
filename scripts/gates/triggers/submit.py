@@ -20,6 +20,30 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+# ---- BEGIN: REQ-2026-006 trigger 入口 audit 留痕（仅记录，不 sys.exit） ----
+import os as _os
+if _os.environ.get("CLAUDE_GATES_GLOBAL_BYPASS"):
+    _submit_reason = _os.environ["CLAUDE_GATES_GLOBAL_BYPASS"]
+    # F-004 carryover-1：转义换行符（防止 audit log 行被注入）+ 长度校验（guard.sh 三入口一致性）
+    _submit_reason = _submit_reason.replace("\n", " ").replace("\r", " ")
+    if len(_submit_reason.strip()) >= 8:
+        try:
+            from datetime import datetime as _dt
+            # Codex P1：audit root 必须与 audit_flush.py 一致——锚到 repo 根而非 cwd，
+            # 允许 CLAUDE_GATES_AUDIT_ROOT 覆盖（测试隔离用）。submit.py 在 scripts/gates/triggers/，
+            # 故 parent.parent.parent.parent。
+            _audit_root = _os.environ.get("CLAUDE_GATES_AUDIT_ROOT") or str(
+                Path(__file__).resolve().parent.parent.parent.parent
+            )
+            _q = Path(_audit_root) / "audit" / ".queue" / f"{_dt.now():%Y-%m-%d}.log"
+            _q.parent.mkdir(parents=True, exist_ok=True)
+            with _q.open("a") as _f:
+                _f.write(f"{_dt.now().isoformat()} {_os.getcwd()} BYPASS used: {_submit_reason} @ entry=trigger:submit\n")
+        except Exception:
+            pass
+    # 不 sys.exit——继续走 run.py，让 run.py 的顶部 bypass 检查兜底退出
+# ---- END: REQ-2026-006 ----
+
 # 把 scripts/gates 加入 import 路径，复用 run.py 的 main()
 _TRIGGER_DIR = Path(__file__).resolve().parent
 _GATES_DIR = _TRIGGER_DIR.parent

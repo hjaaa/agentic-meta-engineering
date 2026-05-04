@@ -27,7 +27,7 @@
     "PreToolUse": [
       {
         "matcher": "Bash|Edit|Write|MultiEdit",
-        "hooks": [{"type": "command", "command": ".claude/hooks/protect-branch.sh"}]
+        "hooks": [{"type": "command", "command": ".claude/hooks/pre-tool-use-guard.sh"}]
       }
     ],
     "SessionEnd": [
@@ -37,6 +37,10 @@
           {
             "type": "command",
             "command": ".claude/hooks/extract-experience.sh"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/audit-flush.sh"
           }
         ]
       }

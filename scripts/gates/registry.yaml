@@ -234,44 +234,6 @@ gates:
     tests:
       fixtures: [pass, fail, skip]
 
-  - id: GATE-PROTECT-BRANCH
-    plugin: protect_branch
-    severity: error
-    triggers:
-      - pre-tool-use
-    applies_when:
-      changed_files: []
-      target_phase: null
-      current_phase_in: []
-      transition: null
-      requires: []
-    dependencies: []
-    side_effects: none
-    failure_message: |
-      {gate_id} 失败：{message}
-      修复建议：{fix_hint}
-    tests:
-      fixtures: [pass, fail, skip]
-
-  - id: GATE-BASH-WRITE-PROTECT
-    plugin: bash_write_protect
-    severity: error
-    triggers:
-      - pre-tool-use
-    applies_when:
-      changed_files: []
-      target_phase: null
-      current_phase_in: []
-      transition: null
-      requires: []
-    dependencies: []
-    side_effects: none
-    failure_message: |
-      {gate_id} 失败：{message}
-      修复建议：{fix_hint}
-    tests:
-      fixtures: [pass, fail, skip]
-
   - id: GATE-GH-AUTH
     plugin: gh_auth
     severity: error
@@ -386,10 +348,10 @@ escape_hatches:
     requires_reason: true
     audit: true
 
-  # F-003 round-2：补全详设 §1 第三条 escape_hatch（bash_write_protect 的 env 双轨白名单）
+  # F-002：GATE-BASH-WRITE-PROTECT 已删除；保留此项供历史参考（不使用）
   - id: bypass-bash-write
     env_var: CLAUDE_GATES_BYPASS
     requires_reason_var: CLAUDE_GATES_BYPASS_REASON
-    skips_gates: [GATE-BASH-WRITE-PROTECT]
+    skips_gates: []
     requires_reason: true
     audit: true

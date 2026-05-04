@@ -8,8 +8,8 @@
 
 precheck：
   - trigger=ci 时，CI 环境 checkout 出来始终是干净的，直接 Skip；
-  - trigger=pre-tool-use 时，非文件写操作直接 Skip；
   - 其他 trigger 一律继续。
+  （pre-tool-use 已于 F-002 退役）
 
 stash 残留过滤（F-004 round-4）：
   state_io.stash_state 在 _run_gates 前为 write_state plugin（如 GATE-REVIEW-VERDICT）

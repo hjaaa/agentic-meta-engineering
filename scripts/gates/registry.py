@@ -10,7 +10,7 @@
 
 F-012 round-2 拆出：从 run.py 抽出，run.py 通过 re-export 保持向后兼容。
 F-018 round-2：load_registry 加 validate_only_ids 参数，pre-tool-use 高频路径
-冷启动只 import 候选 plugin，节省 ~12ms。
+冷启动优化（F-002：pre-tool-use 已删除，不再使用此参数；参数保留供历史参考）。
 """
 from __future__ import annotations
 
@@ -49,14 +49,12 @@ def load_registry(
 
     参数：
       path              — registry.yaml 路径；None 时回退到模块级 REGISTRY_PATH（保证测试期 monkeypatch 生效）。
-      validate_only_ids — 仅对这些 gate id 跑 S2 import 校验（pre-tool-use 高频路径冷启动优化，
-                          F-018 review 建议）；None 表示全量校验。S1/S5/S6/S7 仍跑全量，
-                          保证依赖图与 schema 完整性不被绕过。
+      validate_only_ids — （F-002：pre-tool-use 已删除，此参数不再使用；保留供向后兼容）
+                          仅对这些 gate id 跑 S2 import 校验（原用于冷启动优化）；
+                          None 表示全量校验。S1/S5/S6/S7 仍跑全量，保证依赖图与 schema 完整性不被绕过。
 
     场景：
-      - make gates-validate / ci 路径：validate_only_ids=None → 全量 12 个 plugin import + 拓扑
-      - pre-tool-use Hook 路径：validate_only_ids={GATE-PROTECT-BRANCH, GATE-BASH-WRITE-PROTECT}
-        → 仅 import 这两个 plugin，省去 ~12ms 冷启动开销
+      - make gates-validate / ci 路径：validate_only_ids=None → 全量 plugin import + 拓扑
     """
     if path is None:
         path = REGISTRY_PATH
@@ -159,7 +157,7 @@ def _validate_one_entry(entry: dict[str, Any], skip_import: bool = False) -> Non
 
     skip_import=True 时跳过 S2 的 importlib.import_module + GATE_CLASS 检查，
     仅做纯字符串字段校验（plugin 必填 + plugin_path 文件存在）。
-    用于 pre-tool-use 高频路径冷启动优化（F-018），白名单外 gate 不触发模块加载。
+    保留以支持按需加载优化；pre-tool-use 已于 F-002 退役。
 
     F-013 round-3：把 6 段独立 if 链拆为 _validate_s2_plugin / _validate_s3_triggers /
     _validate_s4_severity / _validate_s8_fixtures / _validate_s9_requires /

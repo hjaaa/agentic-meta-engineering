@@ -1,0 +1,83 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-006-definition-001",
+  "requirement_id": "REQ-2026-006",
+  "phase": "definition",
+  "reviewer": "requirement-quality-reviewer",
+  "reviewed_at": "2026-05-03 23:56:40",
+  "reviewed_commit": "87ea14a",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/requirement.md",
+      "sha256": "24a8626b77c7adaf6eeb5638286f670edf7187b37510f273c7ad53785ca8e406"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 88,
+  "dimensions": {
+    "completeness": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 73-74 行：V-03/V-04/V-05 仅覆盖 spec §6.3 故障注入 5 条中的 3 条（NameError 注入、audit 555 权限、BYPASS）。spec §6.3 另两条「guard.sh 改坏 chmod -x」「guard.sh 文件被删」被 spec 自身标注「不归我们管，框架兜底」，可合理裁剪但建议在「非功能需求」或 V-04 备注里显式声明「框架级故障由 Claude Code 兜底，不在本需求测试范围」，避免后续测试阶段重新争论。"
+        }
+      ]
+    },
+    "consistency": {
+      "score": 92,
+      "issues": []
+    },
+    "traceability": {
+      "score": 95,
+      "issues": []
+    },
+    "clarity": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 32 行：场景 1「角色」仅写「主 Agent（Claude）」，但 PreToolUse hook 对所有 Agent（含 subagent）生效，措辞建议改为「任意 Agent（主 Agent 或子 Agent）」，避免误导后续测试只覆盖主 Agent 路径。"
+        },
+        {
+          "severity": "minor",
+          "description": "第 77 行：V-08「热路径文件数 = 1（仅 pre-tool-use-guard.sh）」未明示「热路径」定义边界。第 83 行 scripts/lib/audit_async.sh 虽然不在 PreToolUse hook 链路，但若读者按文件名直觉可能误认为它属热路径；建议 V-08 补充一句「热路径=PreToolUse hook 触发的同步执行链路；audit_async.sh 由 run.py 在低频 trigger 中调用，不计入」。"
+        }
+      ]
+    },
+    "testability": {
+      "score": 82,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 76 行：V-07「锁死复现率 = 0%」未约定样本量与判定阈值。建议在 detail-design 阶段细化为「向 run.py 顶部依次注入 NameError / KeyError / ImportError / AttributeError 各 1 次（共 4 次），每次后立即调用 Edit 工具，4 次均不阻断工具调用 → 复现率 0/4」，使「0%」有可执行的分母。"
+        },
+        {
+          "severity": "minor",
+          "description": "第 75 行：V-06 已标注 [待用户确认] 是合法三态，但与 V-07/V-08 不同的是 V-06 当前完全无可执行步骤；建议在「待澄清清单」第 1 条里明确「在 detail-design 评审通过前，V-06 不计入 testing 阶段验收，避免测试阶段卡门」。"
+        }
+      ]
+    },
+    "business_rationale": {
+      "score": 92,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "建议在「非功能需求」段或 V-04 注脚里显式声明「guard.sh 文件被删 / chmod -x 等框架级故障，由 Claude Code 兜底，不在本需求测试范围」，对齐 spec §6.3 表头注释。",
+    "建议在 V-08 下方补一行「热路径」定义（PreToolUse hook 同步执行链路），把 audit_async.sh 排除在该口径外。",
+    "建议在「待澄清清单」第 1 条尾部追加「V-06 在 detail-design 评审通过前，testing 阶段不卡门」。"
+  ],
+  "scope": null,
+  "supersedes": null,
+  "project_specific_issues": [
+    "项目索引未声明特殊并发/合规约束；本需求改的是门禁系统自身，最大项目级约束是「自举死锁」——requirement.md 第 17 行已显式列入背景缺陷 #2，并在场景 3（A1 全局逃生）+ D-007（PR-1 先合保留新旧并行窗口）双重兜底，对应 spec §1.2.2 与 §5 顺序约束，无遗漏。"
+  ],
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-04T00:13:01.802563+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
+  }
+}

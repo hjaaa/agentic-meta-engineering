@@ -118,7 +118,7 @@ def test_escape_hatch_misses_when_escape_lacks_skips_field():
 # ====================== trigger 限制 ======================
 
 
-@pytest.mark.parametrize("trigger", ["ci", "post-dev", "pre-commit", "pre-tool-use"])
+@pytest.mark.parametrize("trigger", ["ci", "post-dev", "pre-commit"])
 def test_escape_hatch_only_active_on_phase_transition_or_submit(trigger):
     """非 phase-transition/submit trigger 时，即便 reason + tag 命中也不放行。"""
     ctx = _make_ctx()
