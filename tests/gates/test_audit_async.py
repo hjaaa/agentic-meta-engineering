@@ -75,6 +75,55 @@ def test_write_audit_subprocess_contains_audit_json():
         assert "runner" in cmd_str, "entry='runner' 应在 subprocess 命令中"
 
 
+def test_write_audit_bash_cmd_json_is_first_arg():
+    """given_audit_dict_when_write_audit_then_bash_cmd_has_json_as_dollar1_not_audit_prefix.
+
+    验证 F-004 bugfix：bash 命令展开后 $1 是 JSON 本身，不含 'audit ' 前缀。
+    bash_cmd 应该是：audit_append_async '{JSON}' 'runner'
+    而非旧的错误格式：audit_append_async audit '{JSON}' runner
+    """
+    audit_dict = _make_audit_dict("ci")
+    with patch("audit.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0)
+        audit.write_audit(audit_dict)
+        assert mock_run.called
+        call_args = mock_run.call_args
+        # 取 bash -c 后面的命令字符串
+        bash_cmd = call_args[0][0][2]  # args[0] = ["bash", "-c", "<cmd>"]
+        # 断言：不含 "audit_append_async audit " 这个错误格式
+        assert "audit_append_async audit " not in bash_cmd, (
+            "bash 命令不应包含 'audit' 前缀参数（旧错误格式）"
+        )
+        # 断言：命令中包含 schema_version（JSON 本身是 $1）
+        assert "schema_version" in bash_cmd, "JSON payload 应作为 $1 出现在命令中"
+        # 断言：'runner' 作为 $2 出现（加了单引号的形式）
+        assert "'runner'" in bash_cmd, "entry name 'runner' 应加单引号作为 $2"
+
+
+def test_write_audit_bash_cmd_json_parseable():
+    """given_audit_dict_when_write_audit_then_bash_cmd_contains_parseable_json_payload.
+
+    验证 bash 命令中提取出的 JSON 片段可以 json.loads 解析。
+    格式期望：audit_append_async '<JSON>' 'runner'
+    """
+    audit_dict = _make_audit_dict("ci")
+    with patch("audit.subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0)
+        audit.write_audit(audit_dict)
+        assert mock_run.called
+        bash_cmd = mock_run.call_args[0][0][2]  # ["bash", "-c", "<cmd>"]
+        # 提取 audit_append_async 后的第一个 shlex quoted 参数（即 JSON）
+        import shlex
+        tokens = shlex.split(bash_cmd.split("&&", 1)[-1].strip())
+        # tokens[0] = "audit_append_async", tokens[1] = <JSON>, tokens[2] = "runner"
+        assert tokens[0] == "audit_append_async"
+        json_payload = tokens[1]
+        parsed = json.loads(json_payload)
+        assert parsed["schema_version"] == "1.0"
+        assert parsed["trigger"] == "ci"
+        assert tokens[2] == "runner", f"第三个 token 期望 'runner'，实际 {tokens[2]!r}"
+
+
 def test_write_audit_subprocess_timeout_is_2():
     """given_write_audit_when_subprocess_called_then_timeout_is_2（防卡住）。"""
     audit_dict = _make_audit_dict("ci")

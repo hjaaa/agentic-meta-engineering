@@ -124,13 +124,13 @@ def write_audit(audit: dict[str, Any]) -> Path:
     try:
         # 序列化为紧凑 JSON（不换行）
         audit_line = json.dumps(audit, ensure_ascii=False, separators=(",", ":"))
-        # shlex.quote 防注入（R2 修订）
-        event_line = f"audit {shlex.quote(audit_line)}"
+        # shlex.quote 防注入（R2 修订）；$1=JSON行，不加 "audit" 前缀（F-004 bugfix）
+        event_line = shlex.quote(audit_line)
         # 定位 audit_async.sh 相对路径（相对于仓库根）
         audit_async_sh = Path(__file__).resolve().parent.parent / "lib" / "audit_async.sh"
         subprocess.run(
             ["bash", "-c",
-             f"source {shlex.quote(str(audit_async_sh))} && audit_append_async {event_line} runner"],
+             f"source {shlex.quote(str(audit_async_sh))} && audit_append_async {event_line} 'runner'"],
             timeout=2,
             capture_output=True,
         )
