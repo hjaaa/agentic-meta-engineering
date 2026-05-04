@@ -22,3 +22,6 @@
 2026-05-04 13:14:07 [development] F-002 done（commits: 0c0ebd3 init / 46a40d8 tech-feasibility refs；review looks_clean→signoff approved by hj19961223@gmail.com）
 2026-05-04 13:17:06 [save] development 阶段进度——F-001+F-002 已 done（2/4 PR）；next: F-003 PR-3 全局 BYPASS 三处入口 + 4 处 carryover stale 注释清理；F-004 PR-4 待派
 2026-05-04 13:35:58 [review:needs_attention] REV-REQ-2026-006-code-F-003-001 score=87（0 critical / 0 major / 4 minor）；3 处 minor 集中在三入口 reason 处理一致性，建议下一 PR 收口
+2026-05-04 13:37:48 [signoff] REV-REQ-2026-006-code-F-003-001 approved by hj19961223@gmail.com
+2026-05-04 13:38:13 [signoff] REV-REQ-2026-006-code-F-003-001 approved by hj19961223@gmail.com
+2026-05-04 13:38:13 [development] F-003 done（commits: b7e0b0f impl / e74cc43 review+carryover；review needs_attention→signoff approved by hj19961223@gmail.com；4 minor carryover→F-004）
