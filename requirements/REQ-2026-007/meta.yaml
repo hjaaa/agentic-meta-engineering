@@ -17,14 +17,14 @@ gates_passed:
   - {phase: outline-design, at: "2026-05-04 20:02:55", gates: [GATE-META-SCHEMA, 
           GATE-INDEX-INTEGRITY, GATE-SOURCING, GATE-PLAN-FRESHNESS, 
           GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY]}
-  - {phase: detail-design, at: "2026-05-04 21:27:11", gates: [GATE-META-SCHEMA,
-          GATE-INDEX-INTEGRITY, GATE-SOURCING, GATE-PLAN-FRESHNESS,
+  - {phase: detail-design, at: "2026-05-04 21:27:11", gates: [GATE-META-SCHEMA, 
+          GATE-INDEX-INTEGRITY, GATE-SOURCING, GATE-PLAN-FRESHNESS, 
           GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY]}
-  - {phase: task-planning, at: "2026-05-04 21:56:33", gates: [GATE-META-SCHEMA,
-          GATE-INDEX-INTEGRITY, GATE-SOURCING, GATE-PLAN-FRESHNESS,
+  - {phase: task-planning, at: "2026-05-04 21:56:33", gates: [GATE-META-SCHEMA, 
+          GATE-INDEX-INTEGRITY, GATE-SOURCING, GATE-PLAN-FRESHNESS, 
           GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY]}
-  - {phase: development, at: "2026-05-04 22:00:51", gates: [GATE-META-SCHEMA,
-          GATE-INDEX-INTEGRITY, GATE-SOURCING, GATE-PLAN-FRESHNESS,
+  - {phase: development, at: "2026-05-04 22:00:51", gates: [GATE-META-SCHEMA, 
+          GATE-INDEX-INTEGRITY, GATE-SOURCING, GATE-PLAN-FRESHNESS, 
           GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY]}
 pr_url: ""                            # /requirement:submit 成功后回写
 pr_number: 0                          # /requirement:submit 成功后回写
@@ -72,4 +72,4 @@ reviews:
     history:
       - REV-REQ-2026-007-detail-design-001
       - REV-REQ-2026-007-detail-design-002
-    stale: false
+    stale: true

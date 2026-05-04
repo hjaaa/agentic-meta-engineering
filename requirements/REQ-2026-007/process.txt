@@ -14,3 +14,4 @@
 2026-05-04 21:57:00 [phase-transition] detail-design → task-planning (7 gates ✓)
 2026-05-04 21:59:32 [task-planning] [save] features.json 拆分为 4 个任务文件（F-001..F-004），状态全 pending
 2026-05-04 22:01:04 [phase-transition] task-planning → development (7 gates ✓)
+2026-05-04 22:03:12 [development] F-002 派发（model=haiku, complexity=low, warm-up）
