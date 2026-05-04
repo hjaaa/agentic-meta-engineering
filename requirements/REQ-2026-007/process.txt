@@ -2,3 +2,4 @@
 2026-05-04 19:25:55 [phase-transition] bootstrap → definition (6 error gates ✓, plan.md W001/W003 待 definition 修复)
 2026-05-04 19:39:08 [phase-transition] definition → tech-research (7 gates ✓)
 2026-05-04 19:56:21 [tech-research] [save] 澄清 Codex bot 识别策略：双条件 user.type=Bot + /codex/i 匹配 user.login（API 字段非登录动作）
+2026-05-04 20:03:56 [phase-transition] tech-research → outline-design (7 gates ✓)
