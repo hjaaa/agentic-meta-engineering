@@ -13,3 +13,4 @@
 2026-05-04 12:08:28 [phase-transition] task-planning → development；7 条门禁全通过（META-SCHEMA / INDEX-INTEGRITY / SOURCING / WORKSPACE-CLEAN / REVIEW-VERDICT / TRACEABILITY / PLAN-FRESHNESS）
 2026-05-04 12:12:32 [development] F-001 派发 implementer subagent（complexity=medium → general-purpose + sonnet）
 2026-05-04 12:43:13 [review:needs_attention] REV-REQ-2026-006-code-F-001-001 score=78（3 major / 10 minor / 0 blocker）；must_fix=[F-1 hyperfine, F-2 BYPASS长度]；carryover=[F-3 变量绕过, F-9 Python降级] → F-002
+2026-05-04 12:48:30 [development] F-001 R1 修复落盘（commit 8b627d1，bats 30/30 + V-06 hyperfine < 5ms）；F-3/F-9 carryover 写入 F-002 任务卡（含 A/B/C 决策提示）
