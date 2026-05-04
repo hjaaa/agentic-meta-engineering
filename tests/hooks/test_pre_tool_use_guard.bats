@@ -138,6 +138,24 @@ teardown() {
   [ "$status" -eq 0 ]
 }
 
+@test "BYPASS reason too short (1 char) is rejected" {
+  git checkout -qb develop
+  run bash -c "echo '{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"a.txt\"}}' | env CLAUDE_GATES_GLOBAL_BYPASS=1 $GUARD"
+  [ "$status" -eq 2 ]
+}
+
+@test "BYPASS reason too short (7 chars) is rejected" {
+  git checkout -qb develop
+  run bash -c "echo '{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"a.txt\"}}' | env CLAUDE_GATES_GLOBAL_BYPASS=tooShrt $GUARD"
+  [ "$status" -eq 2 ]
+}
+
+@test "BYPASS reason length 8 is accepted" {
+  git checkout -qb develop
+  run bash -c "echo '{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"a.txt\"}}' | env CLAUDE_GATES_GLOBAL_BYPASS=fix-test $GUARD"
+  [ "$status" -eq 0 ]
+}
+
 # ===== V-01 第 6 类：fail-open（stdin 非 JSON / git 不在 PATH / tool_name 缺失） =====
 
 @test "fail-open: stdin not JSON" {
@@ -172,4 +190,18 @@ teardown() {
 @test "negative: read tool other path should not block" {
   run bash -c "echo '{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"src/foo.py\"}}' | $GUARD"
   [ "$status" -eq 0 ]
+}
+
+# ===== V-06：hyperfine 100 runs 均值 < 5ms =====
+
+@test "V-06 hyperfine 100 runs avg < 5ms" {
+  command -v hyperfine >/dev/null || skip "hyperfine not installed"
+  # 用 echo '{}' 喂 fail-open 路径（最稳定的最短路径——tool_name 缺失即 fail-open exit 0）
+  run hyperfine --warmup 5 --runs 100 --export-json /tmp/v06.json \
+    -N "echo '{}' | $GUARD"
+  [ "$status" -eq 0 ]
+  # 解析 JSON 拿 mean，断言 < 5ms（5e-3 秒）
+  local mean
+  mean=$(python3 -c "import json,sys; print(json.load(open('/tmp/v06.json'))['results'][0]['mean'])")
+  python3 -c "import sys; sys.exit(0 if float('$mean') < 0.005 else 1)"
 }

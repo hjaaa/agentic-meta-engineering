@@ -37,9 +37,20 @@ audit_log() {
 }
 
 main() {
-  # 0. 全局逃生（A1）
-  if [[ -n "${CLAUDE_GATES_GLOBAL_BYPASS:-}" ]]; then
-    audit_log "BYPASS used: ${CLAUDE_GATES_GLOBAL_BYPASS}"
+  # 0. 全局逃生（A1）——要求 reason 长度 >= 8（防止 BYPASS=1 类无意义值）
+  local _bypass="${CLAUDE_GATES_GLOBAL_BYPASS:-}"
+  if [[ -n "$_bypass" ]]; then
+    if (( ${#_bypass} < 8 )); then
+      cat >&3 <<EOF
+BLOCKED: CLAUDE_GATES_GLOBAL_BYPASS reason 太短（${#_bypass} 字符，要求 >= 8）。
+请提供有意义的原因，例如：CLAUDE_GATES_GLOBAL_BYPASS="emergency-fix-pr-123"。
+EOF
+      exit 2
+    fi
+    # audit 写 reason 全文（替换控制字符为可见形式以防 audit 行被换行注入）
+    local _safe_reason="${_bypass//$'\n'/\\n}"
+    _safe_reason="${_safe_reason//$'\r'/\\r}"
+    audit_log "BYPASS used: ${_safe_reason}"
     exit 0
   fi
 

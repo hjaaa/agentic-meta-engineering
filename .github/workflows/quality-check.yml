@@ -30,6 +30,12 @@ jobs:
             sudo apt-get update && sudo apt-get install -y bats
           fi
 
+      - name: Install hyperfine
+        run: |
+          if ! command -v hyperfine >/dev/null; then
+            sudo apt-get install -y hyperfine
+          fi
+
       # 该 step 通过 scripts/gates/run.py --trigger=ci --strict 收敛旧 5 step。
       # 如需临时放行 INDEX warning，应优先加 scripts/lib/index-config.yaml 的 ignore 白名单
       # （需 PR review）而非关 strict；legacy review escape_hatch 见 registry.yaml。
