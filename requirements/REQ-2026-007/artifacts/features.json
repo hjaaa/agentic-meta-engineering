@@ -100,7 +100,7 @@
         "TC-F3-6: pytest test_three_prompts_no_path 绿（三问全 N → 三 outcome=skipped + meta + process.txt 仍写）",
         "TC-F3-7: pytest test_failure_degradation 绿（experience 调用 raise → outcome=failed + archive exit 0；git branch -d 拒绝 → outcome=failed 透传 error；远程已删 → outcome=already-deleted）",
         "TC-F3-8: V-01 沙盒 REQ-2099-007 跑 archive：phase=completed + archived_at 写入 + process.txt [archived] 事件追加 + 终端反馈 5 行格式正确（spec §5.3）",
-        "TC-F3-9: V-08 自举——本需求 PR merge 后跑 /requirement:archive，验证命令：`yq '.archived_at' requirements/REQ-2026-007/meta.yaml` 输出非空 ISO8601 字符串 + `grep '\\[archived\\]' requirements/REQ-2026-007/process.txt | wc -l` 等于 1（幂等校验）；archive 失败重试场景由 §4.3 [archived] 幂等约束兜底"
+        "TC-F3-9: V-08 自举——本需求 PR merge 后跑 /requirement:archive，验证命令：`yq '.archived_at' requirements/REQ-2026-007/meta.yaml` 输出非空 ISO8601 字符串 + `grep -c '\\[archived\\]' requirements/REQ-2026-007/process.txt` 等于 1（幂等校验）；archive 失败重试场景由 §4.3 [archived] 幂等约束兜底"
       ]
     },
     {

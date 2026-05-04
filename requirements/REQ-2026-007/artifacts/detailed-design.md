@@ -388,10 +388,18 @@ CODEX_REVIEWER_USER_TYPE     = "Bot"
 #### 3.3.3 轮询 + 命中判定伪码
 
 ```python
+# 注：以下三个异常类由 F-004 在 scripts/lib/submit_codex.py 内定义，不对外暴露。
+# 模块内 _gh_pr_reviews 调用 gh CLI / requests 时按 HTTP 状态码分流抛出。
 import time, re, json
 
 class GhApiAbort(Exception):
     """连续 5xx 超阈值，调用方走 exit 1 路径。"""
+
+class GhApi5xx(Exception):
+    """单次 5xx 响应，进入 consecutive_5xx 计数器。"""
+
+class GhApi429(Exception):
+    """限流响应，立即短路走 timeout 路径。"""
 
 def _poll_codex(pr_num: int, triggered_at_iso: str,
                 interval: int, timeout: int) -> Optional[dict]:
@@ -604,7 +612,7 @@ state: COMMENTED                           # str，GitHub review state 原值，
 字段约束：
 
 - `round` ≥ 1，与 `requirements/<id>/artifacts/codex-reviews/round-*.md` 文件名严格一致（不允许重号、跳号）
-- `reviewer` 含 `[bot]` 后缀的 GitHub App login 必须 **quote**（YAML safe_load 否则把 `[bot]` 视为 flow-style list）；同理 ISO8601 含 `:` 的字段也建议 quote 防解析为 sexagesimal
+- `reviewer` 含 `[bot]` 后缀的 GitHub App login 必须 **quote**（YAML safe_load 否则把 `[bot]` 视为 flow-style list）；同理 ISO8601 含 `:` 的字段也建议 quote 防解析为 sexagesimal；`review_id` 也建议 quote 防 GitHub 未来扩到 >2^53 时 YAML 数字精度丢失
 - 必填字段缺失或类型错误 → submit --codex 后续解析直接 exit 1
 - timeout verdict 时仅 `round / triggered_at / verdict` 三字段必填，其他可省
 
