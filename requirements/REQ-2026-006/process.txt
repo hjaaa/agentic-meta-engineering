@@ -9,3 +9,4 @@
 2026-05-04 11:46:19 [save] detail-design 产出物落盘：detailed-design.md + features.json（F-001~F-004，5.9 人天）；待评审
 2026-05-04 12:02:47 [signoff] REV-REQ-2026-006-detail-design-002 approved by hj19961223@gmail.com
 2026-05-04 12:03:50 [phase-transition] detail-design → task-planning；7 条门禁全通过（META-SCHEMA / INDEX-INTEGRITY / SOURCING / WORKSPACE-CLEAN / REVIEW-VERDICT / TRACEABILITY / PLAN-FRESHNESS）
+2026-05-04 12:07:30 [task-planning] 拆分 features.json → 4 张任务卡（F-001~F-004，pending；总 5.9 人天；依赖图 F-001 → F-002 → F-003,F-004 可并行）
