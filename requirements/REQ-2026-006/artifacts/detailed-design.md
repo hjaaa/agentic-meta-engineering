@@ -715,9 +715,16 @@ if __name__ == "__main__":
 |---|---|---|---|
 | `_collect_logs(queue_dir: Path) -> list[Path]` | queue 目录 | log 文件列表 | glob `*.log`；queue 不存在返回 [] |
 | `_parse_lines(log: Path) -> list[dict]` | 单 log | record 列表 | 行格式 `<ts> <cwd> <event> @ entry=<name>` 解析 |
-| `_dispatch(records: list[dict]) -> dict[str, list[dict]]` | 全部 record | by entry 分桶 | 按 entry name 分组 |
-| `_write_buckets(by_entry, out_dir: Path) -> None` | 分桶 / 输出目录 | None | 每 entry 写一个 JSON；append 模式 |
-| `_archive_logs(logs: list[Path], done_dir: Path) -> None` | log / archive 目录 | None | mv 到 .queue.done/<日期>/ |
+| `_dispatch(queue_dir: Path, audit_dir: Path, queue_done_dir: Path, dry_run: bool) -> None` | 三处目录 + dry_run | None | 协调器：进程锁 + collect → parse → 按 entry×date 双层分桶 → write → archive；任何子步骤失败静默继续（D-005 best-effort） |
+| `_write_buckets(buckets: dict[str, dict[date, list[str]]], audit_dir: Path, dry_run: bool) -> None` | 双层分桶 / 输出根 / dry_run | None | 每 (entry, date) 写一个 `<entry>-<YYYY-MM-DD>.json`；append 模式；dry_run 仅打印计划 |
+| `_archive_logs(log_files: list[Path], queue_done_dir: Path, archive_date: date, dry_run: bool) -> None` | log 列表 / archive 根 / 归档日期 / dry_run | None | mv 到 `.queue.done/<archive_date>/`；同名加 `.dup<N>.log`；dry_run 仅打印计划 |
+
+> **签名进化说明（2026-05-04 同步实现）**：F-004 实施时三个内部函数较初版有进化：
+> 1. `_dispatch` 从纯分桶函数（in: records → out: dict）演变为协调器（持有进程锁 + 串联 collect/parse/dispatch/write/archive 全流程）。原因：F-5 并发 flush 重复落盘问题需要进程级 `fcntl.LOCK_EX | LOCK_NB` 排他锁保护，锁的获取与释放必须在协调点而非分桶函数（commit 6710247 修复 F-5）。
+> 2. 三个函数统一新增 `dry_run` 参数，承载 CLI `--dry-run` 透传。原因：测试与排障需要"仅打印计划不动文件"模式（spec §1.2 验证抽屉）。
+> 3. `_archive_logs` 新增 `archive_date: date` 参数，把"今天"从函数内 `date.today()` 提到调用方。原因：可测性——单元测试需固定时间（`tests/lib/test_audit_flush.py` 用 freezegun）。
+>
+> 三处均为内部 helper（非对外契约），不影响 §4.4 入口契约（仍 `audit_flush.main(argv)`）。
 
 ### 4.4 `.claude/hooks/audit-flush.sh`（薄壳）
 
