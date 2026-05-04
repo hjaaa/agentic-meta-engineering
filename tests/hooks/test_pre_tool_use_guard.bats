@@ -163,6 +163,22 @@ teardown() {
   [ "$status" -eq 0 ]
 }
 
+# F-005 carryover-1：raw 长度 ≥ 8 但 strip 后 < 8 应被拒（与 Python 三入口对齐）
+@test "BYPASS reason whitespace-padded short is rejected (strip-then-check)" {
+  git checkout -qb develop
+  # 8 空格——raw 长度 8，strip 后 0；旧 raw-长度策略会通过，新 strip 策略拒绝
+  run bash -c "echo '{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"a.txt\"}}' | env 'CLAUDE_GATES_GLOBAL_BYPASS=        ' $GUARD"
+  [ "$status" -eq 2 ]
+}
+
+# F-005 carryover-1：strip 后 ≥ 8 应通过（前后空白允许）
+@test "BYPASS reason with leading/trailing whitespace stripped to 8 is accepted" {
+  git checkout -qb develop
+  # raw 长度 12，strip 后 8 → 通过
+  run bash -c "echo '{\"tool_name\":\"Edit\",\"tool_input\":{\"file_path\":\"a.txt\"}}' | env 'CLAUDE_GATES_GLOBAL_BYPASS=  fix-test  ' $GUARD"
+  [ "$status" -eq 0 ]
+}
+
 # ===== V-01 第 6 类：fail-open（stdin 非 JSON / git 不在 PATH / tool_name 缺失） =====
 
 @test "fail-open: stdin not JSON" {

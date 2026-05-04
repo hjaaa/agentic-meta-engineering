@@ -495,3 +495,134 @@ def test_validate_phase_args_returns_none_for_canonical_phases():
     import argparse
     args = argparse.Namespace(from_phase="tech-research", to_phase="outline-design")
     assert runner_mod._validate_phase_args(args) is None
+
+
+# ====================== F-005 carryover-2：V-07 BaseException 兜底 ======================
+# F-004 §4.1 引入 main() 包装：拦截 _real_main 抛出的非 SystemExit BaseException →
+# 写 /tmp/run-py-error.log → return 2（让 trigger 层把 2 视为 fail-open，不锁死 Claude）。
+
+
+def test_main_wraps_basexception_returns_2(monkeypatch):
+    """given_real_main_raises_baseexception_when_main_then_return_2_and_log。
+
+    F-005 carryover-2（F-4 minor）：BaseException 兜底分支无回归；本用例锁死。
+    实现把 traceback 写到 /tmp/run-py-error.log（hard-coded path），测试前清理。
+    """
+    err_log_path = Path("/tmp/run-py-error.log")
+    if err_log_path.exists():
+        err_log_path.unlink()
+
+    sentinel = "F-005-test-sentinel-d3e8f7"
+
+    def _boom(_argv):
+        raise RuntimeError(f"simulated failure {sentinel}")
+
+    monkeypatch.setattr(runner_mod, "_real_main", _boom)
+    try:
+        rc = runner_mod.main([])
+        assert rc == 2, f"BaseException 兜底必须 return 2（fail-open 协议），got {rc}"
+        assert err_log_path.exists(), "/tmp/run-py-error.log 应被写入"
+        content = err_log_path.read_text(encoding="utf-8")
+        assert "RuntimeError" in content
+        assert sentinel in content, "sentinel 必须在 traceback 中（确认是本测试写的）"
+    finally:
+        if err_log_path.exists():
+            err_log_path.unlink()
+
+
+def test_main_does_not_swallow_systemexit(monkeypatch):
+    """given_real_main_raises_systemexit_when_main_then_propagates。
+
+    SystemExit 是 argparse 正常退出路径，main 包装必须放行不拦截。
+    """
+    def _argparse_exit(_argv):
+        raise SystemExit(42)
+
+    monkeypatch.setattr(runner_mod, "_real_main", _argparse_exit)
+    with pytest.raises(SystemExit) as exc:
+        runner_mod.main([])
+    assert exc.value.code == 42, "SystemExit code 必须穿透不被改写"
+
+
+def test_main_basexception_with_log_write_failure_still_returns_2(monkeypatch):
+    """given_log_write_fails_when_main_baseexception_then_still_return_2。
+
+    最外层 except Exception: pass 兜底——/tmp/run-py-error.log 不可写也不该
+    把 main 自身搞崩；契约是「永远 return 2，永不 raise」。
+    """
+    def _boom(_argv):
+        raise RuntimeError("inner failure")
+
+    def _open_fails(*_a, **_kw):
+        raise OSError("disk full simulated")
+
+    monkeypatch.setattr(runner_mod, "_real_main", _boom)
+    monkeypatch.setattr("builtins.open", _open_fails)
+    rc = runner_mod.main([])
+    assert rc == 2, "log 写失败时 main 仍必须 return 2，不能 raise"
+
+
+# ====================== F-005 carryover-2：write_audit shlex.quote 注入回归 ======================
+# F-004 §4.2：audit dict 经 json.dumps 后被 shlex.quote 包成 bash $1 参数；
+# 防御目标：audit dict 中的特殊字符（' " ` $ \n 等）不能逃逸出参数边界注入命令。
+
+
+def test_write_audit_quotes_single_quote_in_payload(monkeypatch):
+    """given_audit_dict_with_single_quote_when_write_audit_then_subprocess_arg_is_quoted。
+
+    最易攻击的字符：单引号。shlex.quote 必须把它转义为 '\\''（结束 + escape + 重启）。
+    """
+    import audit as audit_mod
+    captured = {}
+
+    def _fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return type("R", (), {"returncode": 0, "stdout": b"", "stderr": b""})()
+
+    monkeypatch.setattr(audit_mod.subprocess, "run", _fake_run)
+    payload = {"trigger": "ci", "evil": "x'; rm -rf / #"}
+    audit_mod.write_audit(payload)
+
+    assert "cmd" in captured, "subprocess.run 应被调用"
+    bash_cmd = captured["cmd"][2]  # ['bash', '-c', '<cmd>']
+    # 攻击载荷不应作为裸字符串出现——必须被 shlex.quote 包裹（含单引号转义序列）
+    assert "rm -rf /" in bash_cmd  # 字面量在
+    # shlex.quote 对包含单引号的字符串会把它包在外层单引号里并将内部 ' 转成 '"'"' 或 '\''
+    # 用更严格的检验：bash 解析这段 cmd 后第一个参数等于 payload JSON
+    import shlex as _shlex
+    # 解析 audit_append_async <payload-arg> 'runner' 部分
+    # bash_cmd 形如：source <path> && audit_append_async '<json>' 'runner'
+    parts = _shlex.split(bash_cmd)
+    # 找到 audit_append_async，下一个 token 必须是完整 JSON（被 shlex 还原）
+    idx = parts.index("audit_append_async")
+    restored = parts[idx + 1]
+    import json as _json
+    assert _json.loads(restored) == payload, (
+        "shlex.quote 必须保证 payload 在 bash 解析后能完整还原"
+    )
+
+
+def test_write_audit_quotes_dollar_and_backtick(monkeypatch):
+    """given_audit_dict_with_command_substitution_chars_when_write_audit_then_no_eval。
+
+    `$( )` 和反引号是命令替换字符；shlex.quote 必须把它们当字面量。
+    """
+    import audit as audit_mod
+    captured = {}
+
+    def _fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return type("R", (), {"returncode": 0, "stdout": b"", "stderr": b""})()
+
+    monkeypatch.setattr(audit_mod.subprocess, "run", _fake_run)
+    payload = {"evil": "$(touch /tmp/pwned-$$)", "evil2": "`id`"}
+    audit_mod.write_audit(payload)
+
+    bash_cmd = captured["cmd"][2]
+    import shlex as _shlex
+    parts = _shlex.split(bash_cmd)
+    idx = parts.index("audit_append_async")
+    restored = parts[idx + 1]
+    import json as _json
+    parsed = _json.loads(restored)
+    assert parsed == payload, "命令替换字符必须被字面化保留"
