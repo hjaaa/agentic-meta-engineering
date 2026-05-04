@@ -7,6 +7,10 @@ setup() {
   TMP="$(mktemp -d)"
   cd "$TMP"
   git init -q
+  # 临时仓库本地配置 user 身份——CI runner 默认不带全局 git config，
+  # 否则 git commit 报 fatal: empty ident name
+  git config user.email "test@example.com"
+  git config user.name "test"
   # 初始 commit 使 HEAD 可解析，否则 git rev-parse --abbrev-ref HEAD 报错
   git commit --allow-empty -m "init" -q
   git checkout -qb feature/test
