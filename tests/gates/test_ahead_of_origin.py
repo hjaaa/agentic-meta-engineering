@@ -52,6 +52,8 @@ def test_skip_when_pr_open():
     assert result is not None
     assert isinstance(result, Skip)
     assert "open PR" in result.reason
+    # follow-up：Skip reason 必须带 PR number 利于事后审计
+    assert "#99" in result.reason
 
 
 def test_no_skip_when_pr_closed():

@@ -14,10 +14,22 @@ base 解析顺序（与 base_reachable._resolve_base_branch 同款）：
 
 外部依赖：
   - git CLI（系统提供，零新增依赖）
+  - gh CLI（仅 F-001 B 案 _pr_open_for_branch 用到；fail-closed 对 gh 缺失/未鉴权兜底）
   - subprocess.run（必须 mock 测试）
 
 实现约束：
   - subprocess timeout=10s（可能涉及 origin 引用的本地解析）
+
+环境变量依赖（F-001 B 案 follow-up）：
+  - 推荐用 GH_TOKEN（环境变量鉴权）调 gh，避免 gh 写本地 ~/.config/gh/{hosts,state}.yml；
+    多进程并发场景（虽然当前 GATE-AHEAD-OF-ORIGIN 仅 submit trigger 串行）下减少缓存竞争。
+  - 或设 GH_CONFIG_DIR 隔离每个进程的 gh 配置目录。
+  - 不设这两个变量也可正常工作；fail-closed 已兜底偶发鉴权异常 → 不 Skip 走主路径。
+
+已知 TOCTOU 缺口（F-001 B 案 follow-up）：
+  - precheck 时 gh pr list 看到 PR open → Skip；run 阶段 PR 可能被关闭/合并。
+  - 业务语义可接受（push 自身会拒绝重复推送），doc-grade backlog；Skip reason 已带
+    PR number 利于事后审计反查。
 """
 from __future__ import annotations
 
@@ -42,12 +54,15 @@ class AheadOfOriginGate(Gate):
     def precheck(self, ctx: GateContext) -> Optional[Skip]:
         """仅 submit trigger 生效；非 submit 直接跳过。
         B 案放宽：submit 时若当前分支已有 open PR → Skip（避免重复推导致冲突）。
+        Skip reason 带 PR number 便于事后审计（TOCTOU 异常时反查用）。
         """
         if ctx.trigger != "submit":
             return Skip(f"trigger={ctx.trigger!r} 非 submit；跳过 ahead-of-origin")
         branch = _detect_source_branch(ctx)
-        if branch and _pr_open_for_branch(branch):
-            return Skip(f"分支 {branch!r} 已有 open PR；跳过 ahead-of-origin")
+        if branch:
+            pr_num = _pr_open_for_branch(branch)
+            if pr_num is not None:
+                return Skip(f"分支 {branch!r} 已有 open PR #{pr_num}；跳过 ahead-of-origin")
         return None
 
     def run(self, ctx: GateContext) -> Report:
@@ -60,6 +75,9 @@ def _detect_source_branch(ctx: GateContext) -> str:
     """优先 ctx.cli_flags.source_branch；回退 git symbolic-ref --short HEAD。
 
     空字符串表示无法确定当前分支（detached HEAD / git 不可用）。
+
+    注意：cli_flags["source_branch"] 是 **test-only override**——run.py / submit.py 的
+    argparse 没暴露 --source-branch，仅供单测 mock 用，避免被误认为公开攻击面。
     """
     cli_flags = ctx.cli_flags or {}
     explicit = cli_flags.get("source_branch")
@@ -77,14 +95,24 @@ def _detect_source_branch(ctx: GateContext) -> str:
     return (result.stdout or "").strip()
 
 
-def _pr_open_for_branch(branch: str) -> bool:
-    """gh pr list --head <branch> --state open --limit 1 --json number；命中即 True。
+def _pr_open_for_branch(branch: str) -> Optional[int]:
+    """gh pr list --head <branch> --state open --limit 1 --json number。
 
-    fail-closed：gh 缺失 / returncode≠0 / JSON 解析失败 / branch 为空 → False
-    （不放行 skip，让主路径继续校验；避免 gh 鉴权问题导致假豁免）。
+    返回：
+      - 命中 → PR number（int），用于 Skip reason 反查审计
+      - 未命中或异常 → None（不 Skip，走主路径）
+
+    fail-closed 策略（None 路径覆盖）：
+      - branch 为空（detached HEAD / git 不可用）
+      - gh 缺失（FileNotFoundError）/ 进程异常（OSError）/ 超时
+      - returncode ≠ 0（gh 未鉴权 / 仓库无权限 / 网络异常）
+      - JSON 解析失败 / 非列表 / 空列表 / 缺 number 字段
+
+    设计意图：fail-closed 让 gh 偶发问题（鉴权失效 / 网络抖动 / 缓存竞争）
+    退化为"不 Skip 走主路径"而非"误 Skip 假豁免"，确保鉴权问题不会让门禁错误放行。
     """
     if not branch:
-        return False
+        return None
     try:
         result = subprocess.run(
             ["gh", "pr", "list", "--head", branch, "--state", "open",
@@ -92,14 +120,20 @@ def _pr_open_for_branch(branch: str) -> bool:
             capture_output=True, text=True, check=False, timeout=_GIT_TIMEOUT_SEC,
         )
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-        return False
+        return None
     if result.returncode != 0:
-        return False
+        return None
     try:
         data = json.loads(result.stdout or "[]")
     except json.JSONDecodeError:
-        return False
-    return isinstance(data, list) and len(data) > 0
+        return None
+    if not isinstance(data, list) or not data:
+        return None
+    first = data[0]
+    if not isinstance(first, dict):
+        return None
+    pr_num = first.get("number")
+    return pr_num if isinstance(pr_num, int) else None
 
 
 def _resolve_base(ctx: GateContext) -> str:
