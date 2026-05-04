@@ -194,7 +194,7 @@ state: COMMENTED  # GitHub review state 原值
 | 参数 | 默认 | 语义 |
 |---|---|---|
 | `--force` | false | 跳过 PR merged 校验（异常恢复，如手动合并） |
-| `--keep-branch` | false | 跳过删本地分支提示 |
+| `--keep-branch` | false | 跳过删本地+远程分支提示（两个一起跳） |
 | `--no-experience` | false | 跳过经验沉淀提示 |
 
 ### 5.2 预检（硬门禁）
@@ -225,11 +225,14 @@ state: COMMENTED  # GitHub review state 原值
    - n / 默认 → 跳过；不阻塞 archive 完成
    - 经验沉淀失败时：打印原始 error，archive 命令依然 exit 0（副作用动作降级）
 
-4. **询问删除本地分支**（除非 `--keep-branch`）：
-   - 提示："是否删除本地分支 `<branch>`？(y/N)"
-   - y → `git branch -d <branch>`（safe delete，git 拒绝时透传 error）
-   - n / 默认 → 跳过
-   - 不能强删（不允许 `-D`）；分支没合并到 develop 时 git 自然拒绝
+4. **询问删除分支**（除非 `--keep-branch`，两问串行）：
+   - **本地分支**："是否删除本地分支 `<branch>`？(y/N)" 默认 N
+     - y → `git branch -d <branch>`（safe delete；git 拒绝时透传原始 error，不允许 `-D` 强删）
+     - 注意：squash merge 后本地分支会被 git 判为"未合并"，安全删除会失败 → 透传 error 提示用户手工 `git branch -D` 或 rebase 后再删
+   - **远程分支**："是否删除远程分支 `origin/<branch>`？(y/N)" 默认 N
+     - y → `git push origin --delete <branch>`
+     - 远程已删（GitHub 仓库勾了 "Automatically delete head branches"）→ 报 `remote ref does not exist`，命令把它折叠为 `already-deleted` 状态，不报错
+     - 网络 / 权限失败 → 透传原始 error，不阻塞 archive 完成
 
 5. **终端反馈**：
    ```
@@ -237,7 +240,8 @@ state: COMMENTED  # GitHub review state 原值
       phase: completed
       archived_at: 2026-05-04T19:30:00+08:00
       experience captured: yes / no / skipped
-      local branch:        deleted / kept / skipped / failed (<git error>)
+      local branch:  deleted / kept / skipped / failed (<git error>)
+      remote branch: deleted / kept / skipped / already-deleted / failed (<git error>)
    ```
 
 ### 5.4 委托
@@ -359,7 +363,8 @@ state: COMMENTED  # GitHub review state 原值
 | Codex bot 修改通过用语 | 中 | review 永远判 not_passed，循环卡死 | 通过用语集中在 `submit-rules.md` 的 `CODEX_PASS_PHRASE` 常量；用户可改一行配置 |
 | `gh pr review` 限流 | 低 | 轮询返回 429 | 退避策略：429 → 直接 timeout 退出，不重试 |
 | `applies_when` 谓词扩展破坏既有 gate | 中 | 既有需求 submit 挂掉 | 预检 8.2 回归用例必须先跑 |
-| archive `git branch -d` 删错分支 | 低 | 用户改动丢失 | safe delete only；交互问人；`--keep-branch` 兜底 |
+| archive 删错本地分支 | 低 | 用户改动丢失 | safe delete only（不允许 `-D`）；交互问人默认 N；`--keep-branch` 兜底 |
+| archive 误删远程分支 | 低 | PR 历史指向丢失 | 默认 N + 显式确认；操作前先校验 `<branch> != base_branch`（拒绝删 develop/main） |
 
 回滚：把 spec 涉及的 9 个文件 `git revert` 即可（无破坏性数据迁移）。
 
