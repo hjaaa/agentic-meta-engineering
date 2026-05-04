@@ -20,3 +20,5 @@
 2026-05-04 22:33:46 [review:approved] code-F-002-002 looks_clean (5 must-fix 全修，6 follow-up 单独 PR)
 2026-05-04 22:34:52 [signoff] REV-REQ-2026-007-code-F-002-002 approved by hj19961223@gmail.com
 2026-05-04 22:35:24 [development] F-002 done（commit 9ebdeef，verdict 002 looks_clean + sign-off approved）
+2026-05-04 22:36:33 [development] [save] F-002 done（verdict 002 looks_clean + sign-off approved），下步派 F-001
+2026-05-04 22:40:14 [development] F-001 派发（model=sonnet, complexity=medium, 用户指定升档）
