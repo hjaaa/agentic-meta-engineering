@@ -41,6 +41,10 @@ audit_append_async() {
 
 # audit_flush_queue：把 .queue/*.log 整理成 audit/<YYYY-MM>/<entry>-<YYYY-MM-DD>.json（详见 §4.3）。
 # 由 SessionEnd hook（.claude/hooks/audit-flush.sh）调用，失败完全静默。
+# Codex P1 round-2：同根问题——必须用绝对路径调 audit_flush.py，否则 cwd≠repo
+# 时 file-not-found 被 stderr 重定向 + || true 静默吞掉。
 audit_flush_queue() {
-  python3 scripts/lib/audit_flush.py 2>/dev/null || true
+  local _src_dir
+  _src_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+  python3 "$_src_dir/audit_flush.py" 2>/dev/null || true
 }

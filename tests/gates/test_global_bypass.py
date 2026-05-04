@@ -471,3 +471,53 @@ def test_guard_sh_audit_anchors_to_audit_root_not_cwd(tmp_path):
     assert not cwd_relative.exists(), (
         f"Regression: audit fell back to cwd-relative path {cwd_relative}"
     )
+
+
+def test_audit_flush_hook_runs_from_arbitrary_cwd(tmp_path):
+    """given_cwd_neq_repo_when_audit_flush_hook_invoked_then_flushes_queue_correctly.
+
+    Codex P1 round-2 回归：audit-flush.sh 早期写 'python3 scripts/lib/audit_flush.py'
+    （cwd-relative），SessionEnd 在 cwd≠repo 时 file-not-found 被 stderr 重定向 +
+    || true 静默吞掉，audit/.queue/*.log 永远不被 flush。修复后必须用脚本相对
+    repo 根的绝对路径调 audit_flush.py。
+    """
+    flush_hook = _REPO_ROOT / ".claude" / "hooks" / "audit-flush.sh"
+    if not flush_hook.exists():
+        pytest.skip(f"{flush_hook} not found")
+
+    audit_root = tmp_path / "fake-repo"
+    queue_dir = audit_root / "audit" / ".queue"
+    queue_dir.mkdir(parents=True)
+
+    today = dt.now().strftime("%Y-%m-%d")
+    log_file = queue_dir / f"{today}.log"
+    # 投一条合法 record（行格式：<ts> <cwd> <event> @ entry=<name>）
+    log_file.write_text(
+        f"{dt.now().isoformat()} /tmp test-event @ entry=runner\n",
+        encoding="utf-8",
+    )
+
+    cwd_dir = tmp_path / "elsewhere"
+    cwd_dir.mkdir()
+
+    env = os.environ.copy()
+    env["CLAUDE_GATES_AUDIT_ROOT"] = str(audit_root)
+
+    result = subprocess.run(
+        ["bash", str(flush_hook)],
+        cwd=str(cwd_dir),
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    # hook 是 best-effort，永远不该非零退出
+    assert result.returncode == 0, f"flush hook returned {result.returncode}: {result.stderr}"
+
+    # 期望：record 被聚合到 audit/<YYYY-MM>/<entry>-<YYYY-MM-DD>.json，原 .log 被归档
+    yyyy_mm = dt.now().strftime("%Y-%m")
+    bucket = audit_root / "audit" / yyyy_mm / f"runner-{today}.json"
+    assert bucket.exists(), (
+        f"Regression: flush hook 没生成桶 {bucket}（cwd-relative path 可能没找到 audit_flush.py）"
+    )
+    archived = audit_root / "audit" / ".queue.done" / today
+    assert archived.exists(), f"Expected .log 被归档到 {archived}"
