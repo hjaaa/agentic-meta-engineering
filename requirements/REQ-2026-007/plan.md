@@ -28,7 +28,7 @@
 | tech-research | 2026-05-05 | 2026-05-04 ✓ |
 | outline-design | 2026-05-05 | 2026-05-04 ✓（reviewer 二审 looks_clean，13 项待办移交 detail-design）|
 | detail-design | 2026-05-06 | 2026-05-04 ✓（reviewer 二审 looks_clean，sign-off approved，门禁就绪）|
-| task-planning | 2026-05-06 | — |
+| task-planning | 2026-05-06 | 2026-05-04 ✓（features.json 拆 4 个任务，依赖图 F-002→F-003 / F-001→F-004）|
 | development | 2026-05-08 | — |
 | testing | 2026-05-09 | — |
 
