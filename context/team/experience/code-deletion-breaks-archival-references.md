@@ -45,4 +45,4 @@ python3 scripts/gates/run.py --trigger=ci --strict
 - `requirements/REQ-2026-006/process.txt`（PR #54 round-1 CI fail）
 - `scripts/gates/plugins/sourcing.py::_resolve_targets`（修复后）
 - `tests/gates/test_sourcing_plugin.py::test_resolve_targets_skips_completed_reqs_in_ci`
-- 修复 commit：`2d93a2f`
+- PR #54（squash merge commit `1152ca8`）— `_is_completed_req` 豁免逻辑

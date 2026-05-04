@@ -46,4 +46,4 @@ def test_anchor_consistency(tmp_path):
 - `requirements/REQ-2026-006/process.txt`（PR #54 Codex P1 round-1/round-2）
 - `scripts/lib/audit_async.sh`（修复后）
 - `tests/gates/test_global_bypass.py::test_*_audit_anchors_to_audit_root_not_cwd`
-- 修复 commit：`ecf910d`、`7e281f0`
+- PR #54（squash merge commit `1152ca8`）— 全部 4 个 producer + 1 个 consumer 修复落于此

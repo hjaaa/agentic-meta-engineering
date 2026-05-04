@@ -68,6 +68,7 @@ submit 前依次跑上面 5 步本地 CI 模拟，全过才 push。submit 后被
 
 ## 引用来源
 
-- `requirements/REQ-2026-006/process.txt`（PR #54 5 轮 CI 修复）
-- 修复 commits：`2d93a2f` / `b1aaed2` / `2f09b15` / `49e0bde` / `686d2d2`
-- `tests/hooks/test_pre_tool_use_guard.bats`（setup 新增 user / defaultBranch fixture）
+- `requirements/REQ-2026-006/process.txt`（PR #54 5 轮 CI 修复时序）
+- PR #54（squash merge commit `1152ca8`）— 5 轮修复全部合体落入此 commit
+- `tests/hooks/test_pre_tool_use_guard.bats`（setup 新增 user / defaultBranch fixture，可见于 develop）
+- `.gitignore`（新增 `/audit/` 行）+ `scripts/lib/audit_flush.py`（删除未用 `import json`）
