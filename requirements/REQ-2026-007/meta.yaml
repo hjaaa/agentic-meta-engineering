@@ -1,7 +1,7 @@
 # ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-007
 title: submit Codex review-loop + archive 命令
-phase: outline-design
+phase: detail-design
 created_at: "2026-05-04 19:16:37"     # 格式 YYYY-MM-DD HH:MM:SS（Asia/Shanghai），见 context/team/engineering-spec/time-format.md
 branch: feat/req-2026-007             # 例：feat/req-2026-001
 base_branch: develop                  # feat/* 派生的基点分支：develop / main / master
@@ -14,8 +14,11 @@ gates_passed:
   - {phase: tech-research, at: "2026-05-04 20:30:00", gates: [GATE-META-SCHEMA, 
           GATE-INDEX-INTEGRITY, GATE-SOURCING, GATE-PLAN-FRESHNESS, 
           GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY]}
-  - {phase: outline-design, at: "2026-05-04 20:02:55", gates: [GATE-META-SCHEMA, 
-          GATE-INDEX-INTEGRITY, GATE-SOURCING, GATE-PLAN-FRESHNESS, 
+  - {phase: outline-design, at: "2026-05-04 20:02:55", gates: [GATE-META-SCHEMA,
+          GATE-INDEX-INTEGRITY, GATE-SOURCING, GATE-PLAN-FRESHNESS,
+          GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY]}
+  - {phase: detail-design, at: "2026-05-04 21:27:11", gates: [GATE-META-SCHEMA,
+          GATE-INDEX-INTEGRITY, GATE-SOURCING, GATE-PLAN-FRESHNESS,
           GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY]}
 pr_url: ""                            # /requirement:submit 成功后回写
 pr_number: 0                          # /requirement:submit 成功后回写
