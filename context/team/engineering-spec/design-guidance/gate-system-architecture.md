@@ -150,7 +150,7 @@ PreToolUse Hook
 | 输入 | stdin 为 Claude Code Hook JSON：`tool_name` / `tool_input.{file_path,command}` |
 | 输出 | `exit 0` = 放行；`exit 2` = 阻断（stderr 文本回传给 Agent）；任何意外 → trap → `exit 0` |
 | stderr 用途 | 阻断时输出"为什么阻断 + 怎么规避"；fail-open 自身错误不写 stderr，写 `/tmp/guard-error.log` |
-| 依赖 | `bash 4+`、`git`、`grep`、`jq`（如 jq 不可用，回退到 `python3 -c "import json,sys;..."`） |
+| 依赖 | `bash 4+`、`git`、`grep`、`jq`（如 jq 不可用：`jq` 命令失败 → 赋值非零 → ERR trap → exit 0 fail-open；不实现 python3 fallback，REQ-2026-006 detail-design §2.5 决议） |
 
 **实现骨架（按短路顺序）**
 

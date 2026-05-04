@@ -24,6 +24,12 @@ jobs:
       - name: Install dependencies
         run: pip install pyyaml ruamel.yaml "pathspec>=0.12,<1.0" ruff pytest
 
+      - name: Install bats-core
+        run: |
+          if ! command -v bats >/dev/null; then
+            sudo apt-get update && sudo apt-get install -y bats
+          fi
+
       # 该 step 通过 scripts/gates/run.py --trigger=ci --strict 收敛旧 5 step。
       # 如需临时放行 INDEX warning，应优先加 scripts/lib/index-config.yaml 的 ignore 白名单
       # （需 PR review）而非关 strict；legacy review escape_hatch 见 registry.yaml。
@@ -34,6 +40,9 @@ jobs:
       # F-005：单元测试门禁；确保 gates/ 所有 plugin 测试全绿
       - name: pytest
         run: pytest tests/gates/ -v
+
+      - name: bats hook tests
+        run: bats tests/hooks/
 
       # F-005：ruff 静态检查（select=F 起步，历史 E501 > 200 条触发降级策略，后续独立 PR 扩展）
       - name: ruff lint
