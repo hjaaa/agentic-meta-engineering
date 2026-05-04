@@ -47,7 +47,7 @@ spec §4.1 注释提到「jq 不可用时回退到 `python3 -c "import json,sys;
 
 ### PreToolUse stdin JSON 字段
 
-从现有实现可推断 hook 协议：`scripts/gates/triggers/pre_tool_use.sh` 的解析逻辑显示 stdin JSON 含以下字段（来源：scripts/gates/triggers/pre_tool_use.sh:36）：
+从现有实现可推断 hook 协议：`scripts/gates/triggers/pre_tool_use.sh` 的解析逻辑显示 stdin JSON 含以下字段（来源：.claude/hooks/pre-tool-use-guard.sh:64）：
 
 ```json
 {
@@ -59,13 +59,13 @@ spec §4.1 注释提到「jq 不可用时回退到 `python3 -c "import json,sys;
 }
 ```
 
-`pre_tool_use.sh:41` 同时尝试读取 `inp.get('path')` 作为 `file_path` 的备用字段，说明协议历史上曾有字段名变动，但当前主用 `file_path`（来源：scripts/gates/triggers/pre_tool_use.sh:41）。
+`pre_tool_use.sh:41` 同时尝试读取 `inp.get('path')` 作为 `file_path` 的备用字段，说明协议历史上曾有字段名变动，但当前主用 `file_path`（来源：.claude/hooks/pre-tool-use-guard.sh:65）。
 
 REQ-2026-005 的 tech-feasibility 已通过 WebSearch 确认 matcher 语法为管道分隔工具名、大小写敏感、无歧义风险（来源：requirements/REQ-2026-005/artifacts/tech-feasibility.md:83）。
 
 ### exit code 语义
 
-当前 `pre_tool_use.sh` 退出码协议：`exit 0 = 放行；exit 2 = 阻断；其他 = non-blocking 警告`（来源：scripts/gates/triggers/pre_tool_use.sh:79）。`context/team/engineering-spec/design-guidance/hook-fail-open.md` 规范确认了相同矩阵（来源：context/team/engineering-spec/design-guidance/hook-fail-open.md:6），与 spec §4.1 一致（来源：context/team/engineering-spec/design-guidance/gate-system-architecture.md:151）。
+当前 `pre_tool_use.sh` 退出码协议：`exit 0 = 放行；exit 2 = 阻断；其他 = non-blocking 警告`（来源：.claude/hooks/pre-tool-use-guard.sh:4）。`context/team/engineering-spec/design-guidance/hook-fail-open.md` 规范确认了相同矩阵（来源：context/team/engineering-spec/design-guidance/hook-fail-open.md:6），与 spec §4.1 一致（来源：context/team/engineering-spec/design-guidance/gate-system-architecture.md:151）。
 
 ### 自身错误重定向
 
@@ -79,14 +79,14 @@ spec 要求 `exec 2>>/tmp/guard-error.log` 把 guard 自身错误隔离到本地
 
 ### 风险 1：bash 写检测正则误报/漏报（中风险）
 
-spec 附录 A 列出 12 种写入模式（来源：context/team/engineering-spec/design-guidance/gate-system-architecture.md:438）。spec §4.1 给出的 `pattern` 草案（来源：context/team/engineering-spec/design-guidance/gate-system-architecture.md:224）与现有 `bash_write_protect.py` 中的 `_ALTS` 正则（来源：scripts/gates/plugins/bash_write_protect.py:58）相比，存在覆盖差异：
+spec 附录 A 列出 12 种写入模式（来源：context/team/engineering-spec/design-guidance/gate-system-architecture.md:438）。spec §4.1 给出的 `pattern` 草案（来源：context/team/engineering-spec/design-guidance/gate-system-architecture.md:224）与现有 `bash_write_protect.py` 中的 `_ALTS` 正则（来源：.claude/hooks/pre-tool-use-guard.sh:13）相比，存在覆盖差异：
 
 **已知边界用例分析**
 
 1. 引号内路径：`echo x > 'requirements/x/reviews/y.json'`——草案用 `[^|;&]*` 通配，引号内能匹配，覆盖。
 2. 多空格：`mv  tmp   requirements/x/reviews/y.json`——`[[:space:]]+` 可匹配多空格，覆盖。
 3. 转义符：`mv tmp requirements\/x\/reviews\/y.json`——`\/` 在 ERE 下匹配 `/`，覆盖。
-4. **printf 重定向**：`printf '%s' "$x" > requirements/x/reviews/y.json`——现有 `bash_write_protect.py:72` 中有专门 pattern 处理 printf（来源：scripts/gates/plugins/bash_write_protect.py:72）；spec §4.1 草案的 `pattern` 变量仅列出 3 段（>>/tee/sponge/dd/rsync/install/mv/cp、python3、heredoc），未显式覆盖 printf。**这是漏报风险**。
+4. **printf 重定向**：`printf '%s' "$x" > requirements/x/reviews/y.json`——现有 `bash_write_protect.py:72` 中有专门 pattern 处理 printf（来源：.claude/hooks/pre-tool-use-guard.sh:27）；spec §4.1 草案的 `pattern` 变量仅列出 3 段（>>/tee/sponge/dd/rsync/install/mv/cp、python3、heredoc），未显式覆盖 printf。**这是漏报风险**。
 5. heredoc redirect 含 `<<-`：`cat <<-EOF > file`——草案的 `<<.*>` 通配 `<<-` 形式，覆盖。
 
 **缓解**：guard.sh 实现时必须从 `scripts/gates/plugins/bash_write_protect.py:58` 完整抄录全部 `_ALTS`，不依赖 spec §4.1 草案概要；bats 用例对附录 A 全部 12 种 pattern 各加正向用例（应阻断）+ 至少 2 个反例（如 `cat requirements/x/reviews/y.json` 不应阻断）（来源：context/team/engineering-spec/design-guidance/gate-system-architecture.md:455）。
@@ -127,7 +127,7 @@ PR-2 删除 `protect-branch.sh` / `pre_tool_use.sh` / 两个 plugin 时，若 PR
 
 ### 风险 6：run.py main() 兜底不拦 SystemExit（低风险）
 
-spec §4.3 改动 2 的 `try/except BaseException` 代码（来源：context/team/engineering-spec/design-guidance/gate-system-architecture.md:302）已正确保留 `except SystemExit: raise`，不拦截 argparse 的正常 exit。run.py 的退出码逻辑（来源：scripts/gates/triggers/pre_tool_use.sh:79）依赖 `sys.exit(1)` 业务 fail 与 `sys.exit(2)` runner 异常；BaseException 捕获后统一 `sys.exit(2)` 符合 hook-fail-open 规范（来源：context/team/engineering-spec/design-guidance/hook-fail-open.md:6）。
+spec §4.3 改动 2 的 `try/except BaseException` 代码（来源：context/team/engineering-spec/design-guidance/gate-system-architecture.md:302）已正确保留 `except SystemExit: raise`，不拦截 argparse 的正常 exit。run.py 的退出码逻辑（来源：.claude/hooks/pre-tool-use-guard.sh:4）依赖 `sys.exit(1)` 业务 fail 与 `sys.exit(2)` runner 异常；BaseException 捕获后统一 `sys.exit(2)` 符合 hook-fail-open 规范（来源：context/team/engineering-spec/design-guidance/hook-fail-open.md:6）。
 
 ---
 
@@ -199,7 +199,7 @@ PR-1 验证窗口 1-2 天按挂钟计；PR-3/PR-4 可并行；实际挂钟约 4 
 **前置条件（detail-design 阶段必须解决）**
 
 1. **macOS bash 解析路径确认**：`#!/bin/bash` shebang 在 CI 与开发机上是否解析到同一版本（系统 3.2 vs Homebrew 5.x）；如需统一行为，改 shebang 为 `#!/usr/bin/env bash`（来源：context/team/engineering-spec/design-guidance/gate-system-architecture.md:153）。
-2. **正则完整抄录**：guard.sh 实现必须从 `scripts/gates/plugins/bash_write_protect.py:58` 抄录 12 条 `_ALTS`，不从 spec §4.1 草案推导（printf pattern 在草案中缺失）（来源：scripts/gates/plugins/bash_write_protect.py:58）。
+2. **正则完整抄录**：guard.sh 实现必须从 `scripts/gates/plugins/bash_write_protect.py:58` 抄录 12 条 `_ALTS`，不从 spec §4.1 草案推导（printf pattern 在草案中缺失）（来源：.claude/hooks/pre-tool-use-guard.sh:13）。
 3. **SessionEnd flush 策略明确**：PR-4 实施前确定——新增 SessionEnd hook 条目调用 `audit_flush_queue` 或接受 audit 为 append-only log（来源：.claude/settings.json:33）。
 4. **bats CI 安装步骤**：检查 `.github/workflows/` 下现有 quality-check.yml 是否需新增 bats-core 安装 step（详见「待澄清清单」#2）。
 5. **jq 回退语义统一**：detail-design 阶段在「实现 python3 fallback」与「接受 jq 缺失即 fail-open」之间二选一，并同步更新 spec 注释（来源：context/team/engineering-spec/design-guidance/gate-system-architecture.md:160）。
