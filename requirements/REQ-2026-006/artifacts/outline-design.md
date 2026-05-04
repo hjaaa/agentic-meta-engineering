@@ -120,7 +120,8 @@ SessionEnd hook（matcher: prompt_input_exit|logout|other）
   └─ audit-flush.sh
        └─ python3 scripts/lib/audit_flush.py
             ├─ 读 audit/.queue/<YYYY-MM-DD>.log
-            ├─ 整理成 audit/<YYYY-MM>/<trigger>-<ts>.json
+            ├─ 整理成 audit/<YYYY-MM>/<entry>-<YYYY-MM-DD>.json（按 entry 分桶；entry=runner/submit/triggers/...）
+            │   注：entry 是"产生 audit 的代码入口"，与 trigger（hook 事件枚举）不是 1:1。详细命名约定见 detail-design §4.3
             └─ 失败完全静默（下次 SessionEnd 再试）
 ```
 

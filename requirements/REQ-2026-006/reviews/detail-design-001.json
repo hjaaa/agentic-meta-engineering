@@ -1,0 +1,119 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-006-detail-design-001",
+  "requirement_id": "REQ-2026-006",
+  "phase": "detail-design",
+  "reviewer": "detail-design-quality-reviewer",
+  "reviewed_at": "2026-05-04 11:48:33",
+  "reviewed_commit": "38e19b2",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/detailed-design.md",
+      "sha256": "c7fba2ac2c5e16a6eb4a3bc68ba8f30c49f1c4357fe59fe759977ca1d9d9b8ca"
+    },
+    {
+      "path": "artifacts/features.json",
+      "sha256": "31e5c1be90fc60aeafc0dfd2ad356b7d53eb58e375dac7818e44573e903b1a92"
+    },
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "5d6b604e090644e4240bebe9dbff687bb85ef1f1e9b18d7d3328f19b1abff4eb"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 82,
+  "dimensions": {
+    "consistency_with_outline": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "detailed-design.md §6 表格列出 outline-design 5 minor 修订项，但 outline-design.md §7 V-06 行未实际更新 detail-design §5 的 hyperfine 决议——detail-design 自身把修订项列在 §6 是 PR-1 顺手改的，落地时需同步检查 outline-design 文本是否真被改。"
+        }
+      ]
+    },
+    "interface_completeness": {
+      "score": 75,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "detailed-design.md §3.1 第 542-569 行先给一个把 bypass 块插在 `from __future__ import annotations` 之前的 diff，再在第 571-573 行说『备选方案更保险，本设计采用备选方案』并第二次给 diff（582-599 行）——同一节并列两份互斥 diff，PR-3 实施者会困惑哪一份是最终版本，建议删除第一份 diff 仅保留备选方案。"
+        },
+        {
+          "severity": "major",
+          "description": "detailed-design.md §4.2 第 696-697 行 write_audit() 替换 diff 中 subprocess 调用的 entry 名用了 `{ENTRY_RUNNER!r}` Python f-string——但 ENTRY_RUNNER 是 audit_async.sh 中的 bash readonly 常量（§1.3 第 333 行），Python 侧无法直接引用。需在 Python 侧 hard-code 字符串 'runner' 或新建 scripts/gates/audit_constants.py 同步常量。"
+        },
+        {
+          "severity": "minor",
+          "description": "detailed-design.md §4.2 第 689-700 行 audit.py 的精确改动 diff 用占位符 `@@ -X,Y +X,Z @@`，虽然作者声明『精确 diff 在 PR-4 实施时根据当前文件结构调整；本设计仅约束契约』，但 detail-design 阶段的契约边界应是『接口签名冻结』；建议至少给 write_audit 函数签名前后对比与 import 行变化。"
+        }
+      ]
+    },
+    "data_model_soundness": {
+      "score": 78,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "detailed-design.md §4.3 第 713 行声明 audit_flush.py 输出文件命名为 `audit/<YYYY-MM>/<entry>-<日期>.json`（按 entry 分桶），但 outline-design.md §1.3 第 123 行写的是 `audit/<YYYY-MM>/<trigger>-<ts>.json`（按 trigger + ts）——entry vs trigger / 日期 vs ts 两处命名约定不一致。需在 detail-design 显式说明语义统一（entry 包含了 trigger 维度）或改回 outline-design 的命名。"
+        },
+        {
+          "severity": "minor",
+          "description": "detailed-design.md §4.3 第 743 行 `_archive_logs` 把 .log mv 到 `audit/.queue.done/<日期>/`，但未约束多次 SessionEnd 同日重跑的合并/去重策略——若同日多次 flush，是否覆盖 / 追加 / 报错未明，建议补一行行为约定。"
+        }
+      ]
+    },
+    "sequence_correctness": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "detailed-design.md §4.6 故障注入清单第三行写 `切换到 audit/.queue.bak-<ts>/` 用于回滚演练，但表头未声明「期望」列对该演练的成功条件——建议补『未 flush 数据保留在 .bak-<ts>/ 不丢，下次 SessionEnd 跳过缺失 queue 退 0』为期望。"
+        }
+      ]
+    },
+    "feature_granularity": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "features.json 4 条 feature 的 title 全部 ≥30 字（F-001=84/F-002=63/F-003=40/F-004=99）、description 全部 ≥200 字（最长 F-004=888 字），超出 features.json schema 软约束（title <30、description <200）；建议把动作细节移到 acceptance 列表或新增 implementation_notes 字段，title 控制在『PR-N <一句话核心动作>』格式。"
+        },
+        {
+          "severity": "minor",
+          "description": "features.json F-001 同时含『新增 guard.sh + bats + audit_async.sh + settings.json 切换 + spec 注释同步』5 个独立动作；从依赖图看这 5 个动作必须打包合一个 PR（这是 plan.md 决议），但 features.json 作为阶段 7 派发的机读入口，建议在 description 末尾补 `complexity: medium` 已标 + 增加 `interfaces_frozen: true`（详细设计已冻结接口签名）+ `touches: [...]` 机读字段，便于派发器优化串行/并行策略。"
+        }
+      ]
+    }
+  },
+  "required_fixes": [
+    {
+      "severity": "major",
+      "description": "detailed-design.md §3.1 删除互斥的第一份 diff（line 542-569），仅保留备选方案 diff（line 582-599）以避免 PR-3 实施歧义。"
+    },
+    {
+      "severity": "major",
+      "description": "detailed-design.md §4.2 修正 write_audit 替换 diff 中 `{ENTRY_RUNNER!r}` 的跨语言引用错误：要么 hard-code 字符串 'runner'，要么新建 scripts/gates/audit_constants.py 同步 ENTRY_* 常量到 Python 侧。"
+    },
+    {
+      "severity": "major",
+      "description": "detailed-design.md §4.3 与 outline-design.md §1.3 关于 audit_flush.py 输出文件命名（entry vs trigger / 日期 vs ts）需统一。建议在 detail-design §4.3 显式声明 entry name 是新约定（包含 trigger 语义）并同步修改 outline-design.md 第 123 行。"
+    }
+  ],
+  "suggestions": [
+    "features.json 的 title/description 长度治理：title 限定 PR-N + 一句话；description 控制在 200 字内，把实施细节迁到 detailed-design 章节引用即可（此处 description 已含完整 detail-design 章节引用，再重复造成腐化风险）。",
+    "detailed-design.md §1.2 bats 用例编号 pattern 1-14 共 14 例，但 §1.1 正则 ALT 实际只有 12 条（line 36-49）；用例『pattern 13 install』『pattern 14 pathlib』编号让人误以为有 14 条 pattern。建议改为 case-1 ~ case-14 / 或用『test-XX-<语义>』命名。",
+    "detailed-design.md §8 待澄清清单提到 `tests/gates/test_*.py` 中可能有 `trigger=\"pre-tool-use\"` 字面量需 PR-2 同步处理，但未在 features.json F-002 acceptance 中显式列为 TC，建议补 TC-F2-8: `grep -rn 'pre-tool-use' tests/gates/ 已无活字面量引用`。"
+  ],
+  "scope": null,
+  "supersedes": null,
+  "features_json_validation": {
+    "valid": true,
+    "issues": [],
+    "enhancement_suggestions": [
+      "F-001 / F-004 已标 complexity=medium，建议补 interfaces_frozen=true（详细设计 §1/§4 已冻结函数签名 + diff 行号）",
+      "F-002 / F-003 已标 complexity=low，建议补 touches=[modules 列表]（虽然 modules 字段已存在，但派发器可能优先读 touches）",
+      "全部 4 条建议补 estimate_complexity_signals 字段（简单 CRUD / 多文件协作 / 跨 PR 依赖等），辅助阶段 7 subagent 派发策略",
+      "features.json description 字段超长（最长 888 字），建议拆分到 implementation_notes 或仅引用 detailed-design 章节路径（detail-design §N.M）"
+    ]
+  }
+}

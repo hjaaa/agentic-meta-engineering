@@ -347,7 +347,7 @@ audit_append_async() {
   echo "$ts $(pwd) ${line} @ entry=${entry}" >>"$f" 2>/dev/null || true
 }
 
-# audit_flush_queue：把 .queue/*.log 整理成 audit/<YYYY-MM>/<trigger>-<ts>.json。
+# audit_flush_queue：把 .queue/*.log 整理成 audit/<YYYY-MM>/<entry>-<YYYY-MM-DD>.json（详见 §4.3）。
 # 由 SessionEnd hook（.claude/hooks/audit-flush.sh）调用，失败完全静默。
 audit_flush_queue() {
   python3 scripts/lib/audit_flush.py 2>/dev/null || true
@@ -539,40 +539,9 @@ rm tests/gates/test_bash_write_protect.py # 同步删 plugin 单测
 
 ## 3. PR-3：CLAUDE_GATES_GLOBAL_BYPASS 三处入口
 
-### 3.1 `scripts/gates/run.py` 改动 1（文件最顶部，第 1 个 import 之前）
+### 3.1 `scripts/gates/run.py` 改动 1（在 `from __future__ import annotations` 之后、第一个项目内 import 之前）
 
-```diff
---- a/scripts/gates/run.py
-+++ b/scripts/gates/run.py
-@@ -22,6 +22,21 @@
-   python scripts/gates/run.py --validate-registry        # 仅校验 registry，不跑 gate
-   python scripts/gates/run.py --trigger=adapter --legacy=check-meta requirements/REQ.../meta.yaml
- """
-+# ---- BEGIN: REQ-2026-006 全局逃生通道（A1，spec §4.3 改动 1） ----
-+# 必须在第一个项目内 import 之前，避免被 registry/plugin 加载异常拦截。
-+import os as _os
-+import sys as _sys
-+if _os.environ.get("CLAUDE_GATES_GLOBAL_BYPASS"):
-+    _reason = _os.environ["CLAUDE_GATES_GLOBAL_BYPASS"]
-+    try:
-+        from datetime import datetime as _dt
-+        from pathlib import Path as _P
-+        _q = _P(f"audit/.queue/{_dt.now():%Y-%m-%d}.log")
-+        _q.parent.mkdir(parents=True, exist_ok=True)
-+        with _q.open("a") as _f:
-+            _f.write(f"{_dt.now().isoformat()} {_os.getcwd()} BYPASS used: {_reason} @ entry=runner\n")
-+    except Exception:
-+        pass
-+    _sys.exit(0)
-+# ---- END: REQ-2026-006 ----
- from __future__ import annotations
-```
-
-> ⚠️ **注意**：`from __future__ import annotations` 必须是文件第一条语句（PEP 236）。但本 bypass 块只用 `os/sys/Path/datetime`，所有类型注解只在函数签名内出现，不会被 future-import 影响——经验证可放在 `from __future__` 之前。
-> 
-> 备选方案（更保险）：把 bypass 块放在 `from __future__ import annotations` 之后、第一个项目内 import 之前（line 38 `import pathspec` 之前）。本设计采用备选方案，避免 PEP 236 边界。
-
-修订后的精确插入点：
+> 设计取舍：`from __future__ import annotations` 必须是文件第一条语句（PEP 236）。bypass 块虽然只用 stdlib（`os/sys/Path/datetime`），但为避免 PEP 236 边界与未来 future-import 增减带来的风险，本设计将 bypass 块插在 `from __future__ ...` 之后、第一个项目内 import（`pathspec` / `yaml`）之前——既能在 plugin/registry 加载异常前拦截退出，又对 PEP 236 0 影响。
 
 ```diff
 @@ -34,6 +34,21 @@ from typing import Any, Optional
@@ -691,12 +660,14 @@ bats 已覆盖 guard.sh 一例（§1.2 "CLAUDE_GATES_GLOBAL_BYPASS skips block"�
 -    ...
 +    # REQ-2026-006 PR-4：改为 append-only log，由 SessionEnd flush 整理回 JSON
 +    import subprocess as _sp
++    import shlex as _shlex
 +    _line = json.dumps(record, ensure_ascii=False)
++    # entry 名 hard-code 为 'runner'——audit_async.sh 中的 ENTRY_RUNNER 是 bash readonly 常量，
++    # Python 侧无法跨语言引用；ENTRY_* 常量值在 audit_async.sh 内是单一事实源（spec §4.3 D-006）。
++    # 若未来需在多个 Python 入口共享 ENTRY_* 名称，新建 scripts/gates/audit_constants.py 作镜像层。
++    _cmd = f"source scripts/lib/audit_async.sh && audit_append_async {_shlex.quote(_line)} 'runner'"
 +    try:
-+        _sp.run(
-+            ["bash", "-c", f"source scripts/lib/audit_async.sh && audit_append_async {_line!r} {ENTRY_RUNNER!r}"],
-+            check=False, timeout=2,
-+        )
++        _sp.run(["bash", "-c", _cmd], check=False, timeout=2)
 +    except Exception:
 +        pass  # best-effort；失败完全静默（D-005）
 ```
@@ -705,13 +676,20 @@ bats 已覆盖 guard.sh 一例（§1.2 "CLAUDE_GATES_GLOBAL_BYPASS skips block"�
 
 ### 4.3 `scripts/lib/audit_flush.py` 接口签名
 
+> **命名约定（与 outline-design §1.3 同步修订）**：本需求引入 `entry` 维度替代 outline-design 初稿中的 `trigger`——`trigger` 是 hook 矩阵的 14 种事件枚举（pre-tool-use / post-tool-use / session-start / ...），而 `entry` 是"产生 audit 记录的代码入口"（runner / submit / triggers），二者**不是一一对应**：runner 是所有 trigger 的下游汇聚点，submit / 各 triggers/*.py 也会写 audit。聚合按 entry 分桶比按 trigger 分桶语义更清晰、PR 之间冲突更少。
+>
+> **文件名格式**：`audit/<YYYY-MM>/<entry>-<YYYY-MM-DD>.json`（按日期一桶，多次 flush 同日追加），替代 outline-design 初稿的 `audit/<YYYY-MM>/<trigger>-<ts>.json`。outline-design.md §1.3 第 123 行已同步改为 `<entry>-<日期>.json`。
+>
+> **同日重跑策略**：append（多次 SessionEnd 同日 flush 时，按 record 末尾追加；不去重——保留每条 record 的原始 ts 以便审计；不覆盖——保护已落盘的 record）。
+
 ```python
-"""把 audit/.queue/*.log 整理回 audit/<YYYY-MM>/<trigger>-<ts>.json。
+"""把 audit/.queue/*.log 整理回 audit/<YYYY-MM>/<entry>-<YYYY-MM-DD>.json。
 
 行为：
   - 读所有 audit/.queue/*.log（每行一个 record）
-  - 按 entry 字段分桶 → 写入 audit/<YYYY-MM>/<entry>-<日期>.json（多次 flush 会追加）
-  - 成功处理的 .log 文件 mv 到 audit/.queue.done/<日期>/，不删除（便于审计 + 回滚）
+  - 按 entry 字段分桶 → 写入 audit/<YYYY-MM>/<entry>-<YYYY-MM-DD>.json（多次 flush 会 append 追加，不去重不覆盖）
+  - 成功处理的 .log 文件 mv 到 audit/.queue.done/<YYYY-MM-DD>/，不删除（便于审计 + 回滚）
+    · 同日多次 flush：archive 目录已存在则在原目录追加 mv，文件同名时改名为 `<原名>.dup<N>.log`（不丢、不覆盖）
   - 任何步骤失败完全静默：返回 0（exit 0），下次 SessionEnd 再试
 
 使用：
@@ -773,7 +751,7 @@ python3 scripts/lib/audit_flush.py 2>/dev/null || true
 |---|---|---|
 | run.py 顶部加 `raise NameError` | exit 2 → trigger 层 fail-open | `python3 scripts/gates/run.py --trigger=ci` exit 2；`/tmp/run-py-error.log` 含 trace |
 | `audit/.queue/` 改 0555 | 决策正常返回；audit 写盘失败被 swallow | 跑 phase-transition gate；exit 0；queue 内无新 log（写入静默失败） |
-| 切换到 `audit/.queue.bak-<ts>/`（**outline-design R3 修订**）<br/>而非删除 audit 队列 | 回滚演练不丢未 flush 数据 | mv 后跑 SessionEnd → audit_flush.py 跳过缺失 queue → exit 0 |
+| 切换到 `audit/.queue.bak-<ts>/`（**outline-design R3 修订**）<br/>而非删除 audit 队列 | 未 flush 数据保留在 `.bak-<ts>/` 不丢；audit_flush.py 因缺失 queue 退 0 不报错；下次 SessionEnd 跳过空目录退 0 | mv 后跑 SessionEnd → audit_flush.py 跳过缺失 queue → exit 0；ls `.bak-<ts>/` 数据完整 |
 
 ---
 
@@ -822,6 +800,18 @@ CI 安装：`apt-get install hyperfine`（ubuntu 22.04+ 自带）；macOS：`bre
 | 3 | §5 PR-4 回滚验证步骤 | 「删 audit/.queue/」改为「`mv audit/.queue/ audit/.queue.bak-<ts>/`」 |
 | 4 | §7 V-06 表格行 | 拆两层：「基准已锁（`#!/usr/bin/env bash`）/ 测量工具 hyperfine（detail-design §5）」 |
 | 5 | §6 与 hook-fail-open 关系 | 显式列闭合条款：guard.sh trap ERR 闭合 §3.1（hook 自身异常 fail-open）；run.py BaseException 闭合 §4.2（trigger fail-open）；audit best-effort 闭合 §5.2（审计不影响决策） |
+| 6 | §1.3 audit-flush 文件名 | `audit/<YYYY-MM>/<trigger>-<ts>.json` → `audit/<YYYY-MM>/<entry>-<YYYY-MM-DD>.json`；entry 是"产生 audit 的代码入口"（runner/submit/triggers/...），与 trigger 不是 1:1。详见本文 §4.3。**详细设计评审 R1（detail-design-001 major-3）触发** |
+
+---
+
+## 6.1 detail-design 评审修订（detail-design-001 → 002）
+
+| # | 评审项 | severity | 修订位置 | 修订内容 |
+|---|---|---|---|---|
+| R1 | major-1：§3.1 互斥双 diff | major | 本文 §3.1 | 删除互斥的第一份 diff；保留唯一最终方案（在 `from __future__` 之后、第一个项目内 import 之前），标题与说明同步澄清 |
+| R2 | major-2：§4.2 `{ENTRY_RUNNER!r}` 跨语言 | major | 本文 §4.2 | hard-code `'runner'`；增加注释说明 ENTRY_* 在 audit_async.sh 内是单一事实源；引入 `shlex.quote` 防注入 |
+| R3 | major-3：§4.3 与 outline-design §1.3 命名不一致 | major | 本文 §4.3 + outline-design.md §1.3 | 统一为 `<entry>-<YYYY-MM-DD>.json`；显式声明 entry 与 trigger 的语义区别；补充同日重跑 append 策略；同步改 outline-design L123 |
+| R4 | minor：§4.6 故障注入第 3 行期望列不完整 | minor | 本文 §4.6 | 期望列补充「未 flush 数据保留在 `.bak-<ts>/` 不丢；audit_flush.py 缺失 queue 退 0 不报错」 |
 
 ---
 
