@@ -178,9 +178,9 @@ GitHub GraphQL API 同样有速率限制（5000 points/hour），不比 REST 更
 
 #### 影响评估
 
-若 App 未安装：`gh pr comment` 可以成功执行，评论会出现在 PR 上，但 Codex bot 不会响应。轮询会一直等到 timeout（默认 600s，来源：context/team/engineering-spec/specs/2026-05-04-submit-codex-loop-and-archive-design.md:101），退出码 0 + 打印 timeout 提示。这是 **graceful degradation**，不会造成错误，但用户会困惑为何没有 review。
+若 App 未安装：`gh pr comment` 可以成功执行，评论会出现在 PR 上，但 Codex bot 不会响应。轮询会一直等到 timeout（默认 600s）（来源：context/team/engineering-spec/specs/2026-05-04-submit-codex-loop-and-archive-design.md:101），退出码 0 + 打印 timeout 提示。这是 **graceful degradation**，不会造成错误，但用户会困惑为何没有 review。
 
-**前置条件**：App 安装必须在 V-01 沙盒 e2e 测试前完成，否则 `submit --codex` 的 passed/not_passed 路径无法验证。
+**前置条件** [待用户确认]：App 安装必须在 V-01 沙盒 e2e 测试前完成，否则 `submit --codex` 的 passed/not_passed 路径无法验证（V-01 是本评估约定的沙盒 e2e 验证项 ID，正式定义将在 detail-design 阶段写入 features.json）。
 
 ---
 

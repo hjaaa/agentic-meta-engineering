@@ -110,3 +110,9 @@
 - **Decision**：archive 串行问本地 → 远程；都默认 N；远程已删折叠为 `already-deleted`；安全校验 `<branch> != base_branch`
 - **Consequences**：好——不依赖仓库设置；差——多一个交互问句
 - **时间**：2026-05-04 20:00:00
+
+### D-011 Codex bot 识别策略：双条件且关系
+- **Context**：tech-research 阶段评估 Codex bot login 时发现 `user.type=Bot` 标识所有 GitHub App，单凭 type 无法区分 codex / dependabot / 其他 App；候选 4 选 1：login 全字符串匹配 / 正则 + type / 仅正则 / 仅 type
+- **Decision**：双条件 AND——`user.type == "Bot"` **且** `user.login` 正则匹配 `/codex/i`；该判定写入 `submit-rules.md` 的 `CODEX_REVIEWER_LOGIN_PATTERN` + `CODEX_REVIEWER_USER_TYPE` 两个常量，detail-design 首日实测 `gh api .../reviews | jq '.[].user'` 校准
+- **Consequences**：好——不锁死 login 字符串、对 bot 用户名漂移有韧性；差——需要在 detail-design 阶段联动确认两条常量，多一处实测步骤（V-01 沙盒 e2e 前置）
+- **时间**：2026-05-04 19:56:21
