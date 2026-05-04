@@ -280,3 +280,121 @@ def test_audit_line_format(tmp_path):
     assert "BYPASS used:" in reason_and_entry
     assert "format-test-12345" in reason_and_entry
     assert "@ entry=runner" in reason_and_entry
+
+
+# ====================== F-004 carryover-1 + carryover-2 新增用例 ======================
+
+
+def test_run_py_bypass_reason_with_newline_escaped(tmp_path):
+    """F-004 carryover-2：reason 含换行符时 audit log 仍为单行（\n 已转义为空格）。
+
+    given_reason_with_newline_when_run_py_bypass_then_audit_single_line.
+    """
+    env = os.environ.copy()
+    # 换行前后分别是合法字符；转义后仍 >= 8 字符
+    env["CLAUDE_GATES_GLOBAL_BYPASS"] = "fix\nFAKE_ENTRY"
+
+    result = subprocess.run(
+        [sys.executable, str(_GATES_DIR / "run.py"), "--trigger=ci"],
+        cwd=str(tmp_path),
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, f"Expected exit 0, got {result.returncode}.\nstderr: {result.stderr}"
+
+    today = dt.now().strftime("%Y-%m-%d")
+    audit_log = tmp_path / "audit" / ".queue" / f"{today}.log"
+    assert audit_log.exists()
+
+    log_content = audit_log.read_text()
+    # 每行都不应包含 \n（audit log 行格式单行）
+    for line in log_content.splitlines():
+        assert "FAKE_ENTRY" not in line or "entry=runner" in line, (
+            "换行注入不应拆出额外 entry 行"
+        )
+    # 确认 \n 被转义为空格，原始换行字符不出现在 log 行中
+    runner_lines = [l for l in log_content.splitlines() if "entry=runner" in l]
+    assert len(runner_lines) == 1, f"应有且仅有 1 行 runner 记录，得 {runner_lines}"
+    assert "\n" not in runner_lines[0]
+
+
+def test_run_py_bypass_whitespace_only_reason_rejected(tmp_path):
+    """F-004 carryover-2：reason 为纯空白时 bypass 不触发，继续走正常 gate 流程。
+
+    given_whitespace_only_reason_when_run_py_then_bypass_not_triggered.
+    """
+    env = os.environ.copy()
+    env["CLAUDE_GATES_GLOBAL_BYPASS"] = "   "  # 纯空白，strip 后 < 8
+
+    result = subprocess.run(
+        [sys.executable, str(_GATES_DIR / "run.py"), "--trigger=ci"],
+        cwd=str(tmp_path),
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    # bypass 不触发 → 正常 gate 流程（无 registry.yaml → exit 非 0）
+    assert result.returncode != 0, (
+        f"纯空白 reason 应不 bypass（exit 非 0），got {result.returncode}"
+    )
+    # audit log 不应存在或不含 BYPASS 行
+    today = dt.now().strftime("%Y-%m-%d")
+    audit_log = tmp_path / "audit" / ".queue" / f"{today}.log"
+    if audit_log.exists():
+        assert "BYPASS used:" not in audit_log.read_text()
+
+
+def test_run_py_bypass_short_reason_rejected(tmp_path):
+    """F-004 carryover-2：reason 长度 < 8 字符时 bypass 不触发，继续走正常 gate 流程。
+
+    given_short_reason_when_run_py_then_bypass_not_triggered.
+    """
+    env = os.environ.copy()
+    env["CLAUDE_GATES_GLOBAL_BYPASS"] = "abc"  # 3 字符 < 8
+
+    result = subprocess.run(
+        [sys.executable, str(_GATES_DIR / "run.py"), "--trigger=ci"],
+        cwd=str(tmp_path),
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode != 0, (
+        f"短 reason 应不 bypass（exit 非 0），got {result.returncode}"
+    )
+    today = dt.now().strftime("%Y-%m-%d")
+    audit_log = tmp_path / "audit" / ".queue" / f"{today}.log"
+    if audit_log.exists():
+        assert "BYPASS used:" not in audit_log.read_text()
+
+
+def test_run_py_bypass_oversized_reason_safe(tmp_path):
+    """F-004 carryover-2：超长 reason（5000 字符）时 audit log 写入正常不截断不 crash。
+
+    given_oversized_reason_when_run_py_then_audit_written_without_crash.
+    """
+    env = os.environ.copy()
+    env["CLAUDE_GATES_GLOBAL_BYPASS"] = "x" * 5000  # 超长，但合法（>= 8 字符）
+
+    result = subprocess.run(
+        [sys.executable, str(_GATES_DIR / "run.py"), "--trigger=ci"],
+        cwd=str(tmp_path),
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, f"超长 reason 仍合法，应 exit 0，got {result.returncode}"
+
+    today = dt.now().strftime("%Y-%m-%d")
+    audit_log = tmp_path / "audit" / ".queue" / f"{today}.log"
+    assert audit_log.exists()
+
+    log_content = audit_log.read_text()
+    # 含 BYPASS 行且 reason 完整（未截断）
+    assert "BYPASS used:" in log_content
+    assert "x" * 100 in log_content  # 5000 个 x 的前 100 个仍在
