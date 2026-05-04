@@ -12,3 +12,4 @@
 2026-05-04 12:07:30 [task-planning] 拆分 features.json → 4 张任务卡（F-001~F-004，pending；总 5.9 人天；依赖图 F-001 → F-002 → F-003,F-004 可并行）
 2026-05-04 12:08:28 [phase-transition] task-planning → development；7 条门禁全通过（META-SCHEMA / INDEX-INTEGRITY / SOURCING / WORKSPACE-CLEAN / REVIEW-VERDICT / TRACEABILITY / PLAN-FRESHNESS）
 2026-05-04 12:12:32 [development] F-001 派发 implementer subagent（complexity=medium → general-purpose + sonnet）
+2026-05-04 12:43:13 [review:needs_attention] REV-REQ-2026-006-code-F-001-001 score=78（3 major / 10 minor / 0 blocker）；must_fix=[F-1 hyperfine, F-2 BYPASS长度]；carryover=[F-3 变量绕过, F-9 Python降级] → F-002
