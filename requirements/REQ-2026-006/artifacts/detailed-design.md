@@ -720,9 +720,9 @@ if __name__ == "__main__":
 | `_archive_logs(log_files: list[Path], queue_done_dir: Path, archive_date: date, dry_run: bool) -> None` | log 列表 / archive 根 / 归档日期 / dry_run | None | mv 到 `.queue.done/<archive_date>/`；同名加 `.dup<N>.log`；dry_run 仅打印计划 |
 
 > **签名进化说明（2026-05-04 同步实现）**：F-004 实施时三个内部函数较初版有进化：
-> 1. `_dispatch` 从纯分桶函数（in: records → out: dict）演变为协调器（持有进程锁 + 串联 collect/parse/dispatch/write/archive 全流程）。原因：F-5 并发 flush 重复落盘问题需要进程级 `fcntl.LOCK_EX | LOCK_NB` 排他锁保护，锁的获取与释放必须在协调点而非分桶函数（commit 6710247 修复 F-5）。
-> 2. 三个函数统一新增 `dry_run` 参数，承载 CLI `--dry-run` 透传。原因：测试与排障需要"仅打印计划不动文件"模式（spec §1.2 验证抽屉）。
-> 3. `_archive_logs` 新增 `archive_date: date` 参数，把"今天"从函数内 `date.today()` 提到调用方。原因：可测性——单元测试需固定时间（`tests/lib/test_audit_flush.py` 用 freezegun）。
+> 1. `_dispatch` 从纯分桶函数（in: records → out: dict）演变为协调器（持有进程锁 + 串联 collect/parse/dispatch/write/archive 全流程）。原因：F-5 并发 flush 重复落盘问题需要进程级 `fcntl.LOCK_EX | LOCK_NB` 排他锁保护，锁的获取与释放必须在协调点而非分桶函数（commit 6710247 修复 F-5）。（来源：scripts/lib/audit_flush.py:160）
+> 2. 三个函数统一新增 `dry_run` 参数，承载 CLI `--dry-run` 透传。原因：测试与排障需要"仅打印计划不动文件"模式。（来源：scripts/lib/audit_flush.py:99）
+> 3. `_archive_logs` 新增 `archive_date: date` 参数，把"今天"从函数内 `date.today()` 提到调用方。原因：可测性——单元测试需固定时间。（来源：tests/lib/test_audit_flush.py）
 >
 > 三处均为内部 helper（非对外契约），不影响 §4.4 入口契约（仍 `audit_flush.main(argv)`）。
 
