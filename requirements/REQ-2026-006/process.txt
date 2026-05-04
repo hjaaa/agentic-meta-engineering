@@ -26,3 +26,4 @@
 2026-05-04 13:38:13 [signoff] REV-REQ-2026-006-code-F-003-001 approved by hj19961223@gmail.com
 2026-05-04 13:38:13 [development] F-003 done（commits: b7e0b0f impl / e74cc43 review+carryover；review needs_attention→signoff approved by hj19961223@gmail.com；4 minor carryover→F-004）
 2026-05-04 13:40:03 [development] F-004 派发 implementer subagent（complexity=medium → general-purpose + sonnet；含 F-003 carryover 三入口 reason 一致性 + 4 测试用例 + freezegun）
+2026-05-04 14:12:46 [review:blocked] REV-REQ-2026-006-code-F-004-001 score=72（0 critical / 2 major / 4 minor）；F-1 entry 路径穿越 + F-5 并发 flush 重复（POC 复现）must_fix

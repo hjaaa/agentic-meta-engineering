@@ -1,0 +1,102 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-006-code-F-004-001",
+  "requirement_id": "REQ-2026-006",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-04 14:09:20",
+  "reviewed_commit": "f94440a",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "31e5c1be90fc60aeafc0dfd2ad356b7d53eb58e375dac7818e44573e903b1a92"
+    },
+    {
+      "path": "artifacts/tasks/F-004.md",
+      "sha256": "f6fff4fe0472fa541994262d183461b750ea406cb8b4fc0d540726f1a2becf6b"
+    }
+  ],
+  "conclusion": "blocked",
+  "score": 72,
+  "dimensions": {
+    "design_consistency": {
+      "score": 88,
+      "issues": []
+    },
+    "security": {
+      "score": 70,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/audit_flush.py:96-99 _write_buckets 直接拼接未校验的 entry 字段到 out_path（_parse_lines:62 仅 strip 空白），构造 entry=../../../tmp/x 可让 mkdir+open 写出 audit_dir 之外。POC 复现成功，且 PR-4 是 audit_flush.py 这个组件的首次引入"
+        },
+        {
+          "severity": "minor",
+          "description": "tests/gates/test_global_bypass.py 和 test_audit_async.py 缺 V-07 BaseException 兜底测试（spec §4.6 要求 raise NameError → exit 2 + /tmp/run-py-error.log），同时缺 shlex.quote 注入回归测试（如 reason 含 $(...) 或 ` 字符）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/gates/run.py:42 用 len(_reason.strip())、scripts/gates/audit.py:36 同 strip、.claude/hooks/pre-tool-use-guard.sh:49 用 ${#_bypass} (raw)，三入口长度判定不一致；F-003 carryover-1 已修 \\n/\\r 转义但未触及长度判定"
+        }
+      ]
+    },
+    "concurrency": {
+      "score": 70,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/audit_flush.py:103-110 _write_buckets 用 out_path.open('a') 无文件锁；多个 SessionEnd 并发触发时同一组 .log 会被读两次然后各自 append 到同一 .json，POC 复现：5 行原始记录 → JSON 出现 10 行重复。spec §4.3 D-005 best-effort 上下文是 flush 失败重试，未声明接受数据重复"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/audit_flush.py:130-139 _archive_logs dup<N> 命名是 not exists() → move 的 TOCTOU 模式，并发场景下 shutil.move 会覆盖致 .log 静默丢失；F-5 加进程级 flock 后自动消解"
+        },
+        {
+          "severity": "minor",
+          "description": "tests/lib/test_audit_flush.py 缺并发 flush 用例（multiprocessing.Pool 模拟两个 SessionEnd 同时跑），无法捕捉 F-5 类回归"
+        }
+      ]
+    },
+    "complexity": {
+      "score": 90,
+      "issues": []
+    },
+    "error_handling": {
+      "score": 88,
+      "issues": []
+    },
+    "auxiliary_spec": {
+      "score": 90,
+      "issues": []
+    },
+    "performance": {
+      "score": 90,
+      "issues": []
+    },
+    "history_context": {
+      "score": 88,
+      "issues": []
+    }
+  },
+  "required_fixes": [
+    {
+      "description": "audit_flush.py 在 _parse_lines 第 62 行后加 entry 白名单 regex 校验（^[A-Za-z0-9:_-]+$），不匹配的行整体跳过，防止路径穿越写出 audit_dir",
+      "location": "scripts/lib/audit_flush.py:62",
+      "severity": "blocker"
+    },
+    {
+      "description": "audit_flush.py _write_buckets 写 .json 时用 fcntl.flock(LOCK_EX) 加进程级锁，或在 _dispatch 入口对 audit_dir/.queue.lock 整体上锁，防止并发 flush 致 JSON 数据翻倍",
+      "location": "scripts/lib/audit_flush.py:103",
+      "severity": "blocker"
+    }
+  ],
+  "suggestions": [
+    "并发 + 安全双维度叠加：audit_flush.py 是 PR-4 唯一新文件，193 行 0 历史代码，但同时命中 entry 字段污染（F-1）+ 并发数据重复（F-5）两类经典缺陷面。建议在 PR-5 收尾前补一次集中防御扫描，确认 _parse_lines / _write_buckets / _archive_logs 三个 IO 边界都有输入白名单 + 文件锁",
+    "F-3 三入口长度判定不一致是 F-003 carryover-1 的同类项延伸（\\n/\\r 转义已修，长度判定方法未对齐），建议合并到 F-005 一次性收敛或单开 follow-up，避免每个 PR 都遗留一点",
+    "F-4 V-07 BaseException 测试 + audit_async shlex.quote 注入回归是 PR-5 强制依赖项（V-07 验收门），不在本 PR 修但必须卡死在 F-005 合并前"
+  ],
+  "scope": {
+    "feature_id": "F-004"
+  },
+  "supersedes": null
+}
