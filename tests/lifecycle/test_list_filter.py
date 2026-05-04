@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import pytest
 import yaml
-from datetime import datetime
 from pathlib import Path
 
 # 导入被测函数
@@ -121,8 +120,8 @@ def test_phase_filter(fake_requirements_dir: Path) -> None:
 
 
 def test_all_and_phase_mutex(fake_requirements_dir: Path) -> None:
-    """--all 与 --phase 同时传入时，抛 ValueError 含 '互斥'。"""
-    with pytest.raises(ValueError, match="互斥"):
+    """--all 与 --phase 同时传入时，抛 ValueError 含 'mutually exclusive'。"""
+    with pytest.raises(ValueError, match="mutually exclusive"):
         list_requirements(
             all=True,
             phase="development",

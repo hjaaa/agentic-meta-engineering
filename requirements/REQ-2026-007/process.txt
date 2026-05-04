@@ -15,3 +15,5 @@
 2026-05-04 21:59:32 [task-planning] [save] features.json 拆分为 4 个任务文件（F-001..F-004），状态全 pending
 2026-05-04 22:01:04 [phase-transition] task-planning → development (7 gates ✓)
 2026-05-04 22:03:12 [development] F-002 派发（model=haiku, complexity=low, warm-up）
+2026-05-04 22:28:25 [review:needs_revision] code-F-002-001 5 must-fix（F-2/F-3/F-4/F-12/F-541）+ 6 follow-up
+2026-05-04 22:28:56 [development] F-002 修复派发（5 must-fix: F-2/F-3/F-4/F-12/F-541, model=haiku 重派）

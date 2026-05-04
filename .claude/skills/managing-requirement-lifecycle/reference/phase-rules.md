@@ -30,7 +30,7 @@ bootstrap → definition → tech-research → outline-design → detail-design
 `meta.yaml` 的 `archived_at` 字段（可选）用于标记需求的归档时间戳。语义规则：
 
 - **何时写入**：当需求进入 `phase=completed` 且执行归档操作时，记录归档时间
-- **格式**：ISO 8601 with offset（如 `2026-04-23 15:30:00`），参考 `context/team/engineering-spec/time-format.md`
+- **格式**：YYYY-MM-DD HH:MM:SS（Asia/Shanghai 时区，不带 offset；详见 context/team/engineering-spec/time-format.md）
 - **合法性约束**：
   - 仅当 `phase=completed` 时允许 `archived_at` 非空
   - 若 `phase != completed` 且 `archived_at` 非空，视为状态机违反

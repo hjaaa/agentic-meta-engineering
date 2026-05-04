@@ -50,7 +50,7 @@ def _load_yaml(path: Path) -> dict[str, Any]:
         with path.open("r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
         if not isinstance(data, dict):
-            raise ValueError(f"顶层不是 mapping")
+            raise ValueError(f"{rel(path)}: 顶层不是 mapping")
         return data
     except yaml.YAMLError as exc:
         raise ValueError(f"{rel(path)}: YAML 解析失败 — {exc}") from exc
@@ -101,7 +101,7 @@ def list_requirements(
           - 扫目录或解析 YAML 时的 I/O 错误（含路径信息）
     """
     if all and phase is not None:
-        raise ValueError("--all 与 --phase 互斥，不能同时使用")
+        raise ValueError("--all 与 --phase 互斥（mutually exclusive），不能同时使用")
 
     if requirements_dir is None:
         requirements_dir = REQUIREMENTS_DIR
