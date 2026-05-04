@@ -35,3 +35,4 @@
 2026-05-04 16:41:24 [save] development 4/4 PR 全部 done；F-3+F-4 minor carryover→F-005（如发起）；下一步 /requirement:next 进 testing
 2026-05-04 16:51:18 [signoff] REV-REQ-2026-006-detail-design-003 approved by hj19961223@gmail.com
 2026-05-04 16:53:35 [phase-transition] development → testing；7 条门禁全通过 + 追溯链 PASS（detail-design-003 同步 §4.3 签名后重审 looks_clean score=92）；audit 根目录 /audit/ 加入 .gitignore
+2026-05-04 16:58:00 [testing] 测试套件全跑：bats 30/30 + pytest 561/571（8 跳过为 tty 交互用例）；freezegun 走临时 venv；零失败 → ready_for_signoff
