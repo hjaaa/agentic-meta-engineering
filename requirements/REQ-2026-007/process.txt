@@ -3,3 +3,5 @@
 2026-05-04 19:39:08 [phase-transition] definition → tech-research (7 gates ✓)
 2026-05-04 19:56:21 [tech-research] [save] 澄清 Codex bot 识别策略：双条件 user.type=Bot + /codex/i 匹配 user.login（API 字段非登录动作）
 2026-05-04 20:03:56 [phase-transition] tech-research → outline-design (7 gates ✓)
+2026-05-04 20:20:01 [review:needs_revision] outline-design-quality-reviewer score=83 (1 major + 3 minor，已修)
+2026-05-04 20:21:31 [review:approved] outline-design-quality-reviewer 复审 looks_clean (4 项修复到位)

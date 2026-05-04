@@ -37,14 +37,15 @@ completed_at: ""                      # ISO8601，completed 时填
 lessons_extracted: false              # /knowledge:extract-experience 是否已跑
 reviews:
   outline-design:
-    latest: REV-REQ-2026-007-outline-design-001
-    conclusion: needs_attention
-    reviewed_commit: 7e902c8
+    latest: REV-REQ-2026-007-outline-design-002
+    conclusion: looks_clean
+    reviewed_commit: e8db990
     artifact_hashes:
       artifacts/outline-design.md: 
-        991f0a5abdbee7c21094ae00803ce4a3ceec568bdd18708a20fe3fdb66613a4e
+        d4d0b442555c8dcd7f153ed7f1a2f7639155e3d2422cbf91399a069bfd609c47
       artifacts/requirement.md: 
         1a3ff2d6955c728e8fe03c0ea890374b77fe80b60fcbc5aeb00864598d82242a
     history:
       - REV-REQ-2026-007-outline-design-001
+      - REV-REQ-2026-007-outline-design-002
     stale: false
