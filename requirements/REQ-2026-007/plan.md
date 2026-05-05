@@ -29,7 +29,7 @@
 | outline-design | 2026-05-05 | 2026-05-04 ✓（reviewer 二审 looks_clean，13 项待办移交 detail-design）|
 | detail-design | 2026-05-06 | 2026-05-04 ✓（reviewer 二审 looks_clean，sign-off approved，门禁就绪）|
 | task-planning | 2026-05-06 | 2026-05-04 ✓（features.json 拆 4 个任务，依赖图 F-002→F-003 / F-001→F-004）|
-| development | 2026-05-08 | — |
+| development | 2026-05-08 | 2026-05-05 ✓（F-001/F-002/F-003/F-004 全 done，每个 2 轮 review looks_clean + sign-off approved + 零回归）|
 | testing | 2026-05-09 | — |
 
 ## 风险
