@@ -220,16 +220,30 @@ def _precheck_pr_merged(pr_number: int, req_id: str, *, force: bool) -> None:
 # ---------- 5 步执行 ----------
 
 
-def _atomic_write_meta(req_id: str, meta: dict[str, Any]) -> str:
+def _atomic_write_meta(req_id: str, meta: dict[str, Any], *, outcome: str = "shipped") -> str:
     """原子写 meta.yaml：tmp + os.replace；返回最终的 archived_at 值。
 
-    重跑安全：archived_at 已非空时保留旧值（首次归档时间不被覆盖）。
+    F-17（CI gate fail）：phase=completed 时 schema 强校验 outcome/completed_at 非空
+    （context/team/engineering-spec/meta-schema.yaml conditional_required），
+    必须同时写这两个字段。outcome 默认 shipped（archive 路径前置已校验 PR merged）；
+    `--force` 路径可能 PR 未 merged，但 outcome 仍由调用方在 CLI 层显式给值。
+
+    重跑安全：archived_at / completed_at / outcome 已非空时保留旧值（首次归档时间
+    与结论不被覆盖）。
     """
     archived_at = (meta.get("archived_at") or "").strip()
     if not archived_at:
         archived_at = _now_cst_str()
+    completed_at = (meta.get("completed_at") or "").strip()
+    if not completed_at:
+        completed_at = archived_at  # 同一动作内 phase 转 completed 与 archive 同步发生
+    existing_outcome = (meta.get("outcome") or "").strip()
+    final_outcome = existing_outcome or outcome
+
     meta["phase"] = "completed"
     meta["archived_at"] = archived_at
+    meta["completed_at"] = completed_at
+    meta["outcome"] = final_outcome
 
     path = _meta_path(req_id)
     tmp = path.with_suffix(".yaml.tmp")
@@ -549,11 +563,23 @@ def archive_requirement(
     yes_experience: bool = False,
     yes_local_branch: bool = False,
     yes_remote_branch: bool = False,
+    outcome: str = "shipped",
     prompts_callback: Optional[Callable[[ArchivePrompt], bool]] = None,
 ) -> ArchiveResult:
-    """archive 子动作入口；详见模块 docstring 与 detailed-design §3.5。"""
+    """archive 子动作入口；详见模块 docstring 与 detailed-design §3.5。
+
+    outcome（F-17 新增）：写入 meta.outcome，satisfy GATE-META-SCHEMA conditional
+    required（phase=completed 时 outcome / completed_at 必须非空）。默认 shipped；
+    --force 路径（PR 未 merged）调用方应显式给值（abandoned / rolled-back）。
+    """
     if not req_id:
         _abort("R-ARCHIVE-REQ-ID", "req_id 为空", req_id or "<empty>")
+    if outcome not in {"shipped", "abandoned", "rolled-back"}:
+        _abort(
+            "R-ARCHIVE-OUTCOME",
+            f"outcome 必须 ∈ {{shipped, abandoned, rolled-back}}，实际 {outcome!r}",
+            req_id,
+        )
 
     meta = _load_meta(req_id)
 
@@ -565,7 +591,7 @@ def archive_requirement(
 
     # —— 5 步执行 ——
     result = ArchiveResult(req_id=req_id)
-    archived_at = _atomic_write_meta(req_id, meta)
+    archived_at = _atomic_write_meta(req_id, meta, outcome=outcome)
     result.archived_at = archived_at
     result.phase = meta.get("phase", "completed")
 
@@ -624,6 +650,12 @@ def _build_parser():
                    help="本地分支问跳问，等价用户答 y")
     p.add_argument("--yes-remote-branch", action="store_true",
                    help="远程分支问跳问，等价用户答 y")
+    p.add_argument(
+        "--outcome",
+        choices=["shipped", "abandoned", "rolled-back"],
+        default="shipped",
+        help="meta.outcome 终态，默认 shipped；--force 路径下显式给值",
+    )
     return p
 
 
@@ -638,6 +670,7 @@ def main() -> int:
         yes_experience=args.yes_experience,
         yes_local_branch=args.yes_local_branch,
         yes_remote_branch=args.yes_remote_branch,
+        outcome=args.outcome,
     )
     return 0
 

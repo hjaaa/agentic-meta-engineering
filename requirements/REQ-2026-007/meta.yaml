@@ -1,53 +1,99 @@
-# ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-007
 title: submit Codex review-loop + archive 命令
-phase: testing
-created_at: "2026-05-04 19:16:37"     # 格式 YYYY-MM-DD HH:MM:SS（Asia/Shanghai），见 context/team/engineering-spec/time-format.md
-branch: feat/req-2026-007             # 例：feat/req-2026-001
-base_branch: develop                  # feat/* 派生的基点分支：develop / main / master
-project: agentic-meta-engineering     # 关联 context/project/<project>/
-services: []                          # 涉及的服务仓库
+phase: completed
+created_at: '2026-05-04 19:16:37'
+branch: feat/req-2026-007
+base_branch: develop
+project: agentic-meta-engineering
+services: []
 gates_passed:
-  - {phase: definition, at: "2026-05-04 19:30:00", gates: [GATE-META-SCHEMA, 
-          GATE-INDEX-INTEGRITY, GATE-SOURCING, GATE-WORKSPACE-CLEAN, 
-          GATE-REVIEW-VERDICT, GATE-TRACEABILITY]}
-  - {phase: tech-research, at: "2026-05-04 20:30:00", gates: [GATE-META-SCHEMA, 
-          GATE-INDEX-INTEGRITY, GATE-SOURCING, GATE-PLAN-FRESHNESS, 
-          GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY]}
-  - {phase: outline-design, at: "2026-05-04 20:02:55", gates: [GATE-META-SCHEMA, 
-          GATE-INDEX-INTEGRITY, GATE-SOURCING, GATE-PLAN-FRESHNESS, 
-          GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY]}
-  - {phase: detail-design, at: "2026-05-04 21:27:11", gates: [GATE-META-SCHEMA, 
-          GATE-INDEX-INTEGRITY, GATE-SOURCING, GATE-PLAN-FRESHNESS, 
-          GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY]}
-  - {phase: task-planning, at: "2026-05-04 21:56:33", gates: [GATE-META-SCHEMA, 
-          GATE-INDEX-INTEGRITY, GATE-SOURCING, GATE-PLAN-FRESHNESS, 
-          GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY]}
-  - {phase: development, at: "2026-05-04 22:00:51", gates: [GATE-META-SCHEMA,
-          GATE-INDEX-INTEGRITY, GATE-SOURCING, GATE-PLAN-FRESHNESS,
-          GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY]}
-  - {phase: testing, at: "2026-05-05 16:43:39", gates: [GATE-META-SCHEMA,
-          GATE-INDEX-INTEGRITY, GATE-SOURCING, GATE-PLAN-FRESHNESS,
-          GATE-WORKSPACE-CLEAN, GATE-REVIEW-VERDICT, GATE-TRACEABILITY,
-          GATE-TRACEABILITY-SEMANTIC]}
-pr_url: "https://github.com/hjaaa/agentic-meta-engineering/pull/57"
+  - phase: definition
+    at: '2026-05-04 19:30:00'
+    gates:
+      - GATE-META-SCHEMA
+      - GATE-INDEX-INTEGRITY
+      - GATE-SOURCING
+      - GATE-WORKSPACE-CLEAN
+      - GATE-REVIEW-VERDICT
+      - GATE-TRACEABILITY
+  - phase: tech-research
+    at: '2026-05-04 20:30:00'
+    gates:
+      - GATE-META-SCHEMA
+      - GATE-INDEX-INTEGRITY
+      - GATE-SOURCING
+      - GATE-PLAN-FRESHNESS
+      - GATE-WORKSPACE-CLEAN
+      - GATE-REVIEW-VERDICT
+      - GATE-TRACEABILITY
+  - phase: outline-design
+    at: '2026-05-04 20:02:55'
+    gates:
+      - GATE-META-SCHEMA
+      - GATE-INDEX-INTEGRITY
+      - GATE-SOURCING
+      - GATE-PLAN-FRESHNESS
+      - GATE-WORKSPACE-CLEAN
+      - GATE-REVIEW-VERDICT
+      - GATE-TRACEABILITY
+  - phase: detail-design
+    at: '2026-05-04 21:27:11'
+    gates:
+      - GATE-META-SCHEMA
+      - GATE-INDEX-INTEGRITY
+      - GATE-SOURCING
+      - GATE-PLAN-FRESHNESS
+      - GATE-WORKSPACE-CLEAN
+      - GATE-REVIEW-VERDICT
+      - GATE-TRACEABILITY
+  - phase: task-planning
+    at: '2026-05-04 21:56:33'
+    gates:
+      - GATE-META-SCHEMA
+      - GATE-INDEX-INTEGRITY
+      - GATE-SOURCING
+      - GATE-PLAN-FRESHNESS
+      - GATE-WORKSPACE-CLEAN
+      - GATE-REVIEW-VERDICT
+      - GATE-TRACEABILITY
+  - phase: development
+    at: '2026-05-04 22:00:51'
+    gates:
+      - GATE-META-SCHEMA
+      - GATE-INDEX-INTEGRITY
+      - GATE-SOURCING
+      - GATE-PLAN-FRESHNESS
+      - GATE-WORKSPACE-CLEAN
+      - GATE-REVIEW-VERDICT
+      - GATE-TRACEABILITY
+  - phase: testing
+    at: '2026-05-05 16:43:39'
+    gates:
+      - GATE-META-SCHEMA
+      - GATE-INDEX-INTEGRITY
+      - GATE-SOURCING
+      - GATE-PLAN-FRESHNESS
+      - GATE-WORKSPACE-CLEAN
+      - GATE-REVIEW-VERDICT
+      - GATE-TRACEABILITY
+      - GATE-TRACEABILITY-SEMANTIC
+pr_url: https://github.com/hjaaa/agentic-meta-engineering/pull/57
 pr_number: 57
-log_layout: split                     # split（默认，工具日志→process.tool.log / 语义事件→process.txt） | legacy（老格式，全写 process.txt）
-
-# ============ 语义组（definition 阶段补齐，供跨需求检索） ============
-feature_area: lifecycle               # 主体是 archive 命令 + submit --codex；门禁放宽是次要影响
-change_type: feature                  # 主体是新增能力，夹带门禁条件 refactor 与文档修复
-affected_modules:                     # 横跨需求生命周期 + 门禁体系 + 命令/Skill 定义
+log_layout: split
+feature_area: lifecycle
+change_type: feature
+affected_modules:
   - lifecycle
   - gate-system
   - commands
   - skills
-tags: [codex-review, archive, pr-loop]
-
-# ============ 结果组（completed 时才填） ============
-outcome: ""                           # shipped / abandoned / rolled-back
-completed_at: ""                      # ISO8601，completed 时填
-lessons_extracted: false              # /knowledge:extract-experience 是否已跑
+tags:
+  - codex-review
+  - archive
+  - pr-loop
+outcome: shipped
+completed_at: '2026-05-05 19:15:10'
+lessons_extracted: false
 reviews:
   outline-design:
     latest: REV-REQ-2026-007-outline-design-002
@@ -132,3 +178,14 @@ reviews:
           artifacts/tasks/F-004.md: 
             658c597e59cd893bd4e76f72d0c2da9990ef7b69aba2c6374d0fbcef8d1999a4
         stale: false
+  definition:
+    latest: REV-REQ-2026-007-definition-001
+    conclusion: looks_clean
+    reviewed_commit: '4604333'
+    artifact_hashes:
+      artifacts/requirement.md: 
+        1a3ff2d6955c728e8fe03c0ea890374b77fe80b60fcbc5aeb00864598d82242a
+    history:
+      - REV-REQ-2026-007-definition-001
+    stale: false
+archived_at: '2026-05-05 19:15:10'
