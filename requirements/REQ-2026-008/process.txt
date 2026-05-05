@@ -1,2 +1,3 @@
 2026-05-05 22:05:00 [phase-transition] bootstrap
 2026-05-05 22:17:51 [phase-transition] bootstrap → definition（7 gates 全过）
+2026-05-05 22:30:55 [save] definition：requirement.md 落地（5 场景 / 9 验收 / 4 决策 / 5 待澄清，strict sourcing 0/0）
