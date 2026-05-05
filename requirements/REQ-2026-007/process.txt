@@ -26,3 +26,5 @@
 2026-05-04 23:09:29 [review:approved] code-F-001-002 looks_clean (4 doc follow-up 零回归 + 1 minor doc-drift 入 backlog)
 2026-05-04 23:10:08 [signoff] REV-REQ-2026-007-code-F-001-002 approved by hj19961223@gmail.com
 2026-05-04 23:11:47 [development] F-001 done（commit 6741541，verdict 002 looks_clean + sign-off approved，1 doc-drift 入 backlog）
+2026-05-04 23:12:46 [development] [save] F-001 done + 2 轮 review looks_clean + sign-off，下一步待选派 F-003 或 F-004
+2026-05-05 14:50:13 [development] F-003 派发（model=opus, complexity=high, archive 命令完整链 + V-04/V-08）

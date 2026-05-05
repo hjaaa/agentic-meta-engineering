@@ -1,0 +1,127 @@
+# /requirement:archive 执行细则
+
+`/requirement:archive` 命令的子动作规则——伞形 Skill `managing-requirement-lifecycle` 在识别到「归档」意图时按本文执行。实现入口 `scripts/lib/archive_runner.py::archive_requirement`，签名见 `requirements/REQ-2026-007/artifacts/detailed-design.md` §3.1，**已 frozen**。
+
+适用阶段：`phase ∈ {testing, completed}`。`testing → completed` 由 archive 命令推进（不走 `/requirement:next`，因为含副作用动作）。
+
+---
+
+## 1. 4 项预检（硬门禁）
+
+| # | 检查项 | 失败错误码 | 失败文案 |
+|---|---|---|---|
+| 1 | `phase ∈ {testing, completed}` | `R-ARCHIVE-PHASE` | `当前 phase=<X>，期望 testing 或 completed` |
+| 2 | `git status --porcelain` 输出为空 | `R-ARCHIVE-DIRTY` | `工作目录有未提交改动；先 commit 再 archive` |
+| 3 | `meta.yaml.pr_number` 非 0 且非空 | `R-ARCHIVE-NO-PR` | `meta.pr_number 缺失；先跑 /requirement:submit` |
+| 4 | `gh pr view <pr_number> --json state` == `MERGED`（除非 `--force`） | `R-ARCHIVE-PR-NOT-MERGED` | `PR #<N> state=<X>，未合并；等 merge 或加 --force` |
+
+任一预检失败 → `SystemExit(1)` + stderr 输出错误码与文案；不进入第 5 步。
+
+`--force` 仅跳过预检 4，其他 3 项无法跳过。
+
+---
+
+## 2. 5 步执行（预检通过后）
+
+### 2.1 原子写 meta.yaml
+
+- 若 `phase` 不是 `completed`，改为 `completed`
+- `archived_at` 写入「写入时刻的 Asia/Shanghai now」（格式 `YYYY-MM-DD HH:MM:SS`，与 phase-rules.md「archived_at 字段语义」示例值一致；详见 `context/team/engineering-spec/time-format.md`）
+- **重跑安全**：`archived_at` 已非空时**保留旧值**（首次归档时间不被覆盖）
+- 实现：写到 `meta.yaml.tmp` 后 `os.replace()` 覆盖（避免中间状态被 gate 读到）
+
+### 2.2 追加 process.txt `[archived]` 事件
+
+格式遵守 `requirement-progress-logger` SKILL.md 的硬约束：
+
+```
+YYYY-MM-DD HH:MM:SS [archived] (PR #<num> merged at <archived_at>)
+```
+
+- 时间戳取 **append 那一刻** 的 Asia/Shanghai now（保证行序与时序一致）
+- **幂等约束**（detailed-design §4.3）：append 前 grep 现有 `process.txt`，若已存在 `[archived]` 行则**跳过**——覆盖三场景：(1) 用户重跑 archive；(2) `--force` 强制重跑；(3) 双窗口并发误触
+- 不允许直接 `>>` 走其他通道——本 Skill 是 process.txt 的唯一写入通道
+
+### 2.3 经验沉淀（可选）
+
+- 触发问句 `kind="experience"`，按 §3 交互通道决议
+- 答 y → 调 `claude /knowledge:extract-experience <req_id>`（subprocess）
+- 答 N（含默认 N）→ `outcome=no`
+- `--no-experience` flag → 不问，`outcome=skipped`
+
+**fail-soft**：subprocess 不可用 / 退出非零 → `outcome=failed` + `error_messages` 记原因，archive 仍 exit 0。
+
+### 2.4 删本地分支 + 删远程分支（可选）
+
+两问串行（先本地后远程），任一为独立动作。`--keep-branch` flag 同时跳过两问，`outcome=skipped`。
+
+**本地分支**（`kind="local_branch"`）：
+- 答 y → `git branch -d <branch>`（safe delete；**不允许 `-D` 强删**，D-014）
+- `<branch> == base_branch`（如 develop / main）→ `outcome=failed` + `error_messages` 记拒因，跳过实际 git 调用
+- git 拒绝（squash merge 后会被判 not fully merged）→ 透传 git 原始 error → `outcome=failed`
+
+**远程分支**（`kind="remote_branch"`）：
+- 答 y → `git push origin --delete <branch>`
+- 远程已被 GitHub「Automatically delete head branches」清掉 → stderr 含 `remote ref does not exist` → 折叠为 `outcome=already-deleted`，不报错
+- 网络 / 401 / 403 → 透传 error → `outcome=failed`
+
+### 2.5 终端反馈（5 行 + 可选 errors 段）
+
+按 spec §5.3 第 5 步原样渲染：
+
+```
+✅ REQ-YYYY-NNN archived
+   phase: completed
+   archived_at: 2026-05-04 19:30:00
+   experience: ✅ yes / ⏭ no / ⏭ skipped / ❌ failed
+   local branch:  ✅ deleted / ⏭ kept / ⏭ skipped / ❌ failed
+   remote branch: ✅ deleted / ⏭ kept / ⏭ skipped / ✅ already-deleted / ❌ failed
+```
+
+任意 `outcome=failed` 时追加 `errors:` 段列出 `error_messages`，便于排查。
+
+archive 命令始终 exit 0（除非 4 项预检挂）。
+
+---
+
+## 3. 三问交互通道（D-016 A 案锁死）
+
+按交互通道决议优先级：
+
+1. 若对应 `yes_<x>` flag 已设 True → 跳问，按 y 处理
+2. 否则若 `prompts_callback` 注入 → 调 callback，由主 Agent 串行问
+3. 否则（CLI 自动化无 callback）→ 默认按 N 处理（保守不删 / 不沉淀）
+
+`callback` 入参为 `ArchivePrompt(kind, question, default=False)`，返回 `bool`。callback 抛异常视同回答 N（不抛出影响 archive 流程）。
+
+主对话场景：伞形 Skill 装配 callback，把 `question` 渲染给用户、解析用户回复（y/n）后回填 callback 返回；CLI 自动化场景：调用方传 `yes_*` flag 跳问。
+
+---
+
+## 4. 错误降级矩阵（副作用动作）
+
+| 动作 | 失败现象 | 降级策略 |
+|---|---|---|
+| 经验沉淀 | `claude /knowledge:extract-experience` 调用失败 / 退出非零 | 打印 stderr 原因 → `outcome=failed`，archive 仍 exit 0 |
+| 本地分支 -d | git 拒绝（squash merge / 未合并 / `-d` 安全模式拒删） | 透传 git error → `outcome=failed` |
+| 本地分支 -d | `<branch> == base_branch` | `outcome=failed`，不调 git（防误删 develop） |
+| 远程分支删 | `remote ref does not exist` | 折叠为 `already-deleted`，**不报错** |
+| 远程分支删 | 网络 / 401 / 403 | 透传 error → `outcome=failed` |
+
+副作用动作 `outcome` 全部记录到 `ArchiveResult`。archive 命令始终 exit 0（除非 4 项预检挂）。
+
+---
+
+## 5. 与其他规则的关系
+
+- `phase-rules.md` §archived_at 字段语义：`archived_at` 写入仅当 phase=completed，本文 §2.1 是其唯一执行入口
+- `requirement-progress-logger` SKILL.md：本文 §2.2 走的是 progress-logger 的格式约束（事件标签 `[archived]` 已加入白名单）
+- `submit-rules.md`：archive 强依赖 `meta.pr_number` 已被 submit 回写，预检 3 失败时引导用户先跑 `/requirement:submit`
+
+---
+
+## 6. 测试与自举
+
+- 单测：`tests/lifecycle/test_archive.py` 覆盖 TC-F3-1 ~ TC-F3-7（4 预检 + 三问 yes/no + 失败降级）
+- 沙盒 e2e（V-01）：TC-F3-8，REQ-2099-007 走全链路
+- 自举（V-08）：本需求 PR merge 后用 `/requirement:archive` 归档自身——`yq '.archived_at' meta.yaml` 非空 + `grep -c '\[archived\]' process.txt == 1`（幂等校验）

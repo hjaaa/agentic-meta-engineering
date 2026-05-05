@@ -18,6 +18,7 @@ description: 需求全生命周期管理伞形 Skill，被 8 个 /requirement:* 
    - 回退 → 归档当前 artifacts + 改 phase + 写 notes.md
    - 列出 → 扫 `requirements/*/meta.yaml`，输出需求索引
    - **提交 PR** → 按 `reference/submit-rules.md` 做前置门禁、推分支、开 PR、回写 `pr_url` / `pr_number`
+   - 归档 → archive（phase=testing|completed → completed + archived_at；委托 `archive_runner.archive_requirement`）
 
 2. **状态持久化**：每次阶段变更必须更新 `meta.yaml` 的 `phase` + 追加 `gates_passed`；submit 动作只回写 PR 字段，不改 phase
 
@@ -37,6 +38,7 @@ description: 需求全生命周期管理伞形 Skill，被 8 个 /requirement:* 
 - [`reference/phase-rules.md`](reference/phase-rules.md) — 8 阶段定义 + 切换规则
 - [`reference/gate-checklist.md`](reference/gate-checklist.md) — 各阶段门禁具体检查项 + submit 前置门禁
 - [`reference/submit-rules.md`](reference/submit-rules.md) — `/requirement:submit` 的执行细节
+- [`reference/archive-rules.md`](reference/archive-rules.md) — `/requirement:archive` 的执行细则
 - [`templates/meta.yaml.tmpl`](templates/meta.yaml.tmpl) — 新建需求的 meta.yaml 模板
 - [`templates/plan.md.tmpl`](templates/plan.md.tmpl) — 新建需求的 plan.md 模板
 - [`templates/pr-body.md.tmpl`](templates/pr-body.md.tmpl) — `/requirement:submit` 的 PR 正文模板
