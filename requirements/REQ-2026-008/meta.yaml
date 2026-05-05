@@ -5,7 +5,7 @@ phase: bootstrap
 created_at: "2026-05-05 22:03:10"
 branch: feat/req-2026-008
 base_branch: develop
-project: ""
+project: agentic-meta-engineering
 services: []
 gates_passed: []
 pr_url: ""
@@ -13,10 +13,19 @@ pr_number: 0
 log_layout: split
 
 # ============ 语义组（definition 阶段补齐，供跨需求检索） ============
-feature_area: ""                         # definition 起必填；值必须在 context/project/<project>/areas.yaml 白名单内
-change_type: ""                          # definition 起必填；枚举：feature / bugfix / refactor / perf / security
-affected_modules: []                     # definition 起必填；自由词，建议与 services 子模块对齐
-tags: []                                 # 可选；长尾标签，不归一化
+feature_area: gate-system                # 跨 hooks + scripts + skills + engineering-spec 多层加机器强制
+change_type: feature                     # 新增 receipt schema / hook 拦截 / gate 兜底等执行体
+affected_modules:                        # 横跨 5 层
+  - hooks
+  - gates
+  - engineering-spec
+  - skills
+  - scripts/lib
+tags:                                    # 长尾标签，便于跨需求检索
+  - subagent-dispatch
+  - receipt-schema
+  - touches-guard
+  - archon-inspired
 
 # ============ 结果组（completed 时才填） ============
 outcome: ""                    # shipped / abandoned / rolled-back
