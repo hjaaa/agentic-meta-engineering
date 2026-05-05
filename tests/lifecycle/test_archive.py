@@ -523,6 +523,111 @@ def test_archived_at_preserved_on_rerun(
     assert meta["archived_at"] == old_ts
 
 
+# ---------- F-17（CI gate fail）：archive 必须写 outcome + completed_at ----------
+
+
+def test_archive_writes_outcome_and_completed_at(
+    fake_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """F-17 回归：phase=completed 时 GATE-META-SCHEMA conditional_required 强校验
+    outcome / completed_at 非空，archive 必须同时写这两个字段。
+    """
+    req_dir = _make_meta(fake_repo)
+    plan = {
+        ("git", "status", "--porcelain"): _ok(),
+        ("gh", "pr", "view"): _ok(stdout=json.dumps({"state": "MERGED"})),
+    }
+    monkeypatch.setattr(archive_runner, "_run", _make_run_stub(plan))
+
+    result = archive_requirement(
+        "REQ-2099-007",
+        no_experience=True,
+        keep_branch=True,
+    )
+    meta = yaml.safe_load((req_dir / "meta.yaml").read_text(encoding="utf-8"))
+    assert meta["outcome"] == "shipped", f"默认 outcome 应为 shipped，实际 {meta.get('outcome')!r}"
+    assert meta["completed_at"], f"completed_at 必须非空，实际 {meta.get('completed_at')!r}"
+    # 同一动作内 archive 与 phase 转 completed 同时发生 → completed_at == archived_at
+    assert meta["completed_at"] == result.archived_at, (
+        f"completed_at({meta['completed_at']}) 应等于 archived_at({result.archived_at})"
+    )
+
+
+def test_archive_outcome_override_via_kwarg(
+    fake_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """F-17：--outcome 可覆盖默认 shipped（--force 路径下场景）。"""
+    _make_meta(fake_repo, phase="testing")
+    plan = {
+        ("git", "status", "--porcelain"): _ok(),
+        ("gh", "pr", "view"): _ok(stdout=json.dumps({"state": "MERGED"})),
+    }
+    monkeypatch.setattr(archive_runner, "_run", _make_run_stub(plan))
+
+    archive_requirement(
+        "REQ-2099-007",
+        no_experience=True,
+        keep_branch=True,
+        outcome="abandoned",
+    )
+    meta = yaml.safe_load((fake_repo / "REQ-2099-007" / "meta.yaml").read_text(encoding="utf-8"))
+    assert meta["outcome"] == "abandoned"
+
+
+def test_archive_outcome_invalid_value_aborts(
+    fake_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """F-17：非法 outcome 值（不在 schema enum 内）应在 archive 入口前 abort。"""
+    _make_meta(fake_repo)
+
+    with pytest.raises(SystemExit) as exc:
+        archive_requirement(
+            "REQ-2099-007",
+            no_experience=True,
+            keep_branch=True,
+            outcome="invalid-value",
+        )
+    assert exc.value.code == 1
+
+
+def test_archive_preserves_existing_outcome_and_completed_at(
+    fake_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """F-17：重跑场景下 outcome / completed_at 已非空时保留旧值（首次结论不被覆盖）。"""
+    req_dir = _make_meta(
+        fake_repo,
+        phase="completed",
+        archived_at="2026-05-04 19:00:00",
+    )
+    # 手工写入历史 outcome / completed_at（模拟某个外部流程已经设过）
+    meta_path = req_dir / "meta.yaml"
+    meta = yaml.safe_load(meta_path.read_text(encoding="utf-8"))
+    meta["outcome"] = "rolled-back"
+    meta["completed_at"] = "2026-05-03 18:00:00"
+    meta_path.write_text(yaml.safe_dump(meta, allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+    plan = {
+        ("git", "status", "--porcelain"): _ok(),
+        ("gh", "pr", "view"): _ok(stdout=json.dumps({"state": "MERGED"})),
+    }
+    monkeypatch.setattr(archive_runner, "_run", _make_run_stub(plan))
+
+    archive_requirement(
+        "REQ-2099-007",
+        no_experience=True,
+        keep_branch=True,
+        outcome="shipped",  # 即便传入 shipped，也不该覆盖既有 rolled-back
+    )
+
+    meta_after = yaml.safe_load(meta_path.read_text(encoding="utf-8"))
+    assert meta_after["outcome"] == "rolled-back", "重跑不该覆盖既有 outcome"
+    assert meta_after["completed_at"] == "2026-05-03 18:00:00", "重跑不该覆盖既有 completed_at"
+
+
 # ---------- codex round-2 P2 finding F-5 回归 ----------
 
 
