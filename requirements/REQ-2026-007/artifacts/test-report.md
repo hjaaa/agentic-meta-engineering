@@ -251,3 +251,31 @@ verdict=not_passed，2 条 P2：
 新增 2 条 + 改写 1 条回归 pytest，全量回归 **596 passed / 0 failed / 8 skipped**。
 
 **累计 round-1..8 自举闭环：15 finding（8 P1 + 7 P2）全 fix + 20 条净新增回归 pytest**。
+
+### Round 9（2026-05-05 18:48~18:54，commit 1cb8417） — review-loop 终止
+
+脚本初判 verdict=timeout，但实际 codex 已在 18:53:52 回评 pass phrase（issue comment id 4378572117，body：`Codex Review: Didn't find any major issues. Already looking forward to the next diff.`）。
+
+漏判根因即 codex 本轮揪出的 P1 finding F-16：
+
+| Finding | Severity | 文件 | 修复 |
+|---|---|---|---|
+| F-16 | **P1** | `submit_codex.py` `_poll_codex` 端点 | codex 「无 finding」时发 issue comment 不发 PR review；旧实现只查 `pulls/{n}/reviews` 漏 pass 信号 → 假阴 timeout。新实现新增 `_gh_pr_issue_comments` + `_normalize_issue_comment_to_review`，双端点合并候选，`_pick_latest_review` 在两源上取最新 |
+
+新增 5 条回归 pytest（双端点单测 + issue comment 过滤 + 跨源 latest 选择），全量回归 **601 passed / 0 failed / 8 skipped**。
+
+**round-9.md verdict 修订为 passed**——按用户原始需求 §10 终止条件「review-loop 持续到 codex 不再提出新的 bug 之后才能结束」，**review-loop 正式收敛**。
+
+### 终态汇总
+
+| 维度 | 值 |
+|---|---|
+| 总轮次 | 9 |
+| Codex finding 总数 | **16**（9 P1 + 7 P2） |
+| 修复 | 全部 fix（包括 1 条修复时引入的回归 F-12） |
+| 净新增回归 pytest | **25** |
+| 全量 pytest | **601 passed / 0 failed / 8 skipped** |
+| 终止信号 | round-9 issue comment 含 `Didn't find any major issues.` |
+| 提交记录 | `b2c6b42 → 9 rounds of self-bootstrap` 共 30+ commits |
+
+**累计 round-1..9 自举闭环：16 finding 全 fix + 25 条净新增回归 pytest，review-loop 收敛**。

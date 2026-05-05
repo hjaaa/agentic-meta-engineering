@@ -410,6 +410,55 @@ def _gh_pr_reviews(pr_number: int) -> list[dict[str, Any]]:
     return _parse_jsonl_reviews(proc.stdout or "")
 
 
+def _gh_pr_issue_comments(pr_number: int) -> list[dict[str, Any]]:
+    """调 gh API 拿 PR issue comments 列表（pass 路径专用）。
+
+    F-16（codex round-9 P1）：codex 在「无 finding」时不发 PR review，而是发
+    issue 评论（带 pass phrase）。原 _poll_codex 只查 reviews 端点，会错过 pass
+    信号 → verdict=timeout 假阴。此函数补全 issue/{pr}/comments 端点。
+
+    返回与 _gh_pr_reviews 同构的 dict 列表（normalize 在调用方），异常体系一致。
+    """
+    try:
+        proc = subprocess.run(
+            [
+                "gh", "api",
+                f"repos/{{owner}}/{{repo}}/issues/{pr_number}/comments",
+                "--paginate",
+                "-q", ".[]",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=_SUBPROC_TIMEOUT_SEC,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
+        raise GhApi5xx(str(exc)) from exc
+
+    if proc.returncode != 0:
+        stderr_lower = (proc.stderr or "").lower()
+        if "429" in stderr_lower or "rate limit" in stderr_lower:
+            raise GhApi429(proc.stderr.strip())
+        if any(code in (proc.stderr or "") for code in ("500", "502", "503", "504")):
+            raise GhApi5xx(proc.stderr.strip())
+        raise GhApi5xx(proc.stderr.strip())
+
+    return _parse_jsonl_reviews(proc.stdout or "")
+
+
+def _normalize_issue_comment_to_review(comment: dict[str, Any]) -> dict[str, Any]:
+    """把 issue comment 字段 shape 化为 review-like dict，供 _poll_codex 统一处理。
+
+    issue comment 用 `created_at`（GitHub 没给 submitted_at 字段），review 用
+    `submitted_at`；这里把 created_at copy 到 submitted_at，并塞 _kind=comment
+    以便下游区分（落 round-N.md 时不写 state）。
+    """
+    out = dict(comment)
+    out["submitted_at"] = comment.get("submitted_at") or comment.get("created_at")
+    out["_kind"] = "comment"
+    return out
+
+
 def _parse_jsonl_reviews(stdout: str) -> list[dict[str, Any]]:
     """解析 `gh api --paginate -q '.[]'` 的多行 JSON 输出。
 
@@ -473,7 +522,9 @@ def _poll_codex(
 
     while time.monotonic() < deadline:
         try:
+            # 双端点查询：reviews（has-finding 路径） + issue comments（pass 路径，F-16）
             reviews = _gh_pr_reviews(pr_number)
+            issue_comments_raw = _gh_pr_issue_comments(pr_number)
             consecutive_5xx = 0  # 成功一次就清零
         except GhApi5xx:
             consecutive_5xx += 1
@@ -487,20 +538,20 @@ def _poll_codex(
             # 429 限流 → 直接走 timeout 路径，不重试（详见 detailed-design §3.3.3）
             return None
 
-        # 收集本轮所有「post-trigger 且匹配 codex bot」的候选 review，挑最新一条。
-        # 不能取首条（codex round-3 P1 finding F-6）：reviews API 是顺序返回，
-        # 同一轮可能 fail → fix → pass 多次回评；若锁定最早那条，artifact 落
-        # 旧 verdict（可能是 not_passed 但实际已通过），违反"反映该轮最终状态"
-        # 的 round-N.md 契约。
+        # F-16：把 issue comments 归一成 review-like dict，与 reviews 统一过滤
+        normalized_comments = [_normalize_issue_comment_to_review(c) for c in issue_comments_raw]
+        all_items = list(reviews) + normalized_comments
+
+        # 收集本轮所有「post-trigger 且匹配 codex bot」的候选项；同一轮可能多次回评
+        # （codex round-3 P1 F-6：fail → fix → pass），锁定最早那条会落旧 verdict，
+        # 必须按 submitted_at/created_at 取最新。
         candidates: list[dict[str, Any]] = []
-        for r in reviews:
+        for r in all_items:
             user = r.get("user") or {}
             if not _matches_codex_reviewer(user):
                 continue
-            # 三因子之三：submitted_at 必须晚于触发时刻（过滤旧 review）。
-            # 必须按 tzaware datetime 比，不能字符串字典序：codex 回的 submitted_at
-            # 是 `Z`（UTC），triggered_at 是 `+08:00`，字符串比会把更晚的 review
-            # 误判为更早 → 漏命中（codex round-1 P1 finding F-1，已修）。
+            # codex round-1 P1 F-1：必须按 tzaware datetime 比，字符串字典序会被
+            # `Z` vs `+08:00` 偏移格式不同误判。
             submitted_dt = _parse_iso_to_aware(r.get("submitted_at"))
             if submitted_dt is None or triggered_at_dt is None:
                 # 任一侧解析失败：保守按字符串比兜底（极少分支）

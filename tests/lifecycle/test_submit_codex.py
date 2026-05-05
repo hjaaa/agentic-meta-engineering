@@ -117,6 +117,7 @@ def test_passed_path(fake_repo: Path) -> None:
     with (
         patch.object(submit_codex, "_trigger_codex_comment", return_value=triggered_at),
         patch.object(submit_codex, "_gh_pr_reviews", return_value=[review]),
+        patch.object(submit_codex, "_gh_pr_issue_comments", return_value=[]),
         # 确保 time.sleep 不真的等待
         patch("submit_codex.time.sleep"),
         # monotonic 模拟：首次调用返回 0（deadline = 600），后续调用小于 deadline
@@ -155,6 +156,7 @@ def test_not_passed_path(fake_repo: Path, capsys: pytest.CaptureFixture) -> None
     with (
         patch.object(submit_codex, "_trigger_codex_comment", return_value=triggered_at),
         patch.object(submit_codex, "_gh_pr_reviews", return_value=[review]),
+        patch.object(submit_codex, "_gh_pr_issue_comments", return_value=[]),
         patch("submit_codex.time.sleep"),
         patch("submit_codex.time.monotonic", side_effect=[0, 100, 200]),
     ):
@@ -181,6 +183,7 @@ def test_timeout_path(fake_repo: Path, capsys: pytest.CaptureFixture) -> None:
     with (
         patch.object(submit_codex, "_trigger_codex_comment", return_value=triggered_at),
         patch.object(submit_codex, "_gh_pr_reviews", return_value=[]),
+        patch.object(submit_codex, "_gh_pr_issue_comments", return_value=[]),
         patch("submit_codex.time.sleep"),
         # deadline = 0 + 600 = 600；第二次 monotonic 返回 601 → 超时退出循环
         patch("submit_codex.time.monotonic", side_effect=[0, 601]),
@@ -251,6 +254,7 @@ def test_round_increment(fake_repo: Path) -> None:
     with (
         patch.object(submit_codex, "_trigger_codex_comment", return_value=triggered_at),
         patch.object(submit_codex, "_gh_pr_reviews", return_value=[review]),
+        patch.object(submit_codex, "_gh_pr_issue_comments", return_value=[]),
         patch("submit_codex.time.sleep"),
         patch("submit_codex.time.monotonic", side_effect=[0, 100, 200]),
     ):
@@ -279,6 +283,7 @@ def test_filter_old_review(fake_repo: Path) -> None:
     with (
         patch.object(submit_codex, "_trigger_codex_comment", return_value=triggered_at),
         patch.object(submit_codex, "_gh_pr_reviews", return_value=[old_review]),
+        patch.object(submit_codex, "_gh_pr_issue_comments", return_value=[]),
         patch("submit_codex.time.sleep"),
         # 第一次进循环，第二次超 deadline → timeout
         patch("submit_codex.time.monotonic", side_effect=[0, 601]),
@@ -529,6 +534,7 @@ def test_process_event_triggered_appended(fake_repo: Path) -> None:
         patch("submit_codex.subprocess.run", return_value=fake_proc),
         patch.object(submit_codex, "_now_iso", return_value=triggered_at),
         patch.object(submit_codex, "_gh_pr_reviews", return_value=[review]),
+        patch.object(submit_codex, "_gh_pr_issue_comments", return_value=[]),
         patch("submit_codex.time.sleep"),
         patch("submit_codex.time.monotonic", side_effect=[0, 100, 200]),
     ):
@@ -564,6 +570,7 @@ def test_process_event_received_appended(fake_repo: Path) -> None:
         patch("submit_codex.subprocess.run", return_value=fake_proc),
         patch.object(submit_codex, "_now_iso", return_value=triggered_at),
         patch.object(submit_codex, "_gh_pr_reviews", return_value=[review]),
+        patch.object(submit_codex, "_gh_pr_issue_comments", return_value=[]),
         patch("submit_codex.time.sleep"),
         patch("submit_codex.time.monotonic", side_effect=[0, 100, 200]),
     ):
@@ -602,6 +609,7 @@ def test_filter_handles_zulu_vs_offset_timezones(fake_repo: Path) -> None:
     with (
         patch.object(submit_codex, "_trigger_codex_comment", return_value=triggered_at),
         patch.object(submit_codex, "_gh_pr_reviews", return_value=[new_review]),
+        patch.object(submit_codex, "_gh_pr_issue_comments", return_value=[]),
         patch("submit_codex.time.sleep"),
         patch("submit_codex.time.monotonic", side_effect=[0, 1]),
     ):
@@ -651,6 +659,7 @@ def test_poll_codex_picks_latest_when_multiple_match(fake_repo: Path) -> None:
     with (
         patch.object(submit_codex, "_trigger_codex_comment", return_value=triggered_at),
         patch.object(submit_codex, "_gh_pr_reviews", return_value=[older, newer]),
+        patch.object(submit_codex, "_gh_pr_issue_comments", return_value=[]),
         patch("submit_codex.time.sleep"),
         patch("submit_codex.time.monotonic", side_effect=[0, 1]),
     ):
@@ -875,3 +884,151 @@ def test_render_frontmatter_includes_triggered_commit() -> None:
     )
     fm = _render_frontmatter(timeout_result)
     assert 'triggered_commit: "def5678"' in fm
+
+
+# ---------- codex round-9 P1 finding F-16：双端点 poll（reviews + issue comments） ----------
+
+
+def _make_issue_comment(
+    *,
+    login: str = "chatgpt-codex-connector[bot]",
+    user_type: str = "Bot",
+    body: str = "Codex Review: Didn't find any major issues. Already looking forward to the next diff.",
+    created_at: str = "2026-05-04T19:32:14+08:00",
+    comment_id: int = 7777777,
+) -> dict:
+    """构造一个 issue comment dict（codex pass 路径用）。"""
+    return {
+        "id": comment_id,
+        "user": {"login": login, "type": user_type},
+        "body": body,
+        "created_at": created_at,
+    }
+
+
+def test_poll_picks_pass_from_issue_comment_when_no_review(fake_repo: Path) -> None:
+    """codex F-16 (P1) 回归：codex 「无 finding」时不发 PR review，发 issue comment
+    带 pass phrase。旧实现只查 reviews 端点会漏掉 pass 信号 → verdict=timeout 假阴。
+    新实现必须同时查两个端点，并把 issue comment 作为 candidate 参与判定。
+    """
+    req_id = "REQ-2099-007"
+    _make_meta(fake_repo, req_id=req_id, pr_number=57)
+
+    triggered_at = "2026-05-05T18:48:50+08:00"
+    pass_comment = _make_issue_comment(
+        comment_id=4378572117,
+        body="Codex Review: Didn't find any major issues. Already looking forward to the next diff.",
+        created_at="2026-05-05T10:53:52Z",  # = 18:53:52 +08:00（晚于 triggered_at）
+    )
+
+    with (
+        patch.object(submit_codex, "_trigger_codex_comment", return_value=triggered_at),
+        patch.object(submit_codex, "_gh_pr_reviews", return_value=[]),  # 关键：reviews 端点空
+        patch.object(submit_codex, "_gh_pr_issue_comments", return_value=[pass_comment]),
+        patch("submit_codex.time.sleep"),
+        patch("submit_codex.time.monotonic", side_effect=[0, 100, 200]),
+    ):
+        result = submit_with_codex(req_id, poll_interval_sec=1, timeout_sec=600)
+
+    assert result.verdict == "passed", (
+        f"issue comment 含 pass phrase 应 verdict=passed，实际 {result.verdict}"
+    )
+    # review_id 字段被复用为 issue comment id（统一 dict shape 后透传）
+    assert result.review_id == 4378572117
+    assert result.reviewer == "chatgpt-codex-connector[bot]"
+
+
+def test_poll_filters_old_issue_comment(fake_repo: Path) -> None:
+    """F-16：issue comment 的 created_at <= triggered_at 必须被过滤（与 review 同语义）。"""
+    req_id = "REQ-2099-007"
+    _make_meta(fake_repo, req_id=req_id, pr_number=57)
+
+    triggered_at = "2026-05-05T18:48:50+08:00"
+    old_comment = _make_issue_comment(
+        body="Codex Review: Didn't find any major issues.",
+        created_at="2026-05-05T18:00:00+08:00",  # 早于 triggered_at
+    )
+
+    with (
+        patch.object(submit_codex, "_trigger_codex_comment", return_value=triggered_at),
+        patch.object(submit_codex, "_gh_pr_reviews", return_value=[]),
+        patch.object(submit_codex, "_gh_pr_issue_comments", return_value=[old_comment]),
+        patch("submit_codex.time.sleep"),
+        patch("submit_codex.time.monotonic", side_effect=[0, 601]),
+    ):
+        result = submit_with_codex(req_id, poll_interval_sec=1, timeout_sec=600)
+
+    assert result.verdict == "timeout", "旧 issue comment 应被过滤，走 timeout 分支"
+
+
+def test_poll_ignores_non_codex_issue_comments(fake_repo: Path) -> None:
+    """F-16：issue comments 端点会拿到非 codex bot 的人类评论，必须被 _matches_codex_reviewer 过滤。"""
+    req_id = "REQ-2099-007"
+    _make_meta(fake_repo, req_id=req_id, pr_number=57)
+
+    triggered_at = "2026-05-05T18:48:50+08:00"
+    human_comment = _make_issue_comment(
+        login="hjaaa",
+        user_type="User",
+        body="Didn't find any major issues. (人类评论引用，不算 pass)",
+        created_at="2026-05-05T19:00:00+08:00",
+    )
+
+    with (
+        patch.object(submit_codex, "_trigger_codex_comment", return_value=triggered_at),
+        patch.object(submit_codex, "_gh_pr_reviews", return_value=[]),
+        patch.object(submit_codex, "_gh_pr_issue_comments", return_value=[human_comment]),
+        patch("submit_codex.time.sleep"),
+        patch("submit_codex.time.monotonic", side_effect=[0, 601]),
+    ):
+        result = submit_with_codex(req_id, poll_interval_sec=1, timeout_sec=600)
+
+    assert result.verdict == "timeout", "非 codex bot 评论应被过滤"
+
+
+def test_poll_picks_review_over_older_issue_comment(fake_repo: Path) -> None:
+    """F-16：双端点同时有命中时，按 latest 取（与 _pick_latest_review 同语义）。
+    场景：codex 先发了 issue comment（'pass'），随后又发了 PR review（'not_passed'）。
+    """
+    req_id = "REQ-2099-007"
+    _make_meta(fake_repo, req_id=req_id, pr_number=57)
+
+    triggered_at = "2026-05-05T18:48:50+08:00"
+    early_pass_comment = _make_issue_comment(
+        comment_id=1001,
+        body="Codex Review: Didn't find any major issues.",
+        created_at="2026-05-05T18:50:00+08:00",
+    )
+    later_review = _make_review(
+        review_id=2002,
+        body="Found new issues",
+        submitted_at="2026-05-05T18:55:00+08:00",  # 更晚
+    )
+
+    with (
+        patch.object(submit_codex, "_trigger_codex_comment", return_value=triggered_at),
+        patch.object(submit_codex, "_gh_pr_reviews", return_value=[later_review]),
+        patch.object(submit_codex, "_gh_pr_issue_comments", return_value=[early_pass_comment]),
+        patch("submit_codex.time.sleep"),
+        patch("submit_codex.time.monotonic", side_effect=[0, 100]),
+    ):
+        result = submit_with_codex(req_id, poll_interval_sec=1, timeout_sec=600)
+
+    # 应取更晚的 review（review_id=2002），verdict=not_passed
+    assert result.review_id == 2002, f"应取最晚的 review，实际 {result.review_id}"
+    assert result.verdict == "not_passed"
+
+
+def test_normalize_issue_comment_preserves_user_and_body() -> None:
+    """_normalize_issue_comment_to_review 把 created_at 复制到 submitted_at；其他字段透传。"""
+    comment = {
+        "id": 7777,
+        "user": {"login": "x[bot]", "type": "Bot"},
+        "body": "Didn't find any major issues.",
+        "created_at": "2026-05-05T19:00:00+08:00",
+    }
+    out = submit_codex._normalize_issue_comment_to_review(comment)
+    assert out["submitted_at"] == "2026-05-05T19:00:00+08:00"
+    assert out["user"]["login"] == "x[bot]"
+    assert out["body"] == "Didn't find any major issues."
+    assert out["_kind"] == "comment"
