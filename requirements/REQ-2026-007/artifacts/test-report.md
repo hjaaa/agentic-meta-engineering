@@ -188,3 +188,15 @@ verdict=not_passed，codex 再给 2 条 finding：
 再加 3 条回归 pytest → 全量 **580 passed / 0 failed / 8 skipped**。
 
 **累计 round-1..3 自举闭环：7 finding（4 P1 + 3 P2）全 fix + 11 条新回归 pytest**——F-004 review-loop 系统性可用性验证完成。
+
+### Round 4（2026-05-05 17:54~18:00，commit a5485e6）
+
+verdict=not_passed，codex 给 1 条 finding：
+
+| Finding | Severity | 文件:行 | 修复 |
+|---|---|---|---|
+| F-8 | **P1** | `archive_runner.py:465` `_delete_remote_branch` | 加 `base_branch` 参数；`branch == base_branch` fail-closed，与本地路径对称 |
+
+再加 1 条回归 pytest → 全量 **581 passed / 0 failed / 8 skipped**。
+
+**累计 round-1..4 自举闭环：8 finding（5 P1 + 3 P2）全 fix + 12 条新回归 pytest**。

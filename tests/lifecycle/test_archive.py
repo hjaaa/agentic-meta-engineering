@@ -429,6 +429,37 @@ def test_refuse_to_delete_base_branch(
     assert any("base_branch" in m for m in result.error_messages)
 
 
+def test_refuse_to_delete_remote_base_branch(
+    fake_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """codex F-8 (P1) 回归：远程删除路径必须与本地对称——meta.branch == base_branch
+    且用户显式 yes_remote_branch=True 时，仍拒绝调 `git push origin --delete`。
+    """
+    _make_meta(fake_repo, branch="develop", base_branch="develop")
+    plan = {
+        ("git", "status", "--porcelain"): _ok(),
+        ("gh", "pr", "view"): _ok(stdout=json.dumps({"state": "MERGED"})),
+        ("git", "branch", "-d"): RuntimeError("不应被调用"),
+        # 关键：本测试断言这条命令不应被调用；命中即测试失败
+        ("git", "push", "origin", "--delete"): RuntimeError(
+            "不应被调用——base_branch 远程引用必须 fail-closed 拦下"
+        ),
+    }
+    monkeypatch.setattr(archive_runner, "_run", _make_run_stub(plan))
+
+    result = archive_requirement(
+        "REQ-2099-007",
+        no_experience=True,
+        yes_local_branch=True,
+        yes_remote_branch=True,    # 显式同意删远程，仍应被前置检测拦下
+        keep_branch=False,
+    )
+    assert result.remote_branch == "failed", f"远程 base_branch 删除应失败，实际 {result.remote_branch}"
+    joined = " | ".join(result.error_messages)
+    assert "base_branch" in joined, f"错误文案应含 base_branch，实际：{joined}"
+
+
 # ---------- 额外：archived_at 重跑保留旧值 ----------
 
 

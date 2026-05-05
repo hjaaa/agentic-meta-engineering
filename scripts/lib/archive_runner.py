@@ -432,18 +432,31 @@ def _current_branch() -> Optional[str]:
 
 def _delete_remote_branch(
     branch: str,
+    base_branch: str,
     *,
     keep_branch: bool,
     yes_remote: bool,
     callback: Optional[Callable[[ArchivePrompt], bool]],
     result: ArchiveResult,
 ) -> None:
-    """删远程分支第 4 步后半。`remote ref does not exist` → already-deleted。"""
+    """删远程分支第 4 步后半。`remote ref does not exist` → already-deleted。
+
+    F-8（codex round-4 P1）：与本地删除路径对称，先把 base_branch 拦下——
+    `meta.branch` 误配成 `develop` / `main` / `master` 时，搭配 `--yes-remote-branch`
+    或 `y` callback 可能在仓库权限够的情况下删掉关键长寿命分支，必须 fail-closed。
+    """
     if keep_branch:
         result.remote_branch = "skipped"
         return
     if not branch:
         result.remote_branch = "skipped"
+        return
+    # 防止误删 base_branch 远程引用（与 _delete_local_branch 对称）
+    if branch == base_branch:
+        result.remote_branch = "failed"
+        msg = f"remote_branch: 拒绝删除远程 base_branch={base_branch!r}（与 feature 分支同名）"
+        result.error_messages.append(msg)
+        print(f"⚠️  {msg}", file=sys.stderr)
         return
 
     answer = _ask(
@@ -566,6 +579,7 @@ def archive_requirement(
     )
     _delete_remote_branch(
         branch,
+        base_branch,
         keep_branch=keep_branch,
         yes_remote=yes_remote_branch,
         callback=prompts_callback,
