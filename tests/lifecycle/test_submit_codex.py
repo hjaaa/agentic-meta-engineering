@@ -32,12 +32,14 @@ from submit_codex import (  # noqa: E402
     GhApi429,
     GhApi5xx,
     GhApiAbort,
+    _build_codex_comment_body,
     _calc_round,
     _handle_poll_result,
     _is_passed,
     _parse_iso_to_aware,
     _parse_jsonl_reviews,
     _poll_codex,
+    _read_round_triggered_commit,
     _render_frontmatter,
     submit_with_codex,
 )
@@ -694,3 +696,151 @@ def test_parse_jsonl_reviews_handles_paginated_jsonl() -> None:
     # 非法 JSON（行级）→ 抛 GhApi5xx，让上层进 5xx 计数器（保守语义）
     with pytest.raises(GhApi5xx):
         _parse_jsonl_reviews('{"valid": 1}\nthis-is-not-json\n')
+
+
+# ---------- review-loop 增量摘要（用户 reqs：每轮带 round 间变更） ----------
+
+
+def _write_round_md(reviews_dir: Path, round_n: int, *, triggered_commit: str | None) -> None:
+    """构造一个最小 round-N.md，frontmatter 只塞我们关心的字段。"""
+    reviews_dir.mkdir(parents=True, exist_ok=True)
+    lines = ["---", f"round: {round_n}", 'triggered_at: "2026-05-05T17:00:00+08:00"']
+    if triggered_commit is not None:
+        lines.append(f'triggered_commit: "{triggered_commit}"')
+    lines.append("verdict: not_passed")
+    lines.append("---")
+    lines.append("")
+    lines.append("body placeholder")
+    (reviews_dir / f"round-{round_n}.md").write_text("\n".join(lines), encoding="utf-8")
+
+
+def test_build_codex_comment_body_round1_is_plain(fake_repo: Path) -> None:
+    """round 1 没有上一轮，body 必须是 plain `@codex review`。"""
+    req_id = "REQ-2099-007"
+    (fake_repo / req_id).mkdir()
+    body = _build_codex_comment_body(req_id, round_n=1)
+    assert body == "@codex review"
+
+
+def test_build_codex_comment_body_round2_includes_diff(
+    fake_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """round 2 命中 round-1.triggered_commit + git 命令成功 → 拼 commits + diff stat 段。"""
+    req_id = "REQ-2099-007"
+    reviews_dir = fake_repo / req_id / "artifacts" / "codex-reviews"
+    _write_round_md(reviews_dir, 1, triggered_commit="abc1234")
+
+    # mock subprocess：git rev-parse / git log / git diff 各自返回稳定字符串
+    def _mock_run(cmd: list[str], **kwargs: Any) -> Any:
+        from types import SimpleNamespace
+        if cmd[:3] == ["git", "rev-parse", "--short"]:
+            return SimpleNamespace(returncode=0, stdout="def5678\n", stderr="")
+        if cmd[:2] == ["git", "log"]:
+            return SimpleNamespace(returncode=0, stdout="def5678 fix(F-N): ...\n123abc fix(F-M): ...\n", stderr="")
+        if cmd[:2] == ["git", "diff"]:
+            return SimpleNamespace(returncode=0, stdout=" scripts/lib/foo.py | 12 ++++++------\n 1 file changed\n", stderr="")
+        raise AssertionError(f"unexpected cmd: {cmd}")
+
+    monkeypatch.setattr(submit_codex.subprocess, "run", _mock_run)
+
+    body = _build_codex_comment_body(req_id, round_n=2)
+    assert body.startswith("@codex review\n\n")
+    assert "Changes since round 1" in body
+    assert "abc1234" in body and "def5678" in body
+    assert "fix(F-N)" in body  # commits 段
+    assert "scripts/lib/foo.py" in body  # diff stat 段
+
+
+def test_build_codex_comment_body_round2_falls_back_when_prev_missing(fake_repo: Path) -> None:
+    """round 2 但 round-1.md 不存在（手工清理） → 兜底 plain，不抛。"""
+    req_id = "REQ-2099-007"
+    (fake_repo / req_id / "artifacts" / "codex-reviews").mkdir(parents=True)
+    body = _build_codex_comment_body(req_id, round_n=2)
+    assert body == "@codex review"
+
+
+def test_build_codex_comment_body_falls_back_when_triggered_commit_absent(fake_repo: Path) -> None:
+    """round-1.md 存在但 frontmatter 没 triggered_commit（旧格式） → 兜底 plain。"""
+    req_id = "REQ-2099-007"
+    reviews_dir = fake_repo / req_id / "artifacts" / "codex-reviews"
+    _write_round_md(reviews_dir, 1, triggered_commit=None)
+    body = _build_codex_comment_body(req_id, round_n=2)
+    assert body == "@codex review"
+
+
+def test_build_codex_comment_body_falls_back_when_git_fails(
+    fake_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """git 命令失败 → 兜底 plain，不阻断 review-loop。"""
+    req_id = "REQ-2099-007"
+    reviews_dir = fake_repo / req_id / "artifacts" / "codex-reviews"
+    _write_round_md(reviews_dir, 1, triggered_commit="abc1234")
+
+    def _mock_run(cmd: list[str], **kwargs: Any) -> Any:
+        from types import SimpleNamespace
+        return SimpleNamespace(returncode=128, stdout="", stderr="fatal: bad revision")
+
+    monkeypatch.setattr(submit_codex.subprocess, "run", _mock_run)
+    body = _build_codex_comment_body(req_id, round_n=2)
+    assert body == "@codex review"
+
+
+def test_read_round_triggered_commit_robust_against_missing_or_malformed(
+    fake_repo: Path,
+) -> None:
+    """_read_round_triggered_commit 在文件不存在 / 非 frontmatter / YAML 错位时返 None。"""
+    req_id = "REQ-2099-007"
+    reviews_dir = fake_repo / req_id / "artifacts" / "codex-reviews"
+    reviews_dir.mkdir(parents=True)
+
+    # 文件不存在
+    assert _read_round_triggered_commit(req_id, 1) is None
+
+    # 不是 frontmatter
+    (reviews_dir / "round-1.md").write_text("just text\n", encoding="utf-8")
+    assert _read_round_triggered_commit(req_id, 1) is None
+
+    # 半个 frontmatter（只有一组 ---）
+    (reviews_dir / "round-2.md").write_text("---\nround: 2\n", encoding="utf-8")
+    assert _read_round_triggered_commit(req_id, 2) is None
+
+    # YAML 解析失败
+    (reviews_dir / "round-3.md").write_text("---\n: : invalid yaml :\n---\nbody\n", encoding="utf-8")
+    assert _read_round_triggered_commit(req_id, 3) is None
+
+    # 字段缺失
+    _write_round_md(reviews_dir, 4, triggered_commit=None)
+    assert _read_round_triggered_commit(req_id, 4) is None
+
+    # 字段命中
+    _write_round_md(reviews_dir, 5, triggered_commit="deadbeef")
+    assert _read_round_triggered_commit(req_id, 5) == "deadbeef"
+
+
+def test_render_frontmatter_includes_triggered_commit() -> None:
+    """_render_frontmatter 必须把 result.triggered_commit 输出到 frontmatter，下一轮才能读到。"""
+    result = CodexRoundResult(
+        round=2,
+        pr_number=42,
+        triggered_at="2026-05-05T17:54:33+08:00",
+        verdict="not_passed",
+        review_id=999,
+        reviewer="codex[bot]",
+        submitted_at="2026-05-05T10:00:00Z",
+        state="COMMENTED",
+        triggered_commit="abc1234",
+    )
+    fm = _render_frontmatter(result)
+    assert 'triggered_commit: "abc1234"' in fm
+    # timeout 时也应输出（下一轮算 diff 不能丢锚点）
+    timeout_result = CodexRoundResult(
+        round=3,
+        pr_number=42,
+        triggered_at="2026-05-05T18:00:00+08:00",
+        verdict="timeout",
+        triggered_commit="def5678",
+    )
+    fm = _render_frontmatter(timeout_result)
+    assert 'triggered_commit: "def5678"' in fm

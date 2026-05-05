@@ -92,6 +92,7 @@ class CodexRoundResult:
     submitted_at: Optional[str] = None
     state: Optional[str] = None                    # GitHub review state 原值
     artifact_path: Optional[str] = None
+    triggered_commit: Optional[str] = None         # 触发本轮时 HEAD 短 sha，作为下一轮算 diff 的锚点
 
 
 # ---------- 内部工具 ----------
@@ -205,17 +206,25 @@ def _calc_round(req_id: str) -> int:
     return max_round + 1
 
 
-def _trigger_codex_comment(pr_number: int, req_id: str, round_n: int) -> str:
+def _trigger_codex_comment(
+    pr_number: int,
+    req_id: str,
+    round_n: int,
+    *,
+    body: str = "@codex review",
+) -> str:
     """发 `@codex review` 评论；失败 exit 1，返回触发时刻 ISO8601。
 
     Args:
         pr_number: GitHub PR 号。
         req_id:    需求 ID，用于写 process.txt 事件。
         round_n:   当前 round 号，写入 process.txt 事件内容。
+        body:      评论正文。默认 `@codex review`；round_n≥2 时调用方可拼接
+                   round 间的变更摘要（commits + diff stat），给 codex 聚焦上下文。
     """
     try:
         proc = subprocess.run(
-            ["gh", "pr", "comment", str(pr_number), "--body", "@codex review"],
+            ["gh", "pr", "comment", str(pr_number), "--body", body],
             capture_output=True,
             text=True,
             check=False,
@@ -239,6 +248,127 @@ def _trigger_codex_comment(pr_number: int, req_id: str, round_n: int) -> str:
     # 记录 process.txt 事件（detailed-design §4.3 + features.json TC-F4-8）
     _append_process_event(req_id, f"[codex-review-triggered] round={round_n} pr=#{pr_number}")
     return triggered_at
+
+
+# ---------- review-loop 增量摘要（round_n≥2 给 codex 聚焦上下文） ----------
+
+
+# 评论体长度上限——GitHub PR 评论最多 65536 字符；diff stat 截断到该限的一小部分
+# 防止超大变更刷屏，给 codex 留足够空间引用 hunk
+_COMMENT_BODY_BUDGET = 8000
+
+
+def _current_head_sha() -> Optional[str]:
+    """读 git HEAD 短 sha；失败时返 None（让调用方走 plain `@codex review` 兜底）。"""
+    try:
+        proc = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=_SUBPROC_TIMEOUT_SEC,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+    if proc.returncode != 0:
+        return None
+    sha = (proc.stdout or "").strip()
+    return sha or None
+
+
+def _read_round_triggered_commit(req_id: str, round_n: int) -> Optional[str]:
+    """从 round-N.md frontmatter 读 triggered_commit；缺失/格式错误时返 None。"""
+    path = _codex_reviews_dir(req_id) / f"round-{round_n}.md"
+    if not path.exists():
+        return None
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    if not text.startswith("---"):
+        return None
+    # 拆 frontmatter（首段 --- 之间）
+    parts = text.split("---", 2)
+    if len(parts) < 3:
+        return None
+    try:
+        meta = yaml.safe_load(parts[1]) or {}
+    except yaml.YAMLError:
+        return None
+    if not isinstance(meta, dict):
+        return None
+    val = meta.get("triggered_commit")
+    return str(val).strip() if val else None
+
+
+def _git_log_diff_since(prev_sha: str) -> Optional[tuple[str, str]]:
+    """跑 `git log --oneline <prev>..HEAD` + `git diff --stat <prev>..HEAD`。
+
+    任一失败/为空 → 返 None（让调用方走 plain 兜底，不阻断 review-loop）。
+    """
+    try:
+        log_proc = subprocess.run(
+            ["git", "log", "--oneline", f"{prev_sha}..HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=_SUBPROC_TIMEOUT_SEC,
+        )
+        diff_proc = subprocess.run(
+            ["git", "diff", "--stat", f"{prev_sha}..HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=_SUBPROC_TIMEOUT_SEC,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+    if log_proc.returncode != 0 or diff_proc.returncode != 0:
+        return None
+    log_out = (log_proc.stdout or "").strip()
+    diff_out = (diff_proc.stdout or "").strip()
+    if not log_out and not diff_out:
+        return None
+    return log_out, diff_out
+
+
+def _build_codex_comment_body(req_id: str, round_n: int) -> str:
+    """组装 @codex review 评论正文。
+
+    - round 1：plain `@codex review`
+    - round N≥2：尝试读 round-(N-1).md.frontmatter.triggered_commit，
+      命中则附「Changes since round N-1（log + diff stat）」段；
+      上轮文件缺失 / 解析失败 / git 命令失败 → 静默退化为 plain（不阻断流程）。
+
+    评论体超过 _COMMENT_BODY_BUDGET 时截断 diff stat，保留 log 完整。
+    """
+    plain = "@codex review"
+    if round_n <= 1:
+        return plain
+    prev_sha = _read_round_triggered_commit(req_id, round_n - 1)
+    if not prev_sha:
+        return plain
+    pair = _git_log_diff_since(prev_sha)
+    if pair is None:
+        return plain
+    log_out, diff_out = pair
+
+    head_short = _current_head_sha() or "HEAD"
+    header = f"## Changes since round {round_n - 1} (`{prev_sha}` → `{head_short}`)"
+    log_section = f"### Commits\n```\n{log_out or '(no new commits)'}\n```"
+    diff_section = f"### Diff stat\n```\n{diff_out or '(no diff)'}\n```"
+
+    body = f"{plain}\n\n{header}\n\n{log_section}\n\n{diff_section}"
+    if len(body) <= _COMMENT_BODY_BUDGET:
+        return body
+    # 超额：截 diff stat，给 log 让位（commits 一行能读出意图，diff stat 可以短）
+    available = _COMMENT_BODY_BUDGET - len(plain) - len(header) - len(log_section) - 80
+    if available > 200:
+        truncated = diff_out[:available] + "\n... (truncated, see PR Files Changed tab)"
+        diff_section = f"### Diff stat\n```\n{truncated}\n```"
+        return f"{plain}\n\n{header}\n\n{log_section}\n\n{diff_section}"
+    # 极端情况（log 也很大）：只发 plain + header，给 codex 一个起点
+    return f"{plain}\n\n{header}\n\n_(变更过大无法内嵌 stat，请直接看 PR Files Changed)_"
 
 
 def _gh_pr_reviews(pr_number: int) -> list[dict[str, Any]]:
@@ -423,8 +553,12 @@ def _render_frontmatter(result: CodexRoundResult) -> str:
     lines = ["---"]
     lines.append(f"round: {result.round}")
     lines.append(f"triggered_at: {_quote_if_needed(result.triggered_at, force_quote=True)}")
+    # triggered_commit 三类 verdict 都输出（下一轮 build 增量摘要时要读）；
+    # 兜底解析失败时已被设为 None，渲染才跳过。
+    if result.triggered_commit is not None:
+        lines.append(f'triggered_commit: "{result.triggered_commit}"')
 
-    # timeout 时仅三字段
+    # timeout 时仅三字段（外加 triggered_commit）
     if result.verdict != "timeout":
         if result.review_id is not None:
             # review_id 建议 quote 防 >2^53 精度丢失
@@ -572,8 +706,12 @@ def submit_with_codex(
         file=sys.stderr,
     )
 
+    # round_num≥2 时为 codex 拼增量摘要：log + diff stat since round-(N-1).triggered_commit
+    comment_body = _build_codex_comment_body(req_id, round_num)
+    head_sha = _current_head_sha()
+
     # 发 @codex review 评论并记录触发时刻（wall clock）
-    triggered_at = _trigger_codex_comment(pr_number, req_id, round_num)
+    triggered_at = _trigger_codex_comment(pr_number, req_id, round_num, body=comment_body)
 
     print(
         f"[submit_codex] triggered_at={triggered_at} 开始轮询"
@@ -593,6 +731,8 @@ def submit_with_codex(
 
     # 组装结果
     result = _handle_poll_result(review, pr_number, round_num, triggered_at)
+    # 把本轮触发时的 HEAD sha 钉到 round-N.md，供下一轮算 diff
+    result.triggered_commit = head_sha
 
     # 写 round-N.md
     body = (review or {}).get("body") if review else None
