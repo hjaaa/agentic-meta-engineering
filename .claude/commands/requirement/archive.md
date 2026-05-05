@@ -50,7 +50,7 @@ PR 合并后做收尾闭环：phase=completed + archived_at + 经验沉淀 + 删
 
 ## 终端反馈格式（spec §5.3 第 5 步）
 
-```
+```text
 ✅ REQ-YYYY-NNN archived
    phase: completed
    archived_at: 2026-05-04 19:30:00

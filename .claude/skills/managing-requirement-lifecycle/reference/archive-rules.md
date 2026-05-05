@@ -34,7 +34,7 @@
 
 格式遵守 `requirement-progress-logger` SKILL.md 的硬约束：
 
-```
+```text
 YYYY-MM-DD HH:MM:SS [archived] (PR #<num> merged at <archived_at>)
 ```
 
@@ -65,11 +65,11 @@ YYYY-MM-DD HH:MM:SS [archived] (PR #<num> merged at <archived_at>)
 - 远程已被 GitHub「Automatically delete head branches」清掉 → stderr 含 `remote ref does not exist` → 折叠为 `outcome=already-deleted`，不报错
 - 网络 / 401 / 403 → 透传 error → `outcome=failed`
 
-### 2.5 终端反馈（5 行 + 可选 errors 段）
+### 2.5 终端反馈（6 行 + 可选 errors 段）
 
 按 spec §5.3 第 5 步原样渲染：
 
-```
+```text
 ✅ REQ-YYYY-NNN archived
    phase: completed
    archived_at: 2026-05-04 19:30:00

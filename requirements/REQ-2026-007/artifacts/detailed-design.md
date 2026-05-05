@@ -229,7 +229,7 @@ class ArchivePrompt:
 class ArchiveResult:
     req_id: str
     phase: str = "completed"
-    archived_at: str = ""           # ISO8601 with offset
+    archived_at: str = ""           # YYYY-MM-DD HH:MM:SS（Asia/Shanghai 不带 offset，见 time-format.md）
     experience: Literal["yes", "no", "skipped", "failed"] = "skipped"
     local_branch: Literal["deleted", "kept", "skipped", "failed"] = "skipped"
     remote_branch: Literal["deleted", "kept", "skipped", "already-deleted", "failed"] = "skipped"
@@ -583,7 +583,7 @@ outline-design 待澄清 #3：archive 三问串行的 y/N 在 Claude Code 主对
 新增 schema：
 
 ```yaml
-archived_at: ""    # ISO8601 with offset；archive 命令成功后写入；空表示已 completed 但未归档
+archived_at: ""    # YYYY-MM-DD HH:MM:SS（Asia/Shanghai 不带 offset，见 time-format.md）；archive 命令成功后写入；空表示已 completed 但未归档
 ```
 
 `phase: completed` 与 `archived_at != ""` 是双字段判断（D-006）：

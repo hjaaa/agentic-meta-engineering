@@ -97,10 +97,10 @@
         "TC-F3-3: pytest test_precheck_no_pr 绿（meta.pr_number=0 → R-ARCHIVE-NO-PR）",
         "TC-F3-4: pytest test_precheck_pr_not_merged 绿（gh pr view state=OPEN → R-ARCHIVE-PR-NOT-MERGED；--force 时跳过本预检 → exit 0）",
         "TC-F3-5: pytest test_three_prompts_yes_path 绿（三问全 y → ArchiveResult.experience=yes/local_branch=deleted/remote_branch=deleted）",
-        "TC-F3-6: pytest test_three_prompts_no_path 绿（三问全 N → 三 outcome=skipped + meta + process.txt 仍写）",
-        "TC-F3-7: pytest test_failure_degradation 绿（experience 调用 raise → outcome=failed + archive exit 0；git branch -d 拒绝 → outcome=failed 透传 error；远程已删 → outcome=already-deleted）",
-        "TC-F3-8: V-01 沙盒 REQ-2099-007 跑 archive：phase=completed + archived_at 写入 + process.txt [archived] 事件追加 + 终端反馈 5 行格式正确（spec §5.3）",
-        "TC-F3-9: V-08 自举——本需求 PR merge 后跑 /requirement:archive，验证命令：`yq '.archived_at' requirements/REQ-2026-007/meta.yaml` 输出非空 ISO8601 字符串 + `grep -c '\\[archived\\]' requirements/REQ-2026-007/process.txt` 等于 1（幂等校验）；archive 失败重试场景由 §4.3 [archived] 幂等约束兜底"
+        "TC-F3-6: pytest test_three_prompts_no_path 绿（三问全 N → ArchiveResult.experience='no' / local_branch='kept' / remote_branch='kept'；'skipped' 专指 flag 跳问，与「答 N」语义不同；meta + process.txt 仍写）",
+        "TC-F3-7: pytest test_experience_failure_does_not_break_archive / test_local_branch_delete_rejected / test_remote_branch_already_deleted 三个用例全绿（experience 调用 raise → outcome=failed + archive exit 0；git branch -d 拒绝 → outcome=failed 透传 error；远程已删 → outcome=already-deleted）",
+        "TC-F3-8: V-01 沙盒 REQ-2099-007 跑 archive：phase=completed + archived_at 写入 + process.txt [archived] 事件追加 + 终端反馈 6 行格式正确（spec §5.3：标题 + phase + archived_at + experience + 本地 + 远程）",
+        "TC-F3-9: V-08 自举——本需求 PR merge 后跑 /requirement:archive，验证命令：`yq '.archived_at' requirements/REQ-2026-007/meta.yaml` 输出非空（YYYY-MM-DD HH:MM:SS 格式，见 time-format.md）+ `grep -c '\\[archived\\]' requirements/REQ-2026-007/process.txt` 等于 1（幂等校验）；archive 失败重试场景由 §4.3 [archived] 幂等约束兜底"
       ]
     },
     {

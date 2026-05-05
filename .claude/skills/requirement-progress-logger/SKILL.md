@@ -56,7 +56,7 @@ description: 追加语义事件到 requirements/<id>/process.txt（追加式）�
 | `[gate:pass\|fail]` | 门禁结果 | `managing-requirement-lifecycle` → 本 Skill |
 | `[blocker]` | 阻塞发生：现象 + 初步判断/下一步 | 主 Agent → 本 Skill |
 | `[blocker-resolved]` | 阻塞解除：根因 + 解决方式 | 主 Agent → 本 Skill |
-| `[archived]` | 需求归档完成（PR #N merged at <ts>） | `archive_runner` → 本 Skill |
+| `[archived]` | 需求归档完成 (PR #N merged at <ts>) | `archive_runner` → 本 Skill |
 
 **不在白名单**：`[decision]`（改走 `plan.md` ADR）、`[issue]`（合并到 `[blocker]`）、`[SESSION_END]`（Hook 已删，不再写）、`[tool=*]`（Hook 已删，不再写）。
 
