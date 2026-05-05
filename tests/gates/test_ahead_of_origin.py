@@ -34,7 +34,7 @@ def test_skip_when_pr_open():
     """given_open_pr_for_branch_when_precheck_submit_then_skip。
 
     mock subprocess.run 让 git symbolic-ref 返回分支名，
-    gh pr list 返回 [{number: 99}] → precheck 返回 Skip。
+    gh api pulls?head=... 返回 JSONL 含 number → precheck 返回 Skip。
     """
     gate = plugin_mod.AheadOfOriginGate()
     ctx = _make_ctx(trigger="submit")
@@ -42,8 +42,14 @@ def test_skip_when_pr_open():
     def _mock_run(cmd, **kwargs):
         if "symbolic-ref" in cmd:
             return MagicMock(returncode=0, stdout="feat/test-branch\n", stderr="")
-        if "pr" in cmd and "list" in cmd:
-            return MagicMock(returncode=0, stdout='[{"number": 99}]', stderr="")
+        if cmd[:3] == ["gh", "repo", "view"]:
+            return MagicMock(returncode=0, stdout="hjaaa\n", stderr="")
+        if cmd[:2] == ["gh", "api"]:
+            return MagicMock(
+                returncode=0,
+                stdout='{"number": 99, "head_login": "hjaaa"}\n',
+                stderr="",
+            )
         return MagicMock(returncode=0, stdout="", stderr="")
 
     with patch("plugins.ahead_of_origin.subprocess.run", side_effect=_mock_run):
@@ -59,7 +65,7 @@ def test_skip_when_pr_open():
 def test_no_skip_when_pr_closed():
     """given_no_open_pr_when_precheck_submit_then_no_skip（返回 None 走主路径）。
 
-    gh pr list 返回 [] → _pr_open_for_branch 返回 False → precheck 返回 None。
+    gh api pulls?head=... 返回空 JSONL → _pr_open_for_branch 返回 None → precheck 返回 None。
     """
     gate = plugin_mod.AheadOfOriginGate()
     ctx = _make_ctx(trigger="submit")
@@ -67,8 +73,10 @@ def test_no_skip_when_pr_closed():
     def _mock_run(cmd, **kwargs):
         if "symbolic-ref" in cmd:
             return MagicMock(returncode=0, stdout="feat/test-branch\n", stderr="")
-        if "pr" in cmd and "list" in cmd:
-            return MagicMock(returncode=0, stdout="[]", stderr="")
+        if cmd[:3] == ["gh", "repo", "view"]:
+            return MagicMock(returncode=0, stdout="hjaaa\n", stderr="")
+        if cmd[:2] == ["gh", "api"]:
+            return MagicMock(returncode=0, stdout="", stderr="")
         return MagicMock(returncode=0, stdout="", stderr="")
 
     with patch("plugins.ahead_of_origin.subprocess.run", side_effect=_mock_run):
@@ -115,22 +123,22 @@ def test_fail_closed_when_gh_unauth():
     assert result is None
 
 
-# ====================== F-11 (round-5 P2) + F-12 (round-6 P1)：head 查询 + owner 过滤 ======================
+# ====================== F-11/F-12/F-13 演化路径回归 ======================
 
 
-def test_pr_lookup_uses_branch_only_head_and_filters_by_owner():
-    """codex F-11 (P2) + F-12 (P1) 回归：
+def test_pr_lookup_uses_gh_api_with_owner_scoped_head():
+    """codex F-11 (P2) → F-12 (P1) → F-13 (P2) 终态：
 
-    F-11 想做的事：跨 fork 同名分支不能假命中 skip。
-    F-12 暴露的问题：gh pr list --head 不支持 OWNER:BRANCH 语法（这是 gh pr create 的语法），
-    传过去会让 gh 把 `:` 当成分支名一部分，永远命中空 → precheck 错误地不 skip
-    → 同分支已有 open PR 的 submit 重跑被错误拦下 R-NOTHING-TO-PUSH。
+    - F-11：跨 fork 同名分支不能假命中 skip
+    - F-12：gh pr list --head 不支持 OWNER:BRANCH 语法
+    - F-13：gh pr list --limit 30 cap 让本 owner PR 可能落在结果之外
+    终态：直查 GitHub REST API（原生支持 head=user:branch），用 --paginate 兜全所有页。
 
-    正确做法：--head 仍传分支名（gh-supported 语法）；结果用 headRepositoryOwner 后过滤。
     本测试断言：
-      1. --head 参数是 branch 名（不含冒号）
-      2. --json 字段含 headRepositoryOwner（用于过滤）
-      3. 同 owner 的 PR 命中 skip；跨 fork 同名分支被过滤掉
+      1. 调的是 gh api（不是 gh pr list）
+      2. endpoint 含 head=hjaaa:feat/test-branch
+      3. 含 --paginate 不被 limit cap 偏移
+      4. 命中本 owner PR 触发 skip
     """
     gate = plugin_mod.AheadOfOriginGate()
     ctx = _make_ctx(trigger="submit", source_branch="feat/test-branch")
@@ -141,76 +149,79 @@ def test_pr_lookup_uses_branch_only_head_and_filters_by_owner():
         captured_cmds.append(list(cmd))
         if cmd[:3] == ["gh", "repo", "view"]:
             return MagicMock(returncode=0, stdout="hjaaa\n", stderr="")
-        if cmd[:3] == ["gh", "pr", "list"]:
-            # 模拟 gh 返回一个 fork 同名分支 + 一个本 owner 的 PR
-            payload = (
-                '[{"number": 88, "headRepositoryOwner": {"login": "fork-user"}},'
-                ' {"number": 99, "headRepositoryOwner": {"login": "hjaaa"}}]'
+        if cmd[:2] == ["gh", "api"]:
+            # 返回 JSONL（一行一个 JSON 对象，模拟 -q '.[] | {...}'）
+            return MagicMock(
+                returncode=0,
+                stdout='{"number": 99, "head_login": "hjaaa"}\n',
+                stderr="",
             )
-            return MagicMock(returncode=0, stdout=payload, stderr="")
         return MagicMock(returncode=0, stdout="", stderr="")
 
     with patch("plugins.ahead_of_origin.subprocess.run", side_effect=_mock_run):
         result = gate.precheck(ctx)
 
-    # F-11：fork 同名分支不应让我们 skip 错误（应只命中 hjaaa 的 PR）
-    # 但本测试中 hjaaa 也有一个 PR，所以应该 skip
-    assert isinstance(result, Skip), f"同 owner 有 open PR 应 skip，实际 {result!r}"
-    # Skip reason 应包含 PR 号 99（本 owner），不是 88（fork）
-    assert "99" in (result.reason or "") or "99" in (result.message or ""), (
-        f"Skip reason 应引用本 owner 的 PR (#99)，实际 {result!r}"
-    )
+    assert isinstance(result, Skip), f"应 skip，实际 {result!r}"
+    assert "#99" in (result.reason or ""), f"Skip reason 应含 #99，实际 {result!r}"
 
-    # F-12：--head 参数必须是分支名，不含冒号
-    pr_list_cmd = next(c for c in captured_cmds if c[:3] == ["gh", "pr", "list"])
-    head_idx = pr_list_cmd.index("--head") + 1
-    assert pr_list_cmd[head_idx] == "feat/test-branch", (
-        f"--head 必须是 branch 名（gh pr list 不支持 OWNER:BRANCH 语法），实际 {pr_list_cmd[head_idx]!r}"
+    api_cmd = next(c for c in captured_cmds if c[:2] == ["gh", "api"])
+    # endpoint 在第 3 个参数
+    endpoint = api_cmd[2]
+    assert "head=hjaaa:feat/test-branch" in endpoint, (
+        f"endpoint 必须含 owner-scoped head 过滤，实际 {endpoint!r}"
     )
-    # F-11：--json 必须包含 headRepositoryOwner 用于后过滤
-    json_idx = pr_list_cmd.index("--json") + 1
-    assert "headRepositoryOwner" in pr_list_cmd[json_idx], (
-        f"--json 字段必须含 headRepositoryOwner 用于过滤，实际 {pr_list_cmd[json_idx]!r}"
+    # 必须 --paginate 兜全所有页（防 F-13 limit cap）
+    assert "--paginate" in api_cmd, f"必须 --paginate 防 cap 偏移，实际 cmd={api_cmd}"
+    # 不应再调 gh pr list（已切到 gh api）
+    assert not any(c[:3] == ["gh", "pr", "list"] for c in captured_cmds), (
+        f"不应再调 gh pr list（已迁到 gh api），实际 cmd 列表={captured_cmds}"
     )
 
 
-def test_pr_lookup_no_skip_when_only_fork_has_open_pr():
-    """F-11 反向：只有 fork 同名分支有 PR，本 owner 没有 → 不应 skip。"""
+def test_pr_lookup_no_skip_when_owner_filter_returns_empty():
+    """codex F-11 反向回归：API head=owner:branch 返回空 → 不 skip。"""
     gate = plugin_mod.AheadOfOriginGate()
     ctx = _make_ctx(trigger="submit", source_branch="feat/test-branch")
 
     def _mock_run(cmd, **kwargs):
         if cmd[:3] == ["gh", "repo", "view"]:
             return MagicMock(returncode=0, stdout="hjaaa\n", stderr="")
-        if cmd[:3] == ["gh", "pr", "list"]:
-            payload = '[{"number": 88, "headRepositoryOwner": {"login": "fork-user"}}]'
-            return MagicMock(returncode=0, stdout=payload, stderr="")
+        if cmd[:2] == ["gh", "api"]:
+            return MagicMock(returncode=0, stdout="", stderr="")
         return MagicMock(returncode=0, stdout="", stderr="")
 
     with patch("plugins.ahead_of_origin.subprocess.run", side_effect=_mock_run):
         result = gate.precheck(ctx)
 
-    # 跨 fork 同名分支不应触发 skip
-    assert not isinstance(result, Skip), f"只 fork 有 PR 不应 skip，实际 {result!r}"
+    assert result is None, f"无匹配 PR 应不 skip，实际 {result!r}"
 
 
-def test_pr_lookup_falls_back_to_no_filter_when_owner_unknown():
-    """F-11 兜底路径：gh repo view 失败时（owner 读不到），不做 owner 过滤，
-    保留 round-5 之前的旧行为（任何同名分支 PR 都触发 skip，由上层 fail-closed 兜底）。
-    """
+def test_pr_lookup_falls_back_to_branch_only_when_owner_unknown():
+    """codex F-11 兜底：gh repo view 失败 → endpoint 退化为 head=branch（无 owner）。"""
     gate = plugin_mod.AheadOfOriginGate()
     ctx = _make_ctx(trigger="submit", source_branch="feat/test-branch")
 
+    captured_cmds: list[list[str]] = []
+
     def _mock_run(cmd, **kwargs):
+        captured_cmds.append(list(cmd))
         if cmd[:3] == ["gh", "repo", "view"]:
             return MagicMock(returncode=1, stdout="", stderr="not authenticated")
-        if cmd[:3] == ["gh", "pr", "list"]:
-            payload = '[{"number": 77, "headRepositoryOwner": {"login": "anyone"}}]'
-            return MagicMock(returncode=0, stdout=payload, stderr="")
+        if cmd[:2] == ["gh", "api"]:
+            return MagicMock(
+                returncode=0,
+                stdout='{"number": 77, "head_login": "anyone"}\n',
+                stderr="",
+            )
         return MagicMock(returncode=0, stdout="", stderr="")
 
     with patch("plugins.ahead_of_origin.subprocess.run", side_effect=_mock_run):
         result = gate.precheck(ctx)
 
-    # owner 缺失时不过滤，保持旧 skip 行为
+    # owner 缺失时退化为按 branch 名查，仍触发 skip（fail-closed 由上层兜）
     assert isinstance(result, Skip), f"owner 缺失应保旧行为 skip，实际 {result!r}"
+    api_cmd = next(c for c in captured_cmds if c[:2] == ["gh", "api"])
+    endpoint = api_cmd[2]
+    assert "head=feat/test-branch" in endpoint and ":" not in endpoint.split("head=")[1].split("&")[0], (
+        f"owner 缺失时 endpoint head 不应含冒号，实际 {endpoint!r}"
+    )

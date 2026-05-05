@@ -113,42 +113,49 @@ def _pr_open_for_branch(branch: str) -> Optional[int]:
     """
     if not branch:
         return None
-    # F-11（codex round-5 P2）已修 fork 同名分支假命中；F-12（codex round-6 P1）回退实现：
-    # `gh pr list --head` 的 manual 明确「`<owner>:<branch>` 语法不支持」，前一版传
-    # OWNER:BRANCH 让 gh 把 `:` 当作分支名一部分，命中永远空 → precheck 不再 skip
-    # → 同分支已有 open PR 的 submit 重跑被错误拦下 R-NOTHING-TO-PUSH。
-    # 正确做法：仍按 branch 名查，结果用 headRepositoryOwner 后过滤限定本 owner。
+    # 演化路径：
+    #   round-5 F-11：`gh pr list --head <branch>` 跨 fork 同名误命中 → 改 `OWNER:BRANCH`
+    #   round-6 F-12：`gh pr list --head` manual 明确不支持 `:` 语法 → 回退按分支名查 + Python 后过滤
+    #   round-7 F-13：`gh pr list --limit 30` 仅取最近 30 条，fork 多时本 owner PR 可能落在外面
+    # 终态：直接调 GitHub REST API `repos/{owner}/{repo}/pulls`——它**原生**支持
+    #   `head=user:branch` 过滤（与 `gh pr list --head` 不同），返回的就是匹配项，
+    #   不存在 limit cap 偏移问题；--paginate 兜全所有页确保不丢。
     owner = _detect_repo_owner()
+    if owner:
+        endpoint = f"repos/{{owner}}/{{repo}}/pulls?state=open&head={owner}:{branch}&per_page=100"
+    else:
+        # owner 读不到（gh repo view 失败）→ 退化为按 branch 名查，保 round-5 之前的旧行为
+        endpoint = f"repos/{{owner}}/{{repo}}/pulls?state=open&head={branch}&per_page=100"
     try:
         result = subprocess.run(
-            ["gh", "pr", "list", "--head", branch, "--state", "open",
-             "--limit", "30", "--json", "number,headRepositoryOwner"],
+            ["gh", "api", endpoint, "--paginate", "-q", ".[] | {number, head_login: .head.user.login}"],
             capture_output=True, text=True, check=False, timeout=_GIT_TIMEOUT_SEC,
         )
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
         return None
     if result.returncode != 0:
         return None
-    try:
-        data = json.loads(result.stdout or "[]")
-    except json.JSONDecodeError:
+    # gh api -q '.[] | {...}' 输出每行一个 JSON 对象（JSONL）；解析每行
+    text = (result.stdout or "").strip()
+    if not text:
         return None
-    if not isinstance(data, list) or not data:
-        return None
-    # owner 已知 → 过滤到 headRepositoryOwner.login 等于本 owner 的 PR；
-    # owner 未知（gh repo view 失败） → 不过滤（与 round-5 之前的旧行为兼容，fail-closed 由上层兜）
-    candidates = data if owner is None else [
-        pr for pr in data
-        if isinstance(pr, dict)
-        and isinstance(pr.get("headRepositoryOwner"), dict)
-        and pr["headRepositoryOwner"].get("login") == owner
-    ]
+    candidates: list[dict] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            return None
+        if isinstance(item, dict):
+            candidates.append(item)
+    # owner 已知 → REST API 已限定 head=owner:branch，结果一定本 owner；保留兜底过滤防 API 漂移
+    if owner is not None:
+        candidates = [c for c in candidates if c.get("head_login") == owner]
     if not candidates:
         return None
-    first = candidates[0]
-    if not isinstance(first, dict):
-        return None
-    pr_num = first.get("number")
+    pr_num = candidates[0].get("number")
     return pr_num if isinstance(pr_num, int) else None
 
 

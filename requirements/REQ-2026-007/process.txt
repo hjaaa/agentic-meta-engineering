@@ -62,3 +62,6 @@
 2026-05-05 18:22:07 [codex-review-triggered] round=6 pr=#57
 2026-05-05 18:26:09 [codex-review-received] verdict=not_passed round=6
 2026-05-05 18:29:20 [testing] codex round-6 verdict=not_passed；F-12 fix（修 round-5 引入的 OWNER:BRANCH 回归）+ 3 条回归（595 passed）；累计 12 finding 全闭环
+2026-05-05 18:32:49 [codex-review-triggered] round=7 pr=#57
+2026-05-05 18:36:24 [codex-review-received] verdict=not_passed round=7
+2026-05-05 18:40:17 [testing] codex round-7 verdict=not_passed；F-13 fix（切 gh api + --paginate）+ 3 条回归改写（595 passed）；累计 13 finding 全闭环

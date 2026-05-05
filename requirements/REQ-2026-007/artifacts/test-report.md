@@ -226,3 +226,15 @@ verdict=not_passed，codex 揪出我在 round-5 修 F-11 时引入的回归：
 3 条新回归 pytest 替换 round-5 的 2 条旧用例（净 +1 → 全量 **595 passed / 0 failed / 8 skipped**）。
 
 **累计 round-1..6 自举闭环：12 finding（8 P1 + 4 P2）全 fix + 19 条净新增回归 pytest**。本轮显示 review-loop 还能护送修复本身的正确性。
+
+### Round 7（2026-05-05 18:32~18:36，commit 4c1a23a）
+
+verdict=not_passed：
+
+| Finding | Severity | 文件:行 | 修复 |
+|---|---|---|---|
+| F-13 | P2 | `ahead_of_origin.py:125` | round-6 用 `gh pr list --limit 30`，fork 多时本 owner PR 可能落在外面；切到 `gh api repos/.../pulls?head=owner:branch&state=open` + `--paginate` 兜全 |
+
+回归 pytest 改写为新实现（替换 round-6 的 3 条用例），全量回归 **595 passed / 0 failed / 8 skipped**。
+
+**累计 round-1..7 自举闭环：13 finding（8 P1 + 5 P2）全 fix + 19 条净新增回归 pytest**。
