@@ -1,0 +1,85 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-008-definition-001",
+  "requirement_id": "REQ-2026-008",
+  "phase": "definition",
+  "reviewer": "requirement-quality-reviewer",
+  "reviewed_at": "2026-05-05 22:50:42",
+  "reviewed_commit": "2cdd744",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/requirement.md",
+      "sha256": "4c4c864664362372076f134c7ecdec828aa5c76d31597c648d671391e1322e20"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 89,
+  "dimensions": {
+    "completeness": {
+      "score": 92,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 177-180 行：feature_id 双保险解析为关键决策（D-005 #3），但用户场景未显式覆盖『模板缺显式 feature_id 行 → 正则兜底命中』的执行路径；建议在场景 1 主流程中追加 step 2.1 描述兜底分支"
+        }
+      ]
+    },
+    "consistency": {
+      "score": 70,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "第 89-91 行（场景 5 主流程 step 1-2）与第 173-175 行（待澄清 #2 决议）直接矛盾：场景 5 描述『meta.yaml 加 legacy: true 字段 → 4 个新 gate 检查 meta.legacy → 短路返回 pass』，但 D-005 #2 已确认『4 个新 gate 全部不纳入 legacy 豁免』。两处必须二选一：要么修订场景 5 删除豁免分支（与决议对齐），要么修订决议（不推荐）"
+        },
+        {
+          "severity": "minor",
+          "description": "第 104 行（非功能-兼容性）『历史 REQ 默认通过 legacy escape 豁免新 gate』与第 173-175 行决议同样矛盾，需同步修订表述"
+        }
+      ]
+    },
+    "traceability": {
+      "score": 90,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 118、121、122、124 行：V-02 / V-05 / V-06 / V-08 的『来源』列均指向 plan.md:13 同一行，颗粒度偏粗；建议拆到 plan.md 中各自对应的设计段行号，便于评审与回溯"
+        }
+      ]
+    },
+    "clarity": {
+      "score": 90,
+      "issues": []
+    },
+    "testability": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 125 行（V-09 文档一致性）『由 hook/gate 拦截』标注落地无明确判定方法（grep 关键词 / 完整段落改写 / 人工评审）；建议补一条『以 grep ＂hook/gate 拦截＂ 命中 ≥N 处 + 人工 sign-off』的可执行判据"
+        },
+        {
+          "severity": "minor",
+          "description": "第 124 行（V-08 自举回归）用本需求自身的 development → testing 切换验证本需求引入的 4 个 gate，存在循环依赖；建议显式约束执行顺序：V-01~V-07（沙盒 REQ-2099-008）全部通过后再跑 V-08 自举"
+        }
+      ]
+    },
+    "business_rationale": {
+      "score": 92,
+      "issues": []
+    }
+  },
+  "required_fixes": [
+    "修订场景 5（第 84-92 行）主流程：删除『meta.yaml 加 legacy: true → 新 4 个 gate 短路 pass』分支，改为明确表述『新 4 个 gate 不豁免 legacy；历史 completed 需求因不会触发 phase-transition / pre-commit / submit 而天然不被影响』；同步修订第 104 行非功能-兼容性表述。该不一致为决策落地的硬伤，必须先关单再进入下一阶段"
+  ],
+  "suggestions": [
+    "场景 1 主流程补充 feature_id 兜底正则分支描述（D-005 #3 决议落地）",
+    "V-09 补可执行判定标准（grep 命中数 + 人工 sign-off）",
+    "V-08 自举前显式声明依赖 V-01~V-07 沙盒验证完成",
+    "细化 V-02 / V-05 / V-06 的 plan.md 来源行号（不要全都指向 plan.md:13）"
+  ],
+  "scope": null,
+  "supersedes": null,
+  "project_specific_issues": [
+    "对照 context/team/engineering-spec/ 动态维度：(a) hook 链一致性——新增 dispatch_precheck.py / touches_guard.py 接入 .claude/hooks/pre-tool-use-guard.sh 的方式与现有 protect-branch hook 同构（OK，行 136）；(b) gate 注册表一致性——4 个新 gate plugin 形态与 scripts/gates/plugins/ 现有约定一致（OK，行 133-134）；(c) schema 三层模式——receipt / features / task-frontmatter 三份 schema 与 meta-schema.yaml / review-schema.yaml 同构（OK，行 28、130）；(d) 仓库即项目本体，无 context/project/<X>/INDEX.md，未声明额外特殊约束"
+  ]
+}

@@ -1,0 +1,80 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-008-definition-002",
+  "requirement_id": "REQ-2026-008",
+  "phase": "definition",
+  "reviewer": "requirement-quality-reviewer",
+  "reviewed_at": "2026-05-05 22:54:23",
+  "reviewed_commit": "555f050",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/requirement.md",
+      "sha256": "25f3c5de740baf9b8d2e763d79f41625a8d780067964f75d79797b1d251bd7bc"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 92,
+  "dimensions": {
+    "completeness": {
+      "score": 92,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 178-181 行：feature_id 双保险解析为关键决策（D-005 #3），但用户场景 1 主流程（第 36-43 行）未显式覆盖『模板缺显式 feature_id 行 → 正则 F-\\d{3} 兜底命中』执行路径；建议在 step 2 后追加 step 2.1 描述兜底分支。属增强项不阻断"
+        }
+      ]
+    },
+    "consistency": {
+      "score": 95,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 89-93 行场景 5 主流程与第 105 行非功能-兼容性、第 173-176 行 D-005 #2 决议三处表述已对齐为『新 4 个 gate 不豁免 legacy；历史 completed 需求因不再触发 phase-transition / submit / post-dev 通道而天然不被影响』；上一轮 required_fix 已闭环。建议第 124 行 V-07 验收点措辞同步收敛——当前 V-07 仍保留『新 4 个 gate 在 legacy=true 时短路返回 pass』，与决议矛盾，需改为『跑历史 completed 需求 ci 触发组 → 新 gate 因路径未触发而不参与 / 或 fail 后视为正常拦截』"
+        }
+      ]
+    },
+    "traceability": {
+      "score": 90,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 119、122、123、125 行：V-02 / V-05 / V-06 / V-08 的『来源』列均指向 plan.md:13 同一锚点，颗粒度偏粗；建议拆到 plan.md 中各自对应的设计段行号（receipt 形态 / schema 三层 / dispatch 串行 / 自举回归），便于评审与回溯。属增强项不阻断"
+        }
+      ]
+    },
+    "clarity": {
+      "score": 92,
+      "issues": []
+    },
+    "testability": {
+      "score": 86,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 126 行（V-09 文档一致性）『由 hook/gate 拦截』标注落地无明确判定方法（grep 关键词 / 完整段落改写 / 人工评审）；建议补『grep ＂hook/gate 拦截＂ 命中 ≥N 处 + 人工 sign-off』的可执行判据"
+        },
+        {
+          "severity": "minor",
+          "description": "第 125 行（V-08 自举回归）用本需求自身的 development → testing 切换验证本需求引入的 4 个 gate，存在循环依赖；建议在验收点描述中显式声明执行顺序：V-01~V-07（沙盒 REQ-2099-008）全部通过后再跑 V-08 自举"
+        }
+      ]
+    },
+    "business_rationale": {
+      "score": 95,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "V-07 验收点（第 124 行）措辞同步收敛——当前仍保留『legacy=true 时短路返回 pass』表述，与 D-005 #2 决议口径不一致，建议改为『跑历史 completed 需求 ci 触发组 → 新 gate 因路径未触发而不参与；若被异常激活则视为正常拦截』",
+    "场景 1 主流程补充 feature_id 兜底正则分支描述（D-005 #3 决议落地）",
+    "V-09 补可执行判定标准（grep 命中数 + 人工 sign-off）",
+    "V-08 自举前显式声明依赖 V-01~V-07 沙盒验证完成",
+    "细化 V-02 / V-05 / V-06 的 plan.md 来源行号（不要全都指向 plan.md:13）"
+  ],
+  "scope": null,
+  "supersedes": "REV-REQ-2026-008-definition-001",
+  "project_specific_issues": [
+    "对照 context/team/engineering-spec/ 动态维度复核：(a) hook 链一致性——新增 dispatch_precheck.py / touches_guard.py 接入 .claude/hooks/pre-tool-use-guard.sh 与现有 protect-branch 同构（OK，第 137 行）；(b) gate 注册表一致性——4 个新 gate plugin 形态与 scripts/gates/plugins/ 现有约定一致（OK，第 134-135 行）；(c) schema 三层模式——receipt / features / task-frontmatter 三份 schema 与 meta-schema.yaml / review-schema.yaml 同构（OK，第 28、131 行）；(d) 仓库即项目本体，无 context/project/<X>/INDEX.md，项目索引未声明特殊约束"
+  ]
+}
