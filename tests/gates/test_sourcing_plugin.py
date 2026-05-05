@@ -108,6 +108,28 @@ def test_sourcing_exempts_w002_for_tasks_files(tmp_path):
     )
 
 
+def test_sourcing_exempts_w002_for_codex_reviews_files(tmp_path):
+    """given_codex_reviews_subdir_when_run_then_w002_skipped。
+
+    F-004 引入的 codex-reviews/round-N.md 是 codex review-loop 的衍生输出
+    （含 codex 自己的 finding 摘要 + 我们的修复落地表，自带数字断言），
+    与 review-*.md / tasks/ 同源衍生文档，不应受 W002 约束。
+
+    回归触发：CI 在 round-8.md「新增 2 条回归 pytest」段落上误报 W002 → strict
+    模式下升 error 阻塞 PR。
+    """
+    md_file = tmp_path / "codex-reviews" / "round-1.md"
+    _write_md(md_file, _md_with_w002_trigger())
+
+    gate = plugin_mod.SourcingGate()
+    ctx = GateContext(trigger="ci", extra={"sourcing_paths": [str(md_file)]})
+    report = gate.run(ctx)
+
+    assert report.decision == Decision.PASS, (
+        f"codex-reviews/*.md 应豁免 W002，实际 decision={report.decision}, message={report.message}"
+    )
+
+
 def test_sourcing_still_emits_w002_for_design_spec(tmp_path):
     """given_design_spec_filename_when_run_then_w002_warning_still_emitted。
 

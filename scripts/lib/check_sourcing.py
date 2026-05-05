@@ -60,7 +60,10 @@ W002_DERIVED_FILENAME_PATTERNS = (
     re.compile(r"^retrospective\.md$"),          # 阶段回顾
     re.compile(r"^test-report\.md$"),            # testing 阶段验收报告
 )
-W002_DERIVED_PARENT_DIRS = ("tasks",)            # tasks/F-*.md 任务清单
+W002_DERIVED_PARENT_DIRS = (
+    "tasks",                                       # tasks/F-*.md 任务清单
+    "codex-reviews",                               # F-004 引入的 codex review-loop 输出（衍生文档同级豁免）
+)
 
 
 def _split_paragraphs(text: str) -> list[tuple[int, str]]:
