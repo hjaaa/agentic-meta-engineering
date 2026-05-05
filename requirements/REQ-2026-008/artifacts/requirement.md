@@ -84,12 +84,13 @@ refs-requirement: true   # 供 traceability-gate-checker 识别
 ### 场景 5：历史需求向后兼容
 
 - **角色**：主对话 Agent / CI workflow
-- **前置**：本次升级合并后，历史 REQ-2026-001~007 已全部 phase=completed，理论不受新 gate 影响；但若 CI 重跑历史需求的检查链或某历史 feature 分支被意外重新激活，新增的 4 个 gate 可能拦下未补 receipt / schema 的旧产物
+- **前置**：本次升级合并后，历史 REQ-2026-001~007 已全部 phase=completed（D-005 #5 扫描确认），理论不会再触发 phase-transition / pre-commit / submit / post-dev 通道；但若 CI 重跑历史需求的检查链或某历史 feature 分支被意外重新激活，新增的 4 个 gate 可能拦下未补 receipt / schema 的旧产物
 - **主流程**：
-  1. 历史需求或者 in-flight 但 bootstrap 早于本次升级的需求，meta.yaml 加 `legacy: true` 字段
-  2. `GATE-POST-DEV-RECEIPT` / `GATE-FEATURES-SCHEMA` / `GATE-TASK-FRONTMATTER` / `GATE-TOUCHES-VIOLATION` 实现时检查 meta.legacy → 短路返回 pass
-  3. 文档化：升级合并后第一周内对所有 in-flight 需求做扫描，明确每个需求是"补 receipt 后正常走"还是"标 legacy 豁免"
-- **期望结果**：升级零破坏历史需求；豁免路径明确、不被误用为"长期省事手段"；新 REQ 必须走结构化通道（来源：context/team/engineering-spec/meta-schema.yaml:118）（来源：scripts/gates/registry.yaml:1）。
+  1. **新 4 个 gate 不纳入 legacy 豁免**（D-005 #2 决议）——`legacy` 字段只豁免历史评审字段补齐类约束（如 R001~R007），不豁免本次新增的派发链强制结构 gate
+  2. 历史 completed 需求由于不会再走 phase-transition / submit / post-dev 通道，**天然不被触发**新 gate 检查；不依赖任何短路豁免逻辑
+  3. 若历史需求被异常重新激活（rollback / 手动改 phase），命中新 gate 即视为正常拦截——必须补齐 receipt / schema 才能继续推进
+  4. 文档化：升级合并后对所有 in-flight 需求做扫描确认是否有活跃需求需要迁移；本次扫描结果（D-005 #5）显示无活跃 in-flight 需求，新 gate 直接对所有未来需求生效
+- **期望结果**：升级零破坏历史 completed 需求（天然路径隔离）；新 4 个 gate 对未来需求强制生效，不开后门；`legacy` 字段语义清晰收敛，不被误用为"派发链结构强制的逃生通道"（来源：context/team/engineering-spec/meta-schema.yaml:118）（来源：scripts/gates/registry.yaml:1）。
 
 ## 非功能需求
 
@@ -101,7 +102,7 @@ refs-requirement: true   # 供 traceability-gate-checker 识别
   - 现有 `meta-schema.yaml` / `review-schema.yaml` 不动
   - 现有 8 个 `/requirement:*` 命令外观不变
   - 8 阶段 phase-rules、保守档串行约束、sign-off tty 强校验不变
-  - 历史 REQ 默认通过 legacy escape 豁免新 gate
+  - 历史 completed REQ 因不再触发 phase-transition / submit / post-dev 通道而天然不受新 gate 影响（D-005 #2：新 4 个 gate 不纳入 legacy 豁免；`legacy` 字段语义保持原状，仅豁免历史评审字段补齐类约束）
 - **安全/合规**：
   - touches_guard 软拦截不允许"被绕"——subagent 即使尝试用 MultiEdit / 间接路径也必须捕获，违规必入 receipt
   - dispatch_precheck 解析 prompt 时禁止把用户敏感信息（如 git secrets / token）写入日志或 .dispatch-state.json
