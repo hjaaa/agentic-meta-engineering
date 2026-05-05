@@ -1,0 +1,92 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-007-code-F-004-001",
+  "requirement_id": "REQ-2026-007",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-05 16:09:01",
+  "reviewed_commit": "7fff5fb",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "b5390be2a744298d74cca6e1e539fa565ce053716ae9fb4e68b44e456c633206"
+    },
+    {
+      "path": "artifacts/tasks/F-004.md",
+      "sha256": "658c597e59cd893bd4e76f72d0c2da9990ef7b69aba2c6374d0fbcef8d1999a4"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 78,
+  "dimensions": {
+    "design_consistency": {
+      "score": 72,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/submit_codex.py:全文 0 处写 process.txt，违反 detailed-design §4.3 + features.json TC-F4-8 + SKILL.md 白名单；缺 [codex-review-triggered]/[codex-review-received] 两事件"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/submit_codex.py:211 把 401/403/404 等业务级错误折叠到 GhApi5xx，超出 detailed-design §3.3.3 仅授权'网络级错误'折叠的契约"
+        },
+        {
+          "severity": "minor",
+          "description": "submit-rules.md:158 状态机最后一行 `[error-exit-1] --> exit 1` 缺 stderr 文案括注（与上面 8 行风格不一致）"
+        }
+      ]
+    },
+    "security": {
+      "score": 90,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 90,
+      "issues": []
+    },
+    "complexity": {
+      "score": 85,
+      "issues": []
+    },
+    "error_handling": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/submit_codex.py:211 401/403/404 折叠到 5xx 缺设计登记（与 design 维度同源 finding 关联）"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "tests/lifecycle/test_submit_codex.py:20 `MagicMock` 已 import 但全文件 0 处使用（仅 import 行命中 grep）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/submit_codex.py:156 `_trigger_codex_comment(pr_number, req_id)` 的 `req_id` 形参在函数体内未被引用"
+        }
+      ]
+    },
+    "performance": {
+      "score": 90,
+      "issues": []
+    },
+    "history_context": {
+      "score": 90,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "design + auxiliary 同行叠加：缺 process.txt 写入会让 V-01 沙盒 TC-F4-8 验收挂；不阻塞代码合并但阻塞 V-01 e2e + F-004 done 切换，建议本轮内修",
+    "401/403/404 折叠到 5xx 与设计契约 §3.3.3 仅授权'网络级错误'折叠存在偏离；可选 doc-grade 补登记或 code-grade 改成 401/403/404 直接 abort",
+    "状态机文档统一性建议：submit-rules.md:158 补 stderr 文案括注（如 (stderr ❌ gh api repeated 5xx during poll; aborting)）"
+  ],
+  "scope": {
+    "feature_id": "F-004"
+  },
+  "supersedes": null
+}

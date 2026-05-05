@@ -96,6 +96,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     p.add_argument("--strict", action="store_true", help="warning 也视为失败")
     p.add_argument("--dry-run", action="store_true", help="只打印执行计划，不跑 gate")
+    p.add_argument(
+        "--draft",
+        action="store_true",
+        help="草稿 PR 模式；GATE-REVIEW-VERDICT 命中时跳过",
+    )
     return p.parse_args(argv)
 
 
@@ -128,6 +133,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     if args.target is not None:
         # F-004：透传 --target 给 runner；base_reachable / ahead_of_origin 优先用此值
         runner_argv.append(f"--target={args.target}")
+    if args.draft:
+        # F-001 B 案：草稿 PR 模式透传给 runner，runner 写进 cli_flags["draft"]
+        runner_argv.append("--draft")
 
     return runner.main(runner_argv)
 

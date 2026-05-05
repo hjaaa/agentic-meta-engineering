@@ -1,0 +1,142 @@
+{
+  "schema_version": "1.0",
+  "requirement_id": "REQ-2026-007",
+  "features": [
+    {
+      "id": "F-001",
+      "title": "门禁放宽 B 案 + run.py --draft 透传",
+      "description": "B 案 plugin 内自处理（D-013）。改 scripts/gates/plugins/ahead_of_origin.py：precheck 加 _detect_source_branch + _pr_open_for_branch 谓词，命中即 Skip（detail-design §3.2.1）；fail-closed 策略：gh 缺失/401 → 不 skip 走主路径。改 scripts/gates/plugins/review_verdict.py：precheck 顶部加 submit+--draft → Skip（§3.2.2）。改 scripts/gates/run.py：parse_args 紧跟 --target 加 --draft（§1.5 #9）。改 scripts/gates/triggers/submit.py：argparse 加 --draft + 写入 ctx.cli_flags['draft']（§3.2.3）。新增 tests/gates/test_ahead_of_origin.py 加 V-02 用例 + tests/gates/test_review_verdict.py 加 V-03 用例（§3.2.1 / §3.2.2 单测要点）。先抓 §2.3 回归基线（V-06）再改代码，改完跑 diff 对比；新增 skip 是预期，新增 fail 必须排查。",
+      "modules": [
+        "scripts/gates/plugins/ahead_of_origin.py",
+        "scripts/gates/plugins/review_verdict.py",
+        "scripts/gates/run.py",
+        "scripts/gates/triggers/submit.py",
+        "tests/gates/test_ahead_of_origin.py",
+        "tests/gates/test_review_verdict.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": [],
+      "estimate_days": 1.5,
+      "complexity": "medium",
+      "touches": [
+        "scripts/gates/plugins/*.py",
+        "scripts/gates/run.py",
+        "scripts/gates/triggers/submit.py",
+        "tests/gates/*.py"
+      ],
+      "interfaces_frozen": true,
+      "acceptance": [
+        "TC-F1-1: pytest tests/gates/test_ahead_of_origin.py::test_skip_when_pr_open 绿（mock gh pr list 返回 [{number: 99}] → Skip）",
+        "TC-F1-2: pytest test_no_skip_when_pr_closed 绿（mock 返回 [] → 走主路径）",
+        "TC-F1-3: pytest test_fail_closed_when_gh_missing 绿（mock FileNotFoundError → 不 skip）",
+        "TC-F1-4: pytest test_fail_closed_when_gh_unauth 绿（mock returncode=4 → 不 skip）",
+        "TC-F1-5: pytest tests/gates/test_review_verdict.py::test_skip_on_draft_submit 绿（trigger=submit + draft=True → Skip）",
+        "TC-F1-6: pytest test_no_skip_on_phase_transition_with_draft 绿（trigger=phase-transition + draft=True → 不 skip）",
+        "TC-F1-7: pytest test_no_skip_when_draft_unset 绿（cli_flags={} → 不 skip）",
+        "TC-F1-8: V-01 沙盒 REQ-2099-007 跑 submit --draft → GATE-REVIEW-VERDICT skip + exit 0；submit 同分支已有 open PR → GATE-AHEAD-OF-ORIGIN skip + exit 0（detail-design §2 实测前置回填后）",
+        "TC-F1-9: V-06 历史需求回归——按 §2.3 基线命令对 5 个历史 REQ 跑 submit trigger，diff 仅含新增 skip 行（GATE-AHEAD-OF-ORIGIN/REVIEW-VERDICT），无新增 fail；retain /tmp/req2026007_*_baseline.txt 作为回归证据"
+      ]
+    },
+    {
+      "id": "F-002",
+      "title": "phase-rules.md #9 completed + meta.archived_at + list 默认过滤",
+      "description": "8 阶段表加第 9 行 completed；切换链补 testing → completed（命令路径 /requirement:archive）；archived_at 字段语义说明（detail-design §4.4 / §4.1）。改 context/team/engineering-spec/meta-schema.yaml：archived_at 加字段类型约束 + 与 phase=completed 双字段判断（phase != completed && archived_at != '' 视为非法）。改 .claude/commands/requirement/list.md 参数表加 --all / --phase；默认隐藏 phase=completed（§3.4.3）。--all 与 --phase 互斥同传 exit 1。新增 tests/lifecycle/test_list_filter.py 覆盖默认过滤 / --all / --phase / 互斥四种路径。本 feature 与 F-001 改动无重叠模块，可并行；F-003 依赖本 feature 提供 phase=completed 与 archived_at 字段。",
+      "modules": [
+        ".claude/skills/managing-requirement-lifecycle/reference/phase-rules.md",
+        "context/team/engineering-spec/meta-schema.yaml",
+        ".claude/commands/requirement/list.md",
+        "tests/lifecycle/test_list_filter.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": [],
+      "estimate_days": 0.8,
+      "complexity": "low",
+      "touches": [
+        ".claude/skills/managing-requirement-lifecycle/reference/phase-rules.md",
+        "context/team/engineering-spec/meta-schema.yaml",
+        ".claude/commands/requirement/list.md",
+        "tests/lifecycle/test_list_filter.py"
+      ],
+      "interfaces_frozen": true,
+      "acceptance": [
+        "TC-F2-1: phase-rules.md 8 阶段表新增第 9 行 completed；切换链段含 testing → completed",
+        "TC-F2-2: phase-rules.md archived_at 字段说明段含「ISO8601 with offset；archive 命令成功后写入；空表示已 completed 但未归档」",
+        "TC-F2-3: meta-schema.yaml 含 archived_at 字段类型约束 + 状态机规则（phase != completed && archived_at != '' → invalid）；jsonschema validate 拒收非法组合",
+        "TC-F2-4: pytest tests/lifecycle/test_list_filter.py::test_default_hides_completed 绿（默认列出不含 phase=completed 需求）",
+        "TC-F2-5: pytest test_all_includes_completed 绿（--all 列出含 completed）",
+        "TC-F2-6: pytest test_phase_filter 绿（--phase development 仅列 development 阶段）",
+        "TC-F2-7: pytest test_all_and_phase_mutex 绿（同传 exit 1 + stderr 包含 'mutually exclusive'）"
+      ]
+    },
+    {
+      "id": "F-003",
+      "title": "archive 命令完整链 + 自举 V-08",
+      "description": "新建 .claude/commands/requirement/archive.md（detail-design §3.4.2 骨架）。新建 .claude/skills/managing-requirement-lifecycle/reference/archive-rules.md（§3.5 全文骨架：4 预检 / 5 步执行 / 三问串行 / 错误矩阵）。改 SKILL.md 加 archive 子动作 + 意图映射。Skill 实现 archive_requirement 入口（§3.1 签名 + ArchiveResult dataclass），4 项预检失败映射 R-ARCHIVE-* 错误码（§3.5.1）；原子写 meta.yaml.tmp + os.replace（§3.5.2 第 1 步）；process.txt [archived] 事件走 requirement-progress-logger Skill（§4.3）；三问串行按倾向 A 案——Skill 返回三个问句给主 Agent，主 Agent 串行问；同时支持 --yes-experience / --yes-local-branch / --yes-remote-branch 跳问 flag（§3.5.5）；副作用动作降级矩阵（§3.5.4）：经验失败 → 仍 exit 0 + 打 error；本地 -D 拒绝 → 透传 git error（D-014）；远程 already-deleted 折叠。新增 tests/lifecycle/test_archive.py：4 预检 × pass/fail（mock gh pr view、git status、meta yaml）+ 三动作 yes/no/skipped/failed × 3。自举 V-08：本需求 PR merge 后用 archive 归档自身。",
+      "modules": [
+        ".claude/commands/requirement/archive.md",
+        ".claude/skills/managing-requirement-lifecycle/reference/archive-rules.md",
+        ".claude/skills/managing-requirement-lifecycle/SKILL.md",
+        "scripts/lib/archive_runner.py",
+        "tests/lifecycle/test_archive.py"
+      ],
+      "depends_on": ["F-002"],
+      "depends_on_features": ["F-002"],
+      "estimate_days": 2.5,
+      "complexity": "high",
+      "touches": [
+        ".claude/commands/requirement/archive.md",
+        ".claude/skills/managing-requirement-lifecycle/**",
+        "scripts/lib/archive_runner.py",
+        "tests/lifecycle/test_archive.py",
+        "requirements/REQ-2026-007/meta.yaml"
+      ],
+      "interfaces_frozen": true,
+      "acceptance": [
+        "TC-F3-1: pytest test_precheck_phase_invalid 绿（phase=development → exit 1 + stderr 含 R-ARCHIVE-PHASE）",
+        "TC-F3-2: pytest test_precheck_dirty 绿（git status 非空 → R-ARCHIVE-DIRTY）",
+        "TC-F3-3: pytest test_precheck_no_pr 绿（meta.pr_number=0 → R-ARCHIVE-NO-PR）",
+        "TC-F3-4: pytest test_precheck_pr_not_merged 绿（gh pr view state=OPEN → R-ARCHIVE-PR-NOT-MERGED；--force 时跳过本预检 → exit 0）",
+        "TC-F3-5: pytest test_three_prompts_yes_path 绿（三问全 y → ArchiveResult.experience=yes/local_branch=deleted/remote_branch=deleted）",
+        "TC-F3-6: pytest test_three_prompts_no_path 绿（三问全 N → ArchiveResult.experience='no' / local_branch='kept' / remote_branch='kept'；'skipped' 专指 flag 跳问，与「答 N」语义不同；meta + process.txt 仍写）",
+        "TC-F3-7: pytest test_experience_failure_does_not_break_archive / test_local_branch_delete_rejected / test_remote_branch_already_deleted 三个用例全绿（experience 调用 raise → outcome=failed + archive exit 0；git branch -d 拒绝 → outcome=failed 透传 error；远程已删 → outcome=already-deleted）",
+        "TC-F3-8: V-01 沙盒 REQ-2099-007 跑 archive：phase=completed + archived_at 写入 + process.txt [archived] 事件追加 + 终端反馈 6 行格式正确（spec §5.3：标题 + phase + archived_at + experience + 本地 + 远程）",
+        "TC-F3-9: V-08 自举——本需求 PR merge 后跑 /requirement:archive，验证命令：`yq '.archived_at' requirements/REQ-2026-007/meta.yaml` 输出非空（YYYY-MM-DD HH:MM:SS 格式，见 time-format.md）+ `grep -c '\\[archived\\]' requirements/REQ-2026-007/process.txt` 等于 1（幂等校验）；archive 失败重试场景由 §4.3 [archived] 幂等约束兜底"
+      ]
+    },
+    {
+      "id": "F-004",
+      "title": "submit --codex 子模式 + codex-reviews 子目录 + V-09 常量验收",
+      "description": "改 .claude/commands/requirement/submit.md 参数表加 --draft / --codex / --codex-poll-interval / --codex-timeout（detail-design §3.4.1）；--codex-* 必须与 --codex 同传，否则 exit 1。改 .claude/skills/managing-requirement-lifecycle/reference/submit-rules.md：顶部三常量集中段（§3.3.2）+ 第 7.5 步 codex 单轮子模式细则（§3.6 状态机骨架展开）。Skill 实现 submit_with_codex（§3.3 签名 + CodexRoundResult dataclass）：发 @codex review 评论 → time.monotonic 轮询 → 命中按 user.type=Bot && /codex/i.test(login) && submitted_at>triggered_at 三因子；429 → timeout 不重试（spec §10）；三 verdict 全 exit 0，stderr 关键串区分（§3.3.1）。新增 requirements/<id>/artifacts/codex-reviews/round-N.md 写盘逻辑（§4.2 frontmatter）+ round 号 = 已有 round-*.md 数 + 1（不允许跳号/重号）。改 requirement-progress-logger SKILL.md 白名单加 [codex-review-triggered] / [codex-review-received]（§4.3）。新增 tests/lifecycle/test_submit_codex.py：mock gh CLI 覆盖 passed / not_passed / timeout / 429 / round 自增。V-09 常量验收：grep 全仓 'Didn'\\''t find any major issues.' 仅在 submit-rules.md 一处。",
+      "modules": [
+        ".claude/commands/requirement/submit.md",
+        ".claude/skills/managing-requirement-lifecycle/reference/submit-rules.md",
+        ".claude/skills/requirement-progress-logger/SKILL.md",
+        "scripts/lib/submit_codex.py",
+        "tests/lifecycle/test_submit_codex.py"
+      ],
+      "depends_on": ["F-001"],
+      "depends_on_features": ["F-001"],
+      "estimate_days": 1.5,
+      "complexity": "medium",
+      "touches": [
+        ".claude/commands/requirement/submit.md",
+        ".claude/skills/managing-requirement-lifecycle/reference/submit-rules.md",
+        ".claude/skills/requirement-progress-logger/SKILL.md",
+        "scripts/lib/submit_codex.py",
+        "tests/lifecycle/test_submit_codex.py"
+      ],
+      "interfaces_frozen": true,
+      "acceptance": [
+        "TC-F4-1: pytest test_passed_path 绿（mock gh api 返回含 'Didn'\\''t find any major issues.' 的 review → CodexRoundResult.verdict=passed + exit 0 + round-1.md 写入）",
+        "TC-F4-2: pytest test_not_passed_path 绿（review body 不含 pass phrase → verdict=not_passed + stderr 含 ⚠️ NOT passed + exit 0）",
+        "TC-F4-3: pytest test_timeout_path 绿（mock 永不返回 codex review，超时 → verdict=timeout + stderr 含 ⚠️ TIMEOUT + round-N.md frontmatter 仅 round/triggered_at/verdict 三字段）",
+        "TC-F4-4: pytest test_429_to_timeout 绿（mock gh api 返回 429 → 直接走 timeout 路径，不重试）",
+        "TC-F4-5: pytest test_round_increment 绿（已存在 round-1.md → 下一轮写 round-2.md；不允许重号）",
+        "TC-F4-6: pytest test_filter_old_review 绿（submitted_at <= triggered_at 的旧 codex review 不算命中）",
+        "TC-F4-7: pytest test_codex_args_mutex 绿（--codex-poll-interval 不带 --codex → exit 1 + stderr 含 'requires --codex'）",
+        "TC-F4-8: V-01 沙盒 REQ-2099-007 跑 submit --codex（真实 codex 介入）→ round-1.md 落地 + frontmatter 8 字段齐 + process.txt 含 [codex-review-triggered] + [codex-review-received] 各一条",
+        "TC-F4-9: V-09 常量验收——grep -rn \"Didn'\\''t find any major issues.\" .claude/ scripts/ 仅返回 submit-rules.md 一处定义"
+      ]
+    }
+  ]
+}

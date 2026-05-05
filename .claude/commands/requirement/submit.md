@@ -33,6 +33,19 @@ argument-hint: [--draft] [--target <branch>] [--skip-rebase] [--reviewer <user>]
 | `--skip-rebase` | false | 跳过 `git rebase origin/<base>`（冲突时手工处理后重跑 submit） |
 | `--reviewer <user>` | — | 可多次，追加 reviewer |
 | `--force-with-blockers` | false | 有 blocker 级审查问题时仍放行，正文顶部会加 ⚠️ 标记 |
+| `--codex` | false | 启用 codex 单轮 review-loop（开 PR → @codex review → 轮询 → 落 round-N.md） |
+| `--codex-poll-interval` | 10 | （需 `--codex`）轮询间隔秒数 |
+| `--codex-timeout` | 600 | （需 `--codex`）整轮超时秒数 |
+
+**参数互斥**：`--codex-poll-interval` / `--codex-timeout` 必须与 `--codex` 同传，否则 exit 1（stderr: `requires --codex`）；`--draft` 与 `--codex` 可同传。
+
+**`--codex` 异常文案**：
+
+- 推 PR 后 `gh pr comment` 失败 → exit 1，stderr `❌ failed to post @codex review comment: <gh error>`
+- `gh api` 连续 3 次 5xx → exit 1，stderr `❌ gh api repeated 5xx during poll; aborting`
+- 429 限流 → 直接 verdict=timeout（不重试），exit 0
+
+详细状态机与三常量定义见 `reference/submit-rules.md §7.5`。
 
 ## 委托
 

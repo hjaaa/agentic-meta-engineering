@@ -147,6 +147,26 @@ def _check_conditional(meta: dict[str, Any], schema: dict[str, Any], report: Rep
                 )
 
 
+def _check_archived_at_state_machine(meta: dict[str, Any], report: Report, file_label: str) -> None:
+    """archived_at 状态机：仅 phase=completed 时允许 archived_at 非空。
+
+    约束：
+      - archived_at 为空或缺失时，任何 phase 都合法
+      - archived_at 非空时，phase 必须为 completed
+    """
+    archived_at = meta.get("archived_at", "")
+    phase = meta.get("phase", "")
+
+    if not _is_empty(archived_at) and phase != "completed":
+        report.add(
+            file_label,
+            Severity.ERROR,
+            "state-machine",
+            f"archived_at={archived_at!r} 但 phase={phase!r}，"
+            "仅 phase=completed 时允许写入 archived_at",
+        )
+
+
 def _check_project_scoped_enums(meta: dict[str, Any], schema: dict[str, Any], report: Report, file_label: str) -> None:
     """feature_area 必须在 context/project/<project>/areas.yaml 白名单内。
 
@@ -211,6 +231,7 @@ def check_one(meta_path: Path, schema: dict[str, Any], report: Report) -> None:
     _check_enums(meta, schema, report, file_label)
     _check_format(meta, schema, report, file_label)
     _check_conditional(meta, schema, report, file_label)
+    _check_archived_at_state_machine(meta, report, file_label)
     _check_project_scoped_enums(meta, schema, report, file_label)
 
 

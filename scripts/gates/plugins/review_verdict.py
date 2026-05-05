@@ -19,6 +19,18 @@ F-015 round-3 拆分：
   - ci 全量扫描 → review_verdict_ci.py（run_all_requirements / load_req_meta / collect_findings / build_ci_report）
   - meta.yaml 原子写入 → meta_writer.py（commit_meta_writes / set_dot_path / fcntl 锁）
   目标：单文件降至约 180 行，三套独立职责拆开。
+
+F-001 B 案 follow-up（submit --draft Skip 的 process 假设）：
+  precheck 顶部 `submit --draft → Skip` 仅信任 CLI flag，不验证目标 PR 是否真为 draft。
+  当前威胁模型可接受的依据：
+    - 仓库定位为单人 agentic 工程骨架（非多租户生产服务），调用方就是 owner 自己
+    - .claude/settings.json deny `git push --force:*`（不能强推覆盖）
+    - protect-branch hook 阻断 main/master/develop 上的 Edit/Write/Bash 写操作
+    - push / commit / Edit / Write 全走 ask 授权
+  多人协作或开放外部贡献者时需补：
+    - `gh pr view --json isDraft` 实证目标 PR 真为 draft
+    - WARN 日志带 branch / req_id / 触发者，留 audit
+    - 限 --draft 仅对非保护分支生效
 """
 from __future__ import annotations
 
@@ -65,6 +77,11 @@ class ReviewVerdictGate(Gate):
           - phase-transition：缺 to_phase 时跳过（无目标 phase 无法判定 review 要求）
           - legacy=true：历史治理需求豁免 R001~R007
         """
+        # B 案：submit --draft 模式跳过 review verdict（必须放最顶，先于 ci/legacy 等所有判断）
+        # 草稿 PR 场景下 review 尚未完成属预期，不应阻断推送
+        if ctx.trigger == "submit" and (ctx.cli_flags or {}).get("draft"):
+            return Skip("submit --draft 模式；跳过 review-verdict 校验")
+
         # ci trigger：扫全部需求，不需要 requirement_id 和 to_phase
         if ctx.trigger == "ci":
             return None

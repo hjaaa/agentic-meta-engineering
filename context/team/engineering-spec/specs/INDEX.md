@@ -13,6 +13,7 @@
 | [2026-04-24-spillover-redefine-design.md](2026-04-24-spillover-redefine-design.md) | 2026-04-24 | spillover 需求重定义设计 | — |
 | [2026-04-27-reviewer-verdict-structuring-design.md](2026-04-27-reviewer-verdict-structuring-design.md) | 2026-04-27 | Reviewer Verdict 结构化设计 | 设计中 |
 | [2026-04-30-code-review-human-checkpoints.md](2026-04-30-code-review-human-checkpoints.md) | 2026-04-30 | 代码审查人类必经卡点（双卡点机制） | 已落地 |
+| [2026-05-04-submit-codex-loop-and-archive-design.md](2026-05-04-submit-codex-loop-and-archive-design.md) | 2026-05-04 | submit 增强 Codex review-loop + 新增 archive 命令 | 设计中 |
 
 ## 检索提示
 

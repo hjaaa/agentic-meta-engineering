@@ -70,6 +70,7 @@ format:
   id: '^REQ-\d{4}-\d{3}$'
   created_at: datetime
   completed_at: datetime
+  archived_at: datetime
 
 # ---------- 条件必填（非空校验） ----------
 # 语法：
@@ -128,6 +129,7 @@ project_scoped_enums:
 #           stale: false
 optional_fields:
   - reviews
+  - archived_at   # 归档时间戳；仅 phase=completed 时允许写入；格式见 context/team/engineering-spec/time-format.md
   - legacy   # PR4 新增；boolean，true 表示豁免 reviewer-verdict 校验（仅 check_reviews 跳过）
 
 # ---------- legacy 字段（v2 新增，PR4 引入） ----------
