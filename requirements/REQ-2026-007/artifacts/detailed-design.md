@@ -443,6 +443,7 @@ def _is_passed(body: str) -> bool:
 - 连续 5xx ≥ 3 次：抛 `GhApiAbort`，调用方按 §3.4.1 文案输出 `❌ gh api repeated 5xx during poll; aborting` + exit 1。计数遇任意 200 即清零。
 - 429（限流）：直接 `return None` 走 timeout 分支，verdict=timeout，**不重试**。
 - 其他网络错（连接失败 / DNS / SSL）：按 spec §10 视为 5xx 同档处理，进入计数器。
+- 401/403/404：折叠到 5xx 计数器（fail-closed 保守，防认证失败绕过中止保护）。
 
 ### 3.4 命令 markdown 精确 patch
 
