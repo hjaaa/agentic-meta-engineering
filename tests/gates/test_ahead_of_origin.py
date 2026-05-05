@@ -165,10 +165,10 @@ def test_pr_lookup_uses_gh_api_with_owner_scoped_head():
     assert "#99" in (result.reason or ""), f"Skip reason 应含 #99，实际 {result!r}"
 
     api_cmd = next(c for c in captured_cmds if c[:2] == ["gh", "api"])
-    # endpoint 在第 3 个参数
+    # endpoint 在第 3 个参数；F-14 修复后必须 URL-encode（`:` → %3A，`/` → %2F）
     endpoint = api_cmd[2]
-    assert "head=hjaaa:feat/test-branch" in endpoint, (
-        f"endpoint 必须含 owner-scoped head 过滤，实际 {endpoint!r}"
+    assert "head=hjaaa%3Afeat%2Ftest-branch" in endpoint, (
+        f"endpoint 必须含 URL-encoded owner-scoped head 过滤，实际 {endpoint!r}"
     )
     # 必须 --paginate 兜全所有页（防 F-13 limit cap）
     assert "--paginate" in api_cmd, f"必须 --paginate 防 cap 偏移，实际 cmd={api_cmd}"
@@ -196,8 +196,11 @@ def test_pr_lookup_no_skip_when_owner_filter_returns_empty():
     assert result is None, f"无匹配 PR 应不 skip，实际 {result!r}"
 
 
-def test_pr_lookup_falls_back_to_branch_only_when_owner_unknown():
-    """codex F-11 兜底：gh repo view 失败 → endpoint 退化为 head=branch（无 owner）。"""
+def test_pr_lookup_returns_none_when_owner_unknown():
+    """codex F-15 (round-8 P2) 修订：owner 读不到时，无法构造合法 GitHub API
+    head 值（API 要求 `user:ref-name` 格式），改为 fail-closed 返 None（不 skip）
+    让主路径处理。
+    """
     gate = plugin_mod.AheadOfOriginGate()
     ctx = _make_ctx(trigger="submit", source_branch="feat/test-branch")
 
@@ -207,21 +210,56 @@ def test_pr_lookup_falls_back_to_branch_only_when_owner_unknown():
         captured_cmds.append(list(cmd))
         if cmd[:3] == ["gh", "repo", "view"]:
             return MagicMock(returncode=1, stdout="", stderr="not authenticated")
+        # 不应再调 gh api（owner 缺失时应直接返 None）
         if cmd[:2] == ["gh", "api"]:
-            return MagicMock(
-                returncode=0,
-                stdout='{"number": 77, "head_login": "anyone"}\n',
-                stderr="",
-            )
+            raise AssertionError(f"owner 缺失时不应调 gh api，cmd={cmd}")
         return MagicMock(returncode=0, stdout="", stderr="")
 
     with patch("plugins.ahead_of_origin.subprocess.run", side_effect=_mock_run):
         result = gate.precheck(ctx)
 
-    # owner 缺失时退化为按 branch 名查，仍触发 skip（fail-closed 由上层兜）
-    assert isinstance(result, Skip), f"owner 缺失应保旧行为 skip，实际 {result!r}"
+    # F-15：owner 缺失 → 不 skip（让 ahead-of-origin 主路径正常跑）
+    assert result is None, f"owner 缺失应不 skip，实际 {result!r}"
+    # 断言：确实没调 gh api（语义层面避免不可靠 query）
+    assert not any(c[:2] == ["gh", "api"] for c in captured_cmds), (
+        f"owner 缺失时不应发起 gh api 调用，实际 cmd 列表={captured_cmds}"
+    )
+
+
+def test_pr_lookup_url_encodes_special_chars_in_branch():
+    """codex F-14 (round-8 P2) 回归：branch 名含 URL 保留字符（`&`、`#`、`+` 等）
+    必须做 percent-encoding，否则 query string 会被 HTTP 层解析错位，影响 head 过滤。
+    """
+    gate = plugin_mod.AheadOfOriginGate()
+    # 故意构造含 `&` 与 `+` 的分支名（git 实际允许，URL 必须编码）
+    ctx = _make_ctx(trigger="submit", source_branch="feat/foo&bar+baz")
+
+    captured_cmds: list[list[str]] = []
+
+    def _mock_run(cmd, **kwargs):
+        captured_cmds.append(list(cmd))
+        if cmd[:3] == ["gh", "repo", "view"]:
+            return MagicMock(returncode=0, stdout="hjaaa\n", stderr="")
+        if cmd[:2] == ["gh", "api"]:
+            return MagicMock(
+                returncode=0,
+                stdout='{"number": 99, "head_login": "hjaaa"}\n',
+                stderr="",
+            )
+        return MagicMock(returncode=0, stdout="", stderr="")
+
+    with patch("plugins.ahead_of_origin.subprocess.run", side_effect=_mock_run):
+        gate.precheck(ctx)
+
     api_cmd = next(c for c in captured_cmds if c[:2] == ["gh", "api"])
     endpoint = api_cmd[2]
-    assert "head=feat/test-branch" in endpoint and ":" not in endpoint.split("head=")[1].split("&")[0], (
-        f"owner 缺失时 endpoint head 不应含冒号，实际 {endpoint!r}"
+    # 关键断言：endpoint 不含原始 `&` 或 `+`（应被编码为 %26 / %2B）；
+    # 即便分支名含 & 也不会破坏 query string 的 state/per_page 等其他参数
+    head_segment = endpoint.split("head=")[1].split("&")[0]
+    assert "%26" in head_segment or "+" not in head_segment.replace("%2B", ""), (
+        f"endpoint head 段必须 URL-encode 特殊字符，实际 {endpoint!r}"
     )
+    # 更显式：encoded 形式必须出现
+    assert "%26" in endpoint, f"`&` 必须编码为 %26，实际 {endpoint!r}"
+    assert "%2B" in endpoint, f"`+` 必须编码为 %2B，实际 {endpoint!r}"
+    assert "%3A" in endpoint, f"`:` 必须编码为 %3A（owner:branch 分隔），实际 {endpoint!r}"

@@ -65,3 +65,6 @@
 2026-05-05 18:32:49 [codex-review-triggered] round=7 pr=#57
 2026-05-05 18:36:24 [codex-review-received] verdict=not_passed round=7
 2026-05-05 18:40:17 [testing] codex round-7 verdict=not_passed；F-13 fix（切 gh api + --paginate）+ 3 条回归改写（595 passed）；累计 13 finding 全闭环
+2026-05-05 18:40:43 [codex-review-triggered] round=8 pr=#57
+2026-05-05 18:45:07 [codex-review-received] verdict=not_passed round=8
+2026-05-05 18:48:32 [testing] codex round-8 verdict=not_passed；F-14/F-15 fix（URL 编码 + owner 缺失 fail-closed）+ 2 条新+1 条改写回归（596 passed）；累计 15 finding 全闭环

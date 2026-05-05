@@ -238,3 +238,16 @@ verdict=not_passed：
 回归 pytest 改写为新实现（替换 round-6 的 3 条用例），全量回归 **595 passed / 0 failed / 8 skipped**。
 
 **累计 round-1..7 自举闭环：13 finding（8 P1 + 5 P2）全 fix + 19 条净新增回归 pytest**。
+
+### Round 8（2026-05-05 18:40~18:45，commit a98d1e1）
+
+verdict=not_passed，2 条 P2：
+
+| Finding | Severity | 文件:行 | 修复 |
+|---|---|---|---|
+| F-14 | P2 | `ahead_of_origin.py:125` | URL-encode head 参数（`urllib.parse.quote`），防 `&`/`#`/`+` 破坏 query string |
+| F-15 | P2 | `ahead_of_origin.py:128` | owner 缺失退化路径不可靠 → 改为 fail-closed 直接返 None，不 skip |
+
+新增 2 条 + 改写 1 条回归 pytest，全量回归 **596 passed / 0 failed / 8 skipped**。
+
+**累计 round-1..8 自举闭环：15 finding（8 P1 + 7 P2）全 fix + 20 条净新增回归 pytest**。

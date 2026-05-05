@@ -36,6 +36,7 @@ from __future__ import annotations
 import json
 import subprocess
 from typing import Optional
+from urllib.parse import quote
 
 from .base import Decision, Gate, GateContext, Report, Severity, Skip
 
@@ -115,17 +116,20 @@ def _pr_open_for_branch(branch: str) -> Optional[int]:
         return None
     # 演化路径：
     #   round-5 F-11：`gh pr list --head <branch>` 跨 fork 同名误命中 → 改 `OWNER:BRANCH`
-    #   round-6 F-12：`gh pr list --head` manual 明确不支持 `:` 语法 → 回退按分支名查 + Python 后过滤
-    #   round-7 F-13：`gh pr list --limit 30` 仅取最近 30 条，fork 多时本 owner PR 可能落在外面
-    # 终态：直接调 GitHub REST API `repos/{owner}/{repo}/pulls`——它**原生**支持
-    #   `head=user:branch` 过滤（与 `gh pr list --head` 不同），返回的就是匹配项，
-    #   不存在 limit cap 偏移问题；--paginate 兜全所有页确保不丢。
+    #   round-6 F-12：`gh pr list --head` manual 明确不支持 `:` 语法 → 回退 + Python 后过滤
+    #   round-7 F-13：`gh pr list --limit 30` 取首 30 条，fork 多时本 owner PR 可能落外
+    #     → 切到 GitHub REST API `repos/.../pulls?head=user:branch`（原生支持）+ --paginate
+    #   round-8 F-14：URL 未编码，branch 名含 `&`/`#`/`+` 时 query 解析错位 → urllib.quote
+    #   round-8 F-15：owner 缺失时退化路径用 `head=branch`，但 GitHub API 文档要求
+    #     `user:ref-name`/`org:ref-name` 格式 → 单独 branch 不可靠，改为 fail-closed 返 None
     owner = _detect_repo_owner()
-    if owner:
-        endpoint = f"repos/{{owner}}/{{repo}}/pulls?state=open&head={owner}:{branch}&per_page=100"
-    else:
-        # owner 读不到（gh repo view 失败）→ 退化为按 branch 名查，保 round-5 之前的旧行为
-        endpoint = f"repos/{{owner}}/{{repo}}/pulls?state=open&head={branch}&per_page=100"
+    if owner is None:
+        # F-15：GitHub API head 必须 user:ref-name；owner 缺失无法构造合法 query →
+        # fail-closed（不 skip），让主路径处理。语义保守：宁可不 skip 也不假命中。
+        return None
+    # F-14：URL-encode 防 branch 名含 `&` `#` `+` `?` 等保留字符破坏 query string
+    head_value = quote(f"{owner}:{branch}", safe="")
+    endpoint = f"repos/{{owner}}/{{repo}}/pulls?state=open&head={head_value}&per_page=100"
     try:
         result = subprocess.run(
             ["gh", "api", endpoint, "--paginate", "-q", ".[] | {number, head_login: .head.user.login}"],
@@ -150,9 +154,8 @@ def _pr_open_for_branch(branch: str) -> Optional[int]:
             return None
         if isinstance(item, dict):
             candidates.append(item)
-    # owner 已知 → REST API 已限定 head=owner:branch，结果一定本 owner；保留兜底过滤防 API 漂移
-    if owner is not None:
-        candidates = [c for c in candidates if c.get("head_login") == owner]
+    # REST API 已用 head=owner:branch 限定，结果一定本 owner；保留兜底过滤防 API 漂移
+    candidates = [c for c in candidates if c.get("head_login") == owner]
     if not candidates:
         return None
     pr_num = candidates[0].get("number")
