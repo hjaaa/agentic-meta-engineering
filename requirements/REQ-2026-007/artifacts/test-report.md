@@ -214,3 +214,15 @@ verdict=not_passed，codex 给 3 条 finding：
 再加 6 条回归 pytest → 全量 **594 passed / 0 failed / 8 skipped**。
 
 **累计 round-1..5 自举闭环：11 finding（7 P1 + 4 P2）全 fix + 18 条新回归 pytest**。本轮起 @codex review 评论带 round 间增量摘要（commits + diff stat），codex 拿到聚焦上下文仍能挖出实质性 P1。
+
+### Round 6（2026-05-05 18:22~18:26，commit 4555802）
+
+verdict=not_passed，codex 揪出我在 round-5 修 F-11 时引入的回归：
+
+| Finding | Severity | 文件:行 | 修复 |
+|---|---|---|---|
+| F-12 | **P1** | `ahead_of_origin.py:124` `_pr_open_for_branch` | `gh pr list --head` 不支持 `OWNER:BRANCH` 语法；改回按分支名查询 + 用 `headRepositoryOwner` 后过滤 |
+
+3 条新回归 pytest 替换 round-5 的 2 条旧用例（净 +1 → 全量 **595 passed / 0 failed / 8 skipped**）。
+
+**累计 round-1..6 自举闭环：12 finding（8 P1 + 4 P2）全 fix + 19 条净新增回归 pytest**。本轮显示 review-loop 还能护送修复本身的正确性。

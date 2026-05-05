@@ -113,15 +113,16 @@ def _pr_open_for_branch(branch: str) -> Optional[int]:
     """
     if not branch:
         return None
-    # F-11（codex round-5 P2）：仅按 branch 名过滤会被跨 fork / 跨 repo 同名分支误命中——
-    # 把 head 收敛到 `OWNER:BRANCH` 形式，让 gh 只在当前 owner 的分支里查；
-    # owner 读不到时退化为老行为（保 fail-closed 路径不变）。
+    # F-11（codex round-5 P2）已修 fork 同名分支假命中；F-12（codex round-6 P1）回退实现：
+    # `gh pr list --head` 的 manual 明确「`<owner>:<branch>` 语法不支持」，前一版传
+    # OWNER:BRANCH 让 gh 把 `:` 当作分支名一部分，命中永远空 → precheck 不再 skip
+    # → 同分支已有 open PR 的 submit 重跑被错误拦下 R-NOTHING-TO-PUSH。
+    # 正确做法：仍按 branch 名查，结果用 headRepositoryOwner 后过滤限定本 owner。
     owner = _detect_repo_owner()
-    head_filter = f"{owner}:{branch}" if owner else branch
     try:
         result = subprocess.run(
-            ["gh", "pr", "list", "--head", head_filter, "--state", "open",
-             "--limit", "1", "--json", "number"],
+            ["gh", "pr", "list", "--head", branch, "--state", "open",
+             "--limit", "30", "--json", "number,headRepositoryOwner"],
             capture_output=True, text=True, check=False, timeout=_GIT_TIMEOUT_SEC,
         )
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
@@ -134,7 +135,17 @@ def _pr_open_for_branch(branch: str) -> Optional[int]:
         return None
     if not isinstance(data, list) or not data:
         return None
-    first = data[0]
+    # owner 已知 → 过滤到 headRepositoryOwner.login 等于本 owner 的 PR；
+    # owner 未知（gh repo view 失败） → 不过滤（与 round-5 之前的旧行为兼容，fail-closed 由上层兜）
+    candidates = data if owner is None else [
+        pr for pr in data
+        if isinstance(pr, dict)
+        and isinstance(pr.get("headRepositoryOwner"), dict)
+        and pr["headRepositoryOwner"].get("login") == owner
+    ]
+    if not candidates:
+        return None
+    first = candidates[0]
     if not isinstance(first, dict):
         return None
     pr_num = first.get("number")
