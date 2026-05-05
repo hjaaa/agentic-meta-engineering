@@ -102,6 +102,22 @@ def _now_iso() -> str:
     return datetime.now(_CST).isoformat()
 
 
+def _parse_iso_to_aware(value: Optional[str]) -> Optional[datetime]:
+    """ISO8601 → tzaware datetime；兼容 `Z` 与 `±HH:MM` 偏移；失败返 None。
+
+    为什么需要：codex review 的 submitted_at 是 `...Z`（UTC），triggered_at 是
+    `...+08:00`，字符串字典序比对会因偏移格式不同把更晚的 review 错判为更早，
+    造成 false timeout（codex P1 finding，round-1.md 自举命中）。
+    """
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=_CST)
+
+
 def _now_cst_str() -> str:
     """process.txt 行首时间戳（`YYYY-MM-DD HH:MM:SS`，与 archive_runner 同格式）。"""
     return datetime.now(_CST).strftime("%Y-%m-%d %H:%M:%S")
@@ -217,11 +233,16 @@ def _gh_pr_reviews(pr_number: int) -> list[dict[str, Any]]:
     等轮询所需字段；gh api 可以直接拿原始 JSON。
     """
     try:
+        # 关键：用 `-q '.[]'` 把分页输出展平为「每行一个 JSON 对象」，
+        # 规避 `--paginate` 拼接多页 JSON 数组导致 json.loads 解析失败的问题
+        # （codex P1 finding：超过 30 条 review 的 PR 多页输出会破坏 JSON 解码，
+        # 被错判为 5xx → 触发轮询中止保护）。
         proc = subprocess.run(
             [
                 "gh", "api",
                 f"repos/{{owner}}/{{repo}}/pulls/{pr_number}/reviews",
                 "--paginate",
+                "-q", ".[]",
             ],
             capture_output=True,
             text=True,
@@ -241,18 +262,45 @@ def _gh_pr_reviews(pr_number: int) -> list[dict[str, Any]]:
         # 其他非零（401/403/404 等）——不应进轮询，折叠为 5xx 触发中止保护
         raise GhApi5xx(proc.stderr.strip())
 
-    try:
-        data = json.loads(proc.stdout or "[]")
-    except json.JSONDecodeError as exc:
-        raise GhApi5xx(f"JSON 解析失败: {exc}") from exc
+    return _parse_jsonl_reviews(proc.stdout or "")
 
-    # gh api --paginate 会把多页 JSON 数组拼接输出；有时是数组列表需展平
-    if isinstance(data, list) and data and isinstance(data[0], list):
-        flat: list[dict[str, Any]] = []
-        for page in data:
-            flat.extend(page)
-        return flat
-    return data if isinstance(data, list) else []
+
+def _parse_jsonl_reviews(stdout: str) -> list[dict[str, Any]]:
+    """解析 `gh api --paginate -q '.[]'` 的多行 JSON 输出。
+
+    每行是一个 review JSON 对象；空行忽略；任一行解析失败抛 GhApi5xx。
+    历史兼容：如果整个 stdout 是单个 JSON 数组（旧 mock / 直接 gh api 不带 -q
+    的场景），则按数组解析。
+    """
+    text = stdout.strip()
+    if not text:
+        return []
+    # 历史兼容路径：单个 JSON 数组（兼容 round-1 之前的 mock / 旧调用）
+    if text.startswith("["):
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise GhApi5xx(f"JSON 解析失败: {exc}") from exc
+        # 多页拼接出 [[…],[…]] 时展平
+        if isinstance(data, list) and data and isinstance(data[0], list):
+            flat: list[dict[str, Any]] = []
+            for page in data:
+                flat.extend(page)
+            return flat
+        return data if isinstance(data, list) else []
+    # JSONL 路径：每行一个对象
+    items: list[dict[str, Any]] = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise GhApi5xx(f"JSON 解析失败（行级）: {exc}") from exc
+        if isinstance(item, dict):
+            items.append(item)
+    return items
 
 
 def _matches_codex_reviewer(user: dict[str, Any]) -> bool:
@@ -276,6 +324,7 @@ def _poll_codex(
     """
     deadline = time.monotonic() + timeout
     consecutive_5xx = 0
+    triggered_at_dt = _parse_iso_to_aware(triggered_at_iso)
 
     while time.monotonic() < deadline:
         try:
@@ -297,8 +346,16 @@ def _poll_codex(
             user = r.get("user") or {}
             if not _matches_codex_reviewer(user):
                 continue
-            # 三因子之三：submitted_at 必须晚于触发时刻（过滤旧 review）
-            if r.get("submitted_at", "") <= triggered_at_iso:
+            # 三因子之三：submitted_at 必须晚于触发时刻（过滤旧 review）。
+            # 必须按 tzaware datetime 比，不能字符串字典序：codex 回的 submitted_at
+            # 是 `Z`（UTC），triggered_at 是 `+08:00`，字符串比会把更晚的 review
+            # 误判为更早 → 漏命中（codex P1 finding，round-1 自举证实）。
+            submitted_dt = _parse_iso_to_aware(r.get("submitted_at"))
+            if submitted_dt is None or triggered_at_dt is None:
+                # 任一侧解析失败：保守按字符串比兜底（极少分支）
+                if r.get("submitted_at", "") <= triggered_at_iso:
+                    continue
+            elif submitted_dt <= triggered_at_dt:
                 continue
             return r
 

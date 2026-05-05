@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +29,9 @@ import yaml
 from common import REPO_ROOT, paint, rel
 
 REQUIREMENTS_DIR = REPO_ROOT / "requirements"
+
+# Asia/Shanghai 时区常量——naive 时间戳排序前注入此 offset 防 TypeError
+_CST = timezone(timedelta(hours=8))
 
 # phase 中文名映射
 PHASE_LABELS = {
@@ -59,21 +62,27 @@ def _load_yaml(path: Path) -> dict[str, Any]:
 
 
 def _parse_created_at(value: Any) -> datetime:
-    """解析 created_at，支持新旧格式。返回 datetime 对象便于排序。
+    """解析 created_at，支持新旧格式。返回 **tzaware** datetime 便于排序。
 
     支持格式：
-      - YYYY-MM-DD HH:MM:SS（新格式，无时区，默认 Asia/Shanghai）
+      - YYYY-MM-DD HH:MM:SS（新格式，无 offset，按 Asia/Shanghai 注入）
       - YYYY-MM-DDTHH:MM:SSZ（旧 ISO 8601，UTC）
+      - YYYY-MM-DDTHH:MM:SS+HH:MM / -HH:MM（带 offset 的 ISO 8601）
+
+    硬约束：返回值一定带 tzinfo——naive 与 aware 混在同一列表会让 list.sort
+    抛 TypeError，导致 /requirement:list 整命令崩溃（codex P2 finding）。
     """
     if isinstance(value, datetime):
-        return value
+        return value if value.tzinfo is not None else value.replace(tzinfo=_CST)
     if isinstance(value, str):
         try:
-            return datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+            naive = datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+            return naive.replace(tzinfo=_CST)
         except ValueError:
             pass
         try:
-            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+            dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            return dt if dt.tzinfo is not None else dt.replace(tzinfo=_CST)
         except ValueError:
             pass
     raise ValueError(f"无法解析时间戳: {value!r}")
@@ -147,8 +156,8 @@ def list_requirements(
         try:
             created_at_dt = _parse_created_at(created_at)
         except ValueError:
-            # 时间戳解析失败，用当前时间代替（排序用）
-            created_at_dt = datetime.min
+            # 时间戳解析失败，用 epoch 占位（排序用）；必须 tzaware 防 TypeError
+            created_at_dt = datetime.min.replace(tzinfo=_CST)
 
         records.append({
             "id": req_id,

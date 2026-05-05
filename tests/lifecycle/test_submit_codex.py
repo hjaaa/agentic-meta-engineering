@@ -35,6 +35,8 @@ from submit_codex import (  # noqa: E402
     _calc_round,
     _handle_poll_result,
     _is_passed,
+    _parse_iso_to_aware,
+    _parse_jsonl_reviews,
     _poll_codex,
     _render_frontmatter,
     submit_with_codex,
@@ -545,3 +547,88 @@ def test_process_event_received_appended(fake_repo: Path) -> None:
     last = received_lines[-1]
     assert "verdict=passed" in last, f"应含 verdict=passed，实际：{last}"
     assert "round=1" in last, f"应含 round=1，实际：{last}"
+
+
+# ---------- Codex round-1 自举回归（3 条 finding 的 fix 各一） ----------
+
+
+def test_filter_handles_zulu_vs_offset_timezones(fake_repo: Path) -> None:
+    """codex F-1 (P1) 回归：submitted_at 是 `Z` 而 triggered_at 是 `+08:00` 时，
+    旧实现因字符串字典序错位漏掉真实命中；修复后必须按 tzaware datetime 比对。
+
+    场景还原：
+      - triggered_at = 17:04:03+08:00 (= 09:04:03Z)
+      - submitted_at = 09:09:05Z      (晚 5 分 02 秒)
+      - 字典序下 submitted_at < triggered_at（"...09:09:05Z" < "...17:04:03+08:00"），
+        旧版本会把它当成"旧 review"过滤；datetime 比对应识别为新 review 并命中。
+    """
+    req_id = "REQ-2099-007"
+    _make_meta(fake_repo, req_id=req_id, pr_number=42)
+
+    triggered_at = "2026-05-05T17:04:03.473256+08:00"
+    new_review = _make_review(submitted_at="2026-05-05T09:09:05Z")
+
+    with (
+        patch.object(submit_codex, "_trigger_codex_comment", return_value=triggered_at),
+        patch.object(submit_codex, "_gh_pr_reviews", return_value=[new_review]),
+        patch("submit_codex.time.sleep"),
+        patch("submit_codex.time.monotonic", side_effect=[0, 1]),
+    ):
+        result = submit_with_codex(req_id, poll_interval_sec=1, timeout_sec=600)
+
+    # 修复前会 timeout；修复后应识别为命中
+    assert result.verdict in ("passed", "not_passed"), (
+        f"期望 datetime 比对命中（passed/not_passed），实际 {result.verdict}"
+        " —— 这是 codex round-1 P1 finding F-1 的回归保护"
+    )
+    assert result.review_id == new_review["id"]
+
+
+def test_parse_iso_to_aware_normalizes_offsets() -> None:
+    """codex F-1 单元级：_parse_iso_to_aware 把 Z 与 ±HH:MM 都归一为 tzaware。"""
+    a = _parse_iso_to_aware("2026-05-05T09:09:05Z")
+    b = _parse_iso_to_aware("2026-05-05T17:09:05+08:00")
+    assert a is not None and a.tzinfo is not None
+    assert b is not None and b.tzinfo is not None
+    # 两者表示同一时刻
+    assert a == b
+    # 兜底：空 / 非法 → None
+    assert _parse_iso_to_aware("") is None
+    assert _parse_iso_to_aware("not-a-date") is None
+
+
+def test_parse_jsonl_reviews_handles_paginated_jsonl() -> None:
+    """codex F-2 (P1) 回归：gh api --paginate -q '.[]' 输出每行一个 JSON 对象，
+    旧实现 `json.loads(stdout)` 在多页输出（concatenated arrays）下抛 JSONDecodeError，
+    被错判为 5xx → 触发轮询中止保护。
+
+    新实现 `_parse_jsonl_reviews` 必须能解析逐行 JSON、忽略空行；
+    且历史兼容路径（单个 JSON 数组）仍要支持。
+    """
+    # JSONL 路径（修复后的 -q '.[]' 输出）
+    jsonl = (
+        '{"id": 1, "user": {"login": "codex[bot]", "type": "Bot"}}\n'
+        '{"id": 2, "user": {"login": "human", "type": "User"}}\n'
+        '\n'  # 空行应忽略
+        '{"id": 3, "user": {"login": "codex[bot]", "type": "Bot"}}\n'
+    )
+    out = _parse_jsonl_reviews(jsonl)
+    assert [r["id"] for r in out] == [1, 2, 3]
+
+    # 兼容历史：单个 JSON 数组
+    arr = '[{"id": 10, "user": {"login": "x"}}, {"id": 11, "user": {"login": "y"}}]'
+    out = _parse_jsonl_reviews(arr)
+    assert [r["id"] for r in out] == [10, 11]
+
+    # 兼容历史：多页拼成嵌套数组 [[{},{}],[{}]]
+    nested = '[[{"id": 20}, {"id": 21}], [{"id": 22}]]'
+    out = _parse_jsonl_reviews(nested)
+    assert [r["id"] for r in out] == [20, 21, 22]
+
+    # 空输入
+    assert _parse_jsonl_reviews("") == []
+    assert _parse_jsonl_reviews("\n\n") == []
+
+    # 非法 JSON（行级）→ 抛 GhApi5xx，让上层进 5xx 计数器（保守语义）
+    with pytest.raises(GhApi5xx):
+        _parse_jsonl_reviews('{"valid": 1}\nthis-is-not-json\n')

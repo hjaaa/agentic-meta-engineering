@@ -147,3 +147,20 @@ grep -rn "Didn't find any major issues." .claude/ scripts/
 - V-09 常量唯一性已自动验证通过
 - 待人工验收的沙盒/自举条目（V-01/V-04/V-08）不阻塞当前阶段，可在 PR merge 后补做
 - 建议下一步：更新 process.txt → `[testing-completed]`，切换 meta.yaml phase → `completed`，提 PR
+
+---
+
+## 附录：Codex round-1 自举回归（2026-05-05 17:30 增补）
+
+PR #57 提交后跑 `submit_codex.py` 第一轮，因脚本自身字符串比时间戳的 P1 bug 报 `verdict=timeout`；
+人工核对后实际 verdict=not_passed，codex 给出 3 条 finding：
+
+| Finding | Severity | 文件:行 | 修复 |
+|---|---|---|---|
+| F-1 | P1 | scripts/lib/submit_codex.py:302 | 新增 `_parse_iso_to_aware`；`_poll_codex` 改 tzaware datetime 比对 |
+| F-2 | P1 | scripts/lib/submit_codex.py:225 | `gh api ... -q '.[]'` JSONL 输出 + `_parse_jsonl_reviews` 解析 |
+| F-3 | P2 | scripts/lib/list_requirements.py:76 | `_parse_created_at` 永远返回 tzaware（naive 注 Asia/Shanghai） |
+
+新增 4 条回归 pytest（覆盖 3 条 finding 各自的契约 + datetime 单元级辅助）。
+更新后全量回归 **573 passed / 0 failed / 8 skipped**（+4 = 3 finding 回归 + 1 单元级 helper 测试）。
+详情见 `artifacts/codex-reviews/round-1.md`。
