@@ -4,3 +4,4 @@
 2026-05-05 22:43:18 [save] definition：5 条待澄清全部关单（D-005）；in-flight 扫描显示除自身外 6 个需求全 completed
 2026-05-05 22:45:04 [save] definition：D-005 已落 commit ce1eb7e；strict sourcing 0/0；可进 tech-research
 2026-05-05 22:57:31 [signoff] REV-REQ-2026-008-definition-002 approved by hj19961223@gmail.com
+2026-05-05 22:59:08 [phase-transition] definition → tech-research（7 gates 全过；definition-002 looks_clean + signoff approved）
