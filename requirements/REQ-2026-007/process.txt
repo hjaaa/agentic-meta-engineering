@@ -30,3 +30,6 @@
 2026-05-05 14:50:13 [development] F-003 派发（model=opus, complexity=high, archive 命令完整链 + V-04/V-08）
 2026-05-05 15:16:06 [review:approved] code-F-003-001 looks_clean (0 critical / 0 major / 4 minor trivial + 4 doc follow-up，待 sign-off)
 2026-05-05 15:18:10 [signoff] REV-REQ-2026-007-code-F-003-001 approved by hj19961223@gmail.com
+2026-05-05 15:32:18 [review:approved] code-F-003-002 looks_clean (零回归确认：8/8 follow-up 已修，0 new finding，pytest 18 passed)
+2026-05-05 15:32:34 [signoff] REV-REQ-2026-007-code-F-003-002 approved by hj19961223@gmail.com
+2026-05-05 15:32:57 [development] F-003 done（commit 04b4cf1，verdict 002 looks_clean + sign-off approved，零回归）
