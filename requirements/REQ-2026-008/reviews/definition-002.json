@@ -76,5 +76,11 @@
   "supersedes": "REV-REQ-2026-008-definition-001",
   "project_specific_issues": [
     "对照 context/team/engineering-spec/ 动态维度复核：(a) hook 链一致性——新增 dispatch_precheck.py / touches_guard.py 接入 .claude/hooks/pre-tool-use-guard.sh 与现有 protect-branch 同构（OK，第 137 行）；(b) gate 注册表一致性——4 个新 gate plugin 形态与 scripts/gates/plugins/ 现有约定一致（OK，第 134-135 行）；(c) schema 三层模式——receipt / features / task-frontmatter 三份 schema 与 meta-schema.yaml / review-schema.yaml 同构（OK，第 28、131 行）；(d) 仓库即项目本体，无 context/project/<X>/INDEX.md，项目索引未声明特殊约束"
-  ]
+  ],
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-05T22:57:31.203906+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
+  }
 }
