@@ -58,5 +58,11 @@
       "F-001 ~ F-004 四个 feature 的 complexity / depends_on_features / touches / interfaces_frozen 字段全部到位，阶段 7 派发器可直接读机读字段。",
       "TC-F3-6 ~ TC-F3-9 文案细化后与 §3.5.4 错误矩阵 + spec §5.3 终端反馈一对一映射，acceptance 可机读度提升。"
     ]
+  },
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-05T16:40:54.408193+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
   }
 }
