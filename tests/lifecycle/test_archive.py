@@ -14,7 +14,6 @@
 from __future__ import annotations
 
 import json
-import subprocess
 import sys
 import types
 from pathlib import Path
@@ -30,7 +29,6 @@ sys.path.insert(0, str(REPO_ROOT / "scripts" / "lib"))
 import archive_runner  # noqa: E402
 from archive_runner import (  # noqa: E402
     ArchivePrompt,
-    ArchiveResult,
     archive_requirement,
 )
 

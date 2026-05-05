@@ -12,7 +12,7 @@
   3. 追加 process.txt `[archived]` 事件（幂等：已有则跳过）
   4. 经验沉淀（可选；交互通道决议见 §3.5.5）
   5. 删本地分支 + 删远程分支（可选；同上）
-  6. 终端反馈 5 行（spec §5.3）
+  6. 终端反馈 6 行（spec §5.3：标题 + phase + archived_at + experience + 本地 + 远程）
 
 副作用动作（3 / 4 / 5 步）失败均降级到 ArchiveResult.error_messages，
 archive 命令始终 exit 0（除非 4 项预检挂）。
@@ -423,7 +423,7 @@ def _delete_remote_branch(
 
 
 def _render_summary(result: ArchiveResult) -> str:
-    """spec §5.3 第 5 步终端反馈格式（5 行）。"""
+    """spec §5.3 第 5 步终端反馈格式（6 行：标题 + phase + archived_at + experience + 本地 + 远程；error_messages 非空时再追加 errors 段）。"""
     icon = {
         "experience": {
             "yes": "✅", "no": "⏭", "skipped": "⏭",
@@ -543,6 +543,7 @@ def _build_parser():
 
 
 def main() -> int:
+    """CLI 入口：解析命令行参数并调用 archive_requirement；成功返回 0。"""
     args = _build_parser().parse_args()
     archive_requirement(
         args.req_id,
