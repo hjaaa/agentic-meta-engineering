@@ -33,3 +33,5 @@
 2026-05-05 15:32:18 [review:approved] code-F-003-002 looks_clean (零回归确认：8/8 follow-up 已修，0 new finding，pytest 18 passed)
 2026-05-05 15:32:34 [signoff] REV-REQ-2026-007-code-F-003-002 approved by hj19961223@gmail.com
 2026-05-05 15:32:57 [development] F-003 done（commit 04b4cf1，verdict 002 looks_clean + sign-off approved，零回归）
+2026-05-05 15:34:43 [development] [save] F-003 done（2 轮 review looks_clean + sign-off + 零回归）；3/4 完成，下一步派 F-004
+2026-05-05 15:41:05 [development] F-004 派发（model=sonnet, complexity=medium, submit --codex 子模式 + scripts/lib/submit_codex.py + 9 个 mock 测试）
