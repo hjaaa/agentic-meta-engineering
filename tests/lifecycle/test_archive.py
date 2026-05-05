@@ -457,3 +457,64 @@ def test_archived_at_preserved_on_rerun(
     assert result.archived_at == old_ts
     meta = yaml.safe_load((req_dir / "meta.yaml").read_text(encoding="utf-8"))
     assert meta["archived_at"] == old_ts
+
+
+# ---------- codex round-2 P2 finding F-5 回归 ----------
+
+
+def test_archived_event_concurrent_append_is_atomic(fake_repo: Path) -> None:
+    """codex F-5 (P2) 回归：两个并发线程同时调 _append_process_event，
+    LOCK_EX 必须把 read+append 包成临界区，最终 process.txt 仅含一行 [archived]。
+
+    旧实现非原子（path.exists → read → append 之间有窗口），并发下都能跳过去重；
+    新实现用 fcntl.flock 串行化（POSIX 平台），不抛 OSError。
+    """
+    import threading
+
+    req_id = "REQ-2099-007"
+    _make_meta(fake_repo, req_id=req_id)
+
+    barrier = threading.Barrier(2)
+    errors: list[BaseException] = []
+
+    def _worker(pr_num: int) -> None:
+        try:
+            barrier.wait()  # 强制两线程几乎同时进入临界区
+            archive_runner._append_process_event(
+                req_id,
+                pr_number=pr_num,
+                archived_at="2026-05-05 17:30:00",
+            )
+        except BaseException as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    t1 = threading.Thread(target=_worker, args=(42,))
+    t2 = threading.Thread(target=_worker, args=(42,))
+    t1.start()
+    t2.start()
+    t1.join(timeout=5)
+    t2.join(timeout=5)
+
+    assert not errors, f"并发调用不应抛异常：{errors}"
+    process = (fake_repo / req_id / "process.txt").read_text(encoding="utf-8")
+    archived_count = process.count("[archived]")
+    assert archived_count == 1, (
+        f"并发场景仅允许一行 [archived]，实际 {archived_count} 行：\n{process}"
+    )
+
+
+def test_append_process_event_creates_file_when_missing(fake_repo: Path) -> None:
+    """codex F-5 修复后必须保留原"文件不存在则创建"语义（'a+' 模式）。"""
+    req_id = "REQ-2099-007"
+    _make_meta(fake_repo, req_id=req_id)
+    process_path = fake_repo / req_id / "process.txt"
+    if process_path.exists():
+        process_path.unlink()  # 故意删掉，模拟首次写
+
+    archive_runner._append_process_event(
+        req_id,
+        pr_number=42,
+        archived_at="2026-05-05 17:30:00",
+    )
+    assert process_path.exists()
+    assert "[archived]" in process_path.read_text(encoding="utf-8")

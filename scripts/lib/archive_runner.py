@@ -242,20 +242,43 @@ def _append_process_event(req_id: str, pr_number: int, archived_at: str) -> None
     走 requirement-progress-logger 的格式约束：
       `YYYY-MM-DD HH:MM:SS [archived] (PR #N merged at <ts>)`
     时间戳取 append 那一刻的 now（保证行序与时序一致）。
+
+    并发安全（codex round-2 P2 finding F-5）：check-then-append 必须在 LOCK_EX
+    保护下做单原子段——否则两个并发 archive 都能观察到「未追加」并各自 append，
+    破坏单条 `[archived]` 行的不变量。POSIX 平台用 fcntl.flock；Windows 不支持
+    时退化为非原子（与历史行为一致），不抛异常。
     """
     path = _process_path(req_id)
-    if path.exists():
-        try:
-            content = path.read_text(encoding="utf-8")
-        except OSError:
-            content = ""
-        # 简单子串匹配——`[archived]` 标签独占一行的部分，足以兜住重跑双写
+    line = f"{_now_cst_str()} [archived] (PR #{pr_number} merged at {archived_at})\n"
+    # 'a+'：文件不存在则创建（保留原 `path.open('a')` 兜底创建语义）
+    # 同一句柄完成 read+write，避免双 open 间窗口
+    with path.open("a+", encoding="utf-8") as f:
+        _try_lock_exclusive(f)
+        # 'a+' 默认 seek 到末尾；要读 content 必须先 seek(0)
+        f.seek(0)
+        content = f.read()
         if "[archived]" in content:
             return
-    line = f"{_now_cst_str()} [archived] (PR #{pr_number} merged at {archived_at})\n"
-    # 父目录必然存在（meta.yaml 已加载过）；append 模式不覆盖
-    with path.open("a", encoding="utf-8") as f:
+        # 'a' 写入语义：内核保证每次 write 落在 EOF（即便有人在 lock 期间
+        # 又往同一文件写——LOCK_EX 已排他，不会发生）
         f.write(line)
+
+
+def _try_lock_exclusive(file_obj: Any) -> None:
+    """尝试取排他文件锁；失败时静默退化（与历史非原子行为兼容）。
+
+    抽出独立函数：fcntl 仅 POSIX 可用，import 在函数体内做容错；
+    单测可用 monkeypatch 替换该函数验证 fallback 路径。
+    """
+    try:
+        import fcntl
+    except ImportError:
+        return  # 非 POSIX 平台
+    try:
+        fcntl.flock(file_obj.fileno(), fcntl.LOCK_EX)
+    except OSError:
+        # 部分 FS（如 NFS 老内核）可能不支持 flock；退化处理
+        return
 
 
 def _ask(

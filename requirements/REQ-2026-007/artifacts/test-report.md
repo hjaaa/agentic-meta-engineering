@@ -164,3 +164,16 @@ PR #57 提交后跑 `submit_codex.py` 第一轮，因脚本自身字符串比时
 新增 4 条回归 pytest（覆盖 3 条 finding 各自的契约 + datetime 单元级辅助）。
 更新后全量回归 **573 passed / 0 failed / 8 skipped**（+4 = 3 finding 回归 + 1 单元级 helper 测试）。
 详情见 `artifacts/codex-reviews/round-1.md`。
+
+### Round 2（2026-05-05 17:23~17:29，commit 2494e73）
+
+F-1 修复生效，脚本正确识别 codex 回评（verdict=not_passed，不再 timeout）。Codex 又给 2 条新 finding：
+
+| Finding | Severity | 文件:行 | 修复 |
+|---|---|---|---|
+| F-4 | **P1** | `scripts/lib/submit_codex.py:190` `_calc_round` | `len + 1` → `max(parsed_suffix) + 1`，断档下不覆盖 |
+| F-5 | P2 | `scripts/lib/archive_runner.py:254` `_append_process_event` | `'a+'` 同句柄 + `fcntl.flock(LOCK_EX)` 把 check+append 包进临界区 |
+
+再加 4 条回归 pytest → 全量 **577 passed / 0 failed / 8 skipped**。详情见 `artifacts/codex-reviews/round-2.md`。
+
+待 round 3 验证脚本本体无新 finding（codex 兜底）后即可切 completed。

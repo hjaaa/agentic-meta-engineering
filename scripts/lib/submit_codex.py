@@ -182,12 +182,27 @@ def _get_pr_number(meta: dict[str, Any], req_id: str) -> int:
 
 
 def _calc_round(req_id: str) -> int:
-    """计算本轮 round 号 = 已有 round-*.md 数 + 1，禁止重号/跳号。"""
+    """计算本轮 round 号 = max(已有 round-N.md 中的 N) + 1。
+
+    必须按最大编号推算而非 `len + 1`：编号断档（如 round-1.md + round-3.md，
+    缺 round-2.md，可能因手工清理或部分恢复导致）下，`len + 1 = 3` 会回写到
+    已有的 round-3.md，覆盖审查证据（codex round-2 P1 finding F-4）。
+
+    无法解析编号的文件名忽略；目录不存在时返 1。
+    """
     reviews_dir = _codex_reviews_dir(req_id)
     if not reviews_dir.exists():
         return 1
-    existing = sorted(reviews_dir.glob("round-*.md"))
-    return len(existing) + 1
+    pattern = re.compile(r"^round-(\d+)\.md$")
+    max_round = 0
+    for p in reviews_dir.glob("round-*.md"):
+        m = pattern.match(p.name)
+        if not m:
+            continue
+        n = int(m.group(1))
+        if n > max_round:
+            max_round = n
+    return max_round + 1
 
 
 def _trigger_codex_comment(pr_number: int, req_id: str, round_n: int) -> str:

@@ -439,6 +439,35 @@ def test_calc_round_existing_files(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert _calc_round(req_id) == 3
 
 
+def test_calc_round_handles_gap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """codex F-4 (P1) 回归：编号断档时（round-1 + round-3，缺 round-2），
+    旧实现 `len + 1 = 3` 会覆盖现有 round-3.md；新实现按 max+1 → 4。
+    """
+    req_id = "REQ-2099-007"
+    monkeypatch.setattr(submit_codex, "REQUIREMENTS_DIR", tmp_path)
+    reviews_dir = tmp_path / req_id / "artifacts" / "codex-reviews"
+    reviews_dir.mkdir(parents=True)
+    (reviews_dir / "round-1.md").write_text("r1\n")
+    (reviews_dir / "round-3.md").write_text("r3\n")  # 故意制造断档
+    # 旧实现：len([r1,r3]) + 1 = 3 → 覆盖 round-3.md（数据丢失）
+    # 新实现：max(1,3) + 1 = 4
+    assert _calc_round(req_id) == 4, "断档场景必须按 max+1 推算"
+
+
+def test_calc_round_ignores_unparseable_filenames(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """_calc_round 必须忽略 glob 命中但不符合 `round-N.md` 命名的文件，
+    防止 round-foo.md / round-1-backup.md 等噪声破坏编号推算。
+    """
+    req_id = "REQ-2099-007"
+    monkeypatch.setattr(submit_codex, "REQUIREMENTS_DIR", tmp_path)
+    reviews_dir = tmp_path / req_id / "artifacts" / "codex-reviews"
+    reviews_dir.mkdir(parents=True)
+    (reviews_dir / "round-1.md").write_text("r1\n")
+    (reviews_dir / "round-foo.md").write_text("noise\n")  # 不可解析
+    (reviews_dir / "round-1-backup.md").write_text("noise\n")  # 不严格匹配
+    assert _calc_round(req_id) == 2
+
+
 def test_handle_poll_result_none_is_timeout() -> None:
     """_handle_poll_result 传 None 返回 verdict=timeout，可选字段均 None。"""
     result = _handle_poll_result(
