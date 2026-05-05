@@ -518,3 +518,60 @@ def test_append_process_event_creates_file_when_missing(fake_repo: Path) -> None
     )
     assert process_path.exists()
     assert "[archived]" in process_path.read_text(encoding="utf-8")
+
+
+# ---------- codex round-3 P2 finding F-7 回归 ----------
+
+
+def test_local_branch_delete_refused_when_head_on_target(
+    fake_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """codex F-7 (P2) 回归：HEAD 当前在目标 branch 时，archive 必须先报错让用户切走，
+    不应直接跑 `git branch -d` 撞上 'used by worktree'。
+    """
+    req_dir = _make_meta(fake_repo, branch="feat/req-2099-007", base_branch="develop")
+    plan = {
+        ("git", "status", "--porcelain"): _ok(),
+        ("gh", "pr", "view"): _ok(stdout=json.dumps({"state": "MERGED"})),
+        # 故意命中 _current_branch 的命令，返回与 meta.branch 同名
+        ("git", "rev-parse", "--abbrev-ref", "HEAD"): _ok(stdout="feat/req-2099-007\n"),
+    }
+    monkeypatch.setattr(archive_runner, "_run", _make_run_stub(plan))
+
+    result = archive_requirement(
+        "REQ-2099-007",
+        no_experience=True,
+        yes_local_branch=True,    # 显式同意删，但应被前置检测拦下
+        keep_branch=False,
+    )
+
+    assert result.local_branch == "failed", f"HEAD 在目标分支应失败，实际 {result.local_branch}"
+    joined = " | ".join(result.error_messages)
+    assert "used by worktree" in joined or "git switch develop" in joined, (
+        f"错误文案应提示用户先切 base_branch，实际：{joined}"
+    )
+
+
+def test_local_branch_delete_proceeds_when_head_elsewhere(
+    fake_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """codex F-7 反向：HEAD 在 develop 时，archive 跑得通（不被前置检测错杀）。"""
+    _make_meta(fake_repo, branch="feat/req-2099-007", base_branch="develop")
+    plan = {
+        ("git", "status", "--porcelain"): _ok(),
+        ("gh", "pr", "view"): _ok(stdout=json.dumps({"state": "MERGED"})),
+        ("git", "rev-parse", "--abbrev-ref", "HEAD"): _ok(stdout="develop\n"),
+        ("git", "branch", "-d"): _ok(),
+    }
+    monkeypatch.setattr(archive_runner, "_run", _make_run_stub(plan))
+
+    result = archive_requirement(
+        "REQ-2099-007",
+        no_experience=True,
+        yes_local_branch=True,
+        keep_branch=False,
+    )
+
+    assert result.local_branch == "deleted", f"HEAD 在 develop 应正常删除，实际 {result.local_branch}"

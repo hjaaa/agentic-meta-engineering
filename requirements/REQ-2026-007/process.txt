@@ -50,3 +50,6 @@
 2026-05-05 17:23:18 [codex-review-triggered] round=2 pr=#57
 2026-05-05 17:28:57 [codex-review-received] verdict=not_passed round=2
 2026-05-05 17:33:05 [testing] codex round-2 verdict=not_passed（F-1 修复后脚本真实识别）；F-4/F-5 全 fix + 4 条回归 pytest（577 passed）
+2026-05-05 17:39:38 [codex-review-triggered] round=3 pr=#57
+2026-05-05 17:45:31 [codex-review-received] verdict=not_passed round=3
+2026-05-05 17:49:32 [testing] codex round-3 verdict=not_passed；F-6/F-7 全 fix + 3 条回归（580 passed）；累计 7 finding 全闭环

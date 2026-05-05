@@ -357,6 +357,12 @@ def _poll_codex(
             # 429 限流 → 直接走 timeout 路径，不重试（详见 detailed-design §3.3.3）
             return None
 
+        # 收集本轮所有「post-trigger 且匹配 codex bot」的候选 review，挑最新一条。
+        # 不能取首条（codex round-3 P1 finding F-6）：reviews API 是顺序返回，
+        # 同一轮可能 fail → fix → pass 多次回评；若锁定最早那条，artifact 落
+        # 旧 verdict（可能是 not_passed 但实际已通过），违反"反映该轮最终状态"
+        # 的 round-N.md 契约。
+        candidates: list[dict[str, Any]] = []
         for r in reviews:
             user = r.get("user") or {}
             if not _matches_codex_reviewer(user):
@@ -364,7 +370,7 @@ def _poll_codex(
             # 三因子之三：submitted_at 必须晚于触发时刻（过滤旧 review）。
             # 必须按 tzaware datetime 比，不能字符串字典序：codex 回的 submitted_at
             # 是 `Z`（UTC），triggered_at 是 `+08:00`，字符串比会把更晚的 review
-            # 误判为更早 → 漏命中（codex P1 finding，round-1 自举证实）。
+            # 误判为更早 → 漏命中（codex round-1 P1 finding F-1，已修）。
             submitted_dt = _parse_iso_to_aware(r.get("submitted_at"))
             if submitted_dt is None or triggered_at_dt is None:
                 # 任一侧解析失败：保守按字符串比兜底（极少分支）
@@ -372,11 +378,26 @@ def _poll_codex(
                     continue
             elif submitted_dt <= triggered_at_dt:
                 continue
-            return r
+            candidates.append(r)
+
+        if candidates:
+            return _pick_latest_review(candidates)
 
         time.sleep(interval)
 
     return None  # 自然超时
+
+
+def _pick_latest_review(candidates: list[dict[str, Any]]) -> dict[str, Any]:
+    """从候选 review 列表中按 submitted_at 取最新。
+
+    按 tzaware datetime 排序；解析失败的 review 排到列表末尾的 epoch 处理位
+    （等价"很旧"），避免影响最新判定。空列表由调用方保证不会传入。
+    """
+    def _sort_key(r: dict[str, Any]) -> datetime:
+        dt = _parse_iso_to_aware(r.get("submitted_at"))
+        return dt if dt is not None else datetime.min.replace(tzinfo=timezone.utc)
+    return max(candidates, key=_sort_key)
 
 
 def _is_passed(body: Optional[str]) -> bool:

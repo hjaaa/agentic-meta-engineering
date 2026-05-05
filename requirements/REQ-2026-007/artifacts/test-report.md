@@ -176,4 +176,15 @@ F-1 修复生效，脚本正确识别 codex 回评（verdict=not_passed，不再
 
 再加 4 条回归 pytest → 全量 **577 passed / 0 failed / 8 skipped**。详情见 `artifacts/codex-reviews/round-2.md`。
 
-待 round 3 验证脚本本体无新 finding（codex 兜底）后即可切 completed。
+### Round 3（2026-05-05 17:39~17:45，commit 9f8853c）
+
+verdict=not_passed，codex 再给 2 条 finding：
+
+| Finding | Severity | 文件:行 | 修复 |
+|---|---|---|---|
+| F-6 | **P1** | `submit_codex.py:375` `_poll_codex` | 收集所有 post-trigger 候选 → `max(submitted_at)`；新增 `_pick_latest_review` |
+| F-7 | P2 | `archive_runner.py:384` `_delete_local_branch` | 删除前 `_current_branch()` 检测，HEAD 在目标分支 → 提示先切 base_branch |
+
+再加 3 条回归 pytest → 全量 **580 passed / 0 failed / 8 skipped**。
+
+**累计 round-1..3 自举闭环：7 finding（4 P1 + 3 P2）全 fix + 11 条新回归 pytest**——F-004 review-loop 系统性可用性验证完成。

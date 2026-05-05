@@ -626,6 +626,39 @@ def test_parse_iso_to_aware_normalizes_offsets() -> None:
     assert _parse_iso_to_aware("not-a-date") is None
 
 
+def test_poll_codex_picks_latest_when_multiple_match(fake_repo: Path) -> None:
+    """codex F-6 (P1) 回归：同一轮 codex 发了多条匹配 review（如先 not_passed 再 passed），
+    `_poll_codex` 必须按 submitted_at 取最新；旧实现取首条会落到旧 verdict 上。
+    """
+    req_id = "REQ-2099-007"
+    _make_meta(fake_repo, req_id=req_id, pr_number=42)
+
+    triggered_at = "2026-05-05T17:30:00+08:00"
+    older = _make_review(
+        review_id=1001,
+        submitted_at="2026-05-05T09:35:00Z",  # = 17:35 +08:00
+        body="found one issue",
+    )
+    newer = _make_review(
+        review_id=1002,
+        submitted_at="2026-05-05T09:45:00Z",  # = 17:45 +08:00（更晚）
+        body="Didn't find any major issues.",
+    )
+
+    # 故意把 older 排在前——旧实现会锁定到它
+    with (
+        patch.object(submit_codex, "_trigger_codex_comment", return_value=triggered_at),
+        patch.object(submit_codex, "_gh_pr_reviews", return_value=[older, newer]),
+        patch("submit_codex.time.sleep"),
+        patch("submit_codex.time.monotonic", side_effect=[0, 1]),
+    ):
+        result = submit_with_codex(req_id, poll_interval_sec=1, timeout_sec=600)
+
+    # 必须取 newer（review_id=1002，body 含 pass phrase）→ verdict=passed
+    assert result.review_id == 1002, "应取最新 submitted_at 的 review，旧实现会取首条 1001"
+    assert result.verdict == "passed", f"newer review 含 pass phrase → passed，实际 {result.verdict}"
+
+
 def test_parse_jsonl_reviews_handles_paginated_jsonl() -> None:
     """codex F-2 (P1) 回归：gh api --paginate -q '.[]' 输出每行一个 JSON 对象，
     旧实现 `json.loads(stdout)` 在多页输出（concatenated arrays）下抛 JSONDecodeError，

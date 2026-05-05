@@ -379,6 +379,21 @@ def _delete_local_branch(
         result.local_branch = "kept"
         return
 
+    # F-7（codex round-3 P2）：删除前先确认 HEAD 不在目标分支上
+    # —— 否则 `git branch -d <branch>` 必报 "branch used by worktree"，
+    # 这是用户最常见的归档姿势（PR merge 后还在 feat/req-* 分支上跑 archive）。
+    # 不自动切走 base_branch（可能 base 也是 detached 或本地缺失）；给清晰可执行错误。
+    current = _current_branch()
+    if current == branch:
+        msg = (
+            f"local_branch: 当前 HEAD 在 {branch!r}，git branch -d 会报 "
+            f"'used by worktree'；请先 `git switch {base_branch}` 再重跑 archive"
+        )
+        result.local_branch = "failed"
+        result.error_messages.append(msg)
+        print(f"⚠️  {msg}", file=sys.stderr)
+        return
+
     try:
         proc = _run(["git", "branch", "-d", branch], cwd=REPO_ROOT)
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
@@ -392,6 +407,27 @@ def _delete_local_branch(
         result.error_messages.append(f"local_branch: {msg}")
         return
     result.local_branch = "deleted"
+
+
+def _current_branch() -> Optional[str]:
+    """读 HEAD 当前分支名；detached 或读不到时返 None（视作"不在任何 branch"）。
+
+    抽出独立函数：_run 在多数测试中已 mock，本函数在测试场景能被
+    直接 monkeypatch 替换，避免给 _run plan 表加额外条目。
+    """
+    try:
+        proc = _run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=REPO_ROOT,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+    if proc.returncode != 0:
+        return None
+    name = (proc.stdout or "").strip()
+    if not name or name == "HEAD":
+        return None
+    return name
 
 
 def _delete_remote_branch(
