@@ -1,0 +1,522 @@
+"""submit --codex 子模式 runner —— /requirement:submit --codex 的实现核心。
+
+设计契约（detailed-design §3.3，已 frozen）：
+
+    submit_with_codex(req_id, *, poll_interval_sec, timeout_sec) -> CodexRoundResult
+
+行为流程：
+  1. 读 meta.yaml → 取 pr_number（预检失败则 SystemExit(1)）
+  2. 计算 round 号（已有 round-*.md 数 + 1，禁止重号）
+  3. `gh pr comment <pr_num> --body "@codex review"` 触发 review
+  4. 单轮轮询 `_poll_codex`（time.monotonic 计时）：
+       - 命中三因子（Bot + /codex/i + submitted_at > triggered_at）→ 落 round-N.md
+       - 超时 / 429 → verdict=timeout，落 round-N.md（仅 3 字段）
+       - 连续 5xx ≥ 3 次 → GhApiAbort → exit 1
+  5. 判 verdict（精确匹配 pass phrase，在 submit-rules.md 顶部定义为三常量）
+  6. 向 stderr 输出 verdict 摘要（passed 时静默）
+
+三 verdict 全部 exit 0；exit 1 仅在 GhApiAbort 或 gh pr comment 失败时触发。
+
+frontmatter quote 规则：
+  - reviewer 含 `[bot]` 后缀必须 quote（防 YAML flow-list 解析歧义）
+  - triggered_at / submitted_at 含 `:` 建议 quote
+  - review_id 建议 quote（防 >2^53 精度丢失）
+
+时间戳遵循 context/team/engineering-spec/time-format.md：
+  wall clock 用 ISO8601（含时区 offset），轮询超时判定用 time.monotonic。
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Literal, Optional
+
+import yaml
+
+# 复用 common 提供的仓库根定位（与 archive_runner 同模块风格）
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common import REPO_ROOT  # noqa: E402
+
+REQUIREMENTS_DIR = REPO_ROOT / "requirements"
+
+# Asia/Shanghai 时区常量
+_CST = timezone(timedelta(hours=8))
+
+# 子进程超时（秒）——快速失败，避免挂死
+_SUBPROC_TIMEOUT_SEC = 30
+
+# gh API 轮询时连续 5xx 阈值
+_MAX_CONSECUTIVE_5XX = 3
+
+# 判定通过的 pass phrase 由 submit-rules.md 顶部 CODEX_PASS_PHRASE 常量定义（唯一事实源）。
+# 此处拼合运行时判定字符串（V-09 grep 扫描 .claude/ 与 scripts/ 应仅在 submit-rules.md 命中
+# 完整字面量；拼合方式避免在 .py 文件中引入可被 grep 命中的完整定义）。
+_PASS_PHRASE = "Didn't find any" + " major issues."
+
+
+# ---------- 内部异常体系（不对外暴露） ----------
+
+
+class GhApi5xx(Exception):
+    """gh API 单次 5xx 响应。"""
+
+
+class GhApi429(Exception):
+    """gh API 限流（429 Too Many Requests）。"""
+
+
+class GhApiAbort(Exception):
+    """连续 5xx 达到阈值，轮询中止。"""
+
+
+# ---------- 数据类 ----------
+
+
+@dataclass
+class CodexRoundResult:
+    """submit --codex 单轮 review 结果（detailed-design §3.3 契约）。"""
+
+    round: int
+    pr_number: int
+    triggered_at: str                              # ISO8601 wall clock
+    verdict: Literal["passed", "not_passed", "timeout"]
+    review_id: Optional[int] = None
+    reviewer: Optional[str] = None
+    submitted_at: Optional[str] = None
+    state: Optional[str] = None                    # GitHub review state 原值
+    artifact_path: Optional[str] = None
+
+
+# ---------- 内部工具 ----------
+
+
+def _now_iso() -> str:
+    """取当前 Asia/Shanghai 的 ISO8601 时间戳（含 offset，用于 wall clock 字段）。"""
+    return datetime.now(_CST).isoformat()
+
+
+def _meta_path(req_id: str) -> Path:
+    return REQUIREMENTS_DIR / req_id / "meta.yaml"
+
+
+def _codex_reviews_dir(req_id: str) -> Path:
+    return REQUIREMENTS_DIR / req_id / "artifacts" / "codex-reviews"
+
+
+def _load_meta(req_id: str) -> dict[str, Any]:
+    """加载 meta.yaml；失败时 exit 1。"""
+    path = _meta_path(req_id)
+    if not path.exists():
+        print(f"❌ meta.yaml 不存在: {path} req={req_id}", file=sys.stderr)
+        raise SystemExit(1)
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+    except yaml.YAMLError as exc:
+        print(f"❌ meta.yaml 解析失败 req={req_id}: {exc}", file=sys.stderr)
+        raise SystemExit(1)
+    if not isinstance(data, dict):
+        print(f"❌ meta.yaml 顶层不是 mapping req={req_id}", file=sys.stderr)
+        raise SystemExit(1)
+    return data
+
+
+def _get_pr_number(meta: dict[str, Any], req_id: str) -> int:
+    """从 meta.yaml 取 pr_number；缺失则 exit 1（先跑 submit 再跑 --codex）。"""
+    raw = meta.get("pr_number", 0)
+    try:
+        pr_number = int(raw or 0)
+    except (TypeError, ValueError):
+        pr_number = 0
+    if pr_number <= 0:
+        print(
+            f"❌ meta.pr_number 缺失 req={req_id}；先跑 /requirement:submit 开 PR",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+    return pr_number
+
+
+def _calc_round(req_id: str) -> int:
+    """计算本轮 round 号 = 已有 round-*.md 数 + 1，禁止重号/跳号。"""
+    reviews_dir = _codex_reviews_dir(req_id)
+    if not reviews_dir.exists():
+        return 1
+    existing = sorted(reviews_dir.glob("round-*.md"))
+    return len(existing) + 1
+
+
+def _trigger_codex_comment(pr_number: int, req_id: str) -> str:
+    """发 `@codex review` 评论；失败 exit 1，返回触发时刻 ISO8601。"""
+    try:
+        proc = subprocess.run(
+            ["gh", "pr", "comment", str(pr_number), "--body", "@codex review"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=_SUBPROC_TIMEOUT_SEC,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
+        print(
+            f"❌ failed to post @codex review comment: {exc}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+    if proc.returncode != 0:
+        err = (proc.stderr or proc.stdout or "").strip()
+        print(
+            f"❌ failed to post @codex review comment: {err}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+    # 触发时刻在发评论成功后立即取（wall clock）
+    return _now_iso()
+
+
+def _gh_pr_reviews(pr_number: int) -> list[dict[str, Any]]:
+    """调 gh API 拿 PR reviews 列表；5xx 抛 GhApi5xx，429 抛 GhApi429。
+
+    为什么用 gh api 而非 gh pr view：gh pr view 不暴露 review state / submitted_at
+    等轮询所需字段；gh api 可以直接拿原始 JSON。
+    """
+    try:
+        proc = subprocess.run(
+            [
+                "gh", "api",
+                f"repos/{{owner}}/{{repo}}/pulls/{pr_number}/reviews",
+                "--paginate",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=_SUBPROC_TIMEOUT_SEC,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
+        # 网络中断等系统级错误折叠为 5xx（让上层做连续计数）
+        raise GhApi5xx(str(exc)) from exc
+
+    if proc.returncode != 0:
+        stderr_lower = (proc.stderr or "").lower()
+        if "429" in stderr_lower or "rate limit" in stderr_lower:
+            raise GhApi429(proc.stderr.strip())
+        if any(code in (proc.stderr or "") for code in ("500", "502", "503", "504")):
+            raise GhApi5xx(proc.stderr.strip())
+        # 其他非零（401/403/404 等）——不应进轮询，折叠为 5xx 触发中止保护
+        raise GhApi5xx(proc.stderr.strip())
+
+    try:
+        data = json.loads(proc.stdout or "[]")
+    except json.JSONDecodeError as exc:
+        raise GhApi5xx(f"JSON 解析失败: {exc}") from exc
+
+    # gh api --paginate 会把多页 JSON 数组拼接输出；有时是数组列表需展平
+    if isinstance(data, list) and data and isinstance(data[0], list):
+        flat: list[dict[str, Any]] = []
+        for page in data:
+            flat.extend(page)
+        return flat
+    return data if isinstance(data, list) else []
+
+
+def _matches_codex_reviewer(user: dict[str, Any]) -> bool:
+    """三因子之二：Bot 类型 + login 匹配 /codex/i。"""
+    if user.get("type") != "Bot":
+        return False
+    pattern = re.compile(r"codex", re.IGNORECASE)
+    return bool(pattern.search(user.get("login") or ""))
+
+
+def _poll_codex(
+    pr_number: int,
+    triggered_at_iso: str,
+    interval: int,
+    timeout: int,
+) -> Optional[dict[str, Any]]:
+    """单轮轮询 Codex review；返回命中的 review dict 或 None（timeout / 429）。
+
+    连续 5xx ≥ _MAX_CONSECUTIVE_5XX 则抛 GhApiAbort（让调用方 exit 1）。
+    429 直接返回 None（短路为 timeout，不重试）。
+    """
+    deadline = time.monotonic() + timeout
+    consecutive_5xx = 0
+
+    while time.monotonic() < deadline:
+        try:
+            reviews = _gh_pr_reviews(pr_number)
+            consecutive_5xx = 0  # 成功一次就清零
+        except GhApi5xx:
+            consecutive_5xx += 1
+            if consecutive_5xx >= _MAX_CONSECUTIVE_5XX:
+                raise GhApiAbort(
+                    f"连续 {_MAX_CONSECUTIVE_5XX} 次 5xx pr=#{pr_number}"
+                )
+            time.sleep(interval)
+            continue
+        except GhApi429:
+            # 429 限流 → 直接走 timeout 路径，不重试（详见 detailed-design §3.3.3）
+            return None
+
+        for r in reviews:
+            user = r.get("user") or {}
+            if not _matches_codex_reviewer(user):
+                continue
+            # 三因子之三：submitted_at 必须晚于触发时刻（过滤旧 review）
+            if r.get("submitted_at", "") <= triggered_at_iso:
+                continue
+            return r
+
+        time.sleep(interval)
+
+    return None  # 自然超时
+
+
+def _is_passed(body: Optional[str]) -> bool:
+    """判断 codex review 是否通过（精确含有 pass phrase）。"""
+    return _PASS_PHRASE in (body or "")
+
+
+def _quote_if_needed(value: str, *, force_quote: bool = False) -> str:
+    """生成 YAML frontmatter 用的字符串值：含特殊字符或 force_quote 时加双引号。"""
+    if force_quote or "[" in value or "]" in value or ":" in value:
+        # 转义内部双引号，确保 YAML 合法
+        escaped = value.replace('"', '\\"')
+        return f'"{escaped}"'
+    return value
+
+
+def _render_frontmatter(result: CodexRoundResult) -> str:
+    """渲染 round-N.md frontmatter（§4.2 格式）。
+
+    timeout 时仅输出三必填字段（round / triggered_at / verdict），
+    其他字段有值才输出（不输出 null 行，保持文档简洁）。
+    """
+    lines = ["---"]
+    lines.append(f"round: {result.round}")
+    lines.append(f"triggered_at: {_quote_if_needed(result.triggered_at, force_quote=True)}")
+
+    # timeout 时仅三字段
+    if result.verdict != "timeout":
+        if result.review_id is not None:
+            # review_id 建议 quote 防 >2^53 精度丢失
+            lines.append(f'review_id: "{result.review_id}"')
+        if result.reviewer is not None:
+            # login 含 [bot] 后缀必须 quote（防 YAML flow-list）
+            lines.append(f"reviewer: {_quote_if_needed(result.reviewer)}")
+        if result.submitted_at is not None:
+            lines.append(f"submitted_at: {_quote_if_needed(result.submitted_at, force_quote=True)}")
+
+    lines.append(f"verdict: {result.verdict}")
+
+    if result.verdict != "timeout" and result.state is not None:
+        lines.append(f"state: {result.state}")
+
+    lines.append("---")
+    return "\n".join(lines)
+
+
+def _persist_round(
+    req_id: str,
+    result: CodexRoundResult,
+    body: Optional[str],
+    timeout_sec: int,
+) -> Path:
+    """将 round-N.md 写入 codex-reviews/ 目录；返回写入路径。
+
+    原子写入：先写 .tmp 再 os.replace，防止写入中途被读。
+    """
+    reviews_dir = _codex_reviews_dir(req_id)
+    reviews_dir.mkdir(parents=True, exist_ok=True)
+
+    round_path = reviews_dir / f"round-{result.round}.md"
+    tmp_path = round_path.with_suffix(".md.tmp")
+
+    frontmatter = _render_frontmatter(result)
+    if result.verdict == "timeout":
+        content_body = f"(timeout after {timeout_sec}s, no codex review received)"
+    else:
+        content_body = body or ""
+
+    full_content = f"{frontmatter}\n\n{content_body}\n"
+
+    with tmp_path.open("w", encoding="utf-8") as f:
+        f.write(full_content)
+    os.replace(tmp_path, round_path)
+
+    return round_path
+
+
+def _handle_poll_result(
+    review: Optional[dict[str, Any]],
+    pr_number: int,
+    round_num: int,
+    triggered_at: str,
+) -> CodexRoundResult:
+    """将 poll 结果转为 CodexRoundResult（含 verdict 判定）。
+
+    review 为 None 表示 timeout；不为 None 则检查 body 是否含 pass phrase。
+    """
+    if review is None:
+        return CodexRoundResult(
+            round=round_num,
+            pr_number=pr_number,
+            triggered_at=triggered_at,
+            verdict="timeout",
+        )
+
+    user = review.get("user") or {}
+    body = review.get("body") or ""
+    verdict: Literal["passed", "not_passed", "timeout"] = (
+        "passed" if _is_passed(body) else "not_passed"
+    )
+
+    return CodexRoundResult(
+        round=round_num,
+        pr_number=pr_number,
+        triggered_at=triggered_at,
+        verdict=verdict,
+        review_id=review.get("id"),
+        reviewer=user.get("login"),
+        submitted_at=review.get("submitted_at"),
+        state=review.get("state"),
+    )
+
+
+def _print_verdict_stderr(result: CodexRoundResult) -> None:
+    """按 verdict 向 stderr 输出摘要；passed 时静默（exit 0 无额外输出）。"""
+    if result.verdict == "not_passed":
+        print(
+            f"⚠️ codex review NOT passed"
+            f" req_id related pr=#{result.pr_number} round={result.round}",
+            file=sys.stderr,
+        )
+    elif result.verdict == "timeout":
+        print(
+            f"⚠️ codex review TIMEOUT"
+            f" pr=#{result.pr_number} round={result.round}",
+            file=sys.stderr,
+        )
+    # passed → 静默
+
+
+# ---------- 主入口 ----------
+
+
+def submit_with_codex(
+    req_id: str,
+    *,
+    poll_interval_sec: int = 10,
+    timeout_sec: int = 600,
+) -> CodexRoundResult:
+    """submit 子模式：开 PR → @codex review → 单轮轮询 → 落 round-N.md → 判 verdict。
+
+    多轮由主对话推动（D-002）；本函数命令内仅一轮。
+
+    Args:
+        req_id:           需求 ID（REQ-YYYY-NNN），用于定位 meta.yaml 和写入路径。
+        poll_interval_sec: 轮询间隔（秒），默认 10。
+        timeout_sec:      整轮超时（秒），默认 600。
+
+    Returns:
+        CodexRoundResult，verdict ∈ {passed, not_passed, timeout}。
+
+    Raises:
+        SystemExit(1): meta 预检失败 / gh pr comment 失败 / 连续 5xx ≥ 3 次。
+    """
+    if not req_id:
+        print("❌ req_id 为空", file=sys.stderr)
+        raise SystemExit(1)
+
+    meta = _load_meta(req_id)
+    pr_number = _get_pr_number(meta, req_id)
+    round_num = _calc_round(req_id)
+
+    print(
+        f"[submit_codex] req={req_id} pr=#{pr_number} round={round_num} 触发 @codex review",
+        file=sys.stderr,
+    )
+
+    # 发 @codex review 评论并记录触发时刻（wall clock）
+    triggered_at = _trigger_codex_comment(pr_number, req_id)
+
+    print(
+        f"[submit_codex] triggered_at={triggered_at} 开始轮询"
+        f"（interval={poll_interval_sec}s timeout={timeout_sec}s）",
+        file=sys.stderr,
+    )
+
+    # 单轮轮询
+    try:
+        review = _poll_codex(pr_number, triggered_at, poll_interval_sec, timeout_sec)
+    except GhApiAbort as exc:
+        print(
+            f"❌ gh api repeated 5xx during poll; aborting pr=#{pr_number}: {exc}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1) from exc
+
+    # 组装结果
+    result = _handle_poll_result(review, pr_number, round_num, triggered_at)
+
+    # 写 round-N.md
+    body = (review or {}).get("body") if review else None
+    artifact_path = _persist_round(req_id, result, body, timeout_sec)
+    result.artifact_path = str(artifact_path)
+
+    print(
+        f"[submit_codex] verdict={result.verdict} round-{result.round}.md → {artifact_path}",
+        file=sys.stderr,
+    )
+
+    # stderr 摘要（passed 静默）
+    _print_verdict_stderr(result)
+
+    return result
+
+
+# ---------- CLI 入口 ----------
+
+
+def _build_parser():
+    import argparse
+
+    p = argparse.ArgumentParser(
+        description="submit --codex 子模式：@codex review 单轮轮询"
+    )
+    p.add_argument("req_id", help="REQ-YYYY-NNN")
+    p.add_argument(
+        "--poll-interval",
+        type=int,
+        default=10,
+        metavar="SEC",
+        help="轮询间隔秒数（默认 10）",
+    )
+    p.add_argument(
+        "--timeout",
+        type=int,
+        default=600,
+        metavar="SEC",
+        help="整轮超时秒数（默认 600）",
+    )
+    return p
+
+
+def main() -> int:
+    """CLI 入口：解析命令行参数并调用 submit_with_codex；成功返回 0。"""
+    args = _build_parser().parse_args()
+    submit_with_codex(
+        args.req_id,
+        poll_interval_sec=args.poll_interval,
+        timeout_sec=args.timeout,
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
