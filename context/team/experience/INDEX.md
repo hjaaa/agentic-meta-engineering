@@ -27,6 +27,9 @@
 - [`code-deletion-breaks-archival-references.md`](code-deletion-breaks-archival-references.md) — 删除被档案需求引用的代码会触发 CI 全量 sourcing 回归；checker 对 `phase=completed` 区按"档案冻结"语义豁免
 - [`local-pass-vs-ci-pass-rounds.md`](local-pass-vs-ci-pass-rounds.md) — 本地全过 vs CI 5 轮修复（git config / defaultBranch / ruff / auto-render 同步）；submit 前必跑本地 CI 模拟清单 + 测试 fixture 自给自足
 - [`external-ai-reviewer-finds-internal-blindspots.md`](external-ai-reviewer-finds-internal-blindspots.md) — 8 内部 checker + critic + judge 全 pass 后 Codex 仍抓 P1（跨语言路径 / hook cwd 假设）；外部 AI reviewer 是互补层不是冗余
+- [`archive-completed-triggers-framework-rule-fullset.md`](archive-completed-triggers-framework-rule-fullset.md) — `phase=completed` 触发 framework R-rule / conditional_required 全集；testing 阶段沉默的 schema 缺口都在 archive 实跑才集中暴露（F-17 outcome/completed_at + 缺失 definition review 即此规律实例）
+- [`ai-bot-pass-signal-not-in-documented-channel.md`](ai-bot-pass-signal-not-in-documented-channel.md) — codex info 文本说 pass 时「react with 👍」，实测发 issue comment；轮询必须多端点 OR 语义（reviews ∪ issue_comments），否则 pass case 永远 timeout
+- [`github-api-head-syntax-fork-across-surfaces.md`](github-api-head-syntax-fork-across-surfaces.md) — `gh pr list --head` 不支持 `OWNER:BRANCH`，但 `gh api .../pulls?head=` 原生支持；`gh` 各子命令是独立薄包装，跨 surface 必须分别看 manual
 
 ## 什么值得沉淀
 

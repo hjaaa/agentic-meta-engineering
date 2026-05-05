@@ -93,7 +93,7 @@ tags:
   - pr-loop
 outcome: shipped
 completed_at: '2026-05-05 19:15:10'
-lessons_extracted: false
+lessons_extracted: true
 reviews:
   outline-design:
     latest: REV-REQ-2026-007-outline-design-002
