@@ -429,6 +429,39 @@ def test_refuse_to_delete_base_branch(
     assert any("base_branch" in m for m in result.error_messages)
 
 
+@pytest.mark.parametrize("protected", ["main", "master", "develop"])
+def test_protected_branch_blocked_even_when_base_branch_empty(
+    fake_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    protected: str,
+) -> None:
+    """codex F-10 (P1) 回归：base_branch 为空 / 漂移时，本地+远程删除仍要拦下
+    main/master/develop 等保护分支——白名单兜底，不依赖 base_branch 配置正确。
+    """
+    _make_meta(fake_repo, branch=protected, base_branch="")
+    plan = {
+        ("git", "status", "--porcelain"): _ok(),
+        ("gh", "pr", "view"): _ok(stdout=json.dumps({"state": "MERGED"})),
+        ("git", "branch", "-d"): RuntimeError("不应被调用——保护分支白名单必须拦下"),
+        ("git", "push", "origin", "--delete"): RuntimeError("不应被调用——远程保护分支白名单必须拦下"),
+    }
+    monkeypatch.setattr(archive_runner, "_run", _make_run_stub(plan))
+
+    result = archive_requirement(
+        "REQ-2099-007",
+        no_experience=True,
+        yes_local_branch=True,
+        yes_remote_branch=True,
+        keep_branch=False,
+    )
+    assert result.local_branch == "failed", f"{protected} 本地保护应失败"
+    assert result.remote_branch == "failed", f"{protected} 远程保护应失败"
+    joined = " | ".join(result.error_messages)
+    assert "受保护" in joined or "protected" in joined.lower(), (
+        f"错误文案应说明保护语义，实际：{joined}"
+    )
+
+
 def test_refuse_to_delete_remote_base_branch(
     fake_repo: Path,
     monkeypatch: pytest.MonkeyPatch,

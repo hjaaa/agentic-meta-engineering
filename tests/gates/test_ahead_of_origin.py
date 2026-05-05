@@ -113,3 +113,64 @@ def test_fail_closed_when_gh_unauth():
         result = gate.precheck(ctx)
 
     assert result is None
+
+
+# ====================== F-11 (codex round-5 P2)：head 限定 owner ======================
+
+
+def test_pr_lookup_uses_owner_scoped_head():
+    """codex F-11 (P2) 回归：gh pr list --head 必须用 OWNER:BRANCH 形式查，
+    避免跨 fork / 跨 repo 同名分支假命中 skip。
+    """
+    gate = plugin_mod.AheadOfOriginGate()
+    ctx = _make_ctx(trigger="submit", source_branch="feat/test-branch")
+
+    captured_cmds: list[list[str]] = []
+
+    def _mock_run(cmd, **kwargs):
+        captured_cmds.append(list(cmd))
+        if cmd[:3] == ["gh", "repo", "view"]:
+            return MagicMock(returncode=0, stdout="hjaaa\n", stderr="")
+        if cmd[:3] == ["gh", "pr", "list"]:
+            return MagicMock(returncode=0, stdout='[{"number": 99}]', stderr="")
+        return MagicMock(returncode=0, stdout="", stderr="")
+
+    with patch("plugins.ahead_of_origin.subprocess.run", side_effect=_mock_run):
+        result = gate.precheck(ctx)
+
+    # 应命中 skip（合法的同 owner open PR）
+    assert isinstance(result, Skip), f"应 skip，实际 {result!r}"
+
+    # 关键断言：传给 gh pr list 的 --head 参数必须是 OWNER:BRANCH 格式
+    pr_list_cmd = next(c for c in captured_cmds if c[:3] == ["gh", "pr", "list"])
+    head_idx = pr_list_cmd.index("--head") + 1
+    assert pr_list_cmd[head_idx] == "hjaaa:feat/test-branch", (
+        f"--head 应为 'hjaaa:feat/test-branch'（含 owner），实际 {pr_list_cmd[head_idx]!r}"
+    )
+
+
+def test_pr_lookup_falls_back_to_branch_only_when_owner_unknown():
+    """codex F-11 兜底路径：gh repo view 失败时（无 owner），退化为按 branch 名查，
+    保持旧 fail-closed 行为不变。
+    """
+    gate = plugin_mod.AheadOfOriginGate()
+    ctx = _make_ctx(trigger="submit", source_branch="feat/test-branch")
+
+    captured_cmds: list[list[str]] = []
+
+    def _mock_run(cmd, **kwargs):
+        captured_cmds.append(list(cmd))
+        if cmd[:3] == ["gh", "repo", "view"]:
+            return MagicMock(returncode=1, stdout="", stderr="not authenticated")
+        if cmd[:3] == ["gh", "pr", "list"]:
+            return MagicMock(returncode=0, stdout='[]', stderr="")
+        return MagicMock(returncode=0, stdout="", stderr="")
+
+    with patch("plugins.ahead_of_origin.subprocess.run", side_effect=_mock_run):
+        gate.precheck(ctx)
+
+    pr_list_cmd = next(c for c in captured_cmds if c[:3] == ["gh", "pr", "list"])
+    head_idx = pr_list_cmd.index("--head") + 1
+    assert pr_list_cmd[head_idx] == "feat/test-branch", (
+        f"owner 缺失时应退化为只用 branch 名，实际 {pr_list_cmd[head_idx]!r}"
+    )

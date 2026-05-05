@@ -51,6 +51,10 @@ _CST = timezone(timedelta(hours=8))
 # 子进程超时（秒）——与 ahead_of_origin 同档，保留快速失败语义
 _SUBPROC_TIMEOUT_SEC = 30
 
+# 受保护的长寿命分支白名单（本地+远程对称）——任何情况下都不允许 archive 删除
+# 即便 meta.base_branch 为空 / 漂移，命中本集合也直接 fail-closed（codex round-5 P1 F-10）
+_PROTECTED_BRANCHES = frozenset({"main", "master", "develop"})
+
 
 @dataclass
 class ArchivePrompt:
@@ -358,10 +362,14 @@ def _delete_local_branch(
         result.local_branch = "skipped"
         result.error_messages.append("local_branch: meta.branch 为空，跳过删除")
         return
-    # 防止误删 base_branch（develop / main / master 不可作为 feature 分支被删）
-    if branch == base_branch:
+    # 防止误删 base_branch（develop / main / master 不可作为 feature 分支被删）；
+    # 即便 base_branch 为空 / 漂移，命中保护分支白名单也直接 fail-closed（F-10 对称）
+    if branch == base_branch or branch in _PROTECTED_BRANCHES:
         result.local_branch = "failed"
-        msg = f"local_branch: 拒绝删除 base_branch={base_branch!r}（与 feature 分支同名）"
+        msg = (
+            f"local_branch: 拒绝删除受保护分支 {branch!r}"
+            f"（base_branch={base_branch!r}，meta.branch 可能漂移）"
+        )
         result.error_messages.append(msg)
         print(f"⚠️  {msg}", file=sys.stderr)
         return
@@ -451,10 +459,14 @@ def _delete_remote_branch(
     if not branch:
         result.remote_branch = "skipped"
         return
-    # 防止误删 base_branch 远程引用（与 _delete_local_branch 对称）
-    if branch == base_branch:
+    # 防止误删 base_branch 远程引用（与 _delete_local_branch 对称）；
+    # base_branch 漂移 / 缺失时仍要兜住保护分支白名单（F-10 远程对称兜底）
+    if branch == base_branch or branch in _PROTECTED_BRANCHES:
         result.remote_branch = "failed"
-        msg = f"remote_branch: 拒绝删除远程 base_branch={base_branch!r}（与 feature 分支同名）"
+        msg = (
+            f"remote_branch: 拒绝删除受保护远程分支 {branch!r}"
+            f"（base_branch={base_branch!r}，meta.branch 可能漂移）"
+        )
         result.error_messages.append(msg)
         print(f"⚠️  {msg}", file=sys.stderr)
         return

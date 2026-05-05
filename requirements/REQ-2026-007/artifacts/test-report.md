@@ -200,3 +200,17 @@ verdict=not_passed，codex 给 1 条 finding：
 再加 1 条回归 pytest → 全量 **581 passed / 0 failed / 8 skipped**。
 
 **累计 round-1..4 自举闭环：8 finding（5 P1 + 3 P2）全 fix + 12 条新回归 pytest**。
+
+### Round 5（2026-05-05 18:09~18:16，commit 1e39225 = 首次带增量摘要）
+
+verdict=not_passed，codex 给 3 条 finding：
+
+| Finding | Severity | 文件:行 | 修复 |
+|---|---|---|---|
+| F-9 | **P1** | `submit_codex.py:535` `_is_passed` | 行扫描跳过 `>` 引用行，避免引用上轮 pass phrase 假阳 |
+| F-10 | **P1** | `archive_runner.py:456` 远程删除 | `_PROTECTED_BRANCHES` 白名单兜底，base_branch 漂移仍拦下 main/master/develop |
+| F-11 | P2 | `ahead_of_origin.py:119` | gh pr list 改 `OWNER:BRANCH` 限定，跨 fork 同名分支不再误命中 |
+
+再加 6 条回归 pytest → 全量 **594 passed / 0 failed / 8 skipped**。
+
+**累计 round-1..5 自举闭环：11 finding（7 P1 + 4 P2）全 fix + 18 条新回归 pytest**。本轮起 @codex review 评论带 round 间增量摘要（commits + diff stat），codex 拿到聚焦上下文仍能挖出实质性 P1。

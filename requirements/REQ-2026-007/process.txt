@@ -56,3 +56,6 @@
 2026-05-05 17:54:33 [codex-review-triggered] round=4 pr=#57
 2026-05-05 18:00:11 [codex-review-received] verdict=not_passed round=4
 2026-05-05 18:02:52 [testing] codex round-4 verdict=not_passed；F-8 fix（远程对称 base_branch 保护）+ 1 条回归（581 passed）；累计 8 finding 全闭环
+2026-05-05 18:09:48 [codex-review-triggered] round=5 pr=#57
+2026-05-05 18:16:06 [codex-review-received] verdict=not_passed round=5
+2026-05-05 18:20:55 [testing] codex round-5 verdict=not_passed（首次带增量摘要）；F-9/F-10/F-11 全 fix + 6 条回归（594 passed）；累计 11 finding 全闭环

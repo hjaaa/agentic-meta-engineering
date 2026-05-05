@@ -531,8 +531,27 @@ def _pick_latest_review(candidates: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _is_passed(body: Optional[str]) -> bool:
-    """判断 codex review 是否通过（精确含有 pass phrase）。"""
-    return _PASS_PHRASE in (body or "")
+    """判断 codex review 是否通过——pass phrase 出现在非引用行上才算。
+
+    F-9（codex round-5 P1）：单纯 substring 包含会被 markdown 引用 / 字面量
+    回放误导。例如 review body 包含 `> 上轮 codex 说 "Didn't find any major
+    issues."（但本轮新发现…）`，旧实现会假阳通过。
+
+    新规则：按行扫描，跳过以 `>` 开头（含前导空白）的 markdown 引用行；
+    剩余非引用行中只要 **任一行包含** pass phrase 即视为通过。
+
+    保留兜底：codex 实际格式是把 phrase 放在 review 顶部独立段，不在引用块内；
+    这条规则把误判窗口收窄到「codex 自己的非引用文本」。
+    """
+    if not body:
+        return False
+    quote_line = re.compile(r"^\s*>")
+    for line in body.splitlines():
+        if quote_line.match(line):
+            continue
+        if _PASS_PHRASE in line:
+            return True
+    return False
 
 
 def _quote_if_needed(value: str, *, force_quote: bool = False) -> str:

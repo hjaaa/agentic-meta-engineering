@@ -819,6 +819,37 @@ def test_read_round_triggered_commit_robust_against_missing_or_malformed(
     assert _read_round_triggered_commit(req_id, 5) == "deadbeef"
 
 
+def test_is_passed_ignores_pass_phrase_in_quoted_lines() -> None:
+    """codex F-9 (P1) 回归：pass phrase 出现在 markdown 引用块（`>` 开头）不算通过；
+    但出现在非引用文本里仍算通过。
+    """
+    # 引用上下文 + 新发现 → not passed（旧实现误判 passed）
+    quoted_body = (
+        "Found new issues in this round.\n"
+        "\n"
+        "> Previous round said: \"Didn't find any major issues.\"\n"
+        "> But this round we found...\n"
+        "\n"
+        "**P1**: New finding here\n"
+    )
+    assert _is_passed(quoted_body) is False, "引用块内的 pass phrase 不应触发 passed"
+
+    # 引用前缀带空白也应被识别为引用（markdown 容许 `> ` 之前有空格）
+    indented_quote = "  > Previous: Didn't find any major issues.\n\nNew finding\n"
+    assert _is_passed(indented_quote) is False
+
+    # 普通通过路径仍然识别
+    plain_pass = "Reviewed commit: abc.\n\nDidn't find any major issues.\n"
+    assert _is_passed(plain_pass) is True
+
+    # 多行混合：非引用行命中即通过
+    mixed = (
+        "> someone said something\n"
+        "Codex says: Didn't find any major issues. All good!\n"
+    )
+    assert _is_passed(mixed) is True
+
+
 def test_render_frontmatter_includes_triggered_commit() -> None:
     """_render_frontmatter 必须把 result.triggered_commit 输出到 frontmatter，下一轮才能读到。"""
     result = CodexRoundResult(

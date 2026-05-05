@@ -113,9 +113,14 @@ def _pr_open_for_branch(branch: str) -> Optional[int]:
     """
     if not branch:
         return None
+    # F-11（codex round-5 P2）：仅按 branch 名过滤会被跨 fork / 跨 repo 同名分支误命中——
+    # 把 head 收敛到 `OWNER:BRANCH` 形式，让 gh 只在当前 owner 的分支里查；
+    # owner 读不到时退化为老行为（保 fail-closed 路径不变）。
+    owner = _detect_repo_owner()
+    head_filter = f"{owner}:{branch}" if owner else branch
     try:
         result = subprocess.run(
-            ["gh", "pr", "list", "--head", branch, "--state", "open",
+            ["gh", "pr", "list", "--head", head_filter, "--state", "open",
              "--limit", "1", "--json", "number"],
             capture_output=True, text=True, check=False, timeout=_GIT_TIMEOUT_SEC,
         )
@@ -134,6 +139,24 @@ def _pr_open_for_branch(branch: str) -> Optional[int]:
         return None
     pr_num = first.get("number")
     return pr_num if isinstance(pr_num, int) else None
+
+
+def _detect_repo_owner() -> Optional[str]:
+    """读当前 gh 仓库 owner（如 `hjaaa`）；失败时返 None，调用方退化为按 branch 名过滤。
+
+    抽出独立函数便于单测 monkeypatch；与 `_pr_open_for_branch` 同级 fail-closed 风格。
+    """
+    try:
+        proc = subprocess.run(
+            ["gh", "repo", "view", "--json", "owner", "--jq", ".owner.login"],
+            capture_output=True, text=True, check=False, timeout=_GIT_TIMEOUT_SEC,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+    if proc.returncode != 0:
+        return None
+    owner = (proc.stdout or "").strip()
+    return owner or None
 
 
 def _resolve_base(ctx: GateContext) -> str:
