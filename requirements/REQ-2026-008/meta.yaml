@@ -1,13 +1,23 @@
 # ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-008
 title: 派发链强制结构化升级
-phase: bootstrap
+phase: definition
 created_at: "2026-05-05 22:03:10"
 branch: feat/req-2026-008
 base_branch: develop
 project: agentic-meta-engineering
 services: []
-gates_passed: []
+gates_passed:
+  - phase: definition
+    at: '2026-05-05 22:16:50'
+    gates:
+      - GATE-META-SCHEMA
+      - GATE-INDEX-INTEGRITY
+      - GATE-SOURCING
+      - GATE-PLAN-FRESHNESS
+      - GATE-WORKSPACE-CLEAN
+      - GATE-REVIEW-VERDICT
+      - GATE-TRACEABILITY
 pr_url: ""
 pr_number: 0
 log_layout: split
