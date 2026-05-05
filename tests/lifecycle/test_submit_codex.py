@@ -17,7 +17,7 @@ from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 import yaml
@@ -469,3 +469,79 @@ def test_poll_codex_abort_on_consecutive_5xx(monkeypatch: pytest.MonkeyPatch) ->
 
     # 连续 3 次后抛异常，不多余调用
     assert call_count == 3
+
+
+# ---------- TC-F4-8a: process.txt 写入 [codex-review-triggered] ----------
+
+
+def test_process_event_triggered_appended(fake_repo: Path) -> None:
+    """TC-F4-8a: PR 评论发送成功后，process.txt 末行含 [codex-review-triggered] round=1 pr=#42。
+
+    验证 F-001 修复：submit_codex 写入 [codex-review-triggered] 事件（detailed-design §4.3）。
+    只 mock subprocess，让 _append_process_event 真实执行，验证写入内容。
+    """
+    import subprocess as _sp
+
+    req_id = "REQ-2099-007"
+    req_dir = _make_meta(fake_repo, req_id=req_id, pr_number=42)
+    # 预置一个空 process.txt（模拟 meta 预检已通过的正常状态）
+    (req_dir / "process.txt").write_text("", encoding="utf-8")
+
+    triggered_at = "2026-05-04T19:30:00+08:00"
+    review = _make_review(submitted_at="2026-05-04T19:32:14+08:00")
+
+    # 只 mock subprocess.run + now_iso + 轮询相关，让 _append_process_event 真实执行
+    fake_proc = _sp.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+    with (
+        patch("submit_codex.subprocess.run", return_value=fake_proc),
+        patch.object(submit_codex, "_now_iso", return_value=triggered_at),
+        patch.object(submit_codex, "_gh_pr_reviews", return_value=[review]),
+        patch("submit_codex.time.sleep"),
+        patch("submit_codex.time.monotonic", side_effect=[0, 100, 200]),
+    ):
+        submit_with_codex(req_id, poll_interval_sec=1, timeout_sec=600)
+
+    process_txt = (req_dir / "process.txt").read_text(encoding="utf-8")
+    lines = [ln for ln in process_txt.splitlines() if ln.strip()]
+    triggered_lines = [ln for ln in lines if "[codex-review-triggered]" in ln]
+    assert triggered_lines, f"process.txt 中应含 [codex-review-triggered]，实际内容：\n{process_txt}"
+    assert "round=1" in triggered_lines[0], f"应含 round=1，实际：{triggered_lines[0]}"
+    assert "pr=#42" in triggered_lines[0], f"应含 pr=#42，实际：{triggered_lines[0]}"
+
+
+# ---------- TC-F4-8b: process.txt 写入 [codex-review-received] ----------
+
+
+def test_process_event_received_appended(fake_repo: Path) -> None:
+    """TC-F4-8b: passed 路径跑完后，process.txt 末行含 [codex-review-received] verdict=passed round=1。
+
+    验证 F-001 修复：submit_codex 写入 [codex-review-received] 事件（detailed-design §4.3）。
+    """
+    req_id = "REQ-2099-007"
+    req_dir = _make_meta(fake_repo, req_id=req_id, pr_number=42)
+    (req_dir / "process.txt").write_text("", encoding="utf-8")
+
+    triggered_at = "2026-05-04T19:30:00+08:00"
+    review = _make_review(submitted_at="2026-05-04T19:32:14+08:00")
+
+    import subprocess as _sp
+
+    fake_proc = _sp.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+    with (
+        patch("submit_codex.subprocess.run", return_value=fake_proc),
+        patch.object(submit_codex, "_now_iso", return_value=triggered_at),
+        patch.object(submit_codex, "_gh_pr_reviews", return_value=[review]),
+        patch("submit_codex.time.sleep"),
+        patch("submit_codex.time.monotonic", side_effect=[0, 100, 200]),
+    ):
+        result = submit_with_codex(req_id, poll_interval_sec=1, timeout_sec=600)
+
+    assert result.verdict == "passed"
+
+    process_txt = (req_dir / "process.txt").read_text(encoding="utf-8")
+    lines = [ln for ln in process_txt.splitlines() if ln.strip()]
+    received_lines = [ln for ln in lines if "[codex-review-received]" in ln]
+    assert received_lines, f"process.txt 中应含 [codex-review-received]，实际内容：\n{process_txt}"
+    last = received_lines[-1]
+    assert "verdict=passed" in last, f"应含 verdict=passed，实际：{last}"
+    assert "round=1" in last, f"应含 round=1，实际：{last}"

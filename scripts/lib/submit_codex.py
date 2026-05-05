@@ -102,6 +102,27 @@ def _now_iso() -> str:
     return datetime.now(_CST).isoformat()
 
 
+def _now_cst_str() -> str:
+    """process.txt 行首时间戳（`YYYY-MM-DD HH:MM:SS`，与 archive_runner 同格式）。"""
+    return datetime.now(_CST).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _process_path(req_id: str) -> Path:
+    return REQUIREMENTS_DIR / req_id / "process.txt"
+
+
+def _append_process_event(req_id: str, line: str) -> None:
+    """追加语义事件到 requirements/<req_id>/process.txt（追加模式，绝对禁止覆盖）。
+
+    格式：`YYYY-MM-DD HH:MM:SS <line>\n`（时区 Asia/Shanghai）。
+    父目录必然存在（meta.yaml 已预检过）；append 模式保证幂等安全。
+    """
+    path = _process_path(req_id)
+    full_line = f"{_now_cst_str()} {line}\n"
+    with path.open("a", encoding="utf-8") as f:
+        f.write(full_line)
+
+
 def _meta_path(req_id: str) -> Path:
     return REQUIREMENTS_DIR / req_id / "meta.yaml"
 
@@ -153,8 +174,14 @@ def _calc_round(req_id: str) -> int:
     return len(existing) + 1
 
 
-def _trigger_codex_comment(pr_number: int, req_id: str) -> str:
-    """发 `@codex review` 评论；失败 exit 1，返回触发时刻 ISO8601。"""
+def _trigger_codex_comment(pr_number: int, req_id: str, round_n: int) -> str:
+    """发 `@codex review` 评论；失败 exit 1，返回触发时刻 ISO8601。
+
+    Args:
+        pr_number: GitHub PR 号。
+        req_id:    需求 ID，用于写 process.txt 事件。
+        round_n:   当前 round 号，写入 process.txt 事件内容。
+    """
     try:
         proc = subprocess.run(
             ["gh", "pr", "comment", str(pr_number), "--body", "@codex review"],
@@ -177,7 +204,10 @@ def _trigger_codex_comment(pr_number: int, req_id: str) -> str:
         )
         raise SystemExit(1)
     # 触发时刻在发评论成功后立即取（wall clock）
-    return _now_iso()
+    triggered_at = _now_iso()
+    # 记录 process.txt 事件（detailed-design §4.3 + features.json TC-F4-8）
+    _append_process_event(req_id, f"[codex-review-triggered] round={round_n} pr=#{pr_number}")
+    return triggered_at
 
 
 def _gh_pr_reviews(pr_number: int) -> list[dict[str, Any]]:
@@ -330,6 +360,7 @@ def _persist_round(
     """将 round-N.md 写入 codex-reviews/ 目录；返回写入路径。
 
     原子写入：先写 .tmp 再 os.replace，防止写入中途被读。
+    写完后追加 process.txt `[codex-review-received]` 事件（detailed-design §4.3）。
     """
     reviews_dir = _codex_reviews_dir(req_id)
     reviews_dir.mkdir(parents=True, exist_ok=True)
@@ -348,6 +379,12 @@ def _persist_round(
     with tmp_path.open("w", encoding="utf-8") as f:
         f.write(full_content)
     os.replace(tmp_path, round_path)
+
+    # round-N.md 写完后记录 process.txt 事件（features.json TC-F4-8）
+    _append_process_event(
+        req_id,
+        f"[codex-review-received] verdict={result.verdict} round={result.round}",
+    )
 
     return round_path
 
@@ -443,7 +480,7 @@ def submit_with_codex(
     )
 
     # 发 @codex review 评论并记录触发时刻（wall clock）
-    triggered_at = _trigger_codex_comment(pr_number, req_id)
+    triggered_at = _trigger_codex_comment(pr_number, req_id, round_num)
 
     print(
         f"[submit_codex] triggered_at={triggered_at} 开始轮询"
