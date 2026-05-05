@@ -30,7 +30,7 @@
 | detail-design | 2026-05-06 | 2026-05-04 ✓（reviewer 二审 looks_clean，sign-off approved，门禁就绪）|
 | task-planning | 2026-05-06 | 2026-05-04 ✓（features.json 拆 4 个任务，依赖图 F-002→F-003 / F-001→F-004）|
 | development | 2026-05-08 | 2026-05-05 ✓（F-001/F-002/F-003/F-004 全 done，每个 2 轮 review looks_clean + sign-off approved + 零回归）|
-| testing | 2026-05-09 | — |
+| testing | 2026-05-09 | 2026-05-05 ✓（pytest 569 passed / 0 failed / 8 skipped；test-report.md 落地；V-01/V-04/V-08 沙盒类 PR merge 后补做）|
 
 ## 风险
 
