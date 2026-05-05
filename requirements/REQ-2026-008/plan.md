@@ -75,3 +75,18 @@
 - **Decision**：新增 `GATE-POST-DEV-RECEIPT` 到 `phase-transition / submit` 触发组：扫 `features.json` 列出 done feature，每个必须有 `receipt.json` 且 `status ∈ {DONE, DONE_WITH_CONCERNS}`，缺则 fail。即使主 Agent 跳过逐 feature 的 post-dev，下次切阶段也会被兜底。
 - **Consequences**：好处——不可跳过；缺点——发现失败时间从"feature 完成时"延后到"阶段切换时"，但这个延迟是可接受的（switch 时还能批量修）。
 - **时间**：2026-05-05 22:03:10
+
+### D-005 待澄清清单 5 条全部关单（4 项决策 + 1 项事实结论）
+- **Context**：requirement.md 起草时遗留 5 条待澄清项，分别覆盖测试落位 / legacy 豁免范围 / feature_id 解析策略 / .dispatch-state.json 并发模型 / 历史 in-flight 名单。在切 tech-research 阶段前必须关单。
+- **Decision**（按编号对应）：
+  1. **测试落位**：按层级落进现有 `tests/{hooks,gates,lib,skills}`，pytest，走 `.github/workflows/quality-check.yml` CI（仓库已具备完整分层）。
+  2. **legacy 豁免范围**：4 个新 gate 全部**不纳入** legacy 豁免——本次升级核心目标即"机器强制结构化"，legacy 字段只豁免历史评审字段补齐类约束（如现有 R001~R007），不豁免本次新增的派发链强制结构。
+  3. **feature_id 解析**：双保险——派发 prompt 模板首部加显式 `feature_id: F-xxx` 行（hook 优先读首行字段）；缺失时 fallback 到正则 `F-\d{3}` 兜底匹配第一个 group，避免 depends_on 引用误伤。
+  4. **`.dispatch-state.json` 并发**：使用 `fcntl.flock`（LOCK_EX 独占锁），所有 hook 读写前取锁、写完释放；锁 timeout 5s。Python 标准库零依赖，rollback + 完成清理 hook 极端竞态可被覆盖。
+  5. **in-flight 名单**：扫描结果——除 REQ-2026-008 自身（phase=definition）外，其余 6 个需求均 phase=completed；legacy=true 的 REQ-2026-001/002 也已完成。**结论：无活跃 in-flight 需求需迁移豁免**，新 gate 直接对所有未来需求生效。
+- **Consequences**：
+  - 决策表新增 4 行（测试落位 / legacy 豁免 / feature_id 解析 / dispatch-state 并发）。
+  - `meta-schema.yaml` 的 `legacy` 字段说明需补一行"不豁免本次新增的 4 个派发链 gate"——detail-design 阶段落实。
+  - `feature-lifecycle-manager/reference/subagent-dispatch.md:36` 派发模板首部需补 `feature_id: F-xxx` 字段；`templates/feature-task.md.tmpl` 同步——detail-design 阶段落实。
+  - 单测目录已就绪，tech-research 阶段无需再调研测试落位，可直接对齐 `scripts/lib/check_*.py` 的伴随测试形态。
+- **时间**：2026-05-05 22:50:00

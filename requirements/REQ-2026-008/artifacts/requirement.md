@@ -136,7 +136,7 @@ refs-requirement: true   # 供 traceability-gate-checker 识别
   - 修改 `.claude/hooks/pre-tool-use-guard.sh`：调度新 hook 脚本（来源：requirements/REQ-2026-008/plan.md:13）
   - 修改 `.claude/skills/feature-lifecycle-manager/SKILL.md` + `reference/subagent-dispatch.md` + `templates/feature-task.md.tmpl`（补 `touches` 字段透传）（来源：requirements/REQ-2026-008/plan.md:7）
   - 修改 `.claude/skills/managing-requirement-lifecycle/SKILL.md` + 重新渲染 `reference/gate-checklist.md`（来源：requirements/REQ-2026-008/plan.md:7）
-  - 单测套件覆盖 V-01 ~ V-08 的所有用例；测试目录约定见下文待澄清清单第 1 条
+  - 单测套件覆盖 V-01 ~ V-08 的所有用例；按层级落进现有 `tests/` 目录结构（hook 测试 → `tests/hooks/`、gate 测试 → `tests/gates/`、scripts/lib 测试 → `tests/lib/`、skill 行为测试 → `tests/skills/`），pytest 框架，走 `.github/workflows/quality-check.yml` CI（来源：tests/__init__.py）（来源：pyproject.toml）（来源：.github/workflows/quality-check.yml）
 - **不包含**：
   - 门禁链 `/requirement:next` "读清单自答"升级（属于"门禁链优先"分支，下一轮做）（来源：requirements/REQ-2026-008/plan.md:23）
   - `/code-review` 自动 loop 修复（保留人工 sign-off）（来源：requirements/REQ-2026-008/plan.md:23）
@@ -156,23 +156,35 @@ refs-requirement: true   # 供 traceability-gate-checker 识别
 | 失败重试策略 | A. 保留现有红线 / B. 受控自动重派 1 次 / C. 完整 Archon 式 loop | A | 保留"禁止原模型原上下文重试 BLOCKED"等审慎红线；本次只解决"机器化结构"，不引入自动收口（来源：.claude/skills/feature-lifecycle-manager/reference/subagent-dispatch.md:104） |
 | 强制载体偏好 | A. PreToolUse hook 优先 / B. Wrapper 脚本封装 / C. Gate 注册表新增 / D. Schema | A + 配套 wrapper/gate/schema | 用户偏好 hook 优先；wrapper/gate/schema 作为补强（来源：requirements/REQ-2026-008/plan.md:7） |
 | 迭代节奏 | A. 一刀切（6 改动一次完成）/ B. 分两批 PR | A | 6 个改动是耦合改造（receipt 不到位 hook 拦不住，hook 不到位 gate 兜底空挡），分批留中间不一致状态（用户确认） |
+| 测试落位 | A. 按层级放进现有 tests/ / B. 新增 tests/dispatch/ / C. 全部走 tests/integration/ | A | 现有 `tests/{hooks,gates,lib,skills}` 分层完备 + pytest + CI 已就绪，零迁移成本（D-005，2026-05-05 用户确认） |
+| legacy 豁免 | A. 全部纳入 / B. 全部不纳入 / C. 仅 POST-DEV-RECEIPT 纳入 | B | 强制结构化是核心目标，legacy 不应豁免行为约束；in-flight 扫描确认无活跃需求需迁移（D-005，2026-05-05 用户确认） |
+| feature_id 解析 | A. 模板加显式行 / B. 正则匹配 / C. 双保险 | C | 显式行零歧义为主路径，正则兜底防漏填；hook 复杂度可控（D-005，2026-05-05 用户确认） |
+| dispatch-state 并发 | A. flock / B. 不加锁 / C. 原子 rename | A | rollback + 完成清理可能并发；fcntl.flock 标准库零依赖，开销可忽略（D-005，2026-05-05 用户确认） |
 
-## 待澄清清单
+## 待澄清清单（已全部关单 · 2026-05-05）
 
-1. **单测目录约定**：本仓库 `tests/` 目录布局尚不明确（V-01~V-08 沙盒 e2e 测试代码应该放哪里？是否使用 pytest？是否走 GitHub Actions CI？）[待补充]
-   - 内容：测试代码物理位置 + 框架选型
-   - 依据：参考其他需求测试落地位置
-   - 风险：放错位置导致 CI 不跑测试、回归失效
-   - 验证时机：tech-research 阶段调研既有 `scripts/lib/check_*.py` 是否已有伴随测试，对齐落位
+> 5 条全部已闭环，conclusion 同步进决策记录与 plan.md（D-005）。下方保留历史选项 + 最终决议供追溯。
 
-2. **legacy 字段对新 gate 的豁免范围**：现有 `meta.yaml` 的 `legacy: true` 字段当前只影响 `check_reviews.py` 的 R001~R007 跳过（来源：context/team/engineering-spec/meta-schema.yaml:118）。本次新增的 4 个 gate（POST-DEV-RECEIPT / TOUCHES-VIOLATION / FEATURES-SCHEMA / TASK-FRONTMATTER）是否全部纳入 legacy 豁免？还是仅部分？[待用户确认]
+1. **单测目录约定** ✅ **已确认（2026-05-05）**
+   - **决议**：按层级落进现有 `tests/` 目录结构（hook 测试 → `tests/hooks/`、gate 测试 → `tests/gates/`、scripts/lib 测试 → `tests/lib/`、skill 行为测试 → `tests/skills/`），pytest 框架，走 `.github/workflows/quality-check.yml` CI
+   - **依据**：仓库已存在 `tests/{agents,commands,gates,hooks,integration,lib,lifecycle,skills,benchmarks}` 完整分层、`pyproject.toml` 配置 pytest、`tests/gates/conftest.py` 已就绪、`.github/workflows/quality-check.yml` 已驱动 CI（来源：tests/__init__.py）（来源：pyproject.toml）（来源：.github/workflows/quality-check.yml）
 
-3. **dispatch_precheck.py 从 Task prompt 解析 feature_id 的精确策略**：目前设想"派发 prompt 模板硬编码 `feature_id: F-xxx` 显式行"。但既有派发 prompt 模板（来源：.claude/skills/feature-lifecycle-manager/reference/subagent-dispatch.md:36）目前是自然语言开头"你是 feat/req-... 分支上的 feature 实现者。当前任务 F-xxx · <title>"——是改模板加 `feature_id:` 显式行，还是 hook 直接正则匹配 `F-\d{3}`？[待用户确认]
+2. **legacy 字段对新 gate 的豁免范围** ✅ **已确认（2026-05-05）**
+   - **决议**：4 个新 gate（POST-DEV-RECEIPT / TOUCHES-VIOLATION / FEATURES-SCHEMA / TASK-FRONTMATTER）**全部不纳入 legacy 豁免**
+   - **依据**：本次升级核心目标即"机器强制结构化"——若 legacy 标志能豁免行为约束，等于给"过去已开始就一直绕过"开后门；legacy 字段只应豁免历史评审字段补齐类的约束（如现有 R001~R007），不应豁免本次新增的派发链强制结构。in-flight 扫描结果（除 REQ-2026-008 自身外，其余 6 个需求 phase 全部 completed）也确认本变更无活跃需求需迁移豁免（来源：requirements/REQ-2026-008/process.txt:4）
+   - **附带影响**：`meta-schema.yaml` 的 `legacy` 字段说明需补一行"不豁免 GATE-POST-DEV-RECEIPT / TOUCHES-VIOLATION / FEATURES-SCHEMA / TASK-FRONTMATTER"
 
-4. **`.dispatch-state.json` 的并发安全**：保守档串行约束下应该不存在并发写，但若同时多个 hook（dispatch_precheck / touches_guard / 完成清理）触及该文件，是否需要 flock？[待补充]
-   - 内容：状态文件读写并发模型
-   - 依据：保守档约束 + 单一主 Agent + 单一 subagent
-   - 风险：rollback 命令同时跑可能竞态
-   - 验证时机：detail-design 阶段画时序图确认所有写入路径
+3. **dispatch_precheck.py 从 Task prompt 解析 feature_id 的精确策略** ✅ **已确认（2026-05-05）**
+   - **决议**：**双保险**——改派发 prompt 模板首部加显式 `feature_id: F-xxx` 行（hook 优先读首行字段）；缺失时 fallback 到正则 `F-\d{3}` 兜底匹配（仅匹配第一个 group，避免 depends_on 引用误伤）
+   - **依据**：显式行保证零歧义（主路径），正则兜底防止"模板偶然漏填"导致 hook 拒绝有效派发；此为防御式实现，hook 复杂度可控（10 行内）
+   - **附带影响**：`feature-lifecycle-manager/reference/subagent-dispatch.md:36` 派发模板首部需补 `feature_id: F-xxx` 字段；`templates/feature-task.md.tmpl` 同步更新
 
-5. **历史 in-flight 需求识别清单**：本次升级合并时是否存在 phase ≠ completed 的 in-flight 需求？需要一份扫描结果决定 legacy 豁免名单 [待用户确认]
+4. **`.dispatch-state.json` 的并发安全** ✅ **已确认（2026-05-05）**
+   - **决议**：使用 `fcntl.flock` 加文件锁（LOCK_EX 独占锁），所有 hook 读写该文件前必须先取锁，写完释放
+   - **依据**：保守档串行约束下并发概率低，但 rollback 命令 + 完成清理 hook 同时触发的极端场景仍可能竞态；flock 是 POSIX 标准、Python 标准库 fcntl 直接支持、单文件锁开销可忽略；防御式实现优于"假定不会并发"
+   - **附带影响**：写入流程为"取锁 → 读 → 改 → 写 → 释放"；锁 timeout 5s（避免死锁）
+
+5. **历史 in-flight 需求识别清单** ✅ **已确认（2026-05-05）**
+   - **决议**：**无活跃 in-flight 需求需要豁免名单**——本变更可直接生效
+   - **依据**：扫描 `requirements/*/meta.yaml` 结果（2026-05-05）：除 REQ-2026-008 自身（phase=definition），其余 6 个需求（REQ-2026-001/002/003/005/006/007）均 phase=completed；legacy=true 的两个（REQ-2026-001、REQ-2026-002）也已完成，不会触发本次新 gate（来源：requirements/REQ-2026-008/process.txt:4）
+   - **附带影响**：无需在 meta-schema 中加临时豁免名单字段；新 gate 直接对所有未来需求生效
