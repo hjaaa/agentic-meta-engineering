@@ -155,7 +155,7 @@ pr_number: <num>
 [done] --verdict=passed--> exit 0 (silent stderr)
 [done] --verdict=not_passed--> exit 0 (stderr ⚠️ codex review NOT passed)
 [done] --verdict=timeout--> exit 0 (stderr ⚠️ codex review TIMEOUT)
-[error-exit-1] --> exit 1
+[error-exit-1] --> exit 1 (stderr ❌ gh api repeated 5xx during poll; aborting)
 ```
 
 ### 异常文案
