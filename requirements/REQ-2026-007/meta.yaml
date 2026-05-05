@@ -114,3 +114,15 @@ reviews:
           artifacts/tasks/F-003.md: 
             106ccdcb9340159b53aa1d2e2b9eb20d58eb8fc718af0f18c3129589dab4ade6
         stale: false
+      F-004:
+        history:
+          - REV-REQ-2026-007-code-F-004-001
+        latest: REV-REQ-2026-007-code-F-004-001
+        conclusion: needs_attention
+        reviewed_commit: 7fff5fb
+        artifact_hashes:
+          artifacts/features.json: 
+            b5390be2a744298d74cca6e1e539fa565ce053716ae9fb4e68b44e456c633206
+          artifacts/tasks/F-004.md: 
+            658c597e59cd893bd4e76f72d0c2da9990ef7b69aba2c6374d0fbcef8d1999a4
+        stale: false
