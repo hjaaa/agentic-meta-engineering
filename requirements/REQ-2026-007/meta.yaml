@@ -117,9 +117,10 @@ reviews:
       F-004:
         history:
           - REV-REQ-2026-007-code-F-004-001
-        latest: REV-REQ-2026-007-code-F-004-001
-        conclusion: needs_attention
-        reviewed_commit: 7fff5fb
+          - REV-REQ-2026-007-code-F-004-002
+        latest: REV-REQ-2026-007-code-F-004-002
+        conclusion: looks_clean
+        reviewed_commit: 33b8d73
         artifact_hashes:
           artifacts/features.json: 
             b5390be2a744298d74cca6e1e539fa565ce053716ae9fb4e68b44e456c633206

@@ -36,3 +36,6 @@
 2026-05-05 15:34:43 [development] [save] F-003 done（2 轮 review looks_clean + sign-off + 零回归）；3/4 完成，下一步派 F-004
 2026-05-05 15:41:05 [development] F-004 派发（model=sonnet, complexity=medium, submit --codex 子模式 + scripts/lib/submit_codex.py + 9 个 mock 测试）
 2026-05-05 16:13:09 [development] [review:needs_revision] code-F-004-001 needs_attention（1 major: process.txt 写入缺失 + 4 follow-up: 状态机文案/401-404折叠/req_id死参/MagicMock unused）
+2026-05-05 16:27:05 [development] [review:approved] code-F-004-002 looks_clean (5 round-1 finding 全 fixed + 零回归 + NR-001 critic rejected drop，待 sign-off)
+2026-05-05 16:27:49 [signoff] REV-REQ-2026-007-code-F-004-002 approved by hj19961223@gmail.com
+2026-05-05 16:28:27 [development] F-004 done（commit pending，verdict 002 looks_clean + sign-off approved，5 round-1 finding 全 fixed + 零回归）
