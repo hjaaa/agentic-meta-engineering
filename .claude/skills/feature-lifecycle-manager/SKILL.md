@@ -65,6 +65,39 @@ pending → in-progress → done
 - ✅ `done` 必须附代码审查报告路径
 - ✅ 每次派发/状态变更都在 `process.txt` 留一行
 
+## 自动化拦截层（hook + gate）
+
+### 派发时拦截（PreToolUse）
+
+`dispatch_precheck.py` 在每次 Agent 工具调用时自动运行，校验链：
+
+- **B-1**：task.md frontmatter `status == "pending"`（source of truth；非 pending → exit 2 阻断）
+- **B-2**：`depends_on_features` 所有前置 feature 状态 `== "done"`（任一未 done → exit 2 阻断）
+- **B-3**：dispatch-state.json `current_feature` 必须 null 或等于本 fid（保守档串行约束；已有其他 feature 在派 → exit 2 阻断）
+
+**fail-open 策略**：stdin 解析失败 / task.md 不存在 / features.json 缺失 → 静默 exit 0 放行（仅对成功识别的 feature_id 生效强校验）。
+
+### 开发期拦截（软记违规）
+
+`touches_guard.py` PreToolUse 拦截 Edit / Write / MultiEdit 工具：
+
+- 当前 feature 的 `touches` 字段来自 task.md frontmatter（经由 dispatch-state.json 找到 fid → 读 task.md）
+- 越界写入**不阻断**，但追加 violation 记录到 `artifacts/tasks/<fid>.receipt.json` 的 `touches_violations[]`
+- receipt.json 写入采用 `_flock_receipt_file` LOCK_EX 防并发覆盖（D-012）
+
+### 阶段切换 / 提交时硬挡（gate）
+
+4 个注册在 `scripts/gates/registry.yaml` 的 gate，`phase-transition` / `submit` 触发时运行：
+
+| Gate | 触发条件 | 核心校验 |
+|---|---|---|
+| `GATE-POST-DEV-RECEIPT` | phase-transition / submit | features.json 中所有 done feature 必须有 receipt.json 且 status ∈ {DONE, DONE_WITH_CONCERNS} |
+| `GATE-TOUCHES-VIOLATION` | phase-transition / submit | 所有 receipt.json 的 `touches_violations[]` 必须为空 |
+| `GATE-FEATURES-SCHEMA` | pre-commit / phase-transition / submit / ci | features.json 符合 features-schema.yaml |
+| `GATE-TASK-FRONTMATTER` | pre-commit / phase-transition / submit / ci | tasks/*.md frontmatter 符合 task-frontmatter-schema.yaml |
+
+**注意**：4 个新 gate 不纳入 `legacy-bypass` tag，不被 meta.yaml `legacy: true` 豁免（D-005 #2；历史 completed REQ 由 trigger / changed_files 路径自然隔离，不依赖 legacy 短路）。
+
 ## 参考资源
 
 - [`reference/feature-states.md`](reference/feature-states.md) — 状态定义与流转
