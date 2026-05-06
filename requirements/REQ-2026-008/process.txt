@@ -17,3 +17,4 @@
 2026-05-06 09:27:25 [review:looks_clean] outline-design-quality-reviewer round-002 score 92 supersedes 001（5 项修订全关单 + 1 cosmetic suggestion）
 2026-05-06 09:31:26 [signoff] REV-REQ-2026-008-outline-design-002 approved by hj19961223@gmail.com
 2026-05-06 09:33:52 [save] outline-design 全闭环：outline.md 落地 + review 002 looks_clean 92 signoff approved；待切 detail-design
+2026-05-06 09:37:50 [phase-transition] outline-design → detail-design（7 gates 全过；plan-freshness 无 warning）
