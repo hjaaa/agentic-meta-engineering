@@ -52,3 +52,4 @@
 2026-05-06 15:27:17 [signoff] REV-REQ-2026-008-code-F-003-002 approved by hj19961223@gmail.com
 2026-05-06 15:27:57 [signoff] REV-REQ-2026-008-code-F-003-002 approved by hj19961223@gmail.com
 2026-05-06 15:27:57 [development] F-003 完成（review-001 needs_attention → fix → review-002 looks_clean supersedes 001 / score 90）
+2026-05-06 15:29:38 [save] development 4/8 闭环（F-006/F-001/F-002/F-003 全 signoff）；F-003 review-001 needs_attention 78 → fix(F-5 自举+F-3 logger+F-10+F-2 follow-up) → review-002 looks_clean 90；F-004 heavy + 改 .claude/hooks/* 高风险待用户选派发策略
