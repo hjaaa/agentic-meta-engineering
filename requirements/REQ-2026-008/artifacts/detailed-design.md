@@ -854,7 +854,7 @@ optional_fields:
 +#   - 不豁免派发链强制结构 4 gate（GATE-POST-DEV-RECEIPT / GATE-TOUCHES-VIOLATION /
 +#     GATE-FEATURES-SCHEMA / GATE-TASK-FRONTMATTER）：D-005 #2 决议——
 +#     historic completed REQ 由 trigger / changed_files 路径自然隔离，
-+#     不依赖 legacy 短路（D-006 V-07 修订；详见 requirements/REQ-2026-008/artifacts/detail-design.md §5.2）
++#     不依赖 legacy 短路（D-006 V-07 修订；详见 requirements/REQ-2026-008/artifacts/detailed-design.md §5.2）
  #   - 适用场景：completed 阶段的历史 REQ（PR3 之前产出，meta.yaml 无 reviews 字段）
 ```
 
