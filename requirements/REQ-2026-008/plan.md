@@ -190,6 +190,18 @@
 - **来源**：requirements/REQ-2026-008/artifacts/review-20260506-212932.md F-6
 - **时间**：2026-05-06 21:30:00
 
+### D-015 GATE-SOURCING 工具盲点紧急修复（dev→testing phase-transition 阻塞，scope 拓展）
+- **Context**：dev→testing 切换跑 GATE-SOURCING 时，`requirements/REQ-2026-008/artifacts/review-20260506-195522.md:50` 触发 E002，原因是 sourcing 工具的 `RE_SRC = [（(]\s*来源\s*[：:]\s*([^）)]+?)\s*[）)]` 不区分代码块/反引号 inline code，把 review 报告里描述「（来源：xxx）」引用规约用的元字符 xxx 误判为真路径。原 `_strip_code_blocks` 仅作用于 W001~W003 段落语义检查，没下沉到 E002/E003 行级匹配。F-2 review 已归档：路径 `subagent-dispatch.md:60` 字面引号偏差，签字闭合，无重新触发的语义诱因。
+- **Decision**：在 `scripts/lib/check_sourcing.py` 新增 `_mask_code_for_position(text)`，同时 mask fenced code block + inline code（用空格替换以保留行号/列号），E001~W003 全部基于 masked 文本运行；review 第 50 行配合改用 ``（来源：xxx）`` 反引号包裹元字符示例；本修复属本需求 scope 拓展（features.json 不增 feature，touches 不更新），原因：(a) 阻塞 dev→testing phase-transition；(b) 一行函数 + 6 个单测 trivial 修复，单开 chore 分支收益不抵切换成本；(c) 工具修复属于派发链外的 sourcing 子系统盲点，与本需求 receipt/touches 体系无依赖。
+- **Consequences**：
+  - `_mask_code_for_position()` 新增；`check_file()` 全用 masked 文本（与原 `_strip_code_blocks` 共存，前者保留长度后者整行清空，互不干扰）。
+  - `tests/lib/test_check_sourcing_mask.py` 新增 6 单测 TC-MASK-1~6（inline/fenced mask + 行号保留 + 真实引用仍报 E002 + 回归保护）。
+  - review-20260506-195522.md L50 元字符示例加反引号；该文件 hash 不在任何 reviewed_artifacts 校验列表里（只 reviewed_artifacts hash 入 meta.yaml，review 文件本身不入），改动不破坏 review 元数据。
+  - **不**改 features.json / tasks/F-*.md / .claude/hooks/* —— 派发链不受影响；GATE-TOUCHES-VIOLATION 不会因本次修改触发（修改的是 scripts/lib/，与 receipt 链路同 commit 但不同 scope，receipt 不重新生成）。
+  - 提交：单 commit `fix(sourcing): mask inline/fenced code in E001~W003`，PR 描述会单列 D-015 说明 scope 拓展。
+- **来源**：scripts/lib/check_sourcing.py:36（RE_SRC）/ scripts/lib/check_sourcing.py:89（_strip_code_blocks）/ requirements/REQ-2026-008/artifacts/review-20260506-195522.md:50
+- **时间**：2026-05-06 22:10:00
+
 ### D-013 F-007 测试文件命名：acceptance 取代 detail-design §8.4（实施期偏差记录）
 - **Context**：detail-design §8.4（行 1078-1085）把 F-007 的 Python 测试文件命名为 `test_task_context_builder_render.py`，与 acceptance 验收标准（TC-F7-5）及 task md frontmatter `touches` 字段列出的 `tests/skills/test_feature_task_template.py` 存在命名不一致。task-planning 阶段 task.md 最终确认文件名为 `test_feature_task_template.py`。
 - **Decision**：以 acceptance 验收标准（TC-F7-5）为准，测试文件创建为 `tests/skills/test_feature_task_template.py`，与 task md frontmatter touches 字段保持一致。detail-design §8.4 名称不回改（仿 D-009/D-010/D-011 经验；reviewer hash 校验 R005 无 trivial 豁免通道，措辞修订即触发重审成本）。
