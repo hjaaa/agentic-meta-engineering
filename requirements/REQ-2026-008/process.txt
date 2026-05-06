@@ -74,3 +74,6 @@
 2026-05-06 20:35:49 [development] F-008 派发（model=opus）→ 完成（DONE_WITH_CONCERNS / 38 passed / 全量回归 742 passed）
 2026-05-06 21:34:09 [review:needs_attention] code-quality-reviewer round-001 score 84（2 major+1 keep major: F-2 timeout / F-6 features.touches / F-11 F-007 schema 漂移 + 4 minor follow-up；critic rejected 6/not_proven 13/not_rebutted 7）
 2026-05-06 21:53:39 [review:looks_clean] code-quality-reviewer round-002 score 92 supersedes 001（亲验 round-1 7 项修复 6 verified + 1 deferred F-7；round-2 sec/conc 双 0 finding）
+2026-05-06 21:57:29 [signoff] REV-REQ-2026-008-code-F-008-002 approved by hj19961223@gmail.com
+2026-05-06 21:58:17 [signoff] REV-REQ-2026-008-code-F-008-002 approved by hj19961223@gmail.com
+2026-05-06 21:58:17 [development] F-008 完成（review-001 needs_attention 84 → fix(3 should_fix + 4 nice_to_have) → review-002 looks_clean 92 supersedes 001 / signoff approved）→ development 8/8 全闭环
