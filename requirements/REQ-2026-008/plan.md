@@ -90,3 +90,12 @@
   - `feature-lifecycle-manager/reference/subagent-dispatch.md:36` 派发模板首部需补 `feature_id: F-xxx` 字段；`templates/feature-task.md.tmpl` 同步——detail-design 阶段落实。
   - 单测目录已就绪，tech-research 阶段无需再调研测试落位，可直接对齐 `scripts/lib/check_*.py` 的伴随测试形态。
 - **时间**：2026-05-05 22:50:00
+
+### D-006 V-07 验收点措辞修订：从"legacy 短路"改为"路径自然隔离"
+- **Context**：tech-research 阶段（tech-feasibility.md §2.7）发现 V-07 原措辞"新 4 个 gate 在 legacy=true 时短路返回 pass"与 D-005 #2 决议"4 个新 gate 不纳入 legacy 豁免"自相矛盾。reviewer 在 definition 阶段未捕获此内部不一致。复核 `scripts/gates/run.py:343` 的 legacy grandfather 实现——只对带 `legacy-bypass` tag 的 gate 生效；新 4 个 gate 按 D-005 #2 不加此 tag，因此 V-07 描述的"短路"路径根本不存在。
+- **Decision**：把 V-07 措辞改为"新 4 个 gate 因 trigger / changed_files / target_phase 等 applies_when 自然过滤，不在 ci 通道命中"——历史 completed 需求由 trigger 与 changed_files 路径自然隔离，**不依赖 legacy 短路**。
+- **Consequences**：
+  - `requirements/REQ-2026-008/artifacts/requirement.md:124` V-07 行替换为新描述（已落地）。
+  - tech-feasibility.md §2.7 的分析与本决议同源；后续 outline / detail-design 直接采用新措辞。
+  - definition 阶段已 sign-off（REV-REQ-2026-008-definition-002 approved）；本次修订仅改措辞、不改业务语义。原计划走"轻量补丁不重审"，但 `check_reviews.py` R005 在 hash drift 时硬性 fail，路径上无 stale=true 豁免；最终走 definition-003 重审刷新（looks_clean / score 93），人类 tty sign-off approved，R005/R003 全部解除。reviewer 体系按设计接受了"措辞修订也算 artifact 变更，需重审刷新"——决策启示：reviewer hash 校验粒度无 trivial 豁免通道，未来类似措辞修订直接计入"重审"成本，不再尝试"标 stale 跳过"。
+- **时间**：2026-05-06 08:48:00
