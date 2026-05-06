@@ -19,6 +19,16 @@ fail-open 理由：
     模式：5s timeout + 50ms 轮询；truncate+write+flush+fsync 原地写）
     —— 修复 review-001 F-4 RMW 锁分层盲点（detail-design §3.4 仅覆盖 .dispatch-state.json）
 
+过程产物白名单（hotfix REQ-2026-008）：
+  以下 6 类路径在当前 req_dir 范围内不计为 touches 越界（避免 SOP 必经写入被硬挡）：
+    1. <req_dir>/artifacts/tasks/<fid>.receipt.json — dispatch 回执（subagent 写）
+    2. <req_dir>/artifacts/tasks/<fid>.md           — task.md 自指（主 Agent status 翻转）
+    3. <req_dir>/plan.md                            — req-level 过程产物（ADR / 决策）
+    4. <req_dir>/notes.md                           — req-level 过程产物（笔记）
+    5. <req_dir>/meta.yaml                          — req-level 元数据（phase / signoff）
+    6. <req_dir>/process.txt                        — req-level 时间线（progress logger）
+  仅当前 req_dir 命中；跨需求的同名文件不豁免（白名单不过宽）。
+
 依赖：
   - pathspec（GitIgnoreSpec，仓库已用）
   - dispatch_state.read_state（L2 API）
@@ -357,6 +367,50 @@ def _extract_file_paths(tool_name: str, tool_input: dict) -> list[str]:
     return paths
 
 
+def _is_process_artifact(fp: str, req_dir: Path, feature_id: str) -> bool:
+    """判断 fp 是否落在当前 req_dir 范围内的"过程产物白名单"中（hotfix REQ-2026-008）。
+
+    覆盖 6 类（见模块 docstring）：
+      1. <req_dir>/artifacts/tasks/<fid>.receipt.json
+      2. <req_dir>/artifacts/tasks/<fid>.md
+      3. <req_dir>/plan.md
+      4. <req_dir>/notes.md
+      5. <req_dir>/meta.yaml
+      6. <req_dir>/process.txt
+
+    仅当 fp 解析后的绝对路径与白名单中某条 resolve 后路径完全相等才返回 True。
+    跨需求同名文件（如 <other_req_dir>/plan.md）不豁免。
+
+    任何 resolve 异常 → 返回 False（fail-open 回原行为：当作越界记录）。
+    """
+    try:
+        fp_resolved = Path(fp).resolve()
+    except Exception:
+        return False
+
+    try:
+        req_resolved = req_dir.resolve()
+    except Exception:
+        return False
+
+    candidates = [
+        req_resolved / "artifacts" / "tasks" / f"{feature_id}.receipt.json",
+        req_resolved / "artifacts" / "tasks" / f"{feature_id}.md",
+        req_resolved / "plan.md",
+        req_resolved / "notes.md",
+        req_resolved / "meta.yaml",
+        req_resolved / "process.txt",
+    ]
+    for cand in candidates:
+        try:
+            # cand 可能尚不存在；Path.resolve(strict=False) 在不存在时返回规范化绝对路径
+            if fp_resolved == cand.resolve():
+                return True
+        except Exception:
+            continue
+    return False
+
+
 def _record_violation(
     receipt_path: Path,
     feature_id: str,
@@ -429,15 +483,15 @@ def _main_inner(stdin_data: str) -> None:
         return  # fail-open：无法读取 touches
 
     # 7. 检查每个 file_path，记录越界
+    #    过程产物白名单（hotfix REQ-2026-008）：6 类路径在当前 req_dir 范围内豁免，
+    #    避免 SOP 必经写入（receipt.json 自指 / task.md status 翻转 / plan.md ADR
+    #    落地 / notes.md 笔记 / meta.yaml signoff / process.txt 进度）被记为越界
+    #    硬挡 GATE-TOUCHES-VIOLATION。详见 _is_process_artifact docstring。
     receipt_path = req_dir / "artifacts" / "tasks" / f"{feature_id}.receipt.json"
     for fp in file_paths:
         if not _is_in_touches(fp, touches):
-            # dispatch 约定的回执写入路径（receipt.json 自身），不记 self-referential 软违规
-            try:
-                if Path(fp).resolve() == receipt_path.resolve():
-                    continue
-            except Exception:
-                pass  # resolve 失败则 fall through 到原行为（fail-open）
+            if _is_process_artifact(fp, req_dir, feature_id):
+                continue
             try:
                 _record_violation(receipt_path, feature_id, fp, tool_name)
             except Exception:

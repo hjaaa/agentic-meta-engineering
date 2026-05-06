@@ -18,11 +18,20 @@ setup() {
   git commit --allow-empty -m "init" -q
   git checkout -qb feature/test
   GUARD="${BATS_TEST_DIRNAME}/../../.claude/hooks/pre-tool-use-guard.sh"
+  # hotfix REQ-2026-008：guard.sh Edit/Write/MultiEdit 路径会调用 touches_guard.py。
+  # 该 hook 通过 _REPO_ROOT = parents[2] 指向真 agentic-meta-engineering 仓库，
+  # _locate_req_dir() 若没 OVERRIDE 会用真分支匹配真 meta.yaml.branch → 写到真
+  # F-007.receipt.json 的 touches_violations[]（污染真需求产物）。
+  # 这里强制 OVERRIDE 到一个不存在的目录，让 _locate_req_dir 返回 None → fail-open。
+  TOUCHES_GUARD_FAKE_REQ_DIR="$TMP/__nonexistent_req_dir__"
+  export CLAUDE_DISPATCH_TEST_REQ_DIR_OVERRIDE="$TOUCHES_GUARD_FAKE_REQ_DIR"
 }
 
 teardown() {
   rm -rf "$TMP"
   unset CLAUDE_GATES_GLOBAL_BYPASS
+  unset CLAUDE_DISPATCH_TEST_REQ_DIR_OVERRIDE
+  unset TOUCHES_GUARD_FAKE_REQ_DIR
 }
 
 # ===== V-01 第 1 类：分支保护命中（develop / main / master） =====
