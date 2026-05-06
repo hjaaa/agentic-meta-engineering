@@ -11,28 +11,7 @@
     "tests/integration/test_self_bootstrap.py"
   ],
   "test_summary": "5 个 sandbox e2e 测试文件全绿（38 passed）：test_dispatch_precheck_sandbox.py（V-01/V-04/V-06，6 用例）+ test_post_dev_receipt_sandbox.py（V-02，7 用例）+ test_touches_violation_sandbox.py（V-03 软+硬双层，6 用例）+ test_schema_gates_sandbox.py（V-05，12 用例）+ test_self_bootstrap.py（V-07/V-08，7 用例）。全量回归 pytest tests/ --ignore=tests/benchmarks/ → 742 passed / 8 skipped（pre-existing，未改）。覆盖 acceptance TC-F8-1 ~ TC-F8-6（沙盒 ID 严格 REQ-2099-NNN 纯数字）。",
-  "touches_violations": [
-    {
-      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-008/artifacts/tasks/F-008.receipt.json",
-      "ts": "2026-05-06T12:29:33+00:00",
-      "tool": "Write"
-    },
-    {
-      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-008/artifacts/tasks/F-008.receipt.json",
-      "ts": "2026-05-06T12:30:27+00:00",
-      "tool": "Write"
-    },
-    {
-      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-008/artifacts/tasks/F-008.receipt.json",
-      "ts": "2026-05-06T12:30:47+00:00",
-      "tool": "Write"
-    },
-    {
-      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-008/artifacts/tasks/F-008.receipt.json",
-      "ts": "2026-05-06T12:31:15+00:00",
-      "tool": "Write"
-    }
-  ],
+  "touches_violations": [],
   "concerns": [
     "V-08 自举测试不强制 exit 0：仓库工作区 dirty + 历史 review 文件 sourcing E002 → 触发 GATE-WORKSPACE-CLEAN / GATE-SOURCING fail，与本需求 4 个新 gate 无关。测试只断言 4 个新 gate 不在 audit failed[] 中（即不被本需求自身引入失败），符合 V-08 自举语义『新 gate 在本需求 develop/test 阶段也通过（自举）』。",
     "V-02 / V-03 未走 run.py 全套 gates 跑：原因是 run.py 顺序执行所有 phase-transition gates，任一 error 级 fail 即 fail-fast 短路；沙盒在 tmp_path 建 + 仓库工作区 untracked → GATE-WORKSPACE-CLEAN 必 fail，淹没 GATE-POST-DEV-RECEIPT / GATE-TOUCHES-VIOLATION 的真实信号。改为 subprocess 调内联 Python 直接加载 plugin 跑 precheck+run（仍是真实子进程，非 mock），能精确观测目标 gate 的 Decision——是设计权衡，不是测试自身缺陷。",

@@ -432,6 +432,12 @@ def _main_inner(stdin_data: str) -> None:
     receipt_path = req_dir / "artifacts" / "tasks" / f"{feature_id}.receipt.json"
     for fp in file_paths:
         if not _is_in_touches(fp, touches):
+            # dispatch 约定的回执写入路径（receipt.json 自身），不记 self-referential 软违规
+            try:
+                if Path(fp).resolve() == receipt_path.resolve():
+                    continue
+            except Exception:
+                pass  # resolve 失败则 fall through 到原行为（fail-open）
             try:
                 _record_violation(receipt_path, feature_id, fp, tool_name)
             except Exception:
