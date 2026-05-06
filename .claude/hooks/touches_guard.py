@@ -275,7 +275,8 @@ def _read_current_feature(req_dir: Path) -> Optional[str]:
             exc,
         )
         return None
-    except Exception:
+    except Exception as exc:
+        logger.debug("_read_current_feature failed (non-timeout): %s", exc)
         return None
 
 

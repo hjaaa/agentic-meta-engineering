@@ -23,6 +23,8 @@ from pathlib import Path
 
 import pytest
 
+from ._subprocess_helpers import run_with_timeout
+
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _HOOK = _REPO_ROOT / ".claude" / "hooks" / "dispatch_precheck.py"
 
@@ -111,14 +113,12 @@ def _run_hook(req_dir: Path, feature_id: str, audit_root: Path) -> subprocess.Co
     env = os.environ.copy()
     env["CLAUDE_DISPATCH_TEST_REQ_DIR_OVERRIDE"] = str(req_dir)
     env["CLAUDE_GATES_AUDIT_ROOT"] = str(audit_root)
-    return subprocess.run(
+    return run_with_timeout(
         ["python3", str(_HOOK)],
+        timeout=10,
         input=json.dumps(payload),
-        capture_output=True,
-        text=True,
         env=env,
         cwd=str(_REPO_ROOT),
-        timeout=10,
     )
 
 

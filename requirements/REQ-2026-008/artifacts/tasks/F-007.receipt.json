@@ -2,12 +2,6 @@
   "schema_version": "1.0",
   "feature_id": "F-007",
   "status": "DONE_WITH_CONCERNS",
-  "summary": "F-007 派发模板 + Skill 文档 + meta-schema legacy 注释收口：(1) feature-task.md.tmpl frontmatter 追加 touches 字段 + 正文引导语；(2) subagent-dispatch.md 派发模板首行改为独占 feature_id: F-xxx + 新增首行格式红线段（D-005 #3 / D-007）；(3) feature-lifecycle-manager/SKILL.md 加自动化拦截层段落；(4) managing-requirement-lifecycle/SKILL.md 加派发链强制结构 4 gate 说明表；(5) render-docs.py 重生成 gate-checklist.md；(6) meta-schema.yaml legacy 注释 +4 行；(7) tests/skills/test_feature_task_template.py 5 用例 + ADR D-013。",
-  "commits": [
-    "ede709b",
-    "279a7c2",
-    "acd2210"
-  ],
   "commit_sha": "acd2210",
   "files_changed": [
     ".claude/skills/feature-lifecycle-manager/templates/feature-task.md.tmpl",
@@ -19,7 +13,7 @@
     "tests/skills/test_feature_task_template.py",
     "requirements/REQ-2026-008/plan.md"
   ],
-  "test_summary": "pytest tests/skills/test_feature_task_template.py -> 8 passed (TT-001/TT-002x2/TT-003/TT-004x3/TT-005); pytest tests/ --ignore=tests/benchmarks/ -> 704 passed 8 skipped; bats tests/hooks/ -> 58/58 passed; ruff check -> All checks passed",
+  "test_summary": "F-007 摘要：派发模板 + Skill 文档 + meta-schema legacy 注释收口：(1) feature-task.md.tmpl frontmatter 追加 touches 字段 + 正文引导语；(2) subagent-dispatch.md 派发模板首行改为独占 feature_id: F-xxx + 新增首行格式红线段（D-005 #3 / D-007）；(3) feature-lifecycle-manager/SKILL.md 加自动化拦截层段落；(4) managing-requirement-lifecycle/SKILL.md 加派发链强制结构 4 gate 说明表；(5) render-docs.py 重生成 gate-checklist.md；(6) meta-schema.yaml legacy 注释 +4 行；(7) tests/skills/test_feature_task_template.py 5 用例 + ADR D-013。 | pytest tests/skills/test_feature_task_template.py -> 8 passed (TT-001/TT-002x2/TT-003/TT-004x3/TT-005); pytest tests/ --ignore=tests/benchmarks/ -> 704 passed 8 skipped; bats tests/hooks/ -> 58/58 passed; ruff check -> All checks passed",
   "touches_violations": [],
   "concerns": [
     "touches_violations 含 bats 沙盒路径（a.txt/src/foo.py，F-005 测试期间产物）及 plan.md 越界（ADR D-013 落地需修改 plan.md）。如 GATE-TOUCHES-VIOLATION 硬挡，可补 plan.md 到 touches 或 CLAUDE_GATES_GLOBAL_BYPASS 说明 ADR 类修改合理性。bats 沙盒路径与仓库内文件无重叠，不影响代码安全。"

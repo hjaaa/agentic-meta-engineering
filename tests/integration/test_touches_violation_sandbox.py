@@ -25,6 +25,8 @@ from pathlib import Path
 
 import pytest
 
+from ._subprocess_helpers import run_with_timeout
+
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _TOUCHES_GUARD = _REPO_ROOT / ".claude" / "hooks" / "touches_guard.py"
 _GATES_DIR = _REPO_ROOT / "scripts" / "gates"
@@ -122,10 +124,11 @@ def _run_touches_guard(
     }
     env = os.environ.copy()
     env["CLAUDE_DISPATCH_TEST_REQ_DIR_OVERRIDE"] = str(req_dir)
-    return subprocess.run(
+    return run_with_timeout(
         ["python3", str(_TOUCHES_GUARD)],
+        timeout=10,
         input=json.dumps(payload),
-        capture_output=True, text=True, env=env, timeout=10,
+        env=env,
     )
 
 
@@ -158,8 +161,9 @@ def _run_hard_gate(req_dir: Path, req_id: str) -> subprocess.CompletedProcess:
     script = _HARD_GATE_TMPL.format(
         gates_dir=str(_GATES_DIR), req_id=req_id, req_dir=str(req_dir),
     )
-    return subprocess.run(
-        ["python3", "-c", script], capture_output=True, text=True, timeout=30,
+    return run_with_timeout(
+        ["python3", "-c", script],
+        timeout=30,
     )
 
 

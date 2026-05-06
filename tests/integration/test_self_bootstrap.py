@@ -29,6 +29,8 @@ from pathlib import Path
 
 import pytest
 
+from ._subprocess_helpers import run_with_timeout
+
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _RUN_PY = _REPO_ROOT / "scripts" / "gates" / "run.py"
 
@@ -50,9 +52,11 @@ def _run(
         env["CLAUDE_GATES_AUDIT_ROOT"] = str(audit_root)
     if env_extra:
         env.update(env_extra)
-    return subprocess.run(
+    return run_with_timeout(
         ["python3", str(_RUN_PY), *args],
-        capture_output=True, text=True, env=env, cwd=str(_REPO_ROOT), timeout=120,
+        timeout=120,
+        env=env,
+        cwd=str(_REPO_ROOT),
     )
 
 

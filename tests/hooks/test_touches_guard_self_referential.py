@@ -99,7 +99,7 @@ def _run_main_inner(tg, tmp_path: Path, feature_id: str, file_path: str) -> dict
     return json.loads(receipt_path.read_text(encoding="utf-8"))
 
 
-# ---------- TL-SR-001 ----------
+# ---------- TL-SR-001：自指 receipt.json 不记 violation ----------
 
 
 def test_TL_SR_001_self_write_receipt_not_recorded(tg, tmp_path: Path) -> None:
@@ -122,7 +122,7 @@ def test_TL_SR_001_self_write_receipt_not_recorded(tg, tmp_path: Path) -> None:
     )
 
 
-# ---------- TL-SR-002 ----------
+# ---------- TL-SR-002：范围外文件仍正常记录 violation（白名单不过宽） ----------
 
 
 def test_TL_SR_002_out_of_scope_file_still_recorded(tg, tmp_path: Path) -> None:

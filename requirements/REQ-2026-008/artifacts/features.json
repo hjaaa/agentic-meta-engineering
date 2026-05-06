@@ -162,7 +162,10 @@
         "scripts/gates/registry.yaml",
         "tests/hooks/test_touches_guard.bats",
         "tests/hooks/test_touches_guard_concurrency.py",
-        "tests/gates/test_touches_violation.py"
+        "tests/gates/test_touches_violation.py",
+        "tests/hooks/test_touches_guard_self_referential.py",
+        "tests/hooks/test_touches_guard_whitelist.py",
+        "tests/hooks/test_pre_tool_use_guard.bats"
       ],
       "interfaces_frozen": true,
       "acceptance": [

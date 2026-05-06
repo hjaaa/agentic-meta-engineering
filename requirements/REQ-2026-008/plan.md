@@ -183,6 +183,13 @@
   - 同模式（实施期 env 通道）应在引入时同时落 ADR，避免 reviewer 后捕
 - **时间**：2026-05-06 16:25:00
 
+### D-014 touches_guard 6 类过程产物白名单 + bats 隔离修复（F-008 review-001 hotfix 收口）
+- **Context**：F-008 实施期 code-quality-reviewer 轮次（review-20260506-212932.md）发现 touches_guard 软记 SOP 必经写入路径均会触发 violation：(1) task.md status 翻转；(2) plan.md ADR 追加；(3) notes.md 笔记写入；(4) meta.yaml signoff 更新；(5) process.txt 进度追加；(6) receipt.json 自指（subagent 写回自身 receipt）。上述 6 类均属需求过程产物，记录 violation 无意义且会导致后续 GATE-TOUCHES-VIOLATION 硬挡。另，bats 测试 fixture 使用的 receipt 路径与真实 receipt 路径相同，沙盒执行会污染真实 receipt。
+- **Decision**：(1) `_is_process_artifact` helper 把当前 req_dir 内 6 类过程产物（receipt.json / task.md / plan.md / notes.md / meta.yaml / process.txt）从 violation 软记中豁免；豁免范围限定在 `req_dir.resolve()` 下，跨需求路径不豁免；(2) bats 测试 fixture 强制将 `FAKE_RECEIPT_PATH` 设置为不存在于真实 requirements/ 树下的路径（tmp 目录或 OVERRIDE 指向的沙盒路径），避免 bats 沙盒执行时污染真实 receipt 数据。
+- **Consequences**：(a) hotfix 1（commit 122579c）落地 `_is_process_artifact` helper + receipt.json 自指豁免；hotfix 2（commit 93bd1ef）落地 bats fixture 路径隔离修复 + `test_touches_guard_whitelist.py` 新增 TL-WL-001~005 单测 + `test_touches_guard_self_referential.py` 新增 TL-SR-001/002 单测；(b) F-005.touches 补登记 3 个测试文件（test_touches_guard_self_referential.py / test_touches_guard_whitelist.py / test_pre_tool_use_guard.bats）；(c) 与 D-003 双层拦截设计意图兼容：GATE-TOUCHES-VIOLATION 硬挡仍走完整路径，仅过程产物豁免软记（不豁免硬挡语义）。
+- **来源**：requirements/REQ-2026-008/artifacts/review-20260506-212932.md F-6
+- **时间**：2026-05-06 21:30:00
+
 ### D-013 F-007 测试文件命名：acceptance 取代 detail-design §8.4（实施期偏差记录）
 - **Context**：detail-design §8.4（行 1078-1085）把 F-007 的 Python 测试文件命名为 `test_task_context_builder_render.py`，与 acceptance 验收标准（TC-F7-5）及 task md frontmatter `touches` 字段列出的 `tests/skills/test_feature_task_template.py` 存在命名不一致。task-planning 阶段 task.md 最终确认文件名为 `test_feature_task_template.py`。
 - **Decision**：以 acceptance 验收标准（TC-F7-5）为准，测试文件创建为 `tests/skills/test_feature_task_template.py`，与 task md frontmatter touches 字段保持一致。detail-design §8.4 名称不回改（仿 D-009/D-010/D-011 经验；reviewer hash 校验 R005 无 trivial 豁免通道，措辞修订即触发重审成本）。

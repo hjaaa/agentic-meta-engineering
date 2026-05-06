@@ -102,7 +102,7 @@ def _run(tg, req_dir: Path, file_path: str) -> dict:
     return json.loads(receipt_path.read_text(encoding="utf-8"))
 
 
-# ---------- TL-WL-001 ~ TL-WL-005：6 类白名单（task.md 自指 + 5 类 req-level 过程产物） ----------
+# ---------- TL-WL-001 ~ TL-WL-005：5 类 req-level 过程产物（receipt.json 自指见 test_touches_guard_self_referential.py） ----------
 
 
 @pytest.mark.parametrize(

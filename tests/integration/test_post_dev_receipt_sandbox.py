@@ -26,6 +26,8 @@ from pathlib import Path
 
 import pytest
 
+from ._subprocess_helpers import run_with_timeout
+
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _GATES_DIR = _REPO_ROOT / "scripts" / "gates"
 
@@ -139,9 +141,9 @@ def _invoke_plugin(req_dir: Path, trigger: str, target_phase: str = "testing") -
         req_dir=str(req_dir),
         target_phase=target_phase,
     )
-    return subprocess.run(
+    return run_with_timeout(
         ["python3", "-c", script],
-        capture_output=True, text=True, timeout=30,
+        timeout=30,
     )
 
 

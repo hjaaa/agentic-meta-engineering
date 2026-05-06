@@ -23,6 +23,8 @@ from pathlib import Path
 
 import pytest
 
+from ._subprocess_helpers import run_with_timeout
+
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _CHECK_FEATURES = _REPO_ROOT / "scripts" / "lib" / "check_features.py"
 _CHECK_TASK = _REPO_ROOT / "scripts" / "lib" / "check_task_frontmatter.py"
@@ -74,9 +76,10 @@ def _write_task_md(path: Path, frontmatter: dict, drop_keys: tuple[str, ...] = (
 
 def _run_check(script: Path, target: Path) -> subprocess.CompletedProcess:
     """以 subprocess 跑 check_<X>.py CLI；returncode 0/1/2 即接口契约。"""
-    return subprocess.run(
+    return run_with_timeout(
         ["python3", str(script), str(target)],
-        capture_output=True, text=True, cwd=str(_REPO_ROOT), timeout=30,
+        timeout=30,
+        cwd=str(_REPO_ROOT),
     )
 
 
