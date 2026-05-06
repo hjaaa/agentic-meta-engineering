@@ -28,3 +28,4 @@
 2026-05-06 10:22:29 [save] detail-design 全闭环：13 待办 12/12 必决落地 / round-002 looks_clean 92 / signoff approved（待切 task-planning）
 2026-05-06 10:26:15 [phase-transition] detail-design → task-planning（7 gates 全过；plan-freshness 无 warning）
 2026-05-06 10:36:01 [review:looks_clean] detail-design-quality-reviewer round-003 supersedes 002（cosmetic fix 重审 §6.2 line 857 路径死链）
+2026-05-06 10:41:22 [signoff] REV-REQ-2026-008-detail-design-003 approved by hj19961223@gmail.com
