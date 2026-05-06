@@ -29,3 +29,4 @@
 2026-05-06 10:26:15 [phase-transition] detail-design → task-planning（7 gates 全过；plan-freshness 无 warning）
 2026-05-06 10:36:01 [review:looks_clean] detail-design-quality-reviewer round-003 supersedes 002（cosmetic fix 重审 §6.2 line 857 路径死链）
 2026-05-06 10:41:22 [signoff] REV-REQ-2026-008-detail-design-003 approved by hj19961223@gmail.com
+2026-05-06 10:49:45 [save] task-planning：features.json 8 features 落地（DAG 闭包过 / 11.75 人天 / interfaces_frozen 6/8）+ tasks/F-001~F-008.md 渲染（pending 状态）
