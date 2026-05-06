@@ -161,6 +161,7 @@
         "scripts/gates/plugins/touches_violation.py",
         "scripts/gates/registry.yaml",
         "tests/hooks/test_touches_guard.bats",
+        "tests/hooks/test_touches_guard_concurrency.py",
         "tests/gates/test_touches_violation.py"
       ],
       "interfaces_frozen": true,

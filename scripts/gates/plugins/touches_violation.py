@@ -17,9 +17,11 @@
 """
 from __future__ import annotations
 
+import fcntl
 import json
 import logging
 import sys
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -31,6 +33,11 @@ if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
 from .base import Decision, Gate, GateContext, Report, Severity, Skip
+
+# LOCK_SH 等待上限（秒）；与 touches_guard._RECEIPT_LOCK_TIMEOUT_S 一致，
+# 形成 reader/writer 锁协议（修复 review-001 F-7 / plan.md ADR D-012）
+_RECEIPT_LOCK_TIMEOUT_S: float = 5.0
+_RECEIPT_POLL_INTERVAL_S: float = 0.05
 
 
 class TouchesViolationGate(Gate):
@@ -182,23 +189,81 @@ def _load_feature_ids(features_json: Path) -> tuple[list[str] | None, str | None
     return ids, None
 
 
+def _read_receipt_with_shared_lock(receipt_path: Path) -> Optional[dict]:
+    """以 LOCK_SH 读取 receipt.json；与 touches_guard._flock_receipt_file 的 LOCK_EX
+    形成 reader/writer 互斥协议（修复 review-001 F-7 / plan.md ADR D-012）。
+
+    实现：
+      - LOCK_SH + LOCK_NB 轮询；5s timeout + 50ms 间隔
+      - 共享读锁不互斥同类读者，仅与 touches_guard 写者互斥；高并发场景下读者并行
+      - 锁超时 / open 失败 / JSON 损坏 → 返回 None，调用方按 fail-open 跳过该 fid
+
+    返回：
+      - dict：合法解析结果
+      - None：文件 / 锁 / JSON 异常（fail-open）
+    """
+    try:
+        f = receipt_path.open("r", encoding="utf-8")
+    except OSError as exc:
+        logger.warning(
+            "touches_violation: receipt.json open 失败：%s | %s", receipt_path, exc
+        )
+        return None
+    try:
+        deadline = time.monotonic() + _RECEIPT_LOCK_TIMEOUT_S
+        while True:
+            try:
+                fcntl.flock(f.fileno(), fcntl.LOCK_SH | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() > deadline:
+                    logger.warning(
+                        "touches_violation: LOCK_SH timeout %.1fs: %s（fail-open 跳过）",
+                        _RECEIPT_LOCK_TIMEOUT_S,
+                        receipt_path,
+                    )
+                    return None
+                time.sleep(_RECEIPT_POLL_INTERVAL_S)
+        try:
+            text = f.read()
+            if not text.strip():
+                return None
+            try:
+                return json.loads(text)
+            except json.JSONDecodeError as exc:
+                logger.warning(
+                    "touches_violation: receipt.json JSON 解析失败：%s | %s",
+                    receipt_path,
+                    exc,
+                )
+                return None
+        finally:
+            try:
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+            except OSError:
+                pass
+    finally:
+        f.close()
+
+
 def _collect_violations(fid: str, tasks_dir: Path) -> list[dict]:
     """读取单个 feature 的 receipt.json，返回 touches_violations[] 列表。
 
     receipt.json 不存在 → 返回 []（由 GATE-POST-DEV-RECEIPT 兜底报告缺失，不重复 fail）。
-    解析失败 → 返回 []（fail-open，避免误报遮盖真实越界）。
+    锁超时 / 解析失败 → 返回 []（fail-open，避免误报遮盖真实越界）。
+
+    并发协议（修复 review-001 F-7 / plan.md ADR D-012）：
+      用 LOCK_SH 读，与 touches_guard 的 LOCK_EX 写形成 reader/writer 互斥；
+      phase-transition 是独立时刻，hook 早已退出，实际窗口几乎为零，
+      但在保守档串行约束被打破或未来并发场景下保留正确性。
     """
     receipt_path = tasks_dir / f"{fid}.receipt.json"
     if not receipt_path.exists():
         return []  # 不存在由其他 gate 处理
 
-    try:
-        with receipt_path.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-    except (OSError, json.JSONDecodeError) as exc:
-        logger.warning("touches_violation: receipt.json 读取失败，fid=%s，原因：%s", fid, exc)
+    data = _read_receipt_with_shared_lock(receipt_path)
+    if data is None:
         return []
-
     if not isinstance(data, dict):
         return []
 

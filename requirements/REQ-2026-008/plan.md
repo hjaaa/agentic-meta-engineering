@@ -152,6 +152,25 @@
   - 后续若需要支持"无锁读者"场景（如脱离 LOCK_EX 的旁路 cat 调试），需改回 atomic rename 或加 fcntl 锁强制读路径。
 - **时间**：2026-05-06 16:25:00
 
+### D-012 receipt.json RMW 锁分层补全：touches_guard 内置 _flock_receipt_file（detail-design §3.4 盲点修复）
+- **Context**：F-005 review-001（REV-REQ-2026-008-code-F-005-001）concurrency-checker 标 1 major + 2 minor：
+  - **F-4 major**：`.claude/hooks/touches_guard.py:245-318` `_load_or_init_receipt + _record_violation` 是经典 RMW（load → append → atomic rename），`os.replace` 仅保证不读半写但无法防止两个并发 hook 各自 base 旧版后互相覆盖 violation entry。
+  - **F-6 minor**：`_read_current_feature` 顶层 `except Exception: return None` 把 dispatch_state 抛的 `TimeoutError` 与 state 不存在合流，事后 audit 无法区分锁竞争与冷启动。
+  - **F-7 minor**：`scripts/gates/plugins/touches_violation.py:191-210` 读 receipt.json 无 `LOCK_SH`，与 F-4 修复需配套形成完整锁协议。
+  - **盲点根源**：detailed-design.md:543 §3.4 锁分层表只覆盖 `.dispatch-state.json`（dispatch_state.py 已有完整 L1/L2 LOCK_EX），未覆盖 receipt.json 自身写入并发协议；同需求内同类共享文件设计盲点。
+- **Decision**：receipt.json RMW 在 touches_guard.py 内置独立锁层，**不迁到** dispatch_state.py L1/L2 API。
+  - **F-4 修复**：touches_guard.py 加 `_flock_receipt_file(receipt_path)` 上下文管理器（LOCK_EX + LOCK_NB 轮询 / 5s timeout / 50ms 间隔 / truncate+write+flush+fsync 原地写）；`_record_violation` 改为 with 块内 `_read_receipt_from_fd → append → _write_receipt_to_fd` 单原子动作。原 `_load_or_init_receipt` + `_atomic_write_receipt` 删除（rename 在持 fd with 块内会换 inode 致后续读失效，与 D-010 同模式）。
+  - **F-6 修复**：`_read_current_feature` 单独 catch `TimeoutError` → `logger.warning("dispatch_state read timeout (lock contention), fail-open")`；其他异常仍合流 return None。
+  - **F-7 修复**：touches_violation.py 加 `_read_receipt_with_shared_lock`（LOCK_SH 5s timeout 50ms 轮询 / 超时 logger.warning fail-open 跳过该 fid）；`_collect_violations` 改用此 helper。LOCK_EX 写 + LOCK_SH 读形成标准 reader/writer 互斥协议。
+  - **不迁 dispatch_state.py 的理由**：(1) F-004 文件被 F-005 touches 列表禁止触碰；(2) receipt.json 与 .dispatch-state.json 路径 / schema / 用途均不同，强行抽象是过早泛化；(3) 锁参数 5s/50ms 与 dispatch_state 同步常量便于未来抽象（同样行为契约）。
+- **Consequences**：
+  - 锁实现独立但参数对齐（`_RECEIPT_LOCK_TIMEOUT_S=5.0` / `_RECEIPT_POLL_INTERVAL_S=0.05` 与 dispatch_state.LOCK_TIMEOUT_S/POLL_INTERVAL_S 一致）；未来若 receipt.json 类共享数据需要 N 个文件统一锁层，可在 dispatch_state.py 加新 API（如 `flock_receipt_file`）做迁移。
+  - 锁协议三个面齐备：写 LOCK_EX（F-4）+ 读 LOCK_SH（F-7）+ 写超时 audit（F-6）。后续调试出 receipt 相关锁竞争时不会再回头补半完成锁协议。
+  - **测试新增**：`tests/hooks/test_touches_guard_concurrency.py` 含 TL-RC-001（N=8 进程并发 RMW，全部 violation 落盘无丢失）/ TL-RC-002（并发后 JSON 可解析无半写垃圾）/ TL-RC-003（单进程顺序两次基线）；用 multiprocessing 而非 threading（GIL 串行化掩盖锁竞争）。本测试不在 F-005 task md frontmatter touches 字段内 → 写入此文件会触发 touches_guard violation；连带把 task md 自身 touches 字段补齐 + features.json 同步保持 source of truth 一致。
+  - **detailed-design.md §3.4 不回改**（仿 D-009/D-010 经验）：reviewer hash 校验 R005 路径无 trivial 豁免，措辞修订即重审；本 ADR 即 spec 盲点的实施层 source of truth。
+  - **Reviewer 体系反馈**：critic 论证 F-5 候选（reviewer 误以为 receipt 实测发生骨架 + violation 现象）not_proven，并入 F-4 单条；F-1/F-2/F-3（路径穿越纵深防御 / DoS 上限）由 dev-time 威胁模型 + check_features schema gate + 链路兜底自然 drop，记入 notes.md follow-up。
+- **时间**：2026-05-06 17:35:00
+
 ### D-011 CLAUDE_DISPATCH_TEST_REQ_DIR_OVERRIDE 测试后门文档化（detailed-design 未覆盖补丁）
 - **Context**：F-004 实现 dispatch_precheck.py 引入 env 变量 `CLAUDE_DISPATCH_TEST_REQ_DIR_OVERRIDE`，bats 沙盒用例（TC-F4-3/4/5）通过该变量隔离测试 req_dir，避免污染真 git 分支。该变量类比既有 `CLAUDE_GATES_AUDIT_ROOT`（已在 detailed-design 中文档化），但 detailed-design.md 全文 grep 未命中——属实施期引入但未在设计阶段定型的辅助通道。
 - **Decision**：本 ADR 正式记录该 env 变量的存在与契约：

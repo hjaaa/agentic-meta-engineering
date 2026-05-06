@@ -12,10 +12,12 @@ fail-open 理由：
   如果 hook 本身出错导致 exit 非 0，会阻断所有 Edit/Write/MultiEdit 操作，
   造成开发链路死锁。因此顶层 try/except 兜底，始终 exit 0。
 
-关键约束（detail-design §3.4）：
+关键约束（detail-design §3.4 / plan.md ADR D-012）：
   - 仅使用 dispatch_state.read_state()（L2 单读）读取 current_feature
   - 禁止 write_state / flock_state_file with 块（TOCTOU 风险，§3.2）
-  - receipt.json 写入用 atomic rename（tmp file + os.replace），并发安全
+  - receipt.json RMW 通过 _flock_receipt_file LOCK_EX 序列化（仿 dispatch_state.flock_state_file
+    模式：5s timeout + 50ms 轮询；truncate+write+flush+fsync 原地写）
+    —— 修复 review-001 F-4 RMW 锁分层盲点（detail-design §3.4 仅覆盖 .dispatch-state.json）
 
 依赖：
   - pathspec（GitIgnoreSpec，仓库已用）
@@ -24,13 +26,16 @@ fail-open 理由：
 """
 from __future__ import annotations
 
+import fcntl
 import json
+import logging
 import os
 import sys
-import tempfile
+import time
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import IO, Iterator, Optional
 
 # ---- 路径 / sys.path 初始化 ----
 # .claude/hooks/touches_guard.py → repo root = ../../
@@ -63,9 +68,115 @@ except ImportError:
     _dispatch_state = None  # type: ignore[assignment]
     _DISPATCH_STATE_AVAILABLE = False
 
-# ---------- 骨架常量 ----------
+# ---------- 常量 ----------
 
 _RECEIPT_SCHEMA_VERSION = "1.0"
+
+# receipt.json LOCK_EX 等待上限；与 dispatch_state.LOCK_TIMEOUT_S 一致
+_RECEIPT_LOCK_TIMEOUT_S: float = 5.0
+# LOCK_EX 轮询间隔；与 dispatch_state.POLL_INTERVAL_S 一致
+_RECEIPT_POLL_INTERVAL_S: float = 0.05
+
+# 模块级 logger；hook fail-open 哲学下仅做 audit，不抛
+logger = logging.getLogger("touches_guard")
+
+
+# ---------- receipt.json 锁层（修复 review-001 F-4 / 仿 dispatch_state.flock_state_file 模式） ----------
+
+
+@contextmanager
+def _flock_receipt_file(receipt_path: Path) -> Iterator[IO[str]]:
+    """receipt.json 的 LOCK_EX 上下文管理器（与 dispatch_state.flock_state_file 同模式）。
+
+    用法（_record_violation 单锁原子，杜绝 RMW 覆盖）::
+
+        with _flock_receipt_file(receipt_path) as f:
+            data = _read_receipt_from_fd(f, feature_id)
+            data["touches_violations"].append(entry)
+            _write_receipt_to_fd(f, data)
+
+    实现：
+      - 模式 'r+'：read+write 复用同一 fd，read/write 都在锁内
+      - 文件不存在 → 先建空骨架 "{}"（'r+' 要求文件预先存在；read 仍走骨架补齐）
+      - LOCK_EX + LOCK_NB 轮询；5s timeout + 50ms 间隔
+      - write 路径用 truncate+write+flush+fsync 原地写（rename 会换 inode 致 fd 失效）
+
+    异常：
+      - TimeoutError：5s 内未取到锁（调用方 fail-open 兜底）
+      - OSError：磁盘 / 权限错误
+    """
+    receipt_path.parent.mkdir(parents=True, exist_ok=True)
+    if not receipt_path.exists():
+        receipt_path.write_text("{}", encoding="utf-8")
+
+    f = receipt_path.open("r+", encoding="utf-8")
+    try:
+        deadline = time.monotonic() + _RECEIPT_LOCK_TIMEOUT_S
+        while True:
+            try:
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() > deadline:
+                    raise TimeoutError(
+                        f"flock receipt timeout {_RECEIPT_LOCK_TIMEOUT_S}s: {receipt_path}"
+                    )
+                time.sleep(_RECEIPT_POLL_INTERVAL_S)
+        try:
+            yield f
+        finally:
+            try:
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+            except OSError:
+                pass
+    finally:
+        f.close()
+
+
+def _read_receipt_from_fd(f: IO[str], feature_id: str) -> dict:
+    """从已持锁的 fd 读 receipt.json；不存在 / 格式错 → 建骨架。
+
+    merge 语义：保留已有字段（subagent 完整 receipt 字段），仅补齐 3 个骨架字段。
+    骨架结构（detail-design §3.4 / receipt-schema.yaml 基准 3 字段）：
+      { feature_id, schema_version, touches_violations }
+    """
+    f.seek(0)
+    text = f.read()
+    if not text.strip():
+        data: dict = {}
+    else:
+        try:
+            data = json.loads(text)
+            if not isinstance(data, dict):
+                data = {}
+        except json.JSONDecodeError:
+            data = {}
+
+    data.setdefault("feature_id", feature_id)
+    data.setdefault("schema_version", _RECEIPT_SCHEMA_VERSION)
+    data.setdefault("touches_violations", [])
+    if not isinstance(data.get("touches_violations"), list):
+        data["touches_violations"] = []
+    return data
+
+
+def _write_receipt_to_fd(f: IO[str], data: dict) -> None:
+    """truncate + write + flush + fsync 原地写（仿 dispatch_state.StateFileHandle.write）。
+
+    LOCK_EX 持锁期内 truncate 瞬间无并发观测窗口；与 atomic rename 不同，
+    rename 会换 inode 致 with 块内 fd 后续操作作用于旧 inode（plan.md ADR D-010 同模式）。
+    """
+    text = json.dumps(data, ensure_ascii=False, indent=2)
+    f.seek(0)
+    f.truncate(0)
+    f.write(text)
+    f.flush()
+    try:
+        os.fsync(f.fileno())
+    except OSError:
+        # 某些 fs（tmpfs / 测试环境）不支持 fsync；忽略（与 dispatch_state 同处理）
+        pass
+
 
 # ---------- 辅助函数 ----------
 
@@ -132,7 +243,11 @@ def _read_current_feature(req_dir: Path) -> Optional[str]:
     """通过 dispatch_state.read_state()（L2 单读）获取 current_feature。
 
     约束：仅调用 read_state，禁止 write_state 或 with flock_state_file（§3.4）。
-    返回 feature_id 字符串或 None（未激活 / dispatch_state 不可用 / 状态为空）。
+    返回 feature_id 字符串或 None（未激活 / dispatch_state 不可用 / 状态为空 / 锁竞争超时）。
+
+    异常分流（修复 review-001 F-6 / plan.md ADR D-012）：
+      - TimeoutError：单独 logger.warning，audit 区分锁竞争 vs 冷启动；fail-open return None
+      - 其他异常：合流 return None（fail-open，避免阻断写操作）
     """
     if not _DISPATCH_STATE_AVAILABLE:
         return None
@@ -143,6 +258,13 @@ def _read_current_feature(req_dir: Path) -> Optional[str]:
         # DispatchState 是 TypedDict（运行时为普通 dict），用 .get() 访问字段
         fid = state.get("current_feature")
         return fid if isinstance(fid, str) else None
+    except TimeoutError as exc:
+        # 锁竞争：与"state 不存在（冷启动）"语义不同，事后 audit 应可区分
+        logger.warning(
+            "touches_guard: dispatch_state read timeout (lock contention), fail-open: %s",
+            exc,
+        )
+        return None
     except Exception:
         return None
 
@@ -235,63 +357,6 @@ def _extract_file_paths(tool_name: str, tool_input: dict) -> list[str]:
     return paths
 
 
-def _load_or_init_receipt(receipt_path: Path, feature_id: str) -> dict:
-    """加载已有 receipt.json，若不存在则建空骨架（3 字段）。
-
-    merge 语义：仅当文件不存在时建骨架；存在则全量加载，保留已有字段。
-    骨架结构（detail-design §3.4 / receipt-schema.yaml 基准 3 字段）：
-      { feature_id, schema_version, touches_violations }
-    """
-    if receipt_path.exists():
-        try:
-            with receipt_path.open("r", encoding="utf-8") as f:
-                data = json.load(f)
-            if not isinstance(data, dict):
-                data = {}
-        except (OSError, json.JSONDecodeError):
-            data = {}
-    else:
-        # 文件不存在 → 建最小骨架（不设其他必填字段，由 subagent 完整写入）
-        data = {}
-
-    # 确保三个骨架字段存在（merge 语义：不覆盖已有值）
-    data.setdefault("feature_id", feature_id)
-    data.setdefault("schema_version", _RECEIPT_SCHEMA_VERSION)
-    data.setdefault("touches_violations", [])
-
-    # touches_violations 必须是 list
-    if not isinstance(data.get("touches_violations"), list):
-        data["touches_violations"] = []
-
-    return data
-
-
-def _atomic_write_receipt(receipt_path: Path, data: dict) -> None:
-    """用 atomic rename（tmp + os.replace）安全写入 receipt.json。
-
-    atomic rename 保证：
-    1. 写入中途崩溃不会留下半写文件
-    2. 读取方要么看到旧版本，要么看到新版本，不会看到中间态
-    """
-    receipt_path.parent.mkdir(parents=True, exist_ok=True)
-    # 在同一目录下建临时文件，确保 os.replace 是同设备 rename
-    fd, tmp_path_str = tempfile.mkstemp(
-        dir=receipt_path.parent,
-        prefix=f".{receipt_path.name}.tmp.",
-    )
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        os.replace(tmp_path_str, receipt_path)
-    except Exception:
-        # 清理临时文件；忽略清理失败
-        try:
-            os.unlink(tmp_path_str)
-        except OSError:
-            pass
-        raise
-
-
 def _record_violation(
     receipt_path: Path,
     feature_id: str,
@@ -300,22 +365,27 @@ def _record_violation(
 ) -> None:
     """将越界记录 append 到 receipt.json 的 touches_violations[]。
 
-    使用读-改-写 + atomic rename：
-    1. 加载（或初始化）receipt
-    2. 追加 violation 条目
-    3. atomic rename 写回
-    """
-    data = _load_or_init_receipt(receipt_path, feature_id)
+    锁内 RMW（修复 review-001 F-4 / plan.md ADR D-012）：
+      with LOCK_EX：
+        1. 读 fd → 加载或初始化骨架
+        2. 追加 violation 条目
+        3. truncate+write+flush+fsync 原地写
 
-    # 构造 violation 条目
+    并发安全：与 dispatch_state.flock_state_file 同模式。两个并发 hook 串行通过锁，
+    避免各自 base 旧版后互相覆盖 violation entry。
+
+    异常：
+      - TimeoutError（5s 锁超时）/ OSError → 由调用方 fail-open 兜底
+    """
     entry = {
         "path": file_path,
         "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "tool": tool_name,
     }
-    data["touches_violations"].append(entry)
-
-    _atomic_write_receipt(receipt_path, data)
+    with _flock_receipt_file(receipt_path) as f:
+        data = _read_receipt_from_fd(f, feature_id)
+        data["touches_violations"].append(entry)
+        _write_receipt_to_fd(f, data)
 
 
 def _main_inner(stdin_data: str) -> None:

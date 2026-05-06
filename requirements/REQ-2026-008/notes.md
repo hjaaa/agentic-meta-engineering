@@ -27,6 +27,12 @@ _[hook-skipped: claude-exit-143]_
 - **正面信号**：`pytest tests/ --ignore=tests/benchmarks/` 603 passed / 8 skipped / 36s，CI 扩展覆盖零修复成本，F-006 可直接合入本次 PR。
 - **reviewer 体系启示（D-006 衍生）**：reviewer hash 校验无 trivial 豁免通道——任何 artifact 措辞修订都计入"重审"成本（hash drift → R005 硬 fail，stale=true 不豁免）。未来类似情况直接走重审，不再尝试"标 stale 跳过"。
 
+### F-005 review-001 drop 的 follow-up（dev-time 威胁模型 + 链路兜底打断 → 不修，未来引入多用户协作 / 网络暴露面再开 follow-up）
+
+- **F-1 路径穿越纵深防御**（security-checker minor，drop）：`.claude/hooks/touches_guard.py:362` `receipt_path` 由 `read_state.current_feature` 拼接，无 `^F-\d{3}$` 校验。当前威胁模型：本地 dev-time 工具 + 攻击者已有 `.dispatch-state.json` 写权限即 game over；上游 dispatch_precheck.py L1 锁内已做 fid 校验。修法：拼路径前加 `re.fullmatch(r"F-\d{3}", fid)` 兜底；与 F-2 同步。
+- **F-2 路径穿越纵深防御**（security-checker minor，drop）：`scripts/gates/plugins/touches_violation.py:191` `receipt_path` 由 features.json 的 `fid` 拼接。check_features.py schema gate 上游守住 `^F-\d{3}$`；dev-time 同 F-1。修法：plugins/base.py 抽公共 `_safe_feature_path(tasks_dir, fid, suffix)` 复用；与 F-1 同步。
+- **F-3 touches_violations[] 上限**（security-checker minor，drop）：理论 disk DoS 链路被 hook fail-open + GATE-TOUCHES-VIOLATION 仅列前 3 条 fail 打断；生产环境优化项（候选 `MAX_VIOLATIONS=1000` 截断 + logger.warning）。
+
 ### F-2 / F-4 累积技术债（推 F-005+ 一起处理）
 
 - **F-2**：`scripts/gates/plugins/task_frontmatter.py` / `features_schema.py` 同位置 `_validate_*_file` 捕获 `SchemaLoadError` 后追加到 failures，最终以 `Decision.FAIL + R-*-INVALID code` 返回，混淆 exit 1（数据违规）/ exit 2（schema 损坏）语义。修法：抽公共 `ValidationReport` 抽象时区分 (kind, msg)，schema 类返回独立 code（如 `R-*-SCHEMA-BROKEN`）。
