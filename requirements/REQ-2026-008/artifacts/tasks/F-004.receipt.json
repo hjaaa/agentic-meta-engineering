@@ -1,0 +1,29 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-004",
+  "status": "DONE",
+  "summary": "F-004 派发链 PreToolUse hook 完整落地（5 commits 严格按 self-lock 防护顺序）：(1) scripts/lib/dispatch_state.py 提供 L1 flock_state_file 上下文管理器（fcntl.LOCK_EX + 5s timeout + 50ms 轮询）+ L2 read_state/write_state/clear_state，TL-001~TL-010 共 16 单测全绿（含 TL-006 多进程并发 / TL-009 TOCTOU 回归 / TL-010 单 with 块原子 read+write）。StateFileHandle.write 用 truncate+write 原地写替代 atomic rename，避免 with 块内 write 后 fd 失效。(2) scripts/lib/dispatch_state_cleanup.py CLI 幂等清理。(3) .claude/hooks/dispatch_precheck.py：解析 stdin → tool_name=Agent → prompt → fid → req_dir → features.json → with flock_state_file: B-1/B-2/B-3 校验 → write state；顶层 try/except Exception 兜底转 sys.exit(0) 防自锁；status source-of-truth=tasks/<fid>.md frontmatter；测试 backdoor env CLAUDE_DISPATCH_TEST_REQ_DIR_OVERRIDE。(4) .claude/hooks/pre-tool-use-guard.sh 加 Agent case（exec 透传 + heredoc 二次喂 stdin）；不加 touches_guard（F-005）。(5) .claude/settings.json matcher 加 |Task（最后一步，等所有兜底验证完成）。bats 20 用例全绿（14 fail-open + 4 BLOCKED + 2 DISPATCH OK）；既有 guard.sh 32 用例无回归。沙盒 e2e TC-F4-3/4/5 全过（REQ-2099-101/102/103，rm -rf 清干净）。",
+  "commits": [
+    "999468cd7d70ed446989992040271e377a4c321e",
+    "e63eb5254ef6dcfb824fe8f3ce9e1e09e19018ce",
+    "760cd054939ea2ea1db5fcf638705487acfe35e3",
+    "3973c7fe20b4d9d080916ce43a4406863e1da672",
+    "47bcde8bf1d7b1b1f48794db1cc67fea5c4b2809"
+  ],
+  "files_changed": [
+    "scripts/lib/dispatch_state.py",
+    "scripts/lib/dispatch_state_cleanup.py",
+    ".claude/hooks/dispatch_precheck.py",
+    ".claude/hooks/pre-tool-use-guard.sh",
+    ".claude/settings.json",
+    "tests/lib/test_dispatch_state.py",
+    "tests/hooks/test_dispatch_precheck.bats"
+  ],
+  "test_summary": "pytest tests/lib/test_dispatch_state.py → 16 passed in 6.37s（TL-001~TL-010 全覆盖，含 TL-006 多进程并发 / TL-009 TOCTOU 回归 / TL-010 单 with 块原子）。bats tests/hooks/test_dispatch_precheck.bats → 20 ok（fail-open 14 场景 + B-1/B-1b/B-2/B-3 BLOCKED + DISPATCH OK + 同 feature 重派）。bats tests/hooks/test_pre_tool_use_guard.bats → 32 ok（guard.sh 既有用例无回归）。手工 sanity：14 路 malformed stdin（含 BOM / 空 / 非法 JSON / null / array / dict 缺字段）全部 exit=0；TC-F4-3/4/5 沙盒 e2e（REQ-2099-101 deps 未 done / REQ-2099-102 并发派 / REQ-2099-103 in-progress 串行约束）三场景 BLOCKED 行为符合预期。",
+  "touches_violations": [],
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "commit_sha": "47bcde8bf1d7b1b1f48794db1cc67fea5c4b2809",
+  "timestamp": "2026-05-06T16:00:00+08:00"
+}
