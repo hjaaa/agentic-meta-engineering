@@ -23,7 +23,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash|Edit|Write|MultiEdit",
+        "matcher": "Bash|Edit|Write|MultiEdit|Task",
         "hooks": [{"type": "command", "command": ".claude/hooks/pre-tool-use-guard.sh"}]
       }
     ],
