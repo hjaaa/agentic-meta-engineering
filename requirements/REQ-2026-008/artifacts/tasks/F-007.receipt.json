@@ -42,7 +42,8 @@
     {
       "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-008/artifacts/tasks/F-007.md",
       "ts": "2026-05-06T11:39:10+00:00",
-      "tool": "Edit"
+      "tool": "Edit",
+      "note": "task md status pending → in-progress flip（主 Agent SKILL step 5 workflow 必需）；task md 自身不在 F-007 touches 是已知 SOP 盲点（reviewer round-1 follow-up #2）"
     }
   ],
   "concerns": [

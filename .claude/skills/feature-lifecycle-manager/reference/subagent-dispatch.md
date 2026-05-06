@@ -56,8 +56,8 @@ feature_id: F-xxx
 
 ## 你的任务
 
-1. 按上方上下文实现 F-xxx，严格限制在以下触及范围内：
-   <粘贴 touches 字段；若为空数组写"未声明 touches，保守处理：仅改与本 feature 直接相关的文件；任何越界写入会被 touches_guard.py 软记入 receipt"）
+1. 按上方上下文实现 F-xxx，严格限制在以下触及范围内（与 task .md frontmatter touches 一致）：
+   <粘贴 touches 字段；若为空数组写"未声明 touches，保守处理：仅改与本 feature 直接相关的文件；任何越界写入会被 touches_guard.py 软记入 receipt">
 
 2. 实现规范严格遵守（仓库根 CLAUDE.md + 项目 CLAUDE.md 已加载）：
    - 小步提交，先最小可行
