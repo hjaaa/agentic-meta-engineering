@@ -165,7 +165,7 @@ def _check_top_level_format(data: dict[str, Any], schema: dict[str, Any],
         value = data.get(field)
         if value is None or value == "":
             continue  # 空值由必填规则处理
-        if isinstance(rule, str) and rule.startswith("^"):
+        if isinstance(rule, str):
             if not isinstance(value, str) or not re.fullmatch(rule, value):
                 report.add(f"字段 {field} 值 {value!r} 不符合正则 {rule}")
 
