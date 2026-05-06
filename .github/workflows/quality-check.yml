@@ -45,7 +45,7 @@ jobs:
 
       # F-005：单元测试门禁；确保 gates/ 所有 plugin 测试全绿
       - name: pytest
-        run: pytest tests/gates/ -v
+        run: pytest tests/ --ignore=tests/benchmarks/ -v
 
       - name: Verify settings.json hook references exist
         run: |
