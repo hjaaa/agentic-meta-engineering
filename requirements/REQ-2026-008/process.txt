@@ -41,3 +41,4 @@
 2026-05-06 11:37:48 [development] F-001 派发（model=sonnet）
 2026-05-06 14:14:44 [development] F-001 完成（review-001 blocked → fix → review-002 looks_clean supersedes 001 / score 88）
 2026-05-06 14:16:18 [signoff] REV-REQ-2026-008-code-F-001-002 approved by hj19961223@gmail.com
+2026-05-06 14:17:19 [development] F-002 派发（model=sonnet）
