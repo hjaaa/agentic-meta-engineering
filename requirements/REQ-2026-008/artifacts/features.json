@@ -6,7 +6,6 @@
       "id": "F-001",
       "title": "receipt-schema + check_receipt + GATE-POST-DEV-RECEIPT",
       "description": "subagent 回执 JSON 三件套：(1) context/team/engineering-spec/receipt-schema.yaml 定义 schema_version=1.0 + 顶层 required_fields（feature_id / status / commit_sha / files_changed / test_summary / touches_violations / concerns / missing_context / block_reason / timestamp / schema_version）+ status enum=[DONE, DONE_WITH_CONCERNS, NEEDS_CONTEXT, BLOCKED]（detail-design §3.6 + §6.2 法定字段）；(2) scripts/lib/check_receipt.py 实现 SUPPORTED_VERSIONS 双层校验 + status 枚举 + 必填字段断言（detail-design §6.1 + §6.2）；(3) scripts/gates/plugins/post_dev_receipt.py 扫 tasks/F-xxx.md status=done 对应 receipt.json 必须存在 + status ∈ {DONE, DONE_WITH_CONCERNS}（detail-design §5.1 触发组：phase-transition / submit）；(4) registry.yaml 注册 GATE-POST-DEV-RECEIPT。先写 schema yaml + check_receipt 单测固化字段集，再写 plugin precheck 兼容历史无 receipt 路径自然过滤（V-07 D-006）。",
-      "status": "pending",
       "modules": [
         "context/team/engineering-spec/receipt-schema.yaml",
         "scripts/lib/check_receipt.py",
@@ -38,8 +37,7 @@
     {
       "id": "F-002",
       "title": "features-schema + check_features + GATE-FEATURES-SCHEMA",
-      "description": "features.json 强制 schema 化：(1) context/team/engineering-spec/features-schema.yaml 定义 top-level schema_version + requirement_id + features[]，每条 feature required={id,title,description,status,modules,depends_on,depends_on_features,complexity,touches,acceptance}，status enum=[pending,in-progress,done]，complexity enum=[trivial,light,medium,heavy]（detail-design §3.6 字段表）；(2) scripts/lib/check_features.py 双层 schema_version 校验 + 字段集 + 枚举断言；(3) scripts/gates/plugins/features_schema.py：applies_when.changed_files=['requirements/*/artifacts/features.json'] 自然过滤 historic（detail-design §5.1 + §5.3）；(4) registry.yaml 注册 GATE-FEATURES-SCHEMA（pre-commit / phase-transition / submit / ci 四触发组）。",
-      "status": "pending",
+      "description": "features.json 强制 schema 化：(1) context/team/engineering-spec/features-schema.yaml 定义 top-level schema_version + requirement_id + features[]，每条 feature required={id,title,description,modules,depends_on,depends_on_features,complexity,touches,acceptance}（status 不在 features-schema 内——dispatch_precheck 改读 tasks/F-xxx.md frontmatter status，避免 hash drift），complexity enum=[trivial,light,medium,heavy]（detail-design §3.6 字段表）；(2) scripts/lib/check_features.py 双层 schema_version 校验 + 字段集 + 枚举断言；(3) scripts/gates/plugins/features_schema.py：applies_when.changed_files=['requirements/*/artifacts/features.json'] 自然过滤 historic（detail-design §5.1 + §5.3）；(4) registry.yaml 注册 GATE-FEATURES-SCHEMA（pre-commit / phase-transition / submit / ci 四触发组）。",
       "modules": [
         "context/team/engineering-spec/features-schema.yaml",
         "scripts/lib/check_features.py",
@@ -72,7 +70,6 @@
       "id": "F-003",
       "title": "task-frontmatter-schema + check_task_frontmatter + GATE-TASK-FRONTMATTER",
       "description": "tasks/F-xxx.md frontmatter 强制 schema 化：(1) context/team/engineering-spec/task-frontmatter-schema.yaml 定义 required={feature_id,title,status,complexity,depends_on,touches,created_at,updated_at}，status/complexity 枚举与 features-schema 对齐（detail-design §3.6）；(2) scripts/lib/check_task_frontmatter.py 解析 markdown frontmatter（python-frontmatter 或 yaml.safe_load）+ 字段断言；(3) scripts/gates/plugins/task_frontmatter.py：applies_when.changed_files=['requirements/*/artifacts/tasks/*.md'] 自然过滤；(4) registry.yaml 注册 GATE-TASK-FRONTMATTER（同 features_schema 触发组）。注意：派发模板 feature-task.md.tmpl 必须先于 F-007 落地新增 touches 字段（来源：requirements/REQ-2026-008/notes.md:20），但模板归 F-007，本 feature 仅校验。",
-      "status": "pending",
       "modules": [
         "context/team/engineering-spec/task-frontmatter-schema.yaml",
         "scripts/lib/check_task_frontmatter.py",
@@ -104,7 +101,6 @@
       "id": "F-004",
       "title": "dispatch_precheck.py + dispatch_state.py 锁工具 + settings.json/guard.sh 接入",
       "description": "派发前置 PreToolUse hook 链：(1) scripts/lib/dispatch_state.py 实现 L1 公开 API `flock_state_file(req_dir)` 上下文管理器（fcntl.LOCK_EX）+ StateFileHandle.read/write，及 L2 简单函数 read_state/write_state/clear_state；TOCTOU 修复（D-008，detail-design §3.2 + §3.3）；(2) scripts/lib/dispatch_state_cleanup.py CLI 入口 `--req-dir`，幂等清理（detail-design §3.3 表）；(3) .claude/hooks/dispatch_precheck.py：tool_name 断言 == 'Agent'（D-007）；解析 prompt 首行 `^feature_id:\\s*(F-\\d{3})\\s*$`（D-005 #3 / D-007）；fail-open 7 场景（detail-design §2.4 表）+ BLOCKED 3 场景（B-1 status≠pending / B-2 depends_on 未 done / B-3 已有 current_feature）；调 dispatch_state.flock_state_file 单 with 块原子性（D-008）；(4) .claude/hooks/pre-tool-use-guard.sh 加 Task case 转发到 dispatch_precheck.py（detail-design §3.7）；(5) .claude/settings.json PreToolUse.matcher='Task'（fuzzy 匹配 Agent，D-007）。",
-      "status": "pending",
       "modules": [
         "scripts/lib/dispatch_state.py",
         "scripts/lib/dispatch_state_cleanup.py",
@@ -115,7 +111,11 @@
         "tests/hooks/test_dispatch_precheck.bats"
       ],
       "depends_on": [],
-      "depends_on_features": ["F-001", "F-002", "F-003"],
+      "depends_on_features": [
+        "F-001",
+        "F-002",
+        "F-003"
+      ],
       "estimate_days": 2.5,
       "complexity": "heavy",
       "touches": [
@@ -140,7 +140,6 @@
       "id": "F-005",
       "title": "touches_guard.py + plugins/touches_violation.py 双层拦截",
       "description": "touches 越界双层拦截（D-003）：(1) .claude/hooks/touches_guard.py：Edit/Write/MultiEdit 触发；读 .dispatch-state.json.current_feature；读 tasks/<current>.md frontmatter.touches；判断目标 file_path 是否匹配 touches glob；不匹配则 append 到 receipt.json.touches_violations[]（路径 + ts + tool）；不存在 receipt.json 时建空骨架（feature_id + schema_version + touches_violations[]，outline §3.4）；放行（不 exit 2，软拦截）；(2) .claude/hooks/pre-tool-use-guard.sh 加 Edit/Write case 转发到 touches_guard.py；(3) scripts/gates/plugins/touches_violation.py：phase-transition / submit 触发；扫 features.json 列出的 done feature 对应 receipt.json 任一 touches_violations[].length>0 → fail（硬拦截，outline §3.5）；(4) registry.yaml 注册 GATE-TOUCHES-VIOLATION。",
-      "status": "pending",
       "modules": [
         ".claude/hooks/touches_guard.py",
         ".claude/hooks/pre-tool-use-guard.sh",
@@ -150,7 +149,10 @@
         "tests/gates/test_touches_violation.py"
       ],
       "depends_on": [],
-      "depends_on_features": ["F-001", "F-004"],
+      "depends_on_features": [
+        "F-001",
+        "F-004"
+      ],
       "estimate_days": 1.5,
       "complexity": "medium",
       "touches": [
@@ -173,7 +175,6 @@
       "id": "F-006",
       "title": "CI quality-check.yml pytest 覆盖扩展",
       "description": "GitHub Actions quality-check 工作流扩展 pytest 覆盖到 tests/lib/ tests/integration/ tests/lifecycle/（tech-feasibility 已实证 603 passed / 8 skipped / 36s 零修复成本，来源：notes.md:21）。仅改 .github/workflows/quality-check.yml 一处（pytest 命令的 path 参数从 tests/gates/ 扩展到 tests/）。完全独立，可作为 PR 第一个 commit 让 CI 提前感知（outline §1.3 备注）。",
-      "status": "pending",
       "modules": [
         ".github/workflows/quality-check.yml"
       ],
@@ -194,7 +195,6 @@
       "id": "F-007",
       "title": "派发模板 + Skill 文档 + meta-schema legacy 注释收口",
       "description": "文档收口三处（V-09）：(1) .claude/skills/feature-lifecycle-manager/templates/feature-task.md.tmpl 加 frontmatter `touches: __TOUCHES__` 字段（detail-design §7 + notes.md:20）；(2) .claude/skills/feature-lifecycle-manager/reference/subagent-dispatch.md 派发 prompt 模板首行强制 `feature_id: F-xxx` 独占首行约束（D-005 #3 + D-007，detail-design §7.2）；(3) .claude/skills/feature-lifecycle-manager/SKILL.md 加 hook/gate 拦截标注；(4) .claude/skills/managing-requirement-lifecycle/SKILL.md 加 4 gate 说明；(5) .claude/skills/managing-requirement-lifecycle/reference/gate-checklist.md 重生成（scripts/gates/migration/render-docs.py 自动生成）；(6) context/team/engineering-spec/meta-schema.yaml legacy 字段 +1 行注释（『不豁免本次新增的 4 个派发链 gate』，plan.md:88 + detail-design §6.2）。",
-      "status": "pending",
       "modules": [
         ".claude/skills/feature-lifecycle-manager/SKILL.md",
         ".claude/skills/feature-lifecycle-manager/reference/subagent-dispatch.md",
@@ -205,7 +205,13 @@
         "tests/skills/test_feature_task_template.py"
       ],
       "depends_on": [],
-      "depends_on_features": ["F-001", "F-002", "F-003", "F-004", "F-005"],
+      "depends_on_features": [
+        "F-001",
+        "F-002",
+        "F-003",
+        "F-004",
+        "F-005"
+      ],
       "estimate_days": 1.0,
       "complexity": "medium",
       "touches": [
@@ -230,7 +236,6 @@
       "id": "F-008",
       "title": "V-01~V-09 沙盒 e2e + 自举回归",
       "description": "9 验收点全量沙盒回归 + 本需求自举（detail-design §2 / outline §5）：tests/integration/ 下新增 4 个 sandbox 测试用例与 1 个自举用例：(1) test_dispatch_precheck_sandbox.py：V-01 / V-04 / V-06 派发链拒绝路径；(2) test_post_dev_receipt_sandbox.py：V-02 phase-transition 阶段切换缺 receipt 拦截；(3) test_touches_violation_sandbox.py：V-03 越界双层（软+硬）；(4) test_schema_gates_sandbox.py：V-05 features-schema / task-frontmatter-schema 校验失败；(5) test_self_bootstrap.py：V-08 本需求自身 development → testing 切换通过（验证整链回归无破坏，含 V-07 historic REQ 路径自然隔离）。沙盒用 REQ-2099-NNN ID 隔离，跑完用 rm -r 清。",
-      "status": "pending",
       "modules": [
         "tests/integration/test_dispatch_precheck_sandbox.py",
         "tests/integration/test_post_dev_receipt_sandbox.py",
@@ -239,7 +244,15 @@
         "tests/integration/test_self_bootstrap.py"
       ],
       "depends_on": [],
-      "depends_on_features": ["F-001", "F-002", "F-003", "F-004", "F-005", "F-006", "F-007"],
+      "depends_on_features": [
+        "F-001",
+        "F-002",
+        "F-003",
+        "F-004",
+        "F-005",
+        "F-006",
+        "F-007"
+      ],
       "estimate_days": 2.0,
       "complexity": "heavy",
       "touches": [

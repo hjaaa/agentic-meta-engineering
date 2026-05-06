@@ -166,6 +166,22 @@ guard.sh 顶部 `set -u` + `trap 'exit 0' ERR`（来源：.claude/hooks/pre-tool
   ❌ 不写其他文件、不读 reviews/、不调 gate
 ```
 
+### 2.1.1 状态字段读取约定（避免 review hash drift）
+
+**status 字段的 source-of-truth 是 `tasks/<feature_id>.md` frontmatter，不是 `features.json`。**
+
+设计动机（来源：requirements/REQ-2026-008/reviews/detail-design-004.json）round-004 reviewer 在 dimensions.data_model_soundness 标记 major：
+
+- features.json 是详细设计阶段产出的**静态计划文档**，被 detail-design 评审 hash 锁定（meta.yaml.reviews.detail-design.artifact_hashes）。
+- 若 status 写入 features.json，开发期 pending → in-progress → done 翻转会改 features.json sha256，触发 R005 stale → 每个 feature 完成都需要重审 detail-design（8 features = 8 次重审），明显超出设计预期。
+- 解法：把 status 字段从 features.json 移到 tasks/<feature_id>.md frontmatter；features.json 仅含静态字段（id / title / description / depends_on_features / touches / complexity / interfaces_frozen / estimate_days / acceptance）。
+
+**使用规范**：
+
+- `dispatch_precheck.py`（B-1 / B-2）从 `tasks/<fid>.md` frontmatter 读 status；features.json 只用于取 `feature_id` 列表与 `depends_on_features` 依赖图。
+- `post_dev_receipt.py` 扫"done feature"也以 `tasks/<fid>.md` frontmatter.status==done 为准。
+- `features-schema.yaml`（F-002）的 required_fields 不含 status；`task-frontmatter-schema.yaml`（F-003）的 required_fields 含 status enum=[pending, in-progress, done]。
+
 ### 2.2 fail-open 场景表（穷举）
 
 派发链的红线是"AI 不可被自由意志绕过"，但 dispatch_precheck **本身不应造成误伤**。所有"无法准确判定违规"的场景一律 fail-open exit 0：
@@ -189,8 +205,8 @@ guard.sh 顶部 `set -u` + `trap 'exit 0' ERR`（来源：.claude/hooks/pre-tool
 
 | # | 场景 | 检测点 | stderr BLOCKED 消息 |
 |---|---|---|---|
-| B-1 | features.json 中 feature 状态 ≠ "pending" | features[fid].status | `BLOCKED: F-xxx 状态为 <s>，期望 pending；如要重派需先回退状态。` |
-| B-2 | depends_on 列出的 feature 状态 ≠ "done" | features[fid].depends_on 遍历 | `BLOCKED: F-xxx 依赖 [F-aaa(s),F-bbb(s)] 未全部 done。` |
+| B-1 | 当前 feature 状态 ≠ "pending" | `tasks/<fid>.md` frontmatter.status（**source of truth**） | `BLOCKED: F-xxx 状态为 <s>，期望 pending；如要重派需先回退状态。` |
+| B-2 | depends_on_features 列出的前置 feature 状态 ≠ "done" | features.json `features[fid].depends_on_features` 拿依赖列表 → 各自 `tasks/<fid_dep>.md` frontmatter.status | `BLOCKED: F-xxx 依赖 [F-aaa(s),F-bbb(s)] 未全部 done。` |
 | B-3 | .dispatch-state.json 已有 current_feature 且不是本 feature_id | state["current_feature"] | `BLOCKED: 已有 F-yyy 派发中（acquired_at=<ts>），保守档串行约束禁止并发派 implementer。` |
 
 > B-1/B-2/B-3 的 stderr 都给"绕过指引"——`CLAUDE_GATES_GLOBAL_BYPASS="<原因>"` 紧急通道与 guard.sh 现有 BYPASS 机制对齐（来源：.claude/hooks/pre-tool-use-guard.sh:62）：dispatch_precheck.py 复用 guard.sh 的 BYPASS 处理路径——guard.sh 入口已校验完 `CLAUDE_GATES_GLOBAL_BYPASS` 后才进入 case 分发（来源：.claude/hooks/pre-tool-use-guard.sh:63），因此 Agent case 抵达时 BYPASS 已被吃掉并 exit 0；dispatch_precheck.py 自身**不再重复实现** BYPASS 校验。reason 长度 ≥ 8 的硬约束沿用 guard.sh main 函数（来源：.claude/hooks/pre-tool-use-guard.sh:70）。
@@ -207,11 +223,16 @@ guard.sh 顶部 `set -u` + `trap 'exit 0' ERR`（来源：.claude/hooks/pre-tool
   │      └─ git rev-parse --abbrev-ref HEAD → 匹配 meta.yaml.branch
   │      └─ 失败 fail-open（视同 features.json 不存在场景 5）
   ├─[6] features.json 读 → 解析 / 不存在 fail-open（场景 5/6）
+  │      用途：取 feature_id 列表（[7]）+ depends_on_features 依赖图（[8c]）；**status 字段不在 features.json**
   ├─[7] feature_id ∈ features → 否则 fail-open（场景 7）
   ├─[8] with dispatch_state.flock_state_file(req_dir) as fh:   ← **同一把锁内**完成读+校验+写
   │      ├─[8a] state = fh.read()                                # 锁内读，禁止用 read_state（会取第二把锁）
   │      ├─[8b] 校验 status == "pending"（B-1）
-  │      ├─[8c] 校验 depends_on 全 done（B-2）
+  │             ├─ 读 tasks/<fid>.md frontmatter.status（**source of truth**，非 features.json）
+  │             └─ 不存在 / parse fail / 缺 status → fail-open（视同未派发过）
+  │      ├─[8c] 校验 depends_on_features 全 done（B-2）
+  │             ├─ 取 features[fid].depends_on_features → 列表
+  │             └─ 对每个 dep_fid → 读 tasks/<dep_fid>.md frontmatter.status；任一非 done → BLOCKED
   │      ├─[8d] 校验 state["current_feature"] is None or == feature_id（B-3）
   │      ├─[8e] 三校验任一失败 → 释放锁（with 自动）→ exit 2 + BLOCKED stderr
   │      └─[8f] 三校验全过 → fh.write(...)（current_feature=feature_id, acquired_at=now, acquired_by_pid=os.getpid()）
@@ -598,7 +619,7 @@ SUPPORTED_VERSIONS: frozenset[str] = frozenset({"1.0"})
 | schema 文件 | 数据载荷 | 当前 SUPPORTED_VERSIONS | 演化触发 |
 |---|---|---|---|
 | receipt-schema.yaml | `tasks/<F-xxx>.receipt.json` | `{"1.0"}` | status 枚举变化 / conditional_required 变化 |
-| features-schema.yaml | `artifacts/features.json` | `{"1.0"}` | status / complexity 枚举调整 / depends_on 语义变更 |
+| features-schema.yaml | `artifacts/features.json` | `{"1.0"}` | complexity 枚举调整 / depends_on_features 语义变更（**注**：status 字段不在 features-schema 内——见 §2.1.1 状态字段读取约定） |
 | task-frontmatter-schema.yaml | `tasks/<F-xxx>.md` frontmatter | `{"1.0"}` | required 字段增减（如新增 review_round 等） |
 
 **升级 SOP**（写进各 schema 文件顶部注释）：
@@ -648,7 +669,7 @@ format:
     - phase-transition
     - submit
   applies_when:
-    changed_files: []           # 无 path 限定（features.json status 才是触发条件，但走 plugin precheck）
+    changed_files: []           # 无 path 限定（tasks/<fid>.md status=done 才是触发条件，但走 plugin precheck）
     target_phase: testing       # 仅 phase-transition development → testing 时命中
     current_phase_in:
       - development
