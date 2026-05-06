@@ -18,3 +18,4 @@
 2026-05-06 09:31:26 [signoff] REV-REQ-2026-008-outline-design-002 approved by hj19961223@gmail.com
 2026-05-06 09:33:52 [save] outline-design 全闭环：outline.md 落地 + review 002 looks_clean 92 signoff approved；待切 detail-design
 2026-05-06 09:37:50 [phase-transition] outline-design → detail-design（7 gates 全过；plan-freshness 无 warning）
+2026-05-06 09:44:36 [save] detail-design 首日 #2 实采样闭环：tool_name=Agent（非 Task）/ prompt+subagent_type 命中 / D-007 落地

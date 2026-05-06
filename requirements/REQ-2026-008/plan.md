@@ -91,6 +91,22 @@
   - 单测目录已就绪，tech-research 阶段无需再调研测试落位，可直接对齐 `scripts/lib/check_*.py` 的伴随测试形态。
 - **时间**：2026-05-05 22:50:00
 
+### D-007 PreToolUse Task 派发的 stdin schema 实采样结果（detail-design 待办 #2 闭环）
+- **Context**：outline-design §3.2 假设 `tool_name = "Task"` + `tool_input.prompt` + `tool_input.subagent_type`，但未实测。detail-design 首日必须用最小 hook 抓一次真实 stdin 确认字段名（来源：requirements/REQ-2026-008/artifacts/outline-design.md:485）。
+- **采样方法**：临时在 `.claude/settings.local.json` 加 `PreToolUse.matcher="Task"` → 调用 `/tmp/trace-task-precheck.sh`（`cat > /tmp/task-precheck-stdin.json; exit 0`）；派一次最简 Explore subagent 触发；读捕获文件后还原配置 + 删 tmp 文件。
+- **Decision**（实测 schema 取代假设）：
+  - **`tool_name = "Agent"`**（不是 `"Task"`）—— `dispatch_precheck.py` 拒绝标准必须以 `tool_name == "Agent"` 为准；matcher 配置仍写 `"Task"` 即可命中（Claude Code 端 fuzzy 匹配将 `Task` matcher 映射到 `Agent` 工具）。
+  - **`tool_input.prompt`** ✅ 命中（string，含完整派发文本）—— §3.2 的 regex `^feature_id:\s*(F-\d{3})\s*$` 解析路径成立。
+  - **`tool_input.subagent_type`** ✅ 命中（string）—— depends_on 校验路径成立。
+  - **额外字段**：`tool_input.description`（string，short title）+ 顶层 `session_id` / `transcript_path` / `cwd` / `permission_mode` / `hook_event_name` / `tool_use_id` —— detail-design 可用作 dispatch_precheck 审计附属字段。
+  - **派发模板硬约束（D-005 #3 强化）**：`feature_id: F-xxx` 必须**独占 prompt 首行**且行首无任何前缀；本次试采样把 `feature_id` 放在了 `DISPATCH-TRACE-SAMPLE:` 之后同一行，§3.2 的 `^feature_id:` regex 会失败 → `feature-task.md.tmpl` + `subagent-dispatch.md` 模板必须强制首行独立行格式。
+- **Consequences**：
+  - outline-design §3.2 的 `{"tool_name": "Task", ...}` 字面量需在 detail-design 改为 `{"tool_name": "Agent", ...}`；hook matcher 字符串保留 `"Task"`（Claude Code 兼容路径）。
+  - `dispatch_precheck.py` 实现层在校验前先断言 `tool_name == "Agent"`；非 Agent 调用直接 fail-open exit 0 放行。
+  - `feature-task.md.tmpl` / `subagent-dispatch.md` 派发模板 detail-design 必补"`feature_id: F-xxx` 独占首行"约束 + 单测验证（解析失败用例）。
+  - 实采样配置（settings.local.json hooks 字段 + tmp 脚本）已立刻清理，工作区 + agent 配置回到采样前等价状态；不进 git。
+- **时间**：2026-05-06 09:42:00
+
 ### D-006 V-07 验收点措辞修订：从"legacy 短路"改为"路径自然隔离"
 - **Context**：tech-research 阶段（tech-feasibility.md §2.7）发现 V-07 原措辞"新 4 个 gate 在 legacy=true 时短路返回 pass"与 D-005 #2 决议"4 个新 gate 不纳入 legacy 豁免"自相矛盾。reviewer 在 definition 阶段未捕获此内部不一致。复核 `scripts/gates/run.py:343` 的 legacy grandfather 实现——只对带 `legacy-bypass` tag 的 gate 生效；新 4 个 gate 按 D-005 #2 不加此 tag，因此 V-07 描述的"短路"路径根本不存在。
 - **Decision**：把 V-07 措辞改为"新 4 个 gate 因 trigger / changed_files / target_phase 等 applies_when 自然过滤，不在 ci 通道命中"——历史 completed 需求由 trigger 与 changed_files 路径自然隔离，**不依赖 legacy 短路**。
