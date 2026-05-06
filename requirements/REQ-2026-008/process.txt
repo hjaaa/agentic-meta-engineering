@@ -33,3 +33,4 @@
 2026-05-06 11:01:32 [review:looks_clean] detail-design-quality-reviewer round-004 supersedes 003（features.json 三件齐 + 1 major 标 status hash drift）
 2026-05-06 11:01:32 [review:looks_clean] detail-design-quality-reviewer round-005 supersedes 004（status 移出 features.json + §2.1.1 锁 source-of-truth，major 闭合）
 2026-05-06 11:01:42 [signoff] REV-REQ-2026-008-detail-design-005 approved by hj19961223@gmail.com
+2026-05-06 11:03:26 [save] task-planning 全闭环：8 features + 8 tasks 落地；round-005 修复 round-004 status hash drift major；待切 development
