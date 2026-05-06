@@ -13,3 +13,5 @@
 2026-05-06 09:07:45 [phase-transition] tech-research → outline-design（7 gates 全过；plan-freshness 无 warning）
 2026-05-06 09:17:19 [save] outline-design：outline-design.md 落地（4 层视图 / 8 features DAG / 3 时序 / T-01 展开 / 13 detail-design 待办，strict sourcing 0/0）
 2026-05-06 09:24:16 [save] outline-design：round-001 review needs_attention 5 项修订（major 触发组对齐 + receipt 骨架/glob 收口 + #24 V-07 标已完成 + 待澄清#1 合并）
+2026-05-06 09:27:24 [review:needs_attention] outline-design-quality-reviewer round-001 score 86（1 major 触发组矛盾 + 4 minor）
+2026-05-06 09:27:25 [review:looks_clean] outline-design-quality-reviewer round-002 score 92 supersedes 001（5 项修订全关单 + 1 cosmetic suggestion）
