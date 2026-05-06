@@ -40,8 +40,11 @@ SCHEMA_PATH = _REPO_ROOT / "context" / "team" / "engineering-spec" / "receipt-sc
 #   - 破坏性升级（1.x→2.0）：集合替换为 {"1.x","2.0"}；过期后剔除旧版本
 SUPPORTED_VERSIONS: frozenset[str] = frozenset({"1.0"})
 
-# status 合法枚举值
-_VALID_STATUSES = frozenset({"DONE", "DONE_WITH_CONCERNS", "NEEDS_CONTEXT", "BLOCKED"})
+
+# ---------- 自定义异常 ----------
+
+class SchemaLoadError(RuntimeError):
+    """schema 文件无法加载或 L1 校验失败（schema 文件自身被破坏）。"""
 
 
 # ---------- 工具函数 ----------
@@ -49,29 +52,25 @@ _VALID_STATUSES = frozenset({"DONE", "DONE_WITH_CONCERNS", "NEEDS_CONTEXT", "BLO
 def _load_schema() -> dict[str, Any]:
     """读 receipt-schema.yaml 并断言 L1 schema_version == "1.0"。
 
-    失败时 exit 2（schema 文件自身被破坏）。
+    失败时抛 SchemaLoadError（库函数不 sys.exit；CLI 入口 main() 负责捕获并 exit 2）。
+    plugin 调用方应捕获 SchemaLoadError，不再需要 except SystemExit。
     """
     if not SCHEMA_PATH.exists():
-        print(f"错误：schema 文件不存在：{SCHEMA_PATH}", file=sys.stderr)
-        sys.exit(2)
+        raise SchemaLoadError(f"schema 文件不存在：{SCHEMA_PATH}")
     try:
         with SCHEMA_PATH.open("r", encoding="utf-8") as f:
             schema = yaml.safe_load(f)
     except Exception as exc:  # noqa: BLE001
-        print(f"错误：schema 文件解析失败：{exc}", file=sys.stderr)
-        sys.exit(2)
+        raise SchemaLoadError(f"schema 文件解析失败：{exc}") from exc
     if not isinstance(schema, dict):
-        print("错误：schema 文件顶层不是 mapping", file=sys.stderr)
-        sys.exit(2)
+        raise SchemaLoadError("schema 文件顶层不是 mapping")
     # L1 断言：schema 文件自身版本必须是 "1.0"
     sv = schema.get("schema_version")
     if sv != "1.0":
-        print(
-            f"错误：schema 文件 schema_version={sv!r} ≠ '1.0'，"
-            "schema 文件可能被破坏或与当前 check_receipt.py 不匹配",
-            file=sys.stderr,
+        raise SchemaLoadError(
+            f"schema 文件 schema_version={sv!r} ≠ '1.0'，"
+            "schema 文件可能被破坏或与当前 check_receipt.py 不匹配"
         )
-        sys.exit(2)
     return schema
 
 
@@ -130,6 +129,11 @@ class _ErrorReport:
     def has_errors(self) -> bool:
         return len(self._errors) > 0
 
+    @property
+    def errors(self) -> list[str]:
+        """返回错误列表的副本（避免外部 mutate 内部状态）。"""
+        return list(self._errors)
+
     def print_all(self, file_label: str) -> None:
         """把所有错误输出到 stderr（含文件路径、字段名、期望 vs 实际）。"""
         for err in self._errors:
@@ -178,9 +182,6 @@ def _check_required_fields(data: dict[str, Any], schema: dict[str, Any],
     for field in non_schema_version:
         if field not in data:
             report.add(f"字段 {field} 必填，当前缺失")
-        elif field not in allow_empty and _is_empty(data.get(field)):
-            # files_changed / touches_violations 可以是 []（空列表合法），不强制非空
-            pass
 
 
 def _check_enums(data: dict[str, Any], schema: dict[str, Any],
@@ -217,9 +218,8 @@ def _check_format(data: dict[str, Any], schema: dict[str, Any],
                     "（示例：2026-05-01T12:00:00+08:00）"
                 )
         elif isinstance(rule, str) and rule.startswith("^"):
-            if not isinstance(value, str) or not re.fullmatch(rule[1:-1] if rule.endswith("$") else rule, value):
-                if not isinstance(value, str) or not re.match(rule, value):
-                    report.add(f"字段 {field} 值 {value!r} 不符合正则 {rule}")
+            if not isinstance(value, str) or not re.fullmatch(rule, value):
+                report.add(f"字段 {field} 值 {value!r} 不符合正则 {rule}")
 
 
 def _check_conditional(data: dict[str, Any], schema: dict[str, Any],
@@ -266,6 +266,15 @@ def validate(data: dict[str, Any], schema: dict[str, Any], file_label: str) -> _
       [3] enums
       [4] format
       [5] conditional_required
+
+    Args:
+        data: receipt.json 解析后的 dict，须经过 `_load_receipt()` 校验（顶层必须是 dict）。
+        schema: `_load_schema()` 返回值，顶层 schema_version 已通过 L1 断言。
+        file_label: 仅用于错误消息标签（不做路径操作），通常传 str(receipt_path)。
+
+    Returns:
+        _ErrorReport 实例；report.has_errors 为 True 时表示存在校验错误，
+        调用 report.errors 获取错误列表，report.print_all() 输出到 stderr。
     """
     report = _ErrorReport()
     _check_schema_version(data, report, file_label)
@@ -285,7 +294,11 @@ def main() -> int:
         sys.exit(2)
 
     receipt_path = Path(sys.argv[1])
-    schema = _load_schema()           # 失败时内部 exit 2
+    try:
+        schema = _load_schema()
+    except SchemaLoadError as exc:
+        print(f"错误：{exc}", file=sys.stderr)
+        sys.exit(2)
     data = _load_receipt(receipt_path)  # 失败时内部 exit 1
 
     file_label = str(receipt_path)

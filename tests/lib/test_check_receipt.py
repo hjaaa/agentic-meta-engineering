@@ -16,7 +16,6 @@
 from __future__ import annotations
 
 import json
-import subprocess
 import sys
 from pathlib import Path
 
@@ -27,7 +26,6 @@ import yaml
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _CHECK_RECEIPT = _REPO_ROOT / "scripts" / "lib" / "check_receipt.py"
-_FIXTURES_DIR = Path(__file__).parent / "fixtures" / "receipt"
 
 # 注入 scripts/lib 到 sys.path（与其他 tests/lib/ 下的测试一致）
 _LIB_DIR = _REPO_ROOT / "scripts" / "lib"
@@ -91,7 +89,6 @@ def _valid_schema() -> dict:
 
 
 # ---------- 导入被测模块（设置 SCHEMA_PATH 前先 import，再 monkeypatch） ----------
-import importlib
 import check_receipt as _cr_mod  # noqa: E402（conftest.py 已注入 sys.path）
 
 
@@ -222,26 +219,25 @@ def test_ts003_supported_schema_version_passes(tmp_path, monkeypatch):
 
 # ======================== TS-004: schema 文件自身 schema_version ≠ "1.0" → exit 2 ========================
 
-def test_ts004_schema_file_bad_version_exits_2(tmp_path, monkeypatch):
-    """TS-004：schema 文件 schema_version='2.0' → _load_schema() exit 2（schema 损坏）。
+def test_ts004_schema_file_bad_version_raises_schema_load_error(tmp_path, monkeypatch):
+    """TS-004：schema 文件 schema_version='2.0' → _load_schema() 抛 SchemaLoadError（schema 损坏）。
 
-    详细设计 §4.5 TS-004。使用 CLI subprocess 验证 exit code 2。
+    详细设计 §4.5 TS-004。
+    F-11 修复后：_load_schema() 是库函数，失败时抛 SchemaLoadError 而非 sys.exit(2)；
+    CLI main() 负责捕获并 exit 2。
     """
     bad_schema = _valid_schema()
     bad_schema["schema_version"] = "2.0"
     schema_file = tmp_path / "receipt-schema.yaml"
     _write_yaml(schema_file, bad_schema)
 
-    receipt_file = tmp_path / "F-001.receipt.json"
-    _write_json(receipt_file, _valid_receipt())
-
-    # 通过环境变量注入 schema 路径（CLI 模式）
-    # check_receipt.py 用 SCHEMA_PATH 常量，需 monkeypatch 注入 SCHEMA_PATH 后调 _load_schema()
     monkeypatch.setattr(_cr_mod, "SCHEMA_PATH", schema_file)
 
-    with pytest.raises(SystemExit) as exc_info:
+    with pytest.raises(_cr_mod.SchemaLoadError) as exc_info:
         _cr_mod._load_schema()
-    assert exc_info.value.code == 2, f"期望 exit 2，实际：{exc_info.value.code}"
+    assert "1.0" in str(exc_info.value) or "2.0" in str(exc_info.value), (
+        f"SchemaLoadError 消息应含版本信息，实际：{exc_info.value}"
+    )
 
 
 # ======================== TS-005: schema_version = "1.0.0"（多余 patch 段） ========================

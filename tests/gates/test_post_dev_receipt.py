@@ -16,9 +16,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-import yaml
-
 from plugins.base import Decision, GateContext, Skip
 from plugins import post_dev_receipt as plugin_mod
 

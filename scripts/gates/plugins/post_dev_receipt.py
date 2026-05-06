@@ -14,11 +14,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from pathlib import Path
 from typing import Optional
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _LIB_DIR = _REPO_ROOT / "scripts" / "lib"
@@ -98,13 +101,14 @@ class PostDevReceiptGate(Gate):
             )
 
         features_json = req_dir / "artifacts" / "features.json"
-        feature_ids = _load_feature_ids(features_json)
+        feature_ids, parse_err = _load_feature_ids(features_json)
         if feature_ids is None:
+            err_detail = f"：{parse_err}" if parse_err else ""
             return Report(
                 gate_id=self.id,
                 decision=Decision.FAIL,
                 code="R-FEATURES-PARSE",
-                message=f"features.json 解析失败：{features_json}",
+                message=f"features.json 解析失败：{features_json}{err_detail}",
                 fix_hint="确认 features.json 存在且 JSON 格式合法",
             )
 
@@ -156,18 +160,20 @@ def _resolve_req_dir(ctx: GateContext) -> Optional[Path]:
     return None
 
 
-def _load_feature_ids(features_json: Path) -> Optional[list[str]]:
-    """读 features.json，返回 feature_id 列表；失败返回 None。
+def _load_feature_ids(features_json: Path) -> tuple[list[str] | None, str | None]:
+    """读 features.json，返回 (feature_id 列表, 错误信息) 元组。
 
     features.json 结构（来自 features-schema.yaml 设计）：
       {"features": [{"id": "F-001", ...}, ...]}
     或列表形式 [{"id": "F-001", ...}, ...]。
+
+    返回：(ids, None) 成功；(None, error_msg) 失败（含原始异常信息）。
     """
     try:
         with features_json.open("r", encoding="utf-8") as f:
             data = json.load(f)
-    except (OSError, json.JSONDecodeError):
-        return None
+    except (OSError, json.JSONDecodeError) as exc:
+        return None, str(exc)
 
     # 兼容两种格式：顶层 dict.features 或 直接列表
     if isinstance(data, dict):
@@ -175,13 +181,13 @@ def _load_feature_ids(features_json: Path) -> Optional[list[str]]:
     elif isinstance(data, list):
         features = data
     else:
-        return None
+        return None, "features.json 顶层既非 dict 也非 list"
 
     ids = []
     for item in features:
         if isinstance(item, dict) and "id" in item:
             ids.append(item["id"])
-    return ids
+    return ids, None
 
 
 def _read_task_frontmatter_status(task_md: Path) -> Optional[str]:
@@ -257,20 +263,21 @@ def _validate_receipt_file(fid: str, receipt_path: Path) -> Optional[str]:
     """
     try:
         schema = check_receipt._load_schema()
-    except SystemExit:
-        # _load_schema 内部 exit 2 → 这里捕获后转为 fail 描述
-        return f"{fid}: receipt-schema.yaml 加载失败（schema 文件损坏）"
+    except check_receipt.SchemaLoadError as exc:
+        logger.exception("post_dev_receipt: schema 加载失败，fid=%s", fid)
+        return f"{fid}: receipt-schema.yaml 加载失败（schema 文件损坏）：{exc}"
 
     try:
         with receipt_path.open("r", encoding="utf-8") as f:
             data = json.load(f)
     except (OSError, json.JSONDecodeError) as exc:
+        logger.exception("post_dev_receipt: receipt.json 读取/解析失败，fid=%s", fid)
         return f"{fid}: receipt.json 读取/解析失败：{exc}"
 
     report = check_receipt.validate(data, schema, str(receipt_path))
     if report.has_errors:
         # 取第一条错误用于 failure_message
-        errors = report._errors
+        errors = report.errors
         first = errors[0] if errors else "未知错误"
         extra = f"（共 {len(errors)} 条）" if len(errors) > 1 else ""
         return f"{fid}: receipt.json 校验失败：{first}{extra}"
