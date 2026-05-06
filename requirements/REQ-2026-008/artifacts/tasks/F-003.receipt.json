@@ -2,9 +2,10 @@
   "schema_version": "1.0",
   "feature_id": "F-003",
   "status": "DONE",
-  "summary": "F-003 三件套实现完成：task-frontmatter-schema.yaml + check_task_frontmatter.py + GATE-TASK-FRONTMATTER。23 个测试全绿，schema 注册成功，INDEX.md 已登记。ADR：schema_version 列为 required（不软兼容缺失），F-007 负责模板注入。",
+  "summary": "F-003 三件套实现完成，review-001 修复已应用：(1) F-5 自举修复——F-003.md frontmatter 补 schema_version: \"1.0\"；(2) F-3 可观测性——_parse_frontmatter_safe 四个出错路径全加 logger（OSError/无起始标记/无结束标记/YAMLError）；(3) F-10 去引号——-> dict | str 注解去除冗余字符串引号；(4) F-2 follow-up 写入 notes.md。23 个测试全绿，post-dev gate exit 0。",
   "commits": [
-    "7ab7a8a8bad13ad97a42928667d8038263b1d8e4"
+    "7ab7a8a8bad13ad97a42928667d8038263b1d8e4",
+    "78c5b6aca2ec4ae0c0afe486c56a880903a7373e"
   ],
   "files_touched": [
     "context/team/engineering-spec/task-frontmatter-schema.yaml",
@@ -13,14 +14,16 @@
     "scripts/gates/registry.yaml",
     "tests/lib/test_check_task_frontmatter.py",
     "tests/gates/test_task_frontmatter.py",
-    "context/team/engineering-spec/INDEX.md"
+    "context/team/engineering-spec/INDEX.md",
+    "requirements/REQ-2026-008/artifacts/tasks/F-003.md",
+    "requirements/REQ-2026-008/notes.md"
   ],
   "tests_passed": true,
-  "test_summary": "pytest tests/lib/test_check_task_frontmatter.py tests/gates/test_task_frontmatter.py -v → 23 passed in 0.10s。覆盖 TC-F3-1 三用例 + TS-001..TS-005 + happy path + gate Skip/fail/pass 全套 fixture。",
+  "test_summary": "python3 -m pytest tests/lib/test_check_task_frontmatter.py tests/gates/test_task_frontmatter.py -v → 23 passed in 0.08s。覆盖 TC-F3-1 三用例 + TS-001..TS-005 + happy path + gate Skip/fail/pass 全套 fixture。修 logger 后行为不变，测试无破坏。",
   "touches_violations": [],
   "concerns": [],
   "missing_context": "",
   "block_reason": "",
-  "commit_sha": "7ab7a8a8bad13ad97a42928667d8038263b1d8e4",
-  "timestamp": "2026-05-06T17:30:00+08:00"
+  "commit_sha": "78c5b6aca2ec4ae0c0afe486c56a880903a7373e",
+  "timestamp": "2026-05-06T18:20:00+08:00"
 }
