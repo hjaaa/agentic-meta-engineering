@@ -61,5 +61,11 @@
       "complexity 分布稳定：1 trivial（F-006）+ 5 medium + 2 heavy（F-004 / F-008），estimate_days 总和 11.75 与 tech-feasibility §6 工作量预估对齐。",
       "F-006 / F-008 interfaces_frozen=false 合理（yml 单行改 / 沙盒 e2e 测试集合，非接口产物）。"
     ]
+  },
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-06T11:01:42.197883+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
   }
 }

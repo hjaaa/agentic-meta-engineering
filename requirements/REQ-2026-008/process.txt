@@ -32,3 +32,4 @@
 2026-05-06 10:49:45 [save] task-planning：features.json 8 features 落地（DAG 闭包过 / 11.75 人天 / interfaces_frozen 6/8）+ tasks/F-001~F-008.md 渲染（pending 状态）
 2026-05-06 11:01:32 [review:looks_clean] detail-design-quality-reviewer round-004 supersedes 003（features.json 三件齐 + 1 major 标 status hash drift）
 2026-05-06 11:01:32 [review:looks_clean] detail-design-quality-reviewer round-005 supersedes 004（status 移出 features.json + §2.1.1 锁 source-of-truth，major 闭合）
+2026-05-06 11:01:42 [signoff] REV-REQ-2026-008-detail-design-005 approved by hj19961223@gmail.com
