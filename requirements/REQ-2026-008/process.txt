@@ -64,3 +64,6 @@
 2026-05-06 16:57:10 [blocker-resolved] 回滚 F-005.md status→pending；按 SKILL.md 顺序重派 → 派完后再 flip in-progress
 2026-05-06 17:29:30 [review:needs_attention] code-quality-reviewer round-001 score 78（0 critical / 1 major: F-4+F-5 receipt.json RMW 锁分层盲点 / 2 minor: F-6 TimeoutError audit + F-7 gate LOCK_SH；drop 3: F-1/F-2/F-3 dev-time 威胁模型 + 链路兜底）
 2026-05-06 17:31:04 [save] F-005 dev DONE + review-001 needs_attention 78（1 major receipt.json 锁盲点 + 2 minor + drop 3）；待选 round-2/signoff
+2026-05-06 19:21:12 [review:looks_clean] code-quality-reviewer round-002 score 91 supersedes 001（F-4/F-6/F-7 三件套修复闭环 + ADR D-012 + 并发回归测试 TL-RC-001~003；3 候选 finding 全 critic rejected → drop）
+2026-05-06 19:22:24 [signoff] REV-REQ-2026-008-code-F-005-002 approved by hj19961223@gmail.com
+2026-05-06 19:23:03 [development] F-005 完成（review-001 needs_attention 78 → fix(F-4 RMW 锁 + F-6 audit + F-7 LOCK_SH + ADR D-012) → review-002 looks_clean 91 supersedes 001 / signoff approved）

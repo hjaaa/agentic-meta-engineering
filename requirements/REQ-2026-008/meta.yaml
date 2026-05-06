@@ -212,12 +212,13 @@ reviews:
       F-005:
         history:
           - REV-REQ-2026-008-code-F-005-001
-        latest: REV-REQ-2026-008-code-F-005-001
-        conclusion: needs_attention
-        reviewed_commit: 575112c
+          - REV-REQ-2026-008-code-F-005-002
+        latest: REV-REQ-2026-008-code-F-005-002
+        conclusion: looks_clean
+        reviewed_commit: 3f1b495
         artifact_hashes:
           artifacts/features.json: 
-            a9762d30f3883ff75e525f68272bee4dac6aec96f2d38eb36683d366d80f8656
+            bc1e062777e361d3f1b2de6a5c6373ac6fd7b1714262333c8deafa4ce3b5d9e9
           artifacts/tasks/F-005.md: 
-            9e4abc6c76aa561ba3b8bd8650b12c249d6fefadb68ef24085c27b29f8da53e5
+            1220f4277bcfde9f32a6f7c43e1d3ea7be7f632cd57a8d7be5ef1c6804df02f9
         stale: false
