@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-003",
+  "status": "DONE",
+  "summary": "F-003 三件套实现完成：task-frontmatter-schema.yaml + check_task_frontmatter.py + GATE-TASK-FRONTMATTER。23 个测试全绿，schema 注册成功，INDEX.md 已登记。ADR：schema_version 列为 required（不软兼容缺失），F-007 负责模板注入。",
+  "commits": [
+    "7ab7a8a8bad13ad97a42928667d8038263b1d8e4"
+  ],
+  "files_touched": [
+    "context/team/engineering-spec/task-frontmatter-schema.yaml",
+    "scripts/lib/check_task_frontmatter.py",
+    "scripts/gates/plugins/task_frontmatter.py",
+    "scripts/gates/registry.yaml",
+    "tests/lib/test_check_task_frontmatter.py",
+    "tests/gates/test_task_frontmatter.py",
+    "context/team/engineering-spec/INDEX.md"
+  ],
+  "tests_passed": true,
+  "test_summary": "pytest tests/lib/test_check_task_frontmatter.py tests/gates/test_task_frontmatter.py -v → 23 passed in 0.10s。覆盖 TC-F3-1 三用例 + TS-001..TS-005 + happy path + gate Skip/fail/pass 全套 fixture。",
+  "touches_violations": [],
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "commit_sha": "7ab7a8a8bad13ad97a42928667d8038263b1d8e4",
+  "timestamp": "2026-05-06T17:30:00+08:00"
+}
