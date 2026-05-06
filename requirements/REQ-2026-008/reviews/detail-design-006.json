@@ -1,0 +1,66 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-008-detail-design-006",
+  "requirement_id": "REQ-2026-008",
+  "phase": "detail-design",
+  "reviewer": "detail-design-quality-reviewer",
+  "reviewed_at": "2026-05-06 22:26:54",
+  "reviewed_commit": "50be493",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/detailed-design.md",
+      "sha256": "c60f58a1a8a8c9bcb731d9bea359b1327a69a23257afa54301c5f7f7fd38f6ed"
+    },
+    {
+      "path": "artifacts/features.json",
+      "sha256": "bac45d2081a046107db9b11fdc12bf3cb21d1d0cc4101bacb9b2ad3731f489c6"
+    },
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "f496d537801a1e65e9dbe420af04fd9bc76aea4ac2fef152c17990b6eb3153b6"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 92,
+  "dimensions": {
+    "consistency_with_outline": {
+      "score": 95,
+      "issues": []
+    },
+    "interface_completeness": {
+      "score": 92,
+      "issues": []
+    },
+    "data_model_soundness": {
+      "score": 95,
+      "issues": []
+    },
+    "sequence_correctness": {
+      "score": 92,
+      "issues": []
+    },
+    "feature_granularity": {
+      "score": 90,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "round-005 → round-006 唯一增量：F-005.touches 从 6 项扩到 10 项，新增 4 个测试文件（tests/hooks/test_touches_guard_concurrency.py / test_touches_guard_self_referential.py / test_touches_guard_whitelist.py / test_pre_tool_use_guard.bats）。增量与 plan.md D-012（receipt.json RMW 锁分层 → F-005 concurrency 测试，行 155-169）+ D-014（touches_guard 6 类过程产物白名单 + bats 隔离 → self_referential / whitelist / pre_tool_use_guard 单测，行 186-189）两条 ADR 严格对齐，属实施期发现细节的合规增量，未引入新设计意图。4 个文件物理存在 + 与 detailed-design §1.4 line 129『新增 5 用例延续 bats』预留口径兼容（pre_tool_use_guard.bats 是仓库既有 bats fixture 的扩展点）。",
+    "DAG 闭包回归（python 校验）：8 节点 F-001~F-008 无悬挂引用、无环；串行链 F-001→F-004→F-005→F-007→F-008 与 outline §1.3 一致；F-002/F-003 与 F-001 并行；F-006 独立。features-schema top-level（schema_version=1.0 / requirement_id=REQ-2026-008 / features[]）+ 8 条 feature 必填字段（id/title/description/modules/depends_on/depends_on_features/complexity/touches/acceptance）全齐。",
+    "保留 round-005 minor 项不复挑（F-005.modules 6 项 vs touches 10 项分叉、F-001/F-002/F-003 description 200+ 字、tasks frontmatter JSON vs YAML flow 风格）——modules 反映原始设计接口面，touches 反映实施期写入边界，features-schema 未约束二者等价，不构成 drift。F-007 文档收口阶段已完成，本轮不需要新增 required_fix。",
+    "下游联动确认：(a) GATE-REVIEW-VERDICT 重审后会以 commit 50be493 + 新 sha256（detailed-design c60f58a1 / outline f496d537 / features.json bac45d20）刷 reviewed_artifacts 字段，stale=true 应消除；(b) testing 切换通道阻塞解除；(c) 实施期 ADR D-012 / D-014 已闭环，未来如再出现实施细节扩 touches，照本轮模式增量评审即可。"
+  ],
+  "scope": null,
+  "supersedes": "REV-REQ-2026-008-detail-design-005",
+  "features_json_validation": {
+    "valid": true,
+    "issues": [],
+    "enhancement_suggestions": [
+      "features.json 仍含 complexity / depends_on_features / touches / interfaces_frozen 四项机读字段全齐，task-context-builder 阶段 7 派发可走最优策略（按 DAG 并行 + 按 complexity 选模型），无需进一步增强。",
+      "F-005.touches 实施期增量 4 项（concurrency / self_referential / whitelist / pre_tool_use_guard）与 plan.md D-012 / D-014 ADR 1:1 追溯，符合『features.json touches 补登记是实施期发现细节的合规增量』描述。建议下次类似实施期 touches 扩张同样在 plan.md ADR 里显式列出补登记清单（已遵守，作为最佳实践沉淀）。",
+      "complexity 分布稳定：1 trivial（F-006）+ 5 medium + 2 heavy（F-004 / F-008），estimate_days 总和 11.75 与 tech-feasibility §6 工作量预估对齐（与 round-005 一致，无变化）。",
+      "F-005.modules（6）vs F-005.touches（10）分叉作为 nice-to-have 已记录在 round-004/005 minor 项；features-schema 未约束二者等价，不影响 source-of-truth，不升级为 required_fix。"
+    ]
+  }
+}
