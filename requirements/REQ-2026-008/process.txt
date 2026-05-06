@@ -20,3 +20,4 @@
 2026-05-06 09:37:50 [phase-transition] outline-design → detail-design（7 gates 全过；plan-freshness 无 warning）
 2026-05-06 09:44:36 [save] detail-design 首日 #2 实采样闭环：tool_name=Agent（非 Task）/ prompt+subagent_type 命中 / D-007 落地
 2026-05-06 09:54:10 [save] detail-design 起手三连：#1 settings/guard patch / #3 dispatch_precheck fail-open / #4 dispatch-state（sourcing 0/0）
+2026-05-06 09:58:04 [save] detail-design 第二批：#6 schema_version 双层+SUPPORTED_VERSIONS / #8 4 gate applies_when+V-07 三重保证
