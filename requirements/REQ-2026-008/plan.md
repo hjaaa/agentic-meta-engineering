@@ -91,6 +91,20 @@
   - 单测目录已就绪，tech-research 阶段无需再调研测试落位，可直接对齐 `scripts/lib/check_*.py` 的伴随测试形态。
 - **时间**：2026-05-05 22:50:00
 
+### D-009 GATE-POST-DEV-RECEIPT applies_when 过滤下沉到 plugin precheck（F-001 实施偏差）
+- **Context**：F-001 实现 GATE-POST-DEV-RECEIPT 时（commit 3f0ecf5），按 detailed-design.md §5.1 设置 `applies_when.target_phase=testing` + `transition=development->testing` + `current_phase_in=[development]` 会触发 `tests/gates/test_submit_next_parity.py::test_phase_transition_gates_are_subset_of_submit` 测试失败——该测试硬断言 `phase-transition 候选 gate ⊆ submit 候选 gate`，而 submit trigger 时 `ctx.to_phase=None`（run.py:448-452 `_match_target_phase` 在 to_phase=None 时返回 False），导致 GATE-POST-DEV-RECEIPT 被 runner 在 submit 通道下静态过滤掉，违反 ⊆ 约束。这是 detailed-design §5.1 设计未考虑到的运行时机制冲突——§5.3 伪代码用了 GateContext 不存在的 `ctx.target_phase` 属性（实际只有 `ctx.to_phase` 与 `ctx.extra`），属于 spec 笔误。
+- **Decision**：实现层把过滤逻辑下沉到 plugin precheck（与 GATE-TRACEABILITY 同模式）。
+  - **registry.yaml**：`target_phase: null` / `transition: null` / `current_phase_in: []`，跳过 runner 静态过滤。
+  - **plugin precheck**：4 层动态判定 — trigger ∈ {phase-transition, submit} / req_dir 存在 / features.json 存在 / phase-transition 时 `ctx.extra.get("target_phase") or ctx.to_phase == "testing"`；submit trigger 直接放行进 run()。
+  - **行为等价性**：仍仅在 development→testing 切换时命中，与 §5.1 设计意图等价。
+  - **不改 detailed-design.md §5.1 / §5.3**：避免触发 R005 hash drift 重审 detail-design（D-006 经验明确规定"reviewer hash 校验粒度无 trivial 豁免通道，措辞修订直接计入重审成本"）。本 ADR 是过程偏差记录，不构成正式设计修订。
+- **Consequences**：
+  - `scripts/gates/registry.yaml` GATE-POST-DEV-RECEIPT 字段实际值与 detailed-design.md §5.1 yaml 字面量不一致——以本 ADR 为准。
+  - F-002 / F-003 / F-005 后续 schema gate 若也走 phase-transition + submit 双 trigger 设计，**应直接采用本模式**：applies_when null 化 + plugin precheck 4 层过滤，避免重蹈 parity test 阻塞。
+  - F-001 review-001（REV-REQ-2026-008-code-F-001-001）由 design-consistency-checker 标 major 偏差；critic 论证 implementer 论据成立（GateContext 无 target_phase 属性是 spec §5.3 笔误）；quality-reviewer 仲裁为 spec-fix 路径——本 ADR 即此决议落地。
+  - reviewer 体系并未把"实施期发现的 spec 笔误 ADR 化"路径正式归档为流程节点；后续若多次出现可考虑加 SOP（提示：先 critic 验证 spec 真为笔误 → quality-reviewer 决议 spec-fix → plan.md 加 ADR 而非改设计文档）。
+- **时间**：2026-05-06 14:13:00
+
 ### D-008 detail-design 评审 round-001 反馈：dispatch_state 公开 API 分层（L1 + L2）修复 TOCTOU
 - **Context**：detail-design round-001 评审（REV-REQ-2026-008-detail-design-001，来源：requirements/REQ-2026-008/reviews/detail-design-001.json）conclusion=needs_attention（score 85）；major required_fix 指出原 §3.2 公开 API 只暴露 `read_state` / `write_state` / `clear_state` 三函数，每函数内部各取独立锁。dispatch_precheck.py 若按 §2.4 步骤 [8] 顺序调用 read+三校验+write，会形成 **TOCTOU 窗口**——两进程并发 read 后各自校验通过、各自 write 覆盖，并发派发漏过 B-3 校验。
 - **Decision**：公开 API 分两层。
