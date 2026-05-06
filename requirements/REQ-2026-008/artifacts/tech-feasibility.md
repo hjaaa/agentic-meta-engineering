@@ -778,14 +778,11 @@ V-09 的文档收口任务清单（按 feature 拆解到 F-008，见 §4 工作�
    - **风险**：若字段名不同（如 `tool_input.task_prompt`），dispatch_precheck.py 解析路径需调整
    - **验证时机**：detail-design 首日；用最小 hook（只 echo stdin → /tmp/log.json）抓一次实派发样本即可
 
-2. **`templates/feature-task.md.tmpl` 现有 frontmatter 是否含 `touches` `depends_on` 字段** [待补充]（对应 §2.5 §2.9）
-   - **假设**：现有模板已含 touches / depends_on / status / feature_id 等字段（D-002 / D-003 / D-005 决议假设这些字段存在）
-   - **依据**：本评估仅 ls 确认文件存在，未读 frontmatter 内容
-   - **风险**：若缺字段，task-frontmatter-schema.yaml 设计需要先补字段、再做 schema 校验
-   - **验证时机**：detail-design 第 1 天 Read 文件确认 frontmatter 现状
+2. **`templates/feature-task.md.tmpl` 现有 frontmatter 字段** ⚠️ **部分闭环（2026-05-06）**（对应 §2.5 §2.9）
+   - **实证结论**：现有 frontmatter 含 `feature_id` / `title` / `status` / `complexity` / `depends_on` / `created_at` / `updated_at` / `review_report` 共 8 字段（来源：.claude/skills/feature-lifecycle-manager/templates/feature-task.md.tmpl:1）；**缺 `touches` 字段**，但模板正文 §"触及范围"段（来源：.claude/skills/feature-lifecycle-manager/templates/feature-task.md.tmpl:32）已留位"从 features.json 的 `touches` 复制"
+   - **detail-design 必做**：F-005 / F-007 任务必须把 `touches: __TOUCHES__` 加入 frontmatter（不仅是正文段落），否则 `touches_guard.py` 无法机器化读取范围；同步更新 `task-context-builder` Skill 的填充逻辑
+   - **影响**：F-003 task-frontmatter-schema.yaml 字段表必须包含 `touches` 为 required；F-005 touches_guard.py 解析路径直接读 frontmatter，无需 fallback 到正文
 
-3. **`tests/lib/` `tests/integration/` `tests/lifecycle/` 现有测试用例是否全绿** [待补充]（对应 §2.8 R7）
-   - **假设**：扩展 CI pytest 覆盖范围后能直接全绿，无残留 fail
-   - **依据**：仓库当前 CI 只跑 `tests/gates/`，其他目录长期未走 CI 强校验
-   - **风险**：扩展后发现 fail / xfail / 已过时用例，会阻塞本次 PR
-   - **验证时机**：detail-design 阶段 baseline 跑一次 `pytest tests/ --ignore=tests/benchmarks/`，记录失败清单
+3. **`tests/lib/` `tests/integration/` `tests/lifecycle/` 现有测试用例** ✅ **已闭环（2026-05-06）**（对应 §2.8 R7）
+   - **实证结论**：`python3 -m pytest tests/ --ignore=tests/benchmarks/` 结果 **603 passed, 8 skipped, 36.04s**，全绿无 fail；skipped 集中在 `tests/skills/test_code_review_prepare_routing.py`（7 项）+ `tests/gates/test_argparse_alias_deprecation.py`（1 项），均属预期跳过
+   - **影响**：F-006 CI 扩展覆盖（quality-check.yml pytest step 改为 `pytest tests/ --ignore=tests/benchmarks/`）**零额外修复成本**；可在本次 PR 直接落地，不需要 baseline 修复 step
