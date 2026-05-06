@@ -34,3 +34,6 @@
 2026-05-06 11:01:32 [review:looks_clean] detail-design-quality-reviewer round-005 supersedes 004（status 移出 features.json + §2.1.1 锁 source-of-truth，major 闭合）
 2026-05-06 11:01:42 [signoff] REV-REQ-2026-008-detail-design-005 approved by hj19961223@gmail.com
 2026-05-06 11:03:26 [save] task-planning 全闭环：8 features + 8 tasks 落地；round-005 修复 round-004 status hash drift major；待切 development
+2026-05-06 11:06:42 [phase-transition] task-planning → development（7 gates 全过；plan-freshness 无 warning）
+2026-05-06 11:10:01 [development] F-006 派发（model=sonnet）
+2026-05-06 11:33:35 [development] F-006 完成（DONE / review code-F-006-001 looks_clean 95）

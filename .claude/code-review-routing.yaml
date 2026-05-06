@@ -47,6 +47,10 @@ suggest:
   - pattern: "context/**/INDEX.md"
     checkers: [auxiliary-spec-checker]
 
+  # GitHub Actions workflow（CI 配置改动通常需对照 detailed-design 的 §CI 章节核对一致性）
+  - pattern: ".github/workflows/**"
+    checkers: [design-consistency-checker]
+
 # ─────── trivial_whitelist：100% 命中即 skipped=true，跳过整个 review ───────
 trivial_whitelist:
   - "**/*.md"                       # 所有 Markdown 默认豁免

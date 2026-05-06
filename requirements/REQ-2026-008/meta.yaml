@@ -1,7 +1,7 @@
 # ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-008
 title: 派发链强制结构化升级
-phase: task-planning
+phase: development
 created_at: "2026-05-05 22:03:10"
 branch: feat/req-2026-008
 base_branch: develop
@@ -50,6 +50,16 @@ gates_passed:
       - GATE-TRACEABILITY
   - phase: task-planning
     at: '2026-05-06 10:25:34'
+    gates:
+      - GATE-META-SCHEMA
+      - GATE-INDEX-INTEGRITY
+      - GATE-SOURCING
+      - GATE-PLAN-FRESHNESS
+      - GATE-WORKSPACE-CLEAN
+      - GATE-REVIEW-VERDICT
+      - GATE-TRACEABILITY
+  - phase: development
+    at: '2026-05-06 11:06:26'
     gates:
       - GATE-META-SCHEMA
       - GATE-INDEX-INTEGRITY
@@ -125,3 +135,19 @@ reviews:
       - REV-REQ-2026-008-detail-design-004
       - REV-REQ-2026-008-detail-design-005
     stale: false
+  code:
+    by_feature:
+      F-006:
+        history:
+          - REV-REQ-2026-008-code-F-006-001
+        latest: REV-REQ-2026-008-code-F-006-001
+        conclusion: looks_clean
+        reviewed_commit: 7a9983a
+        artifact_hashes:
+          artifacts/features.json: 
+            a9762d30f3883ff75e525f68272bee4dac6aec96f2d38eb36683d366d80f8656
+          artifacts/detailed-design.md: 
+            c60f58a1a8a8c9bcb731d9bea359b1327a69a23257afa54301c5f7f7fd38f6ed
+          artifacts/tasks/F-006.md: 
+            62526b520546f89dc4ade91ce1952876cecec9d62a567b940ad79bea5e66c1cd
+        stale: false
