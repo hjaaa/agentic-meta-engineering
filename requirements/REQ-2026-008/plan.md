@@ -91,6 +91,19 @@
   - 单测目录已就绪，tech-research 阶段无需再调研测试落位，可直接对齐 `scripts/lib/check_*.py` 的伴随测试形态。
 - **时间**：2026-05-05 22:50:00
 
+### D-008 detail-design 评审 round-001 反馈：dispatch_state 公开 API 分层（L1 + L2）修复 TOCTOU
+- **Context**：detail-design round-001 评审（REV-REQ-2026-008-detail-design-001，来源：requirements/REQ-2026-008/reviews/detail-design-001.json）conclusion=needs_attention（score 85）；major required_fix 指出原 §3.2 公开 API 只暴露 `read_state` / `write_state` / `clear_state` 三函数，每函数内部各取独立锁。dispatch_precheck.py 若按 §2.4 步骤 [8] 顺序调用 read+三校验+write，会形成 **TOCTOU 窗口**——两进程并发 read 后各自校验通过、各自 write 覆盖，并发派发漏过 B-3 校验。
+- **Decision**：公开 API 分两层。
+  - **L1**：`flock_state_file(req_dir)` 上下文管理器 —— 取一把 LOCK_EX 锁；调用方在 with 块内通过 `StateFileHandle.read()` / `StateFileHandle.write()` 操作，**整个 with 块内不再二次取锁**。dispatch_precheck.py 强制走 L1。
+  - **L2**：`read_state` / `write_state` / `clear_state` 简单函数 —— 内部基于 L1，各取独立锁。仅"单读"或"单写"场景使用（touches_guard.py 只读，清理脚本/rollback 只写），无 TOCTOU 风险。
+  - **强约束**：L2 的 `read_state` + `write_state` 顺序调用 = TOCTOU 漏洞；禁止在新代码中出现。
+- **Consequences**：
+  - §3.2 三函数签名扩展为四 API（+`flock_state_file` + `StateFileHandle`）；§3.3 实现版改用 `flock_state_file` 公开化；§3.4 调用方一览补 API 层标注；§2.4 校验链 [8] 改为单 with 块伪代码。
+  - 新增单测 TL-009（TOCTOU 回归）/ TL-010（dispatch_precheck.py with 块原子性）。
+  - 3 minor + 3 suggestion 同批落地：§1.2.5 ERR trap 与 Python 内部崩溃边界、§3.3 r/r+ 模式注释统一为始终 r+、§5.5 feature_granularity 已在 round-001 verdict 中确认 features.json 在 task-planning 阶段才落 .json 实体的合理性。
+  - reviewer hash 校验 R005 路径预期会触发 stale=true → round-002 重审刷新（与 D-006 经验一致）。
+- **时间**：2026-05-06 10:10:00
+
 ### D-007 PreToolUse Task 派发的 stdin schema 实采样结果（detail-design 待办 #2 闭环）
 - **Context**：outline-design §3.2 假设 `tool_name = "Task"` + `tool_input.prompt` + `tool_input.subagent_type`，但未实测。detail-design 首日必须用最小 hook 抓一次真实 stdin 确认字段名（来源：requirements/REQ-2026-008/artifacts/outline-design.md:485）。
 - **采样方法**：临时在 `.claude/settings.local.json` 加 `PreToolUse.matcher="Task"` → 调用 `/tmp/trace-task-precheck.sh`（`cat > /tmp/task-precheck-stdin.json; exit 0`）；派一次最简 Explore subagent 触发；读捕获文件后还原配置 + 删 tmp 文件。

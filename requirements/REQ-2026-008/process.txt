@@ -22,3 +22,4 @@
 2026-05-06 09:54:10 [save] detail-design 起手三连：#1 settings/guard patch / #3 dispatch_precheck fail-open / #4 dispatch-state（sourcing 0/0）
 2026-05-06 09:58:04 [save] detail-design 第二批：#6 schema_version 双层+SUPPORTED_VERSIONS / #8 4 gate applies_when+V-07 三重保证
 2026-05-06 10:03:52 [save] detail-design 第三批：#12 meta-schema legacy 注释 / #13 CI pytest / #7 派发模板 +frontmatter touches+首行 feature_id / #9 render-docs SOP
+2026-05-06 10:17:06 [review:needs_attention] detail-design-quality-reviewer round-001 score 85（1 major TOCTOU + 3 minor）

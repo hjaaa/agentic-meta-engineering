@@ -97,3 +97,15 @@ reviews:
       - REV-REQ-2026-008-outline-design-001
       - REV-REQ-2026-008-outline-design-002
     stale: false
+  detail-design:
+    latest: REV-REQ-2026-008-detail-design-001
+    conclusion: needs_attention
+    reviewed_commit: 70fc193
+    artifact_hashes:
+      artifacts/detail-design.md: 
+        db248be0b89345a639fd1bb72b137f6260efd5207bd20b9029ebbf3bd866daaa
+      artifacts/outline-design.md: 
+        f496d537801a1e65e9dbe420af04fd9bc76aea4ac2fef152c17990b6eb3153b6
+    history:
+      - REV-REQ-2026-008-detail-design-001
+    stale: false

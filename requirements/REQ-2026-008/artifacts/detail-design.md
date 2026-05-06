@@ -104,7 +104,8 @@ esac
 
 guard.sh 顶部 `set -u` + `trap 'exit 0' ERR`（来源：.claude/hooks/pre-tool-use-guard.sh:6）保证任意失败 → exit 0。新增两个分支的影响：
 
-- **Agent 分支 `exec` 失败**（python3 不存在等极端场景）：`exec` 失败仍触发 ERR → trap 接管 → exit 0（fail-open）。dispatch_precheck.py 自身崩溃由其内部异常→ Python 层 sys.exit(0) 兜底（详见 §2.4）。
+- **Agent 分支 `exec` 失败**（python3 不存在等极端场景）：`exec` 失败仍触发 ERR → trap 接管 → exit 0（fail-open）。
+- **Agent 分支 `exec` 成功后 Python 崩溃**：`exec` 已替换 shell 进程，guard.sh 不再回到 shell，**ERR trap 接不住 Python 内部崩溃**——由 dispatch_precheck.py 自身的 §2.6 顶层 `except Exception` 兜底转 `sys.exit(0)`。两条路径互不重叠。
 - **touches_guard 分支 `|| true`**：任意非零退出被吃掉，ERR 不触发。
 
 ### 1.3 影响域分析
@@ -207,15 +208,17 @@ guard.sh 顶部 `set -u` + `trap 'exit 0' ERR`（来源：.claude/hooks/pre-tool
   │      └─ 失败 fail-open（视同 features.json 不存在场景 5）
   ├─[6] features.json 读 → 解析 / 不存在 fail-open（场景 5/6）
   ├─[7] feature_id ∈ features → 否则 fail-open（场景 7）
-  ├─[8] dispatch_state.flock_state_file 取锁
-  │      ├─[8a] 读当前 state
+  ├─[8] with dispatch_state.flock_state_file(req_dir) as fh:   ← **同一把锁内**完成读+校验+写
+  │      ├─[8a] state = fh.read()                                # 锁内读，禁止用 read_state（会取第二把锁）
   │      ├─[8b] 校验 status == "pending"（B-1）
   │      ├─[8c] 校验 depends_on 全 done（B-2）
   │      ├─[8d] 校验 state["current_feature"] is None or == feature_id（B-3）
-  │      ├─[8e] 三校验任一失败 → 释放锁 → exit 2 + BLOCKED stderr
-  │      └─[8f] 三校验全过 → 写 state（current_feature=feature_id, acquired_at=now, acquired_by_pid=os.getpid()）
+  │      ├─[8e] 三校验任一失败 → 释放锁（with 自动）→ exit 2 + BLOCKED stderr
+  │      └─[8f] 三校验全过 → fh.write(...)（current_feature=feature_id, acquired_at=now, acquired_by_pid=os.getpid()）
   └─[9] exit 0 + audit_log("DISPATCH_OK: F-xxx | req=<id>")
 ```
+
+**为什么必须单锁**：read_state / write_state 各取独立锁会形成 **TOCTOU 窗口期**——两个进程 A/B 同时跑：A read→B read→A 校验过→A write→B 校验过（B 看到的是 A write 之前的旧 state）→B write 覆盖 A → 并发派发漏过 B-3 校验。`flock_state_file` 上下文管理器把整个 read+三校验+write 包在单把 LOCK_EX 锁内，杜绝中间窗口。
 
 ### 2.5 audit 日志路径
 
@@ -301,12 +304,26 @@ if __name__ == "__main__":
 }
 ```
 
-### 3.2 三函数签名 + 异常契约
+### 3.2 公开 API：四个签名 + 异常契约
+
+#### 3.2.1 设计动机：单锁 vs 多锁
+
+dispatch_precheck.py 的 read + 业务校验段（B-1/B-2/B-3）+ write 必须在**同一把 LOCK_EX 锁**内完成（来源：requirements/REQ-2026-008/reviews/detail-design-001.json）round-001 major required_fix；避免 TOCTOU 漏洞。touches_guard.py 是只读路径，清理脚本/rollback 是只写路径——两类调用方**无 TOCTOU 风险**，独立锁即可。所以公开 API 分两层：
+
+| 层 | 用途 | 锁次数 |
+|---|---|---|
+| L1 | `flock_state_file(req_dir)` 上下文管理器 | 单把锁；调用方在 with 块内手动 read/write |
+| L2 | `read_state` / `write_state` / `clear_state` 简单函数 | 各取独立锁；只适合"单读"或"单写"场景 |
+
+**强约束**（来源：requirements/REQ-2026-008/reviews/detail-design-001.json）：dispatch_precheck.py 必须走 L1 上下文管理器路径；L2 的 `read_state` + `write_state` 顺序调用会造成 TOCTOU 漏洞，禁止在新代码中出现。
+
+#### 3.2.2 签名
 
 ```python
 # scripts/lib/dispatch_state.py
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Optional, TypedDict, Literal
+from typing import Optional, TypedDict, Literal, Iterator
 
 class DispatchState(TypedDict, total=False):
     schema_version: Literal["1.0"]
@@ -315,31 +332,47 @@ class DispatchState(TypedDict, total=False):
     acquired_at: str       # ISO8601 with offset
     acquired_by_pid: int
 
-def read_state(req_dir: Path) -> Optional[DispatchState]:
-    """读 <req_dir>/.dispatch-state.json，文件不存在返回 None。
+class StateFileHandle:
+    """flock_state_file 上下文内暴露给调用方的句柄；read/write 不再取锁。"""
+    def read(self) -> Optional[DispatchState]: ...
+    def write(self, state: DispatchState) -> None: ...
 
-    - 自动取 LOCK_EX；with 块内单次原子读后释放
-    - 文件不存在视为"空闲态" → 返回 None（不创建空文件）
-    - JSON 解析失败 → 抛 ValueError（调用方按 fail-open 转 exit 0）
-    - 锁 timeout 5s+ → 抛 TimeoutError（同上）
+@contextmanager
+def flock_state_file(req_dir: Path) -> Iterator[StateFileHandle]:
+    """L1 公开 API——LOCK_EX 5s timeout；with 块内 read/write 不再二次取锁。
+
+    用法（dispatch_precheck.py）：
+        with flock_state_file(req_dir) as fh:
+            state = fh.read()              # 锁内读
+            # 业务校验 status / depends_on / current_feature ...
+            fh.write({"current_feature": fid, ...})   # 锁内写
+
+    异常：
+      - TimeoutError：5s 内未取到锁
+      - ValueError：JSON 解析失败
+      - OSError：磁盘 / 权限错误
+    """
+
+def read_state(req_dir: Path) -> Optional[DispatchState]:
+    """L2 简单读——内部调 flock_state_file 取锁后读单次释放。
+
+    适用：touches_guard.py（只读 current_feature，无后续写入）
+    禁用：dispatch_precheck.py（必须用 L1，否则 TOCTOU）
     """
 
 def write_state(req_dir: Path, state: DispatchState) -> None:
-    """原子写 <req_dir>/.dispatch-state.json。
+    """L2 简单写——内部调 flock_state_file 取锁后写单次释放。
 
-    - 自动取 LOCK_EX
-    - 写策略：write tmp file + atomic rename（os.replace）→ 避免读到半写状态
-    - schema_version / req_id 不得缺失（assert）；current_feature 非 null 时
-      acquired_at + acquired_by_pid 必填（assert）
-    - 锁 timeout 5s+ → 抛 TimeoutError
+    适用：单写场景（不基于读后状态做条件写）
+    禁用：与 read_state 顺序调用（TOCTOU；改用 L1）
     """
 
 def clear_state(req_dir: Path) -> None:
-    """把 current_feature / acquired_at / acquired_by_pid 清成 None；
-    保留 schema_version / req_id 字段。
+    """把 current_feature / acquired_at / acquired_by_pid 清成 None；保留 schema_version / req_id。
 
     - 等价于 write_state(req_dir, {"schema_version":"1.0","req_id":..,"current_feature":None})
-    - 调用方：feature 完成（DONE / DONE_WITH_CONCERNS receipt 写完）+ /requirement:rollback
+    - 调用方：feature 完成（receipt 写完后清理脚本）+ /requirement:rollback
+    - 单写无 TOCTOU 风险；用 L2 即可
     """
 ```
 
@@ -368,16 +401,52 @@ from typing import Iterator, IO
 LOCK_TIMEOUT_S = 5.0
 POLL_INTERVAL_S = 0.05
 
+class StateFileHandle:
+    """flock_state_file 上下文内的句柄；read/write 在外层锁内运行，不再二次取锁。"""
+    def __init__(self, path: Path, file_obj: IO):
+        self._path = path
+        self._f = file_obj  # 已持锁的 fd
+
+    def read(self) -> Optional[DispatchState]:
+        self._f.seek(0)
+        text = self._f.read()
+        if not text.strip():
+            return None
+        data = json.loads(text)
+        if not isinstance(data, dict):
+            raise ValueError(f"dispatch-state must be object: {self._path}")
+        return data  # type: ignore[return-value]
+
+    def write(self, state: DispatchState) -> None:
+        assert "schema_version" in state and state["schema_version"] == "1.0"
+        assert "req_id" in state
+        if state.get("current_feature") is not None:
+            assert "acquired_at" in state and "acquired_by_pid" in state
+        # atomic rename 写策略：write tmp + os.replace；锁保护元数据可见性
+        tmp_path = self._path.with_suffix(".json.tmp")
+        tmp_path.write_text(
+            json.dumps(state, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        os.replace(tmp_path, self._path)
+
+
 @contextmanager
-def _flock(path: Path, mode: str) -> Iterator[IO]:
-    """LOCK_EX 独占锁；5s timeout；with 退出自动释放。"""
+def flock_state_file(req_dir: Path) -> Iterator[StateFileHandle]:
+    """L1 公开 API——LOCK_EX 5s timeout 上下文管理器。
+
+    模式选择：始终用 'r+'。
+      - 纯 'r' 模式不允许后续在同一 fd write，限制 read+write 复用
+      - 'r+' 模式要求文件预先存在；下方"不存在则建空骨架"分支负责兜底
+      - 即使调用方只 read（如 touches_guard.py via L2 read_state），也用 'r+' 简化路径
+    """
+    path = req_dir / ".dispatch-state.json"
     path.parent.mkdir(parents=True, exist_ok=True)
-    if not path.exists() and ("r" in mode and "+" not in mode):
-        # 纯读模式：文件不存在直接 raise（read_state 上层捕获转 None）
-        raise FileNotFoundError(path)
     if not path.exists():
+        # 'r+' 模式要求文件存在；首次访问建空骨架
+        # 注意：这是建空 "{}"——调用方 read 后看到 empty dict 应转 None 处理
         path.write_text("{}", encoding="utf-8")
-    f = path.open(mode, encoding="utf-8")
+    f = path.open("r+", encoding="utf-8")
     deadline = time.monotonic() + LOCK_TIMEOUT_S
     while True:
         try:
@@ -389,7 +458,8 @@ def _flock(path: Path, mode: str) -> Iterator[IO]:
                 raise TimeoutError(f"flock timeout {LOCK_TIMEOUT_S}s: {path}")
             time.sleep(POLL_INTERVAL_S)
     try:
-        yield f
+        handle = StateFileHandle(path, f)
+        yield handle
     finally:
         try:
             fcntl.flock(f.fileno(), fcntl.LOCK_UN)
@@ -397,50 +467,43 @@ def _flock(path: Path, mode: str) -> Iterator[IO]:
             f.close()
 
 
+# ====== L2 简单读/写/清——内部基于 flock_state_file，单读或单写场景使用 ======
+
 def read_state(req_dir: Path) -> Optional[DispatchState]:
+    """单读；touches_guard.py 适用。dispatch_precheck.py **禁用**（TOCTOU）。"""
     state_path = req_dir / ".dispatch-state.json"
     if not state_path.exists():
         return None
-    try:
-        with _flock(state_path, "r") as f:
-            data = json.load(f)
-    except FileNotFoundError:
-        return None
-    if not isinstance(data, dict):
-        raise ValueError(f"dispatch-state must be object: {state_path}")
-    return data  # type: ignore[return-value]
+    with flock_state_file(req_dir) as fh:
+        data = fh.read()
+    return data
 
 
 def write_state(req_dir: Path, state: DispatchState) -> None:
-    assert "schema_version" in state and state["schema_version"] == "1.0"
-    assert "req_id" in state
-    if state.get("current_feature") is not None:
-        assert "acquired_at" in state and "acquired_by_pid" in state
-    state_path = req_dir / ".dispatch-state.json"
-    tmp_path = state_path.with_suffix(".json.tmp")
-    # 取目标文件锁（不锁 tmp）；rename 保证原子可见性
-    with _flock(state_path, "r+") as _:
-        tmp_path.write_text(
-            json.dumps(state, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-        os.replace(tmp_path, state_path)
+    """单写；不基于读后状态做条件写时使用。与 read_state 顺序调用 = TOCTOU 漏洞。"""
+    with flock_state_file(req_dir) as fh:
+        fh.write(state)
 
 
 def clear_state(req_dir: Path) -> None:
-    cur = read_state(req_dir) or {"schema_version": "1.0", "req_id": _infer_req_id(req_dir)}
-    cleared: DispatchState = {
-        "schema_version": "1.0",
-        "req_id": cur.get("req_id", _infer_req_id(req_dir)),
-        "current_feature": None,
-    }
-    write_state(req_dir, cleared)
+    """单写：保留 schema_version + req_id，清掉 current_feature 三件套。"""
+    state_path = req_dir / ".dispatch-state.json"
+    with flock_state_file(req_dir) as fh:
+        cur = fh.read() or {"schema_version": "1.0", "req_id": _infer_req_id(req_dir)}
+        cleared: DispatchState = {
+            "schema_version": "1.0",
+            "req_id": cur.get("req_id", _infer_req_id(req_dir)),
+            "current_feature": None,
+        }
+        fh.write(cleared)
 
 
 def _infer_req_id(req_dir: Path) -> str:
     """req_dir = requirements/REQ-2026-008 → "REQ-2026-008"。"""
     return req_dir.name
 ```
+
+> **clear_state 用 L1 with 块**：避免内部走 `read_state + write_state` 顺序调用造成 TOCTOU——虽然 clear_state 单调用方场景少，但保持单锁原子是统一约定。
 
 #### 实现要点逐条
 
@@ -453,29 +516,31 @@ def _infer_req_id(req_dir: Path) -> str:
 
 ### 3.4 调用方一览
 
-| 调用方 | 文件 | 调用 | 时机 |
-|---|---|---|---|
-| dispatch_precheck.py | `.claude/hooks/dispatch_precheck.py` | `read_state` + `write_state` | PreToolUse Agent 派发前置 |
-| touches_guard.py | `.claude/hooks/touches_guard.py` | `read_state` 取 current_feature | PreToolUse Edit/Write/MultiEdit 前 |
-| receipt 完成清理脚本 | `scripts/lib/dispatch_state_cleanup.py` | `clear_state` | 主 Agent 解析 RECEIPT_WRITTEN 后 Bash 调用 |
-| /requirement:rollback | `managing-requirement-lifecycle` Skill 内 | `clear_state` | rollback 命令执行末尾 |
+| 调用方 | 文件 | 调用 | API 层 | 时机 |
+|---|---|---|---|---|
+| dispatch_precheck.py | `.claude/hooks/dispatch_precheck.py` | `flock_state_file` 上下文管理器（read+三校验+write 单锁内） | **L1 必选** | PreToolUse Agent 派发前置 |
+| touches_guard.py | `.claude/hooks/touches_guard.py` | `read_state`（只读，无后续写入） | L2 简单读 | PreToolUse Edit/Write/MultiEdit 前 |
+| receipt 完成清理脚本 | `scripts/lib/dispatch_state_cleanup.py` | `clear_state`（内部走 L1） | L2 简单清 | 主 Agent 解析 RECEIPT_WRITTEN 后 Bash 调用 |
+| /requirement:rollback | `managing-requirement-lifecycle` Skill 内 | `clear_state` | L2 简单清 | rollback 命令执行末尾 |
 
-> 命名沿用 `scripts/lib/check_*.py` 同级一致风格（来源：scripts/lib/check_meta.py:1）。CLI 形态：`python3 scripts/lib/dispatch_state_cleanup.py --req-dir requirements/<id>`，幂等执行（重复调用安全）。
+> **dispatch_precheck.py 强制走 L1**——L2 的 `read_state + write_state` 顺序调用形成 TOCTOU 窗口（详见 §3.2.1 / §2.4 [8]）。命名沿用 `scripts/lib/check_*.py` 同级一致风格（来源：scripts/lib/check_meta.py:1）。CLI 形态：`python3 scripts/lib/dispatch_state_cleanup.py --req-dir requirements/<id>`，幂等执行（重复调用安全）。
 
 ### 3.5 单测覆盖（tests/lib/test_dispatch_state.py）
 
 | 用例 ID | 场景 | 期望 |
 |---|---|---|
-| TL-001 | read_state 文件不存在 | 返回 None，不创建文件 |
-| TL-002 | read_state JSON 非 object | 抛 ValueError |
-| TL-003 | write_state 缺 schema_version | 抛 AssertionError |
-| TL-004 | write_state current_feature=F-002 缺 acquired_at | 抛 AssertionError |
-| TL-005 | write_state 写完后 read 等价 | round-trip 一致 |
+| TL-001 | read_state 文件不存在 | 返回 None，不创建文件（注：flock_state_file 触发的空骨架 "{}" 在 read 时仍要返回 None） |
+| TL-002 | read 到 JSON 非 object | 抛 ValueError |
+| TL-003 | write 缺 schema_version | 抛 AssertionError |
+| TL-004 | write current_feature=F-002 缺 acquired_at | 抛 AssertionError |
+| TL-005 | write 完后 read 等价 | round-trip 一致 |
 | TL-006 | 并发 2 个进程 write_state | 后写者要么成功要么 timeout，绝不交错半写 |
 | TL-007 | clear_state 空闲态文件 | 保留 schema_version + req_id，current_feature=null |
-| TL-008 | _flock 锁泄漏路径（fd 异常关闭） | 下次取锁立刻成功 |
+| TL-008 | flock_state_file 锁泄漏路径（fd 异常关闭） | 下次取锁立刻成功 |
+| TL-009 | **TOCTOU 回归**：进程 A 在 with 块内 read 后未 write 之前，进程 B 调 read_state 是否阻塞 5s timeout | B 必须 timeout（证明 A 的 with 锁未释放，B 无 TOCTOU 窗口可乘） |
+| TL-010 | dispatch_precheck.py 模拟单 with 块内 read+三校验+write | 单原子动作；中途无锁释放点 |
 
-> 并发测试用 multiprocessing 模拟；TL-006 是关键回归用例（D-005 #4 决议保障的核心约束）。
+> 并发测试用 multiprocessing 模拟；TL-006 + TL-009 + TL-010 是关键回归用例（D-005 #4 决议保障 + reviewer round-001 major TOCTOU 修复）。
 
 ---
 
