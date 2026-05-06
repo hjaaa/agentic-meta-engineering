@@ -37,3 +37,4 @@
 2026-05-06 11:06:42 [phase-transition] task-planning → development（7 gates 全过；plan-freshness 无 warning）
 2026-05-06 11:10:01 [development] F-006 派发（model=sonnet）
 2026-05-06 11:33:35 [development] F-006 完成（DONE / review code-F-006-001 looks_clean 95）
+2026-05-06 11:36:07 [signoff] REV-REQ-2026-008-code-F-006-001 approved-trivial by hj19961223@gmail.com
