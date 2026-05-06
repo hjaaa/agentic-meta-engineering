@@ -11,3 +11,4 @@
 2026-05-06 08:54:38 [save] tech-research：3 待澄清条目实证 — #2 模板缺 touches 字段（detail-design 必补）/ #3 pytest 603 全绿 36s 零修复 / #1 推迟 detail-design 首日
 2026-05-06 08:56:04 [save] tech-research 节点稳定：4 commit 落地；strict 全过；待切 outline-design
 2026-05-06 09:07:45 [phase-transition] tech-research → outline-design（7 gates 全过；plan-freshness 无 warning）
+2026-05-06 09:17:19 [save] outline-design：outline-design.md 落地（4 层视图 / 8 features DAG / 3 时序 / T-01 展开 / 13 detail-design 待办，strict sourcing 0/0）
