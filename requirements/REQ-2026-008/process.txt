@@ -59,3 +59,6 @@
 2026-05-06 16:49:30 [signoff] REV-REQ-2026-008-code-F-004-002 approved by hj19961223@gmail.com
 2026-05-06 16:49:58 [development] F-004 完成（review-001 needs_attention 78 → fix(8 must_fix + 6 should_fix) → review-002 looks_clean 90 supersedes 001 / signoff approved）
 2026-05-06 16:50:44 [save] development 5/8 闭环；F-004 r1 needs_attention 78 (hooks 高风险) → r2 修 8 must+6 should → looks_clean 90 supersedes 001；F-005 待派
+2026-05-06 16:55:04 [development] F-005 派发（model=sonnet；medium；touches_guard 走 L2 read_state 避免 TOCTOU）
+2026-05-06 16:57:10 [blocker] F-005 派发被 dispatch_precheck B-1 拦：误把 SKILL.md step 5（status→in-progress）做在 step 4（Agent 派发）前；F-004 hook 看到 status≠pending
+2026-05-06 16:57:10 [blocker-resolved] 回滚 F-005.md status→pending；按 SKILL.md 顺序重派 → 派完后再 flip in-progress
