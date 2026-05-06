@@ -153,6 +153,21 @@ class StateFileHandle:
             pass
 
 
+def _acquire_with_timeout(f: IO[str], deadline: float, path: Path) -> None:
+    """LOCK_EX + LOCK_NB + 轮询，直到 deadline 超时抛 TimeoutError（F-16：抽出轮询循环）。
+
+    将 flock_state_file 的嵌套从 5 层降到 3 层；逻辑独立可单测。
+    """
+    while True:
+        try:
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return
+        except BlockingIOError:
+            if time.monotonic() > deadline:
+                raise TimeoutError(f"flock timeout {LOCK_TIMEOUT_S}s: {path}")
+            time.sleep(POLL_INTERVAL_S)
+
+
 @contextmanager
 def flock_state_file(req_dir: Path) -> Iterator[StateFileHandle]:
     """L1 公开 API——LOCK_EX 5s timeout 上下文管理器。
@@ -181,21 +196,10 @@ def flock_state_file(req_dir: Path) -> Iterator[StateFileHandle]:
         path.write_text("{}", encoding="utf-8")
 
     f = path.open("r+", encoding="utf-8")
-    deadline = time.monotonic() + LOCK_TIMEOUT_S
     try:
-        # LOCK_EX + LOCK_NB + 轮询；避免 LOCK_EX 阻塞模式死等
-        while True:
-            try:
-                fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except BlockingIOError:
-                if time.monotonic() > deadline:
-                    raise TimeoutError(f"flock timeout {LOCK_TIMEOUT_S}s: {path}")
-                time.sleep(POLL_INTERVAL_S)
-
-        handle = StateFileHandle(path, f)
+        _acquire_with_timeout(f, time.monotonic() + LOCK_TIMEOUT_S, path)
         try:
-            yield handle
+            yield StateFileHandle(path, f)
         finally:
             # 释放锁；即使 with 块抛异常也保证执行
             try:
