@@ -272,7 +272,10 @@ def _r006_supersedes_chain(meta: dict, target_phase: str, report: Report, label:
             continue
     for rid, v in all_ids.items():
         sup = v.get("supersedes")
-        if sup is None:
+        # falsy 等价于"无前序"：None / "" / 0 都视为 round-001（无前序），不进入悬挂检查
+        # 历史数据 bug：F-008-001.json 写入 supersedes=""（save_review 默认值偏差），
+        # 工具层接受 falsy 兜底，避免历史单点数据触发 R006 误报（D-016）
+        if not sup:
             continue
         if sup not in all_ids:
             report.add(label, Severity.ERROR, "R006", f"{rid} supersedes={sup} 但目标不存在")

@@ -202,6 +202,17 @@
 - **来源**：scripts/lib/check_sourcing.py:36（RE_SRC）/ scripts/lib/check_sourcing.py:89（_strip_code_blocks）/ requirements/REQ-2026-008/artifacts/review-20260506-195522.md:50
 - **时间**：2026-05-06 22:10:00
 
+### D-016 R006 supersedes 检查 falsy 兼容修复（dev→testing phase-transition 阻塞，scope 拓展）
+- **Context**：dev→testing 切换跑 GATE-REVIEW-VERDICT 时，`reviews/code-F-008-001.json` 的 `supersedes=""` 被 `_r006_supersedes_chain` 误判为悬挂引用（指向不存在目标）。普查 REQ-2026-008/reviews 下 24 个 verdict json，仅此一例 `supersedes=""`，其他 first-round 均为 `null`——属 save_review 写入路径的单点数据偏差。R006 当前判空逻辑 `if sup is None: continue` 不接受空字符串。
+- **Decision**：在 `scripts/lib/check_reviews.py:_r006_supersedes_chain` 改用 `if not sup: continue`，把 `None / "" / 0` 等 falsy 值统一视为"无前序"，避免历史单点数据触发误报。同时保留对真实悬挂引用（指向不存在目标）和环检测的保护语义。本修复属本需求 scope 拓展，原因同 D-015：(a) 阻塞 dev→testing phase-transition；(b) 一行修改 + 4 个单测 trivial；(c) 工具修复属 reviewer 体系盲点，与本需求派发链 receipt 体系无依赖。
+- **Consequences**：
+  - `_r006_supersedes_chain` 接受 falsy supersedes；不修改任何 verdict json 数据点（保留 F-008-001 历史 supersedes=""）。
+  - `tests/lib/test_check_reviews_r006_falsy.py` 新增 4 单测 TC-R006-FALSY-1~4（None / "" / 合法链 / 真悬挂保护）。
+  - **不**改 save_review.py 写入逻辑（治标）——save_review 默认值偏差是另一处盲点，不在本 scope 修；新建 follow-up 项："save_review supersedes 字段统一写 null 而非 ""（D-016 上游）"。
+  - 提交：单 commit `fix(check-reviews): R006 accept falsy supersedes`，PR 描述会单列 D-016 说明 scope 拓展。
+- **来源**：scripts/lib/check_reviews.py:259-289（_r006_supersedes_chain）/ requirements/REQ-2026-008/reviews/code-F-008-001.json:supersedes
+- **时间**：2026-05-06 22:30:00
+
 ### D-013 F-007 测试文件命名：acceptance 取代 detail-design §8.4（实施期偏差记录）
 - **Context**：detail-design §8.4（行 1078-1085）把 F-007 的 Python 测试文件命名为 `test_task_context_builder_render.py`，与 acceptance 验收标准（TC-F7-5）及 task md frontmatter `touches` 字段列出的 `tests/skills/test_feature_task_template.py` 存在命名不一致。task-planning 阶段 task.md 最终确认文件名为 `test_feature_task_template.py`。
 - **Decision**：以 acceptance 验收标准（TC-F7-5）为准，测试文件创建为 `tests/skills/test_feature_task_template.py`，与 task md frontmatter touches 字段保持一致。detail-design §8.4 名称不回改（仿 D-009/D-010/D-011 经验；reviewer hash 校验 R005 无 trivial 豁免通道，措辞修订即触发重审成本）。

@@ -33,6 +33,11 @@ _[hook-skipped: claude-exit-143]_
 - **F-2 路径穿越纵深防御**（security-checker minor，drop）：`scripts/gates/plugins/touches_violation.py:191` `receipt_path` 由 features.json 的 `fid` 拼接。check_features.py schema gate 上游守住 `^F-\d{3}$`；dev-time 同 F-1。修法：plugins/base.py 抽公共 `_safe_feature_path(tasks_dir, fid, suffix)` 复用；与 F-1 同步。
 - **F-3 touches_violations[] 上限**（security-checker minor，drop）：理论 disk DoS 链路被 hook fail-open + GATE-TOUCHES-VIOLATION 仅列前 3 条 fail 打断；生产环境优化项（候选 `MAX_VIOLATIONS=1000` 截断 + logger.warning）。
 
+### dev→testing phase-transition 期工具盲点 follow-up（D-015 / D-016 上游）
+
+- **save_review supersedes 写入偏差**（D-016 上游）：`save_review.py` 写 verdict json 时，supersedes 字段在 round-001（无前序）场景下应统一写 `null` 而非空字符串。F-008-001.json 是已知单点偏差（其余 first-round 都是 null）。修法：定位 save_review 写入路径里 supersedes 默认值赋值点，强制 None；同时反向 audit `requirements/*/reviews/*.json` 是否还有 `supersedes=""` 单点。本需求 D-016 走兼容兜底（工具层接受 falsy），不修写入路径——避免 scope 蔓延。
+- **GATE-SOURCING inline code mask follow-up**（D-015 上游）：本需求只 mask fenced + 反引号 inline code。其他 markdown 引用语境（如 `<!-- comment -->` HTML 注释、链接 `[text](path)`、图像 `![alt](src)`）当前不 mask，理论上仍可能误报。短期内未观测到此类场景，记为 follow-up 不立即修。
+
 ### F-2 / F-4 累积技术债（推 F-005+ 一起处理）
 
 - **F-2**：`scripts/gates/plugins/task_frontmatter.py` / `features_schema.py` 同位置 `_validate_*_file` 捕获 `SchemaLoadError` 后追加到 failures，最终以 `Decision.FAIL + R-*-INVALID code` 返回，混淆 exit 1（数据违规）/ exit 2（schema 损坏）语义。修法：抽公共 `ValidationReport` 抽象时区分 (kind, msg)，schema 类返回独立 code（如 `R-*-SCHEMA-BROKEN`）。
