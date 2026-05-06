@@ -25,3 +25,4 @@
 2026-05-06 10:17:06 [review:needs_attention] detail-design-quality-reviewer round-001 score 85（1 major TOCTOU + 3 minor）
 2026-05-06 10:20:01 [review:looks_clean] detail-design-quality-reviewer round-002 score 92 supersedes 001（TOCTOU 修复通过 + 3 suggestion 不阻塞）
 2026-05-06 10:21:26 [signoff] REV-REQ-2026-008-detail-design-002 approved by hj19961223@gmail.com
+2026-05-06 10:22:29 [save] detail-design 全闭环：13 待办 12/12 必决落地 / round-002 looks_clean 92 / signoff approved（待切 task-planning）
