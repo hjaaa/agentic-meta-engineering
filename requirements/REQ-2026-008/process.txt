@@ -71,3 +71,4 @@
 2026-05-06 20:03:05 [signoff] REV-REQ-2026-008-code-F-007-001 approved-trivial by hj19961223@gmail.com
 2026-05-06 20:03:44 [development] F-007 完成（review-001 looks_clean 82 → 现场修 4 trivial（F-2/F-4/F-6/F-7）+ F-3 顺手解决 → signoff approved-trivial；F-1/F-3 上游 follow-up）
 2026-05-06 20:05:58 [save] development 7/8 闭环（F-007 round-1 looks_clean 82 → 修 4 trivial → approved-trivial；F-1/F-3 follow-up）；剩 F-008
+2026-05-06 20:35:49 [development] F-008 派发（model=opus）→ 完成（DONE_WITH_CONCERNS / 38 passed / 全量回归 742 passed）
