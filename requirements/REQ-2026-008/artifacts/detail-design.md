@@ -755,6 +755,321 @@ GATE-TRACEABILITY 持 `legacy-bypass` tag（来源：scripts/gates/registry.yaml
 
 ---
 
+## 6. meta-schema.yaml legacy 字段说明 patch（对应 outline-design §6 待办 #12）
+
+### 6.1 改动定位
+
+`context/team/engineering-spec/meta-schema.yaml:133` 现有 legacy 字段定义（来源：context/team/engineering-spec/meta-schema.yaml:133）：
+
+```yaml
+optional_fields:
+  - reviews
+  - archived_at   # 归档时间戳；仅 phase=completed 时允许写入
+  - legacy   # PR4 新增；boolean，true 表示豁免 reviewer-verdict 校验（仅 check_reviews 跳过）
+
+# ---------- legacy 字段（v2 新增，PR4 引入） ----------
+# 用途：标记历史需求豁免 reviewer-verdict 体系的 review 校验
+#   - 仅影响 scripts/lib/check_reviews.py 的入口短路
+#   - 不影响 check_meta / check_index / check_sourcing
+#   - 适用场景：completed 阶段的历史 REQ（PR3 之前产出，meta.yaml 无 reviews 字段）
+# 语义：
+#   - true：跳过所有 R001~R007 校验
+#   - false / 缺省：正常校验
+# 引入新字段后切忌泛滥使用；新增 REQ 必须走结构化 reviewer 通道。
+```
+
+### 6.2 精确 patch
+
+在第 138 行 `不影响 check_meta / check_index / check_sourcing` 后追加一行（注意保持注释缩进 `#   - `）：
+
+```diff
+ # 用途：标记历史需求豁免 reviewer-verdict 体系的 review 校验
+ #   - 仅影响 scripts/lib/check_reviews.py 的入口短路
+ #   - 不影响 check_meta / check_index / check_sourcing
++#   - 不豁免派发链强制结构 4 gate（GATE-POST-DEV-RECEIPT / GATE-TOUCHES-VIOLATION /
++#     GATE-FEATURES-SCHEMA / GATE-TASK-FRONTMATTER）：D-005 #2 决议——
++#     historic completed REQ 由 trigger / changed_files 路径自然隔离，
++#     不依赖 legacy 短路（D-006 V-07 修订；详见 requirements/REQ-2026-008/artifacts/detail-design.md §5.2）
+ #   - 适用场景：completed 阶段的历史 REQ（PR3 之前产出，meta.yaml 无 reviews 字段）
+```
+
+### 6.3 不改动 enum / required / format
+
+D-005 #2 决议（来源：requirements/REQ-2026-008/plan.md:83）只影响**注释语义**，不改 schema 结构：
+
+- `optional_fields` 列表保持现样（不动）
+- 不新增 enum / format / conditional_required（4 个新 gate 由 registry.yaml 自身的 trigger / changed_files 过滤，**不读取 meta.legacy 字段**）
+
+> 这是关键设计——避免让 4 个新 gate 与 meta.legacy 字段产生新耦合。所有"为什么 historic REQ 不命中"的逻辑都封装在 registry.yaml 的 applies_when 与 plugin precheck 内（§5.2 三重保证）。
+
+### 6.4 单测覆盖（tests/gates/test_meta_schema.py）
+
+无新增——本 patch 仅改注释，不影响 check_meta.py 行为；既有 fixture 集合保留。
+
+### 6.5 关联文件同步
+
+| 文件 | 是否同步改 | 原因 |
+|---|---|---|
+| `scripts/lib/check_reviews.py` | ❌ 否 | 注释 patch 不影响 R001~R007 实现 |
+| `scripts/lib/check_meta.py` | ❌ 否 | 不读 legacy 字段含义注释 |
+| `.claude/skills/managing-requirement-lifecycle/reference/phase-rules.md` | ❌ 否 | legacy 字段语义未变 |
+| `requirements/*/meta.yaml`（历史 REQ） | ❌ 否 | 历史 legacy=true 字段值不变 |
+
+---
+
+## 7. CI quality-check.yml pytest 扩展 patch（对应 outline-design §6 待办 #13）
+
+### 7.1 现状
+
+`.github/workflows/quality-check.yml:47-48`（来源：.github/workflows/quality-check.yml:48）：
+
+```yaml
+      # F-005：单元测试门禁；确保 gates/ 所有 plugin 测试全绿
+      - name: pytest
+        run: pytest tests/gates/ -v
+```
+
+仅覆盖 `tests/gates/`，新增的 `tests/lib/` / `tests/hooks/`（bats 单独覆盖）/ `tests/integration/` / `tests/lifecycle/` / `tests/skills/` 不在 pytest 通道内——V-02 / V-07 / V-08 测试用例落地后将无 CI 兜底。
+
+### 7.2 精确 patch
+
+```diff
+       # F-005：单元测试门禁；确保 gates/ 所有 plugin 测试全绿
+       - name: pytest
+-        run: pytest tests/gates/ -v
++        run: pytest tests/ --ignore=tests/benchmarks/ -v
+```
+
+`--ignore=tests/benchmarks/` 排除性能基线测试（如有）；其他子目录全覆盖。
+
+### 7.3 实证基线
+
+`pytest tests/ --ignore=tests/benchmarks/` 已实证 **603 passed / 8 skipped / 36.04s**（来源：requirements/REQ-2026-008/notes.md:21），CI 扩展**零修复成本**——本次 PR 直接合入。
+
+### 7.4 提交时机（与本 PR 同包）
+
+**必须**与本需求其他改动同 PR 提交，不拆独立 PR：
+
+- 若先合入 CI patch 再合本需求 → CI 触发跑全量 tests/，但本需求新增的 `tests/lib/test_dispatch_state.py` / `tests/gates/test_*.py` 等还未存在 → CI fail（"no tests collected"）
+- 若先合本需求再补 CI patch → 中间窗口期 CI 不跑新单测 → V-02 / V-07 / V-08 验收点形同虚设
+- **同 PR 提交**：单测文件与 workflow patch 一起入 commit；CI 在 PR push 时一次性跑全集
+
+### 7.5 单测覆盖（无 quality-check.yml 自身的单测）
+
+CI workflow 自身无单测；改动验证三段（**已验证基线**：603 passed / 8 skipped，来源：requirements/REQ-2026-008/notes.md:21）：
+
+- **本地预跑**：commit 前在 feature 分支跑 `pytest tests/ --ignore=tests/benchmarks/ -v`，期望 0 fail（与基线对齐）
+- **PR 流水线触发**：push 后观察 quality-check workflow，pytest step 期望 pass
+- **回滚预案**：若 CI fail 且无法快速修复，回退本 patch（保留 `tests/gates/` 覆盖），其他改动不受影响
+
+### 7.6 关联 step 不动
+
+`bats tests/hooks/`（line 68）/ `ruff check`（line 73）/ unified gate runner（line 44）保持不变；本 patch 仅改 pytest 一行。
+
+---
+
+## 8. 派发模板 frontmatter `touches` 字段 + task-context-builder 同步（对应 outline-design §6 待办 #7）
+
+### 8.1 feature-task.md.tmpl 改动
+
+`.claude/skills/feature-lifecycle-manager/templates/feature-task.md.tmpl:1-10` 现 frontmatter 8 字段（来源：.claude/skills/feature-lifecycle-manager/templates/feature-task.md.tmpl:1）：
+
+```yaml
+---
+feature_id: __FEATURE_ID__
+title: __TITLE__
+status: pending
+complexity: __COMPLEXITY__
+depends_on: __DEPENDS_ON__
+created_at: __ISO8601__
+updated_at: __ISO8601__
+review_report: null
+---
+```
+
+#### 精确 patch
+
+在 `depends_on` 后追加 `touches: __TOUCHES__`：
+
+```diff
+ ---
+ feature_id: __FEATURE_ID__
+ title: __TITLE__
+ status: pending
+ complexity: __COMPLEXITY__
+ depends_on: __DEPENDS_ON__
++touches: __TOUCHES__
+ created_at: __ISO8601__
+ updated_at: __ISO8601__
+ review_report: null
+ ---
+```
+
+> `__TOUCHES__` 占位渲染为 YAML 数组（如 `[".claude/hooks/dispatch_precheck.py", "scripts/lib/dispatch_state.py"]`），空数组写 `[]`。**不允许写 `null`**——schema 把 touches 列为 required（detail-design §4 / outline-design §3.1，来源：requirements/REQ-2026-008/artifacts/outline-design.md:312）。
+
+#### 模板正文段同步
+
+template line 32-34（来源：.claude/skills/feature-lifecycle-manager/templates/feature-task.md.tmpl:32）：
+
+```
+## 触及范围
+
+（从 features.json 的 `touches` 复制，作为 subagent 开发边界约束）
+```
+
+改为：
+
+```
+## 触及范围
+
+（与 frontmatter `touches` 字段一致，作为 subagent 开发边界约束。
+frontmatter 是机器读取入口（touches_guard.py / GATE-TOUCHES-VIOLATION），本段是人读快速参考。
+两处不一致时以 frontmatter 为准。）
+```
+
+### 8.2 task-context-builder Skill 填充逻辑同步
+
+`.claude/skills/task-context-builder/SKILL.md:20`（来源：.claude/skills/task-context-builder/SKILL.md:20）已要求"基本信息"段透出 4 项机读字段（含 touches），但**只透出到上下文文档**——本次需要扩展：
+
+#### 改动要点
+
+| 行为 | 现状 | 改动后 |
+|---|---|---|
+| 读 features.json | ✅ 已有 | 不变 |
+| 透出 touches 到上下文 §"基本信息" | ✅ 已有 | 不变 |
+| 渲染 task .md frontmatter `touches` 字段 | ❌ 缺（模板原本无此字段） | ✅ 新增：从 features.json `touches` 数组复制到 frontmatter，YAML 数组格式 |
+| 派发 prompt 首部加 `feature_id: F-xxx` 独占首行 | ❌ 缺（模板首行是 "你是..."） | ✅ 新增：D-005 #3 + D-007 强化 |
+
+#### subagent-dispatch.md 模板首部精确 patch
+
+`.claude/skills/feature-lifecycle-manager/reference/subagent-dispatch.md:50`（来源：.claude/skills/feature-lifecycle-manager/reference/subagent-dispatch.md:50）现状：
+
+```
+你是 feat/req-<REQ-ID> 分支上的 feature 实现者。当前任务 F-xxx · <title>。
+```
+
+改为：
+
+```
+feature_id: F-xxx
+你是 feat/req-<REQ-ID> 分支上的 feature 实现者。当前任务 F-xxx · <title>。
+```
+
+> **硬约束**（D-007 来源：requirements/REQ-2026-008/plan.md:95）：`feature_id: F-xxx` 必须**独占首行**且行首无任何前缀（不能是"# feature_id: ..."、不能是"DISPATCH: feature_id: ..."），否则 dispatch_precheck.py 的 `^feature_id:\s*(F-\d{3})\s*$` regex（来源：requirements/REQ-2026-008/artifacts/tech-feasibility.md:104）解析失败 → fail-open 放行 = 校验形同虚设。
+
+#### 派发模板 §1 触及范围段同步
+
+subagent-dispatch.md line 58-59（来源：.claude/skills/feature-lifecycle-manager/reference/subagent-dispatch.md:58）现状：
+
+```
+1. 按上方上下文实现 F-xxx，严格限制在以下触及范围内：
+   <粘贴 touches 字段，如为空则写"未声明，保守处理：仅改与本 feature 直接相关的文件，新增文件优先"）
+```
+
+改为：
+
+```
+1. 按上方上下文实现 F-xxx，严格限制在以下触及范围内（与 task .md frontmatter touches 一致）：
+   <粘贴 touches 字段；若为空数组 `[]` 写"未声明 touches，保守处理：仅改与本 feature 直接相关的文件，新增文件优先；任何越界写入会被 touches_guard.py 软记入 receipt"）
+```
+
+### 8.3 task-context-builder 渲染流程
+
+```
+入口：feature_id ∈ features.json
+  ├─[1] 读 features.json → 取 features[fid]
+  ├─[2] 读 detail-design.md / outline-design.md 相关段
+  ├─[3] 渲染 task .md
+  │      ├─ 模板：feature-task.md.tmpl
+  │      ├─ 替换 __FEATURE_ID__ / __TITLE__ / __COMPLEXITY__ / __DEPENDS_ON__
+  │      ├─ 替换 __TOUCHES__ ← yaml.safe_dump(features[fid]["touches"], default_flow_style=True)
+  │      │      └─ 空数组 → "[]"；非空 → "[\".claude/hooks/x.py\", \"scripts/lib/y.py\"]"
+  │      └─ 替换 __ISO8601__ ← TZ=Asia/Shanghai now
+  ├─[4] 渲染派发 prompt（subagent-dispatch.md 模板）
+  │      ├─ 首行强制 `feature_id: <fid>`
+  │      ├─ 第二行起接原模板 "你是 feat/req-..."
+  │      └─ §"你的任务" 第 1 项粘贴 touches 数组
+  └─ 输出：task .md path + prompt string
+```
+
+### 8.4 单测覆盖
+
+| 用例 ID | 路径 | 场景 | 期望 |
+|---|---|---|---|
+| TT-001 | `tests/skills/test_task_context_builder_render.py` | features[fid].touches=[".claude/hooks/x.py"] | task.md frontmatter `touches: ['.claude/hooks/x.py']` 等价 YAML |
+| TT-002 | 同上 | features[fid].touches=[] | task.md frontmatter `touches: []`；prompt 第 1 项写 "未声明 touches..." |
+| TT-003 | 同上 | features[fid] 缺 touches 字段（旧 features.json） | task-context-builder 抛 ValueError，要求迁移；不静默写 null |
+| TT-004 | 同上 | 派发 prompt 首行 | 严格等于 `feature_id: <fid>`，无前缀无后缀 |
+| TT-005 | 同上 | dispatch_precheck.py regex 模拟解析 prompt 输出 | 解析成功，feature_id 命中 |
+
+> TT-005 是 cross-skill 回归用例：用 dispatch_precheck.py 的 `parse_feature_id` 函数做 prompt 输出的反向验证。
+
+### 8.5 关联文件改动一览
+
+| 文件 | 改动类型 | 改动要点 |
+|---|---|---|
+| `.claude/skills/feature-lifecycle-manager/templates/feature-task.md.tmpl` | 修改 | frontmatter +`touches: __TOUCHES__`；正文段更新引导语 |
+| `.claude/skills/feature-lifecycle-manager/reference/subagent-dispatch.md` | 修改 | prompt 模板首部 +`feature_id: F-xxx`；§"你的任务" 第 1 项更新引导语 |
+| `.claude/skills/task-context-builder/SKILL.md` | 修改 | 流程段补 `__TOUCHES__` 渲染逻辑 + prompt 首行强制 |
+| `tests/skills/test_task_context_builder_render.py` | 新增 | TT-001 ~ TT-005 五用例 |
+
+---
+
+## 9. render-docs.py 重生成 gate-checklist.md（对应 outline-design §6 待办 #9）
+
+### 9.1 现状
+
+`scripts/gates/migration/render-docs.py:1`（来源：scripts/gates/migration/render-docs.py:1）已具备双模式：
+
+```
+python3 scripts/gates/migration/render-docs.py          # 渲染并写入目标文件
+python3 scripts/gates/migration/render-docs.py --check  # CI 强校验：diff 非空 exit 1
+```
+
+输出：`.claude/skills/managing-requirement-lifecycle/reference/gate-checklist.md`（来源：scripts/gates/migration/render-docs.py:9）。
+
+CI 已在 quality-check workflow 集成 `--check` 链路：unified gate runner 走 ci trigger（来源：.github/workflows/quality-check.yml:44）；ruff lint step 紧随其后（来源：.github/workflows/quality-check.yml:73）。漏跑直接红 PR。
+
+### 9.2 PR 提交前必跑步骤
+
+本需求 4 个新 gate 注册到 registry.yaml 后，**强制执行**：
+
+```bash
+# 在 feature 分支、registry.yaml 已 add 4 gate 之后
+python3 scripts/gates/migration/render-docs.py
+git add .claude/skills/managing-requirement-lifecycle/reference/gate-checklist.md
+git commit --amend --no-edit  # 或新 commit，按团队习惯
+```
+
+> **严禁** 仅 commit registry.yaml 而漏 gate-checklist.md——`--check` 模式会让 CI 红。
+
+### 9.3 提交前清单 PR 模板补丁
+
+`/requirement:submit` PR 模板（详见 `managing-requirement-lifecycle/reference/submit-rules.md` [待补充：本次不改 submit 模板，仅 PR 描述 checklist 补一行]）的"自检清单"段建议手工补一项：
+
+```markdown
+- [ ] 4 个新 gate 已 render：`python3 scripts/gates/migration/render-docs.py` + diff 落到 gate-checklist.md
+```
+
+> 该补丁是建议性的（用户 PR 描述模板），不强制改 submit-rules.md。强制保证由 CI `--check` 兜底。
+
+### 9.4 单测覆盖
+
+`render-docs.py` 自身已有单测覆盖（来源待确认 [待补充：本次不新增 render-docs.py 测试用例，仅在 PR 自检清单中加 render 步骤]）。本次新增 4 gate 仅改 registry.yaml 数据；不改 render-docs.py 代码逻辑。
+
+### 9.5 失败回滚
+
+若 PR push 后 CI `--check` fail：
+
+1. 本地跑 `python3 scripts/gates/migration/render-docs.py`
+2. 检查 diff（必然只动 gate-checklist.md）
+3. `git add` + `git commit --amend --no-edit` + force push（**仅在自己的 feature 分支**，与团队 git 规范一致）
+4. 重新触发 CI
+
+如果 diff 异常大（比如改动了非 4 gate 的部分），停下来确认 registry.yaml 是否被误改了其他字段——这是 schema 漂移信号，**不要直接 push**。
+
+---
+
 ## 99. 后续待办进度（接 outline-design §6）
 
 | # | 待办 | 状态 |
@@ -765,12 +1080,12 @@ GATE-TRACEABILITY 持 `legacy-bypass` tag（来源：scripts/gates/registry.yaml
 | 4 | .dispatch-state.json schema + 三函数签名 | ✅ 本次（§3） |
 | 5 | touches glob 语义 | 已收口（outline §3.3） |
 | 6 | 3 份 schema 的 schema_version + SUPPORTED_VERSIONS | ✅ 本次（§4） |
-| 7 | F-007 派发模板 frontmatter `touches` | ⏳ 后续 |
+| 7 | F-007 派发模板 frontmatter `touches` + 首行 `feature_id` | ✅ 本次（§8） |
 | 8 | 4 个新 gate 的 applies_when 字段 | ✅ 本次（§5） |
-| 9 | render-docs.py 重生成 gate-checklist.md | ⏳ 后续 |
+| 9 | render-docs.py 重生成 gate-checklist.md | ✅ 本次（§9） |
 | 10 | F-002/F-003 是否合并 check_schema.py 复评 | ⏳ 后续（可选） |
 | 11 | F-001 回归基线 pytest 快照 | 已闭环 |
-| 12 | meta-schema.yaml legacy 字段说明 patch | ⏳ 后续 |
-| 13 | CI quality-check.yml pytest 扩展 patch | ⏳ 后续 |
+| 12 | meta-schema.yaml legacy 字段说明 patch | ✅ 本次（§6） |
+| 13 | CI quality-check.yml pytest 扩展 patch | ✅ 本次（§7） |
 
-下一批次推进顺序候选：**#7 + #12 + #13**（派发模板 frontmatter + meta-schema legacy 注释 + CI patch）→ **#9 + #10**（gate-checklist 重生成 + B 案合并复评收尾）。
+**所有必决项（#1 ~ #9 / #11 ~ #13）已落地**。剩余 #10（B 案合并复评）为可选项，依赖 task-planning 阶段产出 features.json 后再评——届时若 F-002 / F-003 实现重复 > 60% 触发升级 A 案。
