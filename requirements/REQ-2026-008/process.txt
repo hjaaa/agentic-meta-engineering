@@ -56,3 +56,5 @@
 2026-05-06 15:32:41 [development] F-004 派发（model=opus；hooks 高风险，硬约束 settings.json 末步接入 + dispatch_precheck fail-open 兜底）
 2026-05-06 16:16:52 [review:needs_attention] code-quality-reviewer round-001 score 78（0 critical / 3 major / 13 minor；F-3/F-4/F-12/F-18/F-26/F-31/F-33 反证 drop；F-1/F-2 critical 降 major should_fix 推 round-2 重构）
 2026-05-06 16:47:31 [review:looks_clean] code-quality-reviewer round-002 score 90 supersedes 001（8 must_fix + 6 should_fix 全验证 pass；_main_inner 152→59 行 / CC 33→12 / 嵌套 5→3；残留 6 minor 全部 follow-up）
+2026-05-06 16:49:30 [signoff] REV-REQ-2026-008-code-F-004-002 approved by hj19961223@gmail.com
+2026-05-06 16:49:58 [development] F-004 完成（review-001 needs_attention 78 → fix(8 must_fix + 6 should_fix) → review-002 looks_clean 90 supersedes 001 / signoff approved）
