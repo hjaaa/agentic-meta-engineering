@@ -106,10 +106,11 @@ requirement.md 已审定 5 场景 / 9 验收 / 6 决策（来源：requirements/
 | 21 | `.claude/skills/managing-requirement-lifecycle/reference/gate-checklist.md` | 重生成 | tech-feasibility.md:625 |
 | 22 | `context/team/engineering-spec/meta-schema.yaml` | 修改（+legacy 字段说明 1 行） | plan.md:88 |
 | 23 | `.github/workflows/quality-check.yml` | 修改（pytest 覆盖扩展） | tech-feasibility.md:545 |
-| 24 | `requirements/REQ-2026-008/artifacts/requirement.md` | 修改（V-07 措辞已修订 D-006） | plan.md:97 |
-| 25 | `tests/hooks/test_dispatch_precheck.bats` 等 | 新增（V-01~V-08 用例） | requirement.md:146 |
+| 24 | `tests/hooks/test_dispatch_precheck.bats` 等 | 新增（V-01~V-08 用例） | requirement.md:146 |
 
-合计：14 新增 + 11 修改 = **25 个文件**（不含 `tests/` 多文件展开）。
+合计：14 新增 + 10 修改 = **24 个文件**（不含 `tests/` 多文件展开）。
+
+> **已完成项（不计入 24 项）**：`requirements/REQ-2026-008/artifacts/requirement.md` V-07 措辞已修订（D-006，commit `4cdabc7`，来源：requirements/REQ-2026-008/plan.md:97）——任务规划阶段拆 features.json 时不重复登记。
 
 ### 1.3 8 features 依赖 DAG
 
@@ -350,10 +351,10 @@ python3 scripts/lib/check_<X>.py <path-or-glob> [--strict]
    append 到 tasks/<current>.receipt.json.touches_violations[]
 ```
 
-注意（来源：requirements/REQ-2026-008/artifacts/tech-feasibility.md:680）：
-- **glob 语义留 detail-design**（§5 T-01 不涉及；但需在模板注释固化是否 pathspec gitignore 风格）
+注意（来源：requirements/REQ-2026-008/artifacts/tech-feasibility.md:349）：
+- **glob 语义直接收口**（来源：requirements/REQ-2026-008/artifacts/tech-feasibility.md:394）：采用 `pathspec.GitIgnoreSpec` gitignore 风格（仓库已用 pathspec，来源：.github/workflows/quality-check.yml:74）；递归用 `src/auth/**`，仅本目录用 `src/auth/*`。模板注释同步固化此约定，detail-design 不再论证。
 - **MultiEdit 多 file_path** 需逐个匹配
-- **subagent 写 receipt 之前** 的 touches 违规先暂存到内存或 tmp 文件，receipt 创建时合并；具体策略留 detail-design
+- **receipt 不存在时**：touches_guard 创建空骨架（仅含 `feature_id` / `schema_version: "1.0"` / `touches_violations[]` 三字段，来源：requirements/REQ-2026-008/artifacts/tech-feasibility.md:358）；subagent 后续写完整 receipt 时，schema 设计按"Write 不带 `touches_violations` 字段时保留已存在 violations"避免覆盖。原子写入（atomic rename）+ 追加策略的细节留 detail-design。
 
 ### 3.4 dispatch_state.py 锁工具（F-004 内嵌）
 
@@ -383,8 +384,8 @@ def run(ctx: GateContext) -> GateResult:
 |---|---|---|
 | GATE-POST-DEV-RECEIPT | phase-transition / submit | 扫 features.json done feature 都有 receipt.json + status ∈ {DONE,DONE_WITH_CONCERNS} |
 | GATE-TOUCHES-VIOLATION | phase-transition / submit | 扫所有 receipt.json `.touches_violations` 长度 > 0 即 fail |
-| GATE-FEATURES-SCHEMA | pre-commit / ci（仅 features.json 变更时） | 调 `check_features.py` |
-| GATE-TASK-FRONTMATTER | pre-commit / ci（仅 tasks/*.md 变更时） | 调 `check_task_frontmatter.py` |
+| GATE-FEATURES-SCHEMA | pre-commit / phase-transition / submit / ci | 调 `check_features.py`；`changed_files: ["requirements/*/artifacts/features.json"]` 限定（来源：requirements/REQ-2026-008/artifacts/tech-feasibility.md:419） |
+| GATE-TASK-FRONTMATTER | pre-commit / phase-transition / submit / ci | 调 `check_task_frontmatter.py`；`changed_files: ["requirements/*/artifacts/tasks/*.md"]` 限定（来源：requirements/REQ-2026-008/artifacts/tech-feasibility.md:420） |
 
 **applies_when 自然过滤**（V-07 D-006 修订，来源：requirements/REQ-2026-008/plan.md:97）：4 个新 gate 不加 `legacy-bypass` tag；historic completed 需求由 trigger / changed_files / target_phase 自然过滤。historic ci trigger 不会命中 phase-transition / submit 限定的 2 个 gate；historic features.json / tasks/*.md 不变更则 schema 类 gate 也不命中。
 
@@ -481,13 +482,13 @@ esac
 | # | 待办项 | 出处 | 必须在 detail-design 决议 |
 |---|---|---|---|
 |  1 | settings.json + guard.sh 精确 patch（matcher 改法 + Task case 位置 + touches 调度位置） | tech-feasibility §5.1 / 本概要 §3.6 | ✅ |
-|  2 | dispatch_precheck.py 的 stdin JSON 字段名实采样确认（`tool_input.prompt`） | tech-feasibility §5.1 待澄清#1 | ✅ |
+|  2 | dispatch_precheck.py 的 stdin JSON 字段名实采样确认（`tool_input.prompt`）——detail-design 首日用最小 hook 抓一次实采样；若字段名不同，调整 §3.2 / §3.3 hook 路径 | tech-feasibility §5.1 待澄清#1 / 本概要 §3.2 | ✅ |
 |  3 | dispatch_precheck.py fail-open 行为契约文档化 | tech-feasibility §5.4 / 本概要 §3.2 | ✅ |
 |  4 | `.dispatch-state.json` schema 字段（current / started_at / pid 等）+ dispatch_state.py 三函数签名 | tech-feasibility §5.5 / 本概要 §3.4 | ✅ |
-|  5 | touches glob 语义固化（pathspec gitignore 风格 vs 简化 glob） | tech-feasibility §5.6 / 本概要 §3.3 | ✅ |
+|  5 | touches glob 语义已在 §3.3 直接收口（pathspec.GitIgnoreSpec + `**` 递归约定）；detail-design 仅做模板注释固化与单测覆盖 | tech-feasibility §2.5 / 本概要 §3.3 | 已收口 |
 |  6 | 3 份 schema 的 schema_version + SUPPORTED_VERSIONS 兼容窗口策略 | tech-feasibility §5.7 / 本概要 §3.1 | ✅ |
-|  7 | F-007 派发模板 frontmatter 补 `touches: __TOUCHES__` 字段（含 `task-context-builder` Skill 填充逻辑同步） | notes.md:20 / tech-feasibility 待澄清 #2 | ✅ |
-|  8 | 4 个新 gate 的 `applies_when` 触发条件（精确字段值，避免 ci 通道误命中） | 本概要 §3.5 | ✅ |
+|  7 | F-007 派发模板 frontmatter 补 `touches: __TOUCHES__` 字段（含 `task-context-builder` Skill 填充逻辑同步） | requirements/REQ-2026-008/notes.md:20 / tech-feasibility 待澄清 #2 | ✅ |
+|  8 | 4 个新 gate 的 `applies_when` 精确字段值（含 phase-transition / submit 触发组的 applies_when 求值，避免历史 completed REQ ci 通道误命中） | 本概要 §3.5 | ✅ |
 |  9 | render-docs.py 重生成 gate-checklist.md 列入 PR 提交前清单 | tech-feasibility §5.8 | ✅ |
 | 10 | F-002 / F-003 是否合并 check_schema.py 复评（仅 B 案重复 > 60% 时） | 本概要 §4.1 T-01 | 可选 |
 | 11 | F-001 回归基线：`tests/` 全量 pytest 现状快照（已知 603 passed / 8 skipped） | tech-feasibility §5.9 待澄清 #3 / 本概要 §1.3 备注 | 已闭环 |
@@ -498,13 +499,13 @@ esac
 
 ## 待澄清清单
 
-> tech-research 阶段 3 条已于 2026-05-06 实证回填（来源：requirements/REQ-2026-008/notes.md:18）；本概要无新增未决条目，仅延续：
+> tech-research 阶段 3 条已于 2026-05-06 实证回填（来源：requirements/REQ-2026-008/notes.md:18）；本概要无新增未决条目，仅延续 2 条：
 
-1. **Task tool 的 stdin JSON 字段名 `tool_input.prompt`** [待用户确认]——detail-design 首日用最小 hook 抓一次实采样即可。当前所有解析逻辑按假设字段名设计；若实采样字段名不同，需调整 §3.2 / §3.3 hook 路径（来源：requirements/REQ-2026-008/artifacts/tech-feasibility.md:734）。
+1. **`feature-task.md.tmpl` frontmatter 缺 `touches` 字段**——本概要已写入 §1.2 / §3.7 / §6 待办#7；detail-design F-005 / F-007 必补，否则 V-03 fail（来源：requirements/REQ-2026-008/notes.md:20）。
 
-2. **`feature-task.md.tmpl` frontmatter 缺 `touches` 字段**——本概要已写入 §1.2#19 / §3.7 / §6 待办#7；detail-design F-005 / F-007 必补，否则 V-03 fail（来源：requirements/REQ-2026-008/notes.md:20）。
+2. **CI 扩展零修复成本**：`pytest tests/ --ignore=tests/benchmarks/` 已实证 603 passed / 8 skipped；F-006 可在本 PR 直接合入（来源：requirements/REQ-2026-008/notes.md:21）。
 
-3. **CI 扩展零修复成本**：`pytest tests/ --ignore=tests/benchmarks/` 已实证 603 passed / 8 skipped；F-006 可在本 PR 直接合入（来源：requirements/REQ-2026-008/notes.md:21）。
+> 原 #1（Task tool stdin JSON 字段名实采样）已合并至 §6 待办 #2 处理，避免双处对照。
 
 ---
 

@@ -12,3 +12,4 @@
 2026-05-06 08:56:04 [save] tech-research 节点稳定：4 commit 落地；strict 全过；待切 outline-design
 2026-05-06 09:07:45 [phase-transition] tech-research → outline-design（7 gates 全过；plan-freshness 无 warning）
 2026-05-06 09:17:19 [save] outline-design：outline-design.md 落地（4 层视图 / 8 features DAG / 3 时序 / T-01 展开 / 13 detail-design 待办，strict sourcing 0/0）
+2026-05-06 09:24:16 [save] outline-design：round-001 review needs_attention 5 项修订（major 触发组对齐 + receipt 骨架/glob 收口 + #24 V-07 标已完成 + 待澄清#1 合并）
