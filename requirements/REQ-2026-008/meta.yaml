@@ -112,9 +112,9 @@ reviews:
     conclusion: looks_clean
     reviewed_commit: 9fa248b
     artifact_hashes:
-      artifacts/detail-design.md: 
+      artifacts/detailed-design.md:
         05db0ae78aea04fc3d151e62604205859ff3aaecd786270a03eb9a6c60f75a46
-      artifacts/outline-design.md: 
+      artifacts/outline-design.md:
         f496d537801a1e65e9dbe420af04fd9bc76aea4ac2fef152c17990b6eb3153b6
     history:
       - REV-REQ-2026-008-detail-design-001
