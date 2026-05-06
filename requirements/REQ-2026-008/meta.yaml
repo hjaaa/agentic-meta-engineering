@@ -134,7 +134,7 @@ reviews:
       - REV-REQ-2026-008-detail-design-003
       - REV-REQ-2026-008-detail-design-004
       - REV-REQ-2026-008-detail-design-005
-    stale: false
+    stale: true
   code:
     by_feature:
       F-006:
