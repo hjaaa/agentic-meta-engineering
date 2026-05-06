@@ -21,6 +21,7 @@
 - [`time-format.md`](time-format.md) — 写入时间戳统一格式（`YYYY-MM-DD HH:MM:SS` / Asia/Shanghai）+ 向后兼容规则
 - [`meta-schema.yaml`](meta-schema.yaml) — `requirements/<id>/meta.yaml` 的字段 schema / 枚举 / 条件必填
 - [`review-schema.yaml`](review-schema.yaml) — `requirements/<id>/reviews/*.json` 的字段 schema / 枚举 / CR 规则
+- [`receipt-schema.yaml`](receipt-schema.yaml) — `requirements/<id>/artifacts/tasks/<F-xxx>.receipt.json` 的字段 schema / 枚举 / 条件必填（F-001 新增）
 
 ## 迭代方式
 

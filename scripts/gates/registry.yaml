@@ -164,6 +164,26 @@ gates:
     tests:
       fixtures: [pass, fail, skip]
 
+  - id: GATE-POST-DEV-RECEIPT
+    plugin: post_dev_receipt
+    severity: error
+    triggers:
+      - phase-transition
+      - submit
+    applies_when:
+      changed_files: []           # 无 path 限定（tasks/<fid>.md status=done 才是触发条件，但走 plugin precheck）
+      target_phase: null          # submit 无 target_phase；phase-transition 的 development→testing 检查在 plugin precheck
+      current_phase_in: []        # 运行时 phase 检查在 plugin precheck（S9 不允许 requires 放 path 谓词）
+      transition: null            # transition 精确过滤下沉到 plugin precheck（与 GATE-TRACEABILITY 一致）
+      requires: []                # 不依赖 meta.* 谓词
+    dependencies: []
+    side_effects: none
+    failure_message: |
+      {gate_id} 失败：{message}
+      修复建议：{fix_hint}
+    tests:
+      fixtures: [pass, fail, skip]
+
   - id: GATE-TRACEABILITY
     plugin: traceability
     severity: error
