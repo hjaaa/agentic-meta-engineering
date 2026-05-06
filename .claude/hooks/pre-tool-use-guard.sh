@@ -96,6 +96,7 @@ EOF
     Edit|Write|MultiEdit)
       check_branch_protect
       check_review_path "$file_path"
+      python3 "$( dirname "${BASH_SOURCE[0]}" )/touches_guard.py" <<<"$input" || true
       ;;
     Bash)
       check_bash_writes_review "$command"
