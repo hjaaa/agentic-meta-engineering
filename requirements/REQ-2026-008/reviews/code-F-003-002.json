@@ -1,0 +1,67 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-008-code-F-003-002",
+  "requirement_id": "REQ-2026-008",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-06 15:35:00",
+  "reviewed_commit": "be4b2e1",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "a9762d30f3883ff75e525f68272bee4dac6aec96f2d38eb36683d366d80f8656"
+    },
+    {
+      "path": "artifacts/detailed-design.md",
+      "sha256": "c60f58a1a8a8c9bcb731d9bea359b1327a69a23257afa54301c5f7f7fd38f6ed"
+    },
+    {
+      "path": "artifacts/tasks/F-003.md",
+      "sha256": "5b0caf677d8d0089d5e814f4ed0f3637c44302d41573740f8b65acd864d601c4"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 90,
+  "dimensions": {
+    "design_consistency": {
+      "score": 92,
+      "issues": []
+    },
+    "security": {
+      "score": 90,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 92,
+      "issues": []
+    },
+    "complexity": {
+      "score": 88,
+      "issues": []
+    },
+    "error_handling": {
+      "score": 90,
+      "issues": []
+    },
+    "auxiliary_spec": {
+      "score": 90,
+      "issues": []
+    },
+    "performance": {
+      "score": 90,
+      "issues": []
+    },
+    "history_context": {
+      "score": 90,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "F-2 / F-4 累积技术债已写入 requirements/REQ-2026-008/notes.md（『F-2 / F-4 累积技术债（推 F-005+ 一起处理）』章节）：plugin 层 SchemaLoadError 与数据违规共用 Decision.FAIL + R-*-INVALID code 是 F-002/F-003 共有缺陷；main() OSError 走 exit 1 vs schema 损坏 exit 2 契约边界亦同。F-005+ 任意新 schema-driven gate 派发时纳入 ValidationReport 抽公共的 scope，区分 (kind, msg) 返回值并引入独立 R-*-SCHEMA-BROKEN code"
+  ],
+  "scope": {
+    "feature_id": "F-003"
+  },
+  "supersedes": "REV-REQ-2026-008-code-F-003-001"
+}
