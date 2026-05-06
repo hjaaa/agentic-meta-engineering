@@ -187,6 +187,29 @@ gates:
     tests:
       fixtures: [pass, fail, skip]
 
+  - id: GATE-TASK-FRONTMATTER
+    plugin: task_frontmatter
+    severity: error
+    triggers:
+      - pre-commit
+      - phase-transition
+      - submit
+      - ci
+    applies_when:
+      changed_files:
+        - "requirements/*/artifacts/tasks/*.md"
+      target_phase: null
+      current_phase_in: []
+      transition: null
+      requires: []
+    dependencies: []
+    side_effects: none
+    failure_message: |
+      {gate_id} 失败：{message}
+      修复建议：{fix_hint}
+    tests:
+      fixtures: [pass, fail, skip]
+
   - id: GATE-POST-DEV-RECEIPT
     plugin: post_dev_receipt
     severity: error

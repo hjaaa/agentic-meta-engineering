@@ -1,0 +1,110 @@
+# requirements/<id>/artifacts/tasks/<F-xxx>.md frontmatter 团队级 Schema 定义（F-003）
+#
+# 用途：
+#   - check_task_frontmatter.py 校验 task.md frontmatter 字段 / 枚举 / 格式的唯一事实源
+#   - GATE-TASK-FRONTMATTER plugin 读取校验依据
+#
+# 数据载荷：requirements/<id>/artifacts/tasks/<F-xxx>.md（YAML frontmatter 块）
+#
+# 修改原则：
+#   - 字段增删或枚举调整必须走 PR review（影响所有 task 派发和状态管理）
+#   - schema_version 升 2.0 必须提供迁移脚本 scripts/lib/migrate_task_frontmatter_<from>_to_<to>.py
+#
+# 升级 SOP：
+#   1. 本文件顶部 schema_version 字段升级（如 "1.0" → "1.1"）
+#   2. check_task_frontmatter.py 的 SUPPORTED_VERSIONS 加入新版本（兼容期保留旧版本）
+#   3. 破坏性升级须新增 scripts/lib/migrate_task_frontmatter_<from>_to_<to>.py 迁移脚本
+#   4. 至少一个 release cycle 后再考虑剔除旧版本
+#
+# 关联文档：
+#   - requirements/REQ-2026-008/artifacts/detailed-design.md §2.1.1（task.md frontmatter status 权威源）
+#   - requirements/REQ-2026-008/artifacts/detailed-design.md §4.3（双层 schema_version）
+#   - requirements/REQ-2026-008/artifacts/detailed-design.md §5.1（GATE-TASK-FRONTMATTER）
+#
+# ❗ ADR（F-003）：schema_version 列为 required（不软兼容缺失）。
+#   原因：快速暴露不合规 task.md，避免"看起来合理就写了"的幻觉数据进入 status source-of-truth。
+#   迁移：F-007 派发模板改造时统一给所有 task.md 注入 schema_version: "1.0"。
+#   过渡期：task.md 改动触发 GATE-TASK-FRONTMATTER → fail 提示加 schema_version，这是预期行为。
+
+schema_version: "1.0"
+
+# ---------- 顶层必填字段 ----------
+required_fields:
+  - schema_version
+  - feature_id
+  - title
+  - status
+  - complexity
+  - depends_on
+  - touches
+  - created_at
+  - updated_at
+
+# ---------- 顶层字段格式 ----------
+format:
+  # major.minor 形式；不接受 '1' / '1.0.0' / '1.0-beta'
+  # 禁止用 enum 锁定具体值——靠 format regex + check_task_frontmatter.py SUPPORTED_VERSIONS 双层校验
+  schema_version: '^\d+\.\d+$'
+  # feature_id 格式：F-NNN
+  feature_id: '^F-\d{3}$'
+  # depends_on 元素格式（在 check_task_frontmatter.py 中逐元素校验）
+  depends_on_item: '^F-\d{3}$'
+
+# ---------- 枚举 ----------
+enums:
+  # task 执行状态：source-of-truth（dispatch_precheck / post_dev_receipt 均从此读）
+  status:
+    - pending
+    - in-progress
+    - done
+  # 复杂度：与 features-schema.yaml 对齐（trivial / light / medium / heavy）
+  complexity:
+    - trivial
+    - light
+    - medium
+    - heavy
+
+# ---------- 字段定义（文档化用途） ----------
+fields:
+  schema_version:
+    type: string
+    format: schema_version
+    required: true
+    description: "schema 版本，格式 major.minor（如 '1.0'）"
+  feature_id:
+    type: string
+    format: "^F-\\d{3}$"
+    required: true
+    description: "关联 feature 唯一标识，格式 F-NNN（如 F-001）"
+  title:
+    type: string
+    required: true
+    description: "task 标题（与 features.json 对应 feature 的 title 一致）"
+  status:
+    type: enum
+    enum: status
+    required: true
+    description: "task 执行状态：pending / in-progress / done（source-of-truth，§2.1.1）"
+  complexity:
+    type: enum
+    enum: complexity
+    required: true
+    description: "开发复杂度：trivial / light / medium / heavy（与 features-schema 对齐）"
+  depends_on:
+    type: list
+    items: string
+    required: true
+    description: "依赖的其他 feature id 列表，元素格式 ^F-\\d{3}$（空列表合法）"
+  touches:
+    type: list
+    items: string
+    required: true
+    description: "本 task 变更触及的文件 / 路径列表（由 F-007 派发模板注入）"
+  created_at:
+    type: string
+    required: true
+    description: "task 创建时间戳（YYYY-MM-DD HH:MM:SS，Asia/Shanghai）"
+  updated_at:
+    type: string
+    required: true
+    description: "task 最后更新时间戳（YYYY-MM-DD HH:MM:SS，Asia/Shanghai）"
