@@ -58,3 +58,4 @@
 2026-05-06 16:47:31 [review:looks_clean] code-quality-reviewer round-002 score 90 supersedes 001（8 must_fix + 6 should_fix 全验证 pass；_main_inner 152→59 行 / CC 33→12 / 嵌套 5→3；残留 6 minor 全部 follow-up）
 2026-05-06 16:49:30 [signoff] REV-REQ-2026-008-code-F-004-002 approved by hj19961223@gmail.com
 2026-05-06 16:49:58 [development] F-004 完成（review-001 needs_attention 78 → fix(8 must_fix + 6 should_fix) → review-002 looks_clean 90 supersedes 001 / signoff approved）
+2026-05-06 16:50:44 [save] development 5/8 闭环；F-004 r1 needs_attention 78 (hooks 高风险) → r2 修 8 must+6 should → looks_clean 90 supersedes 001；F-005 待派
