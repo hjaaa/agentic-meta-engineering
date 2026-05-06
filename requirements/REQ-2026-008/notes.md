@@ -26,3 +26,10 @@ _[hook-skipped: claude-exit-143]_
 - **关键发现**：`feature-task.md.tmpl` frontmatter 缺 `touches` 字段（仅在正文 §"触及范围"段有占位）。detail-design F-005 / F-007 必须把 `touches: __TOUCHES__` 加进 frontmatter，否则 `touches_guard.py` 无法机器化读取——这是隐藏的设计前提，不补就 V-03 直接 fail。
 - **正面信号**：`pytest tests/ --ignore=tests/benchmarks/` 603 passed / 8 skipped / 36s，CI 扩展覆盖零修复成本，F-006 可直接合入本次 PR。
 - **reviewer 体系启示（D-006 衍生）**：reviewer hash 校验无 trivial 豁免通道——任何 artifact 措辞修订都计入"重审"成本（hash drift → R005 硬 fail，stale=true 不豁免）。未来类似情况直接走重审，不再尝试"标 stale 跳过"。
+
+### F-2 / F-4 累积技术债（推 F-005+ 一起处理）
+
+- **F-2**：`scripts/gates/plugins/task_frontmatter.py` / `features_schema.py` 同位置 `_validate_*_file` 捕获 `SchemaLoadError` 后追加到 failures，最终以 `Decision.FAIL + R-*-INVALID code` 返回，混淆 exit 1（数据违规）/ exit 2（schema 损坏）语义。修法：抽公共 `ValidationReport` 抽象时区分 (kind, msg)，schema 类返回独立 code（如 `R-*-SCHEMA-BROKEN`）。
+- **F-4**：`scripts/lib/check_*.py` main() 中 OSError（文件不可读）走 exit 1，按契约更接近 exit 2（schema/环境损坏）。F-001/F-002/F-003 三件套同模式，应在抽公共时统一。
+
+触发条件：F-005+ 任意新 schema-driven gate 派发时，把这两条纳入 scope。

@@ -163,7 +163,7 @@ def _validate_task_md_file(rel_path: str) -> Optional[str]:
 
 def _parse_frontmatter_safe(
     task_path: Path, rel_path: str
-) -> "dict | str":
+) -> dict | str:
     """安全解析 task.md 的 frontmatter，不 sys.exit。
 
     Args:
@@ -178,10 +178,12 @@ def _parse_frontmatter_safe(
     try:
         content = task_path.read_text(encoding="utf-8")
     except OSError as exc:
+        logger.exception("task_frontmatter: task.md 读取失败，task_md=%s", rel_path)
         return f"{rel_path}: task.md 读取失败：{exc}"
 
     lines = content.splitlines()
     if not lines or lines[0].strip() != "---":
+        logger.warning("task_frontmatter: frontmatter 首行非 '---'，task_md=%s", rel_path)
         return f"{rel_path}: task.md 首行不是 '---'，无法读取 frontmatter；字段 schema_version 必填，当前缺失"
 
     end_idx: Optional[int] = None
@@ -191,12 +193,14 @@ def _parse_frontmatter_safe(
             break
 
     if end_idx is None:
+        logger.warning("task_frontmatter: frontmatter 无结束标记，task_md=%s", rel_path)
         return f"{rel_path}: task.md 没有找到 frontmatter 结束标记 '---'；字段 schema_version 必填，当前缺失"
 
     frontmatter_text = "\n".join(lines[1:end_idx])
     try:
         data = yaml.safe_load(frontmatter_text)
     except yaml.YAMLError as exc:
+        logger.exception("task_frontmatter: frontmatter YAML 解析失败，task_md=%s", rel_path)
         return f"{rel_path}: task.md frontmatter YAML 解析失败：{exc}"
 
     if data is None:
