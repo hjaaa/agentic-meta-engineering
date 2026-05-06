@@ -67,3 +67,4 @@
 2026-05-06 19:21:12 [review:looks_clean] code-quality-reviewer round-002 score 91 supersedes 001（F-4/F-6/F-7 三件套修复闭环 + ADR D-012 + 并发回归测试 TL-RC-001~003；3 候选 finding 全 critic rejected → drop）
 2026-05-06 19:22:24 [signoff] REV-REQ-2026-008-code-F-005-002 approved by hj19961223@gmail.com
 2026-05-06 19:23:03 [development] F-005 完成（review-001 needs_attention 78 → fix(F-4 RMW 锁 + F-6 audit + F-7 LOCK_SH + ADR D-012) → review-002 looks_clean 91 supersedes 001 / signoff approved）
+2026-05-06 19:59:00 [review:looks_clean] code-quality-reviewer round-001 score 82（0 critical / 0 major / 5 minor: F-2/F-4/F-6/F-7 trivial 一行修复 + F-3 上游措辞漂移 follow-up；F-1 major→minor downgrade 归 follow-up；F-5 drop 不在 touches）
