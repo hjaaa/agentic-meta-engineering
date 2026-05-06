@@ -34,11 +34,10 @@ bypass 校验：guard.sh 入口已吃掉 CLAUDE_GATES_GLOBAL_BYPASS，本文件�
 from __future__ import annotations
 
 import json
-import logging
 import os
 import re
 import sys
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Optional
 
@@ -55,22 +54,6 @@ _FEATURE_ID_RE = re.compile(r"^feature_id:\s*(F-\d{3})\s*$", re.MULTILINE)
 
 # parse_feature_id 仅扫 prompt 首部 5 行；超出则视同未声明
 _PARSE_HEAD_LINES = 5
-
-# Asia/Shanghai timezone offset（+08:00；不依赖 tzdata）
-_SHANGHAI_TZ = timezone.utc  # 实际使用时按 +08:00 偏移构造
-
-
-# 日志（自身错误隔离 → /tmp；不污染 hook 协议 stderr）
-_logger = logging.getLogger("dispatch_precheck")
-if not _logger.handlers:
-    try:
-        _h = logging.FileHandler("/tmp/dispatch-precheck-error.log", mode="a", encoding="utf-8")
-        _h.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
-        _logger.addHandler(_h)
-        _logger.setLevel(logging.INFO)
-    except OSError:
-        # 极端 fs 故障；fall back 到 NullHandler 避免 logging 自身炸
-        _logger.addHandler(logging.NullHandler())
 
 
 # ---------- audit 日志（与 guard.sh audit_log 行为等价） ----------
@@ -143,8 +126,11 @@ def locate_req_dir_by_branch() -> Optional[Path]:
     扫 requirements/*/meta.yaml；branch 字段命中即返回。
     失败返回 None → 调用方 fail-open。
 
-    测试 backdoor：env CLAUDE_DISPATCH_TEST_REQ_DIR_OVERRIDE 存在时直接返回该路径。
-    生产场景该变量不会出现；仅 tests/hooks/test_dispatch_precheck.bats 使用。
+    测试后门（env CLAUDE_DISPATCH_TEST_REQ_DIR_OVERRIDE）：
+      - 存在时直接返回 env 指向路径，绕过 git 分支匹配
+      - 仅 bats 沙盒用例（TC-F4-3/4/5）使用，类比既有 CLAUDE_GATES_AUDIT_ROOT
+      - 生产环境该变量不应出现；后续如需保护可加 CI/CLAUDE_DISPATCH_TEST_MODE 双重确认
+      - 详见 plan.md ADR D-011
     """
     # 测试 backdoor：仅供 bats 用例隔离 sandbox req（避免污染真 git 分支）
     test_override = os.environ.get("CLAUDE_DISPATCH_TEST_REQ_DIR_OVERRIDE")

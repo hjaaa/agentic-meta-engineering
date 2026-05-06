@@ -40,7 +40,7 @@ from scripts.lib.dispatch_state import (  # noqa: E402
 )
 
 
-# ---------- fixture ----------
+# ---------- 测试夹具 ----------
 
 @pytest.fixture
 def req_dir(tmp_path: Path) -> Path:
@@ -80,7 +80,7 @@ def test_TL_002_read_non_object_raises_value_error(req_dir: Path) -> None:
     """read 到 JSON 顶层不是 object → ValueError。"""
     state_path = req_dir / dispatch_state.STATE_FILE_NAME
     state_path.write_text('["array", "is", "wrong"]', encoding="utf-8")
-    with pytest.raises(ValueError, match="must be object"):
+    with pytest.raises(ValueError, match="顶层必须是 object"):
         read_state(req_dir)
 
 
@@ -200,6 +200,15 @@ def test_TL_006_concurrent_write_no_interleave(req_dir: Path, tmp_path: Path) ->
     p2.join(timeout=15)
     assert not p1.is_alive() and not p2.is_alive()
 
+    # 消费子进程 queue 结果（防止子进程僵死 + 验证结果合法性）
+    results = [q.get(timeout=1) for _ in range(2)]
+    statuses = [r[0] for r in results]
+    assert set(statuses) <= {"ok", "err"}, f"非预期状态：{results}"
+    assert "ok" in statuses, f"至少一个进程必须成功写入：{results}"
+    for status, msg in results:
+        if status == "err":
+            assert "TimeoutError" in msg, f"err 必须是 TimeoutError，实际：{msg}"
+
     # 最终文件必须可解析的合法 JSON
     state_path = req_dir / dispatch_state.STATE_FILE_NAME
     assert state_path.exists()
@@ -288,8 +297,8 @@ def test_TL_009_TOCTOU_regression_read_state_blocks_during_with(
     L2 read_state 在锁竞争场景下走 TimeoutError 路径而非读到中间状态。
     """
     ready = tmp_path / "locked"
-    # A 持锁 LOCK_TIMEOUT_S + 1s（比 B 的 5s deadline 长）
-    hold_s = LOCK_TIMEOUT_S + 1.0
+    # A 持锁 LOCK_TIMEOUT_S * 2（远超 B 的 5s deadline，避免启动延迟导致假通过）
+    hold_s = LOCK_TIMEOUT_S * 2
     p_a = mp.Process(target=_hold_lock_proc, args=(str(req_dir), hold_s, str(ready)))
     p_a.start()
     try:

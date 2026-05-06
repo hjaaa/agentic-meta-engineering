@@ -24,7 +24,7 @@ teardown() {
   unset SANDBOX_DIR
 }
 
-# ---------- helpers ----------
+# ---------- 辅助函数 ----------
 
 # 在临时目录建 sandbox req：features.json + tasks/F-001.md + tasks/F-002.md（默认全 pending）
 # 用法：_make_sandbox <req_id>；调用后 SANDBOX_DIR / SANDBOX_REQ 可用

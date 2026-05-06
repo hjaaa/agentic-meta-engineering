@@ -64,6 +64,9 @@ def main(argv: list[str] | None = None) -> int:
     except TimeoutError as exc:
         print(f"错误：取锁 timeout：{exc}", file=sys.stderr)
         return 1
+    except ValueError as exc:
+        print(f"错误：状态文件格式损坏：{exc}", file=sys.stderr)
+        return 1
     except OSError as exc:
         print(f"错误：写状态文件失败：{exc}", file=sys.stderr)
         return 1

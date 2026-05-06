@@ -16,9 +16,12 @@
   - dispatch_precheck.py **必须** 使用 L1 上下文管理器（read+三校验+write 单锁内原子）
   - L2 read_state + write_state 顺序调用 = TOCTOU 漏洞，禁止在新代码中出现
 
-锁实现：
-  - fcntl.LOCK_EX（互斥锁，跨进程）+ LOCK_NB + 50ms 轮询 + 5s deadline
-  - atomic rename：tmp 写完后 os.replace；同 fs 下原子，杜绝读到半写 JSON
+锁实现：fcntl.flock LOCK_EX + 5s timeout + 50ms 轮询；
+  write 路径：truncate(0) + write + flush + fsync 原地写（非 atomic rename）。
+  原因：flock_state_file with 块在持 fd 的 read+write 复用场景下，
+  rename 换 inode 会致后续 fd 操作作用于旧 inode；
+  LOCK_EX 持锁期已序列化合规读者，truncate 瞬间无并发观测窗口。
+  详见 plan.md ADR D-010。
 
 异常契约：
   - TimeoutError：5s 内未取到锁
@@ -108,7 +111,7 @@ class StateFileHandle:
         except json.JSONDecodeError as exc:
             raise ValueError(f"dispatch-state JSON 解析失败：{self._path} | {exc}") from exc
         if not isinstance(data, dict):
-            raise ValueError(f"dispatch-state must be object: {self._path}")
+            raise ValueError(f"dispatch-state 顶层必须是 object：{self._path}")
         if not data:  # "{}" 空骨架
             return None
         return data  # type: ignore[return-value]
@@ -244,7 +247,7 @@ def clear_state(req_dir: Path) -> None:
     幂等：重复调用安全（已是空闲态时仍写一遍 JSON，结果等价）。
     调用方：feature 完成（dispatch_state_cleanup.py）+ /requirement:rollback
 
-    异常透传：TimeoutError / OSError
+    异常透传：TimeoutError / ValueError（状态文件 JSON 格式损坏）/ OSError
     """
     with flock_state_file(req_dir) as fh:
         cur = fh.read() or {}

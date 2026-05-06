@@ -142,3 +142,24 @@
   - tech-feasibility.md §2.7 的分析与本决议同源；后续 outline / detail-design 直接采用新措辞。
   - definition 阶段已 sign-off（REV-REQ-2026-008-definition-002 approved）；本次修订仅改措辞、不改业务语义。原计划走"轻量补丁不重审"，但 `check_reviews.py` R005 在 hash drift 时硬性 fail，路径上无 stale=true 豁免；最终走 definition-003 重审刷新（looks_clean / score 93），人类 tty sign-off approved，R005/R003 全部解除。reviewer 体系按设计接受了"措辞修订也算 artifact 变更，需重审刷新"——决策启示：reviewer hash 校验粒度无 trivial 豁免通道，未来类似措辞修订直接计入"重审"成本，不再尝试"标 stale 跳过"。
 - **时间**：2026-05-06 08:48:00
+
+### D-010 dispatch_state.py write 实现：truncate+write 替代 atomic rename（detailed-design §3.3 偏离）
+- **Context**：detailed-design.md §3.3（行 409/446/532）规定 `StateFileHandle.write` 用 atomic rename：tmp_path 写完后 `os.replace(tmp_path, self._path)`。F-001 评审反馈 D-009 同模式过：spec 笔误 / 运行时机制冲突时下沉到实现层不回改文档。F-004 实现 `dispatch_state.py:116-150` 改用 `truncate(0) + write + flush + fsync` 原地写。原因：`flock_state_file` 上下文管理器的 with 块已持 fd（self._f）做 read+write 复用；若 write 改用 atomic rename，rename 会换 inode 致后续在同一 fd 的操作（如 read 后续状态校验）作用于旧 inode → 业务错误。
+- **Decision**：`StateFileHandle.write` 实现用 `truncate(0) + write + flush + fsync`，**不**用 atomic rename。在 LOCK_EX 持锁期内，所有合规读者（L1 with 块 + L2 read_state 内部走 L1）都阻塞在锁外，truncate 瞬间空内容不会被任何合规读者观测到——业务安全等价。
+- **Consequences**：
+  - `dispatch_state.py` 模块 docstring 同步改为"truncate+write 原地写"，避免 docstring/实现矛盾。
+  - detailed-design.md §3.3 文字保留 atomic rename（PR review hash 已锁定）；以本 ADR 为实施层 source of truth。
+  - 后续若需要支持"无锁读者"场景（如脱离 LOCK_EX 的旁路 cat 调试），需改回 atomic rename 或加 fcntl 锁强制读路径。
+- **时间**：2026-05-06 16:25:00
+
+### D-011 CLAUDE_DISPATCH_TEST_REQ_DIR_OVERRIDE 测试后门文档化（detailed-design 未覆盖补丁）
+- **Context**：F-004 实现 dispatch_precheck.py 引入 env 变量 `CLAUDE_DISPATCH_TEST_REQ_DIR_OVERRIDE`，bats 沙盒用例（TC-F4-3/4/5）通过该变量隔离测试 req_dir，避免污染真 git 分支。该变量类比既有 `CLAUDE_GATES_AUDIT_ROOT`（已在 detailed-design 中文档化），但 detailed-design.md 全文 grep 未命中——属实施期引入但未在设计阶段定型的辅助通道。
+- **Decision**：本 ADR 正式记录该 env 变量的存在与契约：
+  - 仅 bats 沙盒用例使用；生产环境该变量不应出现
+  - 设置后 `locate_req_dir_by_branch()` 直接返回 env 指向的路径，绕过 git 分支匹配
+  - 与 `CLAUDE_GATES_AUDIT_ROOT` 同类，作为测试支撑的 escape hatch；不引入运行时 mode 判定（保持轻量）
+  - dispatch_precheck.py:150 `locate_req_dir_by_branch` 函数 docstring 已强化注释
+- **Consequences**：
+  - 后续若需要更严格的"测试 mode-only"保护，可在该 env 处加 `os.environ.get("CI") or os.environ.get("CLAUDE_DISPATCH_TEST_MODE")` 双重确认
+  - 同模式（实施期 env 通道）应在引入时同时落 ADR，避免 reviewer 后捕
+- **时间**：2026-05-06 16:25:00
