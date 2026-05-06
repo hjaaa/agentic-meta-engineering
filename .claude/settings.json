@@ -12,10 +12,7 @@
       "Glob"
     ],
     "ask": [
-      "Bash(git push:*)",
-      "Bash(git commit:*)",
-      "Edit",
-      "Write"
+      "Bash(git push:*)"
     ],
     "deny": [
       "Bash(rm -rf:*)",
