@@ -48,5 +48,11 @@
   "supersedes": "REV-REQ-2026-008-outline-design-001",
   "architectural_concerns": [
     "round-001 提出的两条长期隐患（dispatch_state.py 单一入口被绕过、phase-transition gate 串行总耗时）在 round-002 文档未变更，仍延续到 detail-design：建议 detail-design 写 dispatch_state.py 时加 module-level docstring 明确禁止直接 open，并在 registry.yaml 写 4 个 gate 时评估是否能利用 dependencies 字段做并行降耗"
-  ]
+  ],
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-06T09:31:26.128690+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
+  }
 }
