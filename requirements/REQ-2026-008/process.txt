@@ -80,3 +80,4 @@
 2026-05-06 22:03:04 [save] development 8/8 闭环；F-008 r2 looks_clean 92；3 轮 hotfix 落地；待切 testing
 2026-05-06 22:18:09 [save] D-015 GATE-SOURCING 工具盲点修复：_mask_code_for_position（fenced+inline）；E001~W003 切 masked；TC-MASK-1~6 全绿；review-001 L50 反引号
 2026-05-06 22:25:27 [save] D-016 R006 falsy supersedes 兼容（scope 拓展）：if not sup；TC-R006-FALSY-1~4 全绿；F-008-001 数据点不动
+2026-05-06 22:30:37 [signoff] REV-REQ-2026-008-detail-design-006 approved by hj19961223@gmail.com

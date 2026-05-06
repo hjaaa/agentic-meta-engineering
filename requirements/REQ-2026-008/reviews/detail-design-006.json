@@ -62,5 +62,11 @@
       "complexity 分布稳定：1 trivial（F-006）+ 5 medium + 2 heavy（F-004 / F-008），estimate_days 总和 11.75 与 tech-feasibility §6 工作量预估对齐（与 round-005 一致，无变化）。",
       "F-005.modules（6）vs F-005.touches（10）分叉作为 nice-to-have 已记录在 round-004/005 minor 项；features-schema 未约束二者等价，不影响 source-of-truth，不升级为 required_fix。"
     ]
+  },
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-06T22:30:37.607157+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
   }
 }
