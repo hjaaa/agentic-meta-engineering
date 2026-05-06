@@ -9,3 +9,4 @@
 2026-05-06 08:49:59 [signoff] REV-REQ-2026-008-definition-003 approved by hj19961223@gmail.com
 2026-05-06 08:50:18 [save] tech-research：D-006 修订 V-07 措辞 + definition-003 重审 looks_clean signoff approved，R005/R003 全部解除
 2026-05-06 08:54:38 [save] tech-research：3 待澄清条目实证 — #2 模板缺 touches 字段（detail-design 必补）/ #3 pytest 603 全绿 36s 零修复 / #1 推迟 detail-design 首日
+2026-05-06 08:56:04 [save] tech-research 节点稳定：4 commit 落地；strict 全过；待切 outline-design
