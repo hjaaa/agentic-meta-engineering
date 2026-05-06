@@ -182,3 +182,12 @@
   - 后续若需要更严格的"测试 mode-only"保护，可在该 env 处加 `os.environ.get("CI") or os.environ.get("CLAUDE_DISPATCH_TEST_MODE")` 双重确认
   - 同模式（实施期 env 通道）应在引入时同时落 ADR，避免 reviewer 后捕
 - **时间**：2026-05-06 16:25:00
+
+### D-013 F-007 测试文件命名：acceptance 取代 detail-design §8.4（实施期偏差记录）
+- **Context**：detail-design §8.4（行 1078-1085）把 F-007 的 Python 测试文件命名为 `test_task_context_builder_render.py`，与 acceptance 验收标准（TC-F7-5）及 task md frontmatter `touches` 字段列出的 `tests/skills/test_feature_task_template.py` 存在命名不一致。task-planning 阶段 task.md 最终确认文件名为 `test_feature_task_template.py`。
+- **Decision**：以 acceptance 验收标准（TC-F7-5）为准，测试文件创建为 `tests/skills/test_feature_task_template.py`，与 task md frontmatter touches 字段保持一致。detail-design §8.4 名称不回改（仿 D-009/D-010/D-011 经验；reviewer hash 校验 R005 无 trivial 豁免通道，措辞修订即触发重审成本）。
+- **Consequences**：
+  - 实际文件路径：`tests/skills/test_feature_task_template.py`（已创建，5 用例 TT-001~005 全绿）。
+  - detail-design §8.4 中 `test_task_context_builder_render.py` 为历史笔误，本 ADR 是实施层 source of truth。
+  - 后续若有新测试涉及 task-context-builder SKILL 渲染逻辑，可另建 `tests/skills/test_task_context_builder.py`，不混入本文件（职责分离）。
+- **时间**：2026-05-06 17:40:00
