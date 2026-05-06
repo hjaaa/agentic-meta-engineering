@@ -1,7 +1,7 @@
 # ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-008
 title: 派发链强制结构化升级
-phase: development
+phase: testing
 created_at: "2026-05-05 22:03:10"
 branch: feat/req-2026-008
 base_branch: develop
@@ -68,6 +68,20 @@ gates_passed:
       - GATE-WORKSPACE-CLEAN
       - GATE-REVIEW-VERDICT
       - GATE-TRACEABILITY
+  - phase: testing
+    at: '2026-05-06 22:31:35'
+    gates:
+      - GATE-META-SCHEMA
+      - GATE-INDEX-INTEGRITY
+      - GATE-SOURCING
+      - GATE-PLAN-FRESHNESS
+      - GATE-WORKSPACE-CLEAN
+      - GATE-REVIEW-VERDICT
+      - GATE-FEATURES-SCHEMA
+      - GATE-TASK-FRONTMATTER
+      - GATE-POST-DEV-RECEIPT
+      - GATE-TRACEABILITY
+      - GATE-TOUCHES-VIOLATION
 pr_url: ""
 pr_number: 0
 log_layout: split
