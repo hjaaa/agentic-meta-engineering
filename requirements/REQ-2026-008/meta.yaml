@@ -1,6 +1,6 @@
 id: REQ-2026-008
 title: 派发链强制结构化升级
-phase: testing
+phase: completed
 created_at: '2026-05-05 22:03:10'
 branch: feat/req-2026-008
 base_branch: develop
@@ -97,8 +97,8 @@ tags:
 - receipt-schema
 - touches-guard
 - archon-inspired
-outcome: ''
-completed_at: ''
+outcome: shipped
+completed_at: '2026-05-07 09:29:09'
 lessons_extracted: false
 reviews:
   definition:
@@ -231,3 +231,4 @@ reviews:
           artifacts/features.json: bac45d2081a046107db9b11fdc12bf3cb21d1d0cc4101bacb9b2ad3731f489c6
           artifacts/tasks/F-008.md: e83058dcbcab9d1d23e77c0821ed6010fc9c64d9df37cad1dd5786119c23c8d0
         stale: false
+archived_at: '2026-05-07 09:29:09'
