@@ -175,10 +175,8 @@ def _check_required_fields(data: dict[str, Any], schema: dict[str, Any],
     # schema_version 单独在 _check_schema_version 处理
     non_schema_version = [f for f in required if f != "schema_version"]
 
-    # 特殊：missing_context / block_reason / concerns 允许为 None 或 "" ——
-    # 它们的非空约束由 conditional_required 处理，非所有状态都必填
-    allow_empty = {"missing_context", "block_reason", "concerns"}
-
+    # 这里只校验存在性；空值的条件性约束（missing_context / block_reason /
+    # concerns 等）由 _check_conditional 按状态判定。
     for field in non_schema_version:
         if field not in data:
             report.add(f"字段 {field} 必填，当前缺失")
