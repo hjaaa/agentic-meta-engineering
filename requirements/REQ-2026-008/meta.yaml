@@ -99,7 +99,7 @@ tags:
 - archon-inspired
 outcome: shipped
 completed_at: '2026-05-07 09:29:09'
-lessons_extracted: false
+lessons_extracted: true
 reviews:
   definition:
     latest: REV-REQ-2026-008-definition-003

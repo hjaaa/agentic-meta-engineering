@@ -26,6 +26,8 @@ REQ-2026-005 已完成 detail-design / outline-design / definition 三轮 review
 
 **hot-fix 例外**：plugin / 代码 bug 修复不影响 review hash（因 review hash 只盯 spec 文档），可以直接 commit。
 
+**反模式（已踩坑两次）**：试图通过把 `meta.yaml.reviews.<phase>.stale: true` 改回 `false` 来"豁免"hash 检查。`stale` 字段是 `_r005_hash_drift` 的输出而非输入——重新计算时会再次比对当前 hash vs `artifact_hashes` 中记录的 hash，不一致照样翻 `true`。任何 artifact 措辞修订都计入"重审成本"，不存在 trivial 豁免通道。REQ-2026-008 D-006 / D-016 期间两次尝试此路径均失败，记入文档防止再犯。
+
 ## 验证方法
 
 - 改 spec 文档前先 `python3 scripts/gates/run.py --trigger=submit --req=<id>` 看 GATE-REVIEW-VERDICT 是否过——过则评估改后是否还过

@@ -30,6 +30,8 @@
 - [`archive-completed-triggers-framework-rule-fullset.md`](archive-completed-triggers-framework-rule-fullset.md) — `phase=completed` 触发 framework R-rule / conditional_required 全集；testing 阶段沉默的 schema 缺口都在 archive 实跑才集中暴露（F-17 outcome/completed_at + 缺失 definition review 即此规律实例）
 - [`ai-bot-pass-signal-not-in-documented-channel.md`](ai-bot-pass-signal-not-in-documented-channel.md) — codex info 文本说 pass 时「react with 👍」，实测发 issue comment；轮询必须多端点 OR 语义（reviews ∪ issue_comments），否则 pass case 永远 timeout
 - [`github-api-head-syntax-fork-across-surfaces.md`](github-api-head-syntax-fork-across-surfaces.md) — `gh pr list --head` 不支持 `OWNER:BRANCH`，但 `gh api .../pulls?head=` 原生支持；`gh` 各子命令是独立薄包装，跨 surface 必须分别看 manual
+- [`claude-code-tool-name-matcher-alias.md`](claude-code-tool-name-matcher-alias.md) — Claude Code PreToolUse `matcher: "Task"` 命中但 stdin `tool_name == "Agent"`（别名映射）；hook 实现层必须以实采样到的 tool_name 为准，不能照 matcher 字符串写
+- [`transient-hook-injection-via-shell-prefix.md`](transient-hook-injection-via-shell-prefix.md) — 临时采样 hook 不能 AI 直接 Edit `.claude/settings.local.json`（被 self-modification 防护拒绝）；走用户在 `!` shell 前缀里跑一行命令 / 或用户授权安装+清理 hook 的合规路径
 
 ## 什么值得沉淀
 
