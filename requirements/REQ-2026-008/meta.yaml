@@ -1,264 +1,233 @@
-# ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-008
 title: 派发链强制结构化升级
 phase: testing
-created_at: "2026-05-05 22:03:10"
+created_at: '2026-05-05 22:03:10'
 branch: feat/req-2026-008
 base_branch: develop
 project: agentic-meta-engineering
 services: []
 gates_passed:
-  - phase: definition
-    at: '2026-05-05 22:16:50'
-    gates:
-      - GATE-META-SCHEMA
-      - GATE-INDEX-INTEGRITY
-      - GATE-SOURCING
-      - GATE-PLAN-FRESHNESS
-      - GATE-WORKSPACE-CLEAN
-      - GATE-REVIEW-VERDICT
-      - GATE-TRACEABILITY
-  - phase: tech-research
-    at: '2026-05-05 22:58:33'
-    gates:
-      - GATE-META-SCHEMA
-      - GATE-INDEX-INTEGRITY
-      - GATE-SOURCING
-      - GATE-PLAN-FRESHNESS
-      - GATE-WORKSPACE-CLEAN
-      - GATE-REVIEW-VERDICT
-      - GATE-TRACEABILITY
-  - phase: outline-design
-    at: '2026-05-06 09:06:58'
-    gates:
-      - GATE-META-SCHEMA
-      - GATE-INDEX-INTEGRITY
-      - GATE-SOURCING
-      - GATE-PLAN-FRESHNESS
-      - GATE-WORKSPACE-CLEAN
-      - GATE-REVIEW-VERDICT
-      - GATE-TRACEABILITY
-  - phase: detail-design
-    at: '2026-05-06 10:00:00'
-    gates:
-      - GATE-META-SCHEMA
-      - GATE-INDEX-INTEGRITY
-      - GATE-SOURCING
-      - GATE-PLAN-FRESHNESS
-      - GATE-WORKSPACE-CLEAN
-      - GATE-REVIEW-VERDICT
-      - GATE-TRACEABILITY
-  - phase: task-planning
-    at: '2026-05-06 10:25:34'
-    gates:
-      - GATE-META-SCHEMA
-      - GATE-INDEX-INTEGRITY
-      - GATE-SOURCING
-      - GATE-PLAN-FRESHNESS
-      - GATE-WORKSPACE-CLEAN
-      - GATE-REVIEW-VERDICT
-      - GATE-TRACEABILITY
-  - phase: development
-    at: '2026-05-06 11:06:26'
-    gates:
-      - GATE-META-SCHEMA
-      - GATE-INDEX-INTEGRITY
-      - GATE-SOURCING
-      - GATE-PLAN-FRESHNESS
-      - GATE-WORKSPACE-CLEAN
-      - GATE-REVIEW-VERDICT
-      - GATE-TRACEABILITY
-  - phase: testing
-    at: '2026-05-06 22:31:35'
-    gates:
-      - GATE-META-SCHEMA
-      - GATE-INDEX-INTEGRITY
-      - GATE-SOURCING
-      - GATE-PLAN-FRESHNESS
-      - GATE-WORKSPACE-CLEAN
-      - GATE-REVIEW-VERDICT
-      - GATE-FEATURES-SCHEMA
-      - GATE-TASK-FRONTMATTER
-      - GATE-POST-DEV-RECEIPT
-      - GATE-TRACEABILITY
-      - GATE-TOUCHES-VIOLATION
-pr_url: ""
-pr_number: 0
+- phase: definition
+  at: '2026-05-05 22:16:50'
+  gates:
+  - GATE-META-SCHEMA
+  - GATE-INDEX-INTEGRITY
+  - GATE-SOURCING
+  - GATE-PLAN-FRESHNESS
+  - GATE-WORKSPACE-CLEAN
+  - GATE-REVIEW-VERDICT
+  - GATE-TRACEABILITY
+- phase: tech-research
+  at: '2026-05-05 22:58:33'
+  gates:
+  - GATE-META-SCHEMA
+  - GATE-INDEX-INTEGRITY
+  - GATE-SOURCING
+  - GATE-PLAN-FRESHNESS
+  - GATE-WORKSPACE-CLEAN
+  - GATE-REVIEW-VERDICT
+  - GATE-TRACEABILITY
+- phase: outline-design
+  at: '2026-05-06 09:06:58'
+  gates:
+  - GATE-META-SCHEMA
+  - GATE-INDEX-INTEGRITY
+  - GATE-SOURCING
+  - GATE-PLAN-FRESHNESS
+  - GATE-WORKSPACE-CLEAN
+  - GATE-REVIEW-VERDICT
+  - GATE-TRACEABILITY
+- phase: detail-design
+  at: '2026-05-06 10:00:00'
+  gates:
+  - GATE-META-SCHEMA
+  - GATE-INDEX-INTEGRITY
+  - GATE-SOURCING
+  - GATE-PLAN-FRESHNESS
+  - GATE-WORKSPACE-CLEAN
+  - GATE-REVIEW-VERDICT
+  - GATE-TRACEABILITY
+- phase: task-planning
+  at: '2026-05-06 10:25:34'
+  gates:
+  - GATE-META-SCHEMA
+  - GATE-INDEX-INTEGRITY
+  - GATE-SOURCING
+  - GATE-PLAN-FRESHNESS
+  - GATE-WORKSPACE-CLEAN
+  - GATE-REVIEW-VERDICT
+  - GATE-TRACEABILITY
+- phase: development
+  at: '2026-05-06 11:06:26'
+  gates:
+  - GATE-META-SCHEMA
+  - GATE-INDEX-INTEGRITY
+  - GATE-SOURCING
+  - GATE-PLAN-FRESHNESS
+  - GATE-WORKSPACE-CLEAN
+  - GATE-REVIEW-VERDICT
+  - GATE-TRACEABILITY
+- phase: testing
+  at: '2026-05-06 22:31:35'
+  gates:
+  - GATE-META-SCHEMA
+  - GATE-INDEX-INTEGRITY
+  - GATE-SOURCING
+  - GATE-PLAN-FRESHNESS
+  - GATE-WORKSPACE-CLEAN
+  - GATE-REVIEW-VERDICT
+  - GATE-FEATURES-SCHEMA
+  - GATE-TASK-FRONTMATTER
+  - GATE-POST-DEV-RECEIPT
+  - GATE-TRACEABILITY
+  - GATE-TOUCHES-VIOLATION
+pr_url: https://github.com/hjaaa/agentic-meta-engineering/pull/60
+pr_number: 60
 log_layout: split
-
-# ============ 语义组（definition 阶段补齐，供跨需求检索） ============
-feature_area: gate-system                # 跨 hooks + scripts + skills + engineering-spec 多层加机器强制
-change_type: feature                     # 新增 receipt schema / hook 拦截 / gate 兜底等执行体
-affected_modules:                        # 横跨 5 层
-  - hooks
-  - gates
-  - engineering-spec
-  - skills
-  - scripts/lib
-tags:                                    # 长尾标签，便于跨需求检索
-  - subagent-dispatch
-  - receipt-schema
-  - touches-guard
-  - archon-inspired
-
-# ============ 结果组（completed 时才填） ============
-outcome: ""                    # shipped / abandoned / rolled-back
-completed_at: ""               # ISO8601，completed 时填
-lessons_extracted: false       # /knowledge:extract-experience 是否已跑
+feature_area: gate-system
+change_type: feature
+affected_modules:
+- hooks
+- gates
+- engineering-spec
+- skills
+- scripts/lib
+tags:
+- subagent-dispatch
+- receipt-schema
+- touches-guard
+- archon-inspired
+outcome: ''
+completed_at: ''
+lessons_extracted: false
 reviews:
   definition:
     latest: REV-REQ-2026-008-definition-003
     conclusion: looks_clean
     reviewed_commit: 4b8bbc1
     artifact_hashes:
-      artifacts/requirement.md: 
-        04fe6f721db19ba8fb121cf310e66e3d56f00b5c41e9eb5bd020d955e5797a01
+      artifacts/requirement.md: 04fe6f721db19ba8fb121cf310e66e3d56f00b5c41e9eb5bd020d955e5797a01
     history:
-      - REV-REQ-2026-008-definition-001
-      - REV-REQ-2026-008-definition-002
-      - REV-REQ-2026-008-definition-003
+    - REV-REQ-2026-008-definition-001
+    - REV-REQ-2026-008-definition-002
+    - REV-REQ-2026-008-definition-003
     stale: false
   outline-design:
     latest: REV-REQ-2026-008-outline-design-002
     conclusion: looks_clean
     reviewed_commit: faabe9f
     artifact_hashes:
-      artifacts/outline-design.md: 
-        f496d537801a1e65e9dbe420af04fd9bc76aea4ac2fef152c17990b6eb3153b6
-      artifacts/requirement.md: 
-        04fe6f721db19ba8fb121cf310e66e3d56f00b5c41e9eb5bd020d955e5797a01
+      artifacts/outline-design.md: f496d537801a1e65e9dbe420af04fd9bc76aea4ac2fef152c17990b6eb3153b6
+      artifacts/requirement.md: 04fe6f721db19ba8fb121cf310e66e3d56f00b5c41e9eb5bd020d955e5797a01
     history:
-      - REV-REQ-2026-008-outline-design-001
-      - REV-REQ-2026-008-outline-design-002
+    - REV-REQ-2026-008-outline-design-001
+    - REV-REQ-2026-008-outline-design-002
     stale: false
   detail-design:
     latest: REV-REQ-2026-008-detail-design-006
     conclusion: looks_clean
     reviewed_commit: 50be493
     artifact_hashes:
-      artifacts/detailed-design.md: 
-        c60f58a1a8a8c9bcb731d9bea359b1327a69a23257afa54301c5f7f7fd38f6ed
-      artifacts/features.json: 
-        bac45d2081a046107db9b11fdc12bf3cb21d1d0cc4101bacb9b2ad3731f489c6
-      artifacts/outline-design.md: 
-        f496d537801a1e65e9dbe420af04fd9bc76aea4ac2fef152c17990b6eb3153b6
+      artifacts/detailed-design.md: c60f58a1a8a8c9bcb731d9bea359b1327a69a23257afa54301c5f7f7fd38f6ed
+      artifacts/features.json: bac45d2081a046107db9b11fdc12bf3cb21d1d0cc4101bacb9b2ad3731f489c6
+      artifacts/outline-design.md: f496d537801a1e65e9dbe420af04fd9bc76aea4ac2fef152c17990b6eb3153b6
     history:
-      - REV-REQ-2026-008-detail-design-001
-      - REV-REQ-2026-008-detail-design-002
-      - REV-REQ-2026-008-detail-design-003
-      - REV-REQ-2026-008-detail-design-004
-      - REV-REQ-2026-008-detail-design-005
-      - REV-REQ-2026-008-detail-design-006
+    - REV-REQ-2026-008-detail-design-001
+    - REV-REQ-2026-008-detail-design-002
+    - REV-REQ-2026-008-detail-design-003
+    - REV-REQ-2026-008-detail-design-004
+    - REV-REQ-2026-008-detail-design-005
+    - REV-REQ-2026-008-detail-design-006
     stale: false
   code:
     by_feature:
       F-006:
         history:
-          - REV-REQ-2026-008-code-F-006-001
+        - REV-REQ-2026-008-code-F-006-001
         latest: REV-REQ-2026-008-code-F-006-001
         conclusion: looks_clean
         reviewed_commit: 7a9983a
         artifact_hashes:
-          artifacts/features.json: 
-            a9762d30f3883ff75e525f68272bee4dac6aec96f2d38eb36683d366d80f8656
-          artifacts/detailed-design.md: 
-            c60f58a1a8a8c9bcb731d9bea359b1327a69a23257afa54301c5f7f7fd38f6ed
-          artifacts/tasks/F-006.md: 
-            62526b520546f89dc4ade91ce1952876cecec9d62a567b940ad79bea5e66c1cd
+          artifacts/features.json: a9762d30f3883ff75e525f68272bee4dac6aec96f2d38eb36683d366d80f8656
+          artifacts/detailed-design.md: c60f58a1a8a8c9bcb731d9bea359b1327a69a23257afa54301c5f7f7fd38f6ed
+          artifacts/tasks/F-006.md: 62526b520546f89dc4ade91ce1952876cecec9d62a567b940ad79bea5e66c1cd
         stale: false
       F-001:
         history:
-          - REV-REQ-2026-008-code-F-001-001
-          - REV-REQ-2026-008-code-F-001-002
+        - REV-REQ-2026-008-code-F-001-001
+        - REV-REQ-2026-008-code-F-001-002
         latest: REV-REQ-2026-008-code-F-001-002
         conclusion: looks_clean
         reviewed_commit: 5ea16e6
         artifact_hashes:
-          artifacts/features.json: 
-            a9762d30f3883ff75e525f68272bee4dac6aec96f2d38eb36683d366d80f8656
-          artifacts/detailed-design.md: 
-            c60f58a1a8a8c9bcb731d9bea359b1327a69a23257afa54301c5f7f7fd38f6ed
-          artifacts/tasks/F-001.md: 
-            b90e94d3e142bf4af0f572e5bf2ff2d7892cc85eb219ffe854b2b988645aa4b7
+          artifacts/features.json: a9762d30f3883ff75e525f68272bee4dac6aec96f2d38eb36683d366d80f8656
+          artifacts/detailed-design.md: c60f58a1a8a8c9bcb731d9bea359b1327a69a23257afa54301c5f7f7fd38f6ed
+          artifacts/tasks/F-001.md: b90e94d3e142bf4af0f572e5bf2ff2d7892cc85eb219ffe854b2b988645aa4b7
         stale: false
       F-002:
         history:
-          - REV-REQ-2026-008-code-F-002-001
-          - REV-REQ-2026-008-code-F-002-002
+        - REV-REQ-2026-008-code-F-002-001
+        - REV-REQ-2026-008-code-F-002-002
         latest: REV-REQ-2026-008-code-F-002-002
         conclusion: looks_clean
         reviewed_commit: 8889e9a
         artifact_hashes:
-          artifacts/features.json: 
-            a9762d30f3883ff75e525f68272bee4dac6aec96f2d38eb36683d366d80f8656
-          artifacts/detailed-design.md: 
-            c60f58a1a8a8c9bcb731d9bea359b1327a69a23257afa54301c5f7f7fd38f6ed
-          artifacts/tasks/F-002.md: 
-            b1fe5bc5f14852ac0d79d4e3ac06b6c559e175e9a22f2ac01a94a81d9e87c722
+          artifacts/features.json: a9762d30f3883ff75e525f68272bee4dac6aec96f2d38eb36683d366d80f8656
+          artifacts/detailed-design.md: c60f58a1a8a8c9bcb731d9bea359b1327a69a23257afa54301c5f7f7fd38f6ed
+          artifacts/tasks/F-002.md: b1fe5bc5f14852ac0d79d4e3ac06b6c559e175e9a22f2ac01a94a81d9e87c722
         stale: false
       F-003:
         history:
-          - REV-REQ-2026-008-code-F-003-001
-          - REV-REQ-2026-008-code-F-003-002
+        - REV-REQ-2026-008-code-F-003-001
+        - REV-REQ-2026-008-code-F-003-002
         latest: REV-REQ-2026-008-code-F-003-002
         conclusion: looks_clean
         reviewed_commit: be4b2e1
         artifact_hashes:
-          artifacts/features.json: 
-            a9762d30f3883ff75e525f68272bee4dac6aec96f2d38eb36683d366d80f8656
-          artifacts/detailed-design.md: 
-            c60f58a1a8a8c9bcb731d9bea359b1327a69a23257afa54301c5f7f7fd38f6ed
-          artifacts/tasks/F-003.md: 
-            5b0caf677d8d0089d5e814f4ed0f3637c44302d41573740f8b65acd864d601c4
+          artifacts/features.json: a9762d30f3883ff75e525f68272bee4dac6aec96f2d38eb36683d366d80f8656
+          artifacts/detailed-design.md: c60f58a1a8a8c9bcb731d9bea359b1327a69a23257afa54301c5f7f7fd38f6ed
+          artifacts/tasks/F-003.md: 5b0caf677d8d0089d5e814f4ed0f3637c44302d41573740f8b65acd864d601c4
         stale: false
       F-004:
         history:
-          - REV-REQ-2026-008-code-F-004-001
-          - REV-REQ-2026-008-code-F-004-002
+        - REV-REQ-2026-008-code-F-004-001
+        - REV-REQ-2026-008-code-F-004-002
         latest: REV-REQ-2026-008-code-F-004-002
         conclusion: looks_clean
         reviewed_commit: 66a4fd5
         artifact_hashes:
-          artifacts/features.json: 
-            a9762d30f3883ff75e525f68272bee4dac6aec96f2d38eb36683d366d80f8656
-          artifacts/tasks/F-004.md: 
-            882a873fbf3bb3d2aef68d086ddf90eacd548d60bdd86b292336504458238a9b
+          artifacts/features.json: a9762d30f3883ff75e525f68272bee4dac6aec96f2d38eb36683d366d80f8656
+          artifacts/tasks/F-004.md: 882a873fbf3bb3d2aef68d086ddf90eacd548d60bdd86b292336504458238a9b
         stale: false
       F-005:
         history:
-          - REV-REQ-2026-008-code-F-005-001
-          - REV-REQ-2026-008-code-F-005-002
+        - REV-REQ-2026-008-code-F-005-001
+        - REV-REQ-2026-008-code-F-005-002
         latest: REV-REQ-2026-008-code-F-005-002
         conclusion: looks_clean
         reviewed_commit: 3f1b495
         artifact_hashes:
-          artifacts/features.json: 
-            bc1e062777e361d3f1b2de6a5c6373ac6fd7b1714262333c8deafa4ce3b5d9e9
-          artifacts/tasks/F-005.md: 
-            1220f4277bcfde9f32a6f7c43e1d3ea7be7f632cd57a8d7be5ef1c6804df02f9
+          artifacts/features.json: bc1e062777e361d3f1b2de6a5c6373ac6fd7b1714262333c8deafa4ce3b5d9e9
+          artifacts/tasks/F-005.md: 1220f4277bcfde9f32a6f7c43e1d3ea7be7f632cd57a8d7be5ef1c6804df02f9
         stale: false
       F-007:
         history:
-          - REV-REQ-2026-008-code-F-007-001
+        - REV-REQ-2026-008-code-F-007-001
         latest: REV-REQ-2026-008-code-F-007-001
         conclusion: looks_clean
         reviewed_commit: 5ef5f1a
         artifact_hashes:
-          artifacts/features.json: 
-            bc1e062777e361d3f1b2de6a5c6373ac6fd7b1714262333c8deafa4ce3b5d9e9
-          artifacts/tasks/F-007.md: 
-            8eb0f436647c7835cebbff68c56276d769ca177e355cd6193f14fe826c50306b
+          artifacts/features.json: bc1e062777e361d3f1b2de6a5c6373ac6fd7b1714262333c8deafa4ce3b5d9e9
+          artifacts/tasks/F-007.md: 8eb0f436647c7835cebbff68c56276d769ca177e355cd6193f14fe826c50306b
         stale: false
       F-008:
         history:
-          - REV-REQ-2026-008-code-F-008-001
-          - REV-REQ-2026-008-code-F-008-002
+        - REV-REQ-2026-008-code-F-008-001
+        - REV-REQ-2026-008-code-F-008-002
         latest: REV-REQ-2026-008-code-F-008-002
         conclusion: looks_clean
         reviewed_commit: 3abb86e
         artifact_hashes:
-          artifacts/features.json: 
-            bac45d2081a046107db9b11fdc12bf3cb21d1d0cc4101bacb9b2ad3731f489c6
-          artifacts/tasks/F-008.md: 
-            e83058dcbcab9d1d23e77c0821ed6010fc9c64d9df37cad1dd5786119c23c8d0
+          artifacts/features.json: bac45d2081a046107db9b11fdc12bf3cb21d1d0cc4101bacb9b2ad3731f489c6
+          artifacts/tasks/F-008.md: e83058dcbcab9d1d23e77c0821ed6010fc9c64d9df37cad1dd5786119c23c8d0
         stale: false
