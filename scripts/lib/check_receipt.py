@@ -275,6 +275,14 @@ def validate(data: dict[str, Any], schema: dict[str, Any], file_label: str) -> _
         调用 report.errors 获取错误列表，report.print_all() 输出到 stderr。
     """
     report = _ErrorReport()
+    if not isinstance(data, dict):
+        # 防御性 type guard：lib 调用方（如 plugins/post_dev_receipt.py）
+        # 可能跳过 _load_receipt 而直接传入 json.load 结果——此时 data 可能是
+        # list/str/None 等非 mapping，下游 _check_* 会 AttributeError 让 gate
+        # plugin 整个 crash。改成 report 一条错误并立即返回，让调用方走
+        # 正常 has_errors 失败路径。
+        report.add(f"receipt 顶层不是 JSON object（实际类型：{type(data).__name__}）")
+        return report
     _check_schema_version(data, report, file_label)
     _check_required_fields(data, schema, report, file_label)
     _check_enums(data, schema, report, file_label)

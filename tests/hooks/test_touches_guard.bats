@@ -176,11 +176,13 @@ print('ok')
 
 # ---------- MultiEdit 越界场景 ----------
 
-@test "MultiEdit: one edit out-of-touches - violation recorded" {
+@test "MultiEdit: top-level file_path out-of-touches - violation recorded" {
+  # 真实 Claude Code MultiEdit payload：file_path 在顶层，edits[] 只有 (old/new) 对。
+  # 早期实现误读 edits[].file_path → 越界写入静默漏网（codex review P1，2026-05-07）。
   _make_sandbox "F-005" '[".claude/hooks/touches_guard.py"]'
 
   local payload
-  payload='{"tool_name":"MultiEdit","tool_input":{"edits":[{"file_path":".claude/hooks/touches_guard.py"},{"file_path":"context/unrelated.md"}]}}'
+  payload='{"tool_name":"MultiEdit","tool_input":{"file_path":"context/unrelated.md","edits":[{"old_string":"a","new_string":"b"},{"old_string":"c","new_string":"d"}]}}'
 
   run python3 "$HOOK" <<<"$payload"
   [ "$status" -eq 0 ]
@@ -193,10 +195,24 @@ import json
 with open('$receipt') as f:
     data = json.load(f)
 violations = data.get('touches_violations', [])
-assert len(violations) == 1, f'期望 1 个 violation（仅越界的那个），实际 {len(violations)}'
+assert len(violations) == 1, f'期望 1 个 violation（顶层 file_path 越界），实际 {len(violations)}'
 assert violations[0]['path'] == 'context/unrelated.md'
 print('ok')
 "
   [ "$status" -eq 0 ]
   [[ "$output" == "ok" ]]
+}
+
+@test "MultiEdit: top-level file_path in-touches - no violation" {
+  _make_sandbox "F-005" '[".claude/hooks/touches_guard.py"]'
+
+  local payload
+  payload='{"tool_name":"MultiEdit","tool_input":{"file_path":".claude/hooks/touches_guard.py","edits":[{"old_string":"a","new_string":"b"}]}}'
+
+  run python3 "$HOOK" <<<"$payload"
+  [ "$status" -eq 0 ]
+
+  # 与 case1 同语义：命中 touches → 不创建 receipt.json（无 violation 要记录）。
+  local receipt="$SANDBOX_REQ/artifacts/tasks/F-005.receipt.json"
+  [ ! -f "$receipt" ]
 }

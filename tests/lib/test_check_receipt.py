@@ -306,3 +306,21 @@ def test_needs_context_requires_missing_context(tmp_path, monkeypatch):
     assert report.has_errors
     errors_text = " ".join(report._errors)
     assert "missing_context" in errors_text
+
+
+# ---------- TC-RECEIPT-NONDICT: validate() 顶层非 dict 时不应 crash ----------
+# codex review P2（2026-05-07）：post_dev_receipt.py 直接把 json.load 结果传给
+# validate()，遇到 [] / null / "..." 等非 mapping 输入时 _check_required_fields
+# 内 `field not in data` 行为不正确、_check_enums 的 `data.get(...)` 直接
+# AttributeError 让 plugin 整个 crash。validate() 应当 type guard 并 report
+# 一条错误，让调用方走正常 has_errors 路径。
+
+@pytest.mark.parametrize("bad_data", [[], None, "not a mapping", 42, [1, 2, 3]])
+def test_validate_nondict_top_level_returns_error_without_crash(bad_data):
+    """given_top_level_not_dict_when_validate_then_has_errors_no_crash。"""
+    report = _cr_mod.validate(bad_data, _valid_schema(), "bad.json")
+    assert report.has_errors
+    errors_text = " ".join(report._errors)
+    assert "顶层不是 JSON object" in errors_text
+    # 类型名应出现在错误信息中，便于调试
+    assert type(bad_data).__name__ in errors_text

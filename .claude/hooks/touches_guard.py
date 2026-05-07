@@ -350,21 +350,15 @@ def _is_in_touches(file_path: str, touches: list[str]) -> bool:
 def _extract_file_paths(tool_name: str, tool_input: dict) -> list[str]:
     """从 tool_input 提取所有受影响的 file_path。
 
-    Edit/Write：tool_input.file_path（单个）
-    MultiEdit：tool_input.edits[].file_path（多个）
+    Edit/Write/MultiEdit 都使用顶层 tool_input.file_path（指向单个文件）。
+    MultiEdit 的 edits[] 只携带 (old_string, new_string) 对，不含 file_path
+    ——和 pre-tool-use-guard.sh 的 jq '.tool_input.file_path' 读法保持一致。
     """
     paths: list[str] = []
-    if tool_name in ("Edit", "Write"):
+    if tool_name in ("Edit", "Write", "MultiEdit"):
         fp = tool_input.get("file_path")
         if isinstance(fp, str) and fp:
             paths.append(fp)
-    elif tool_name == "MultiEdit":
-        edits = tool_input.get("edits", [])
-        for edit in edits:
-            if isinstance(edit, dict):
-                fp = edit.get("file_path")
-                if isinstance(fp, str) and fp:
-                    paths.append(fp)
     return paths
 
 
