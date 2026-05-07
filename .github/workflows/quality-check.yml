@@ -21,6 +21,15 @@ jobs:
         with:
           python-version: "3.11"
 
+      # CI runner 默认无 git config，但 tests/commands/test_signoff_command.py
+      # 的被测代码 scripts/lib/code_review_signoff.py 先校验 git user.email 才进
+      # already-signed 等业务分支；不配会让 rc=1 早于业务断言（F-006 扩大 pytest
+      # scope 后暴露）。配置一个占位 user/email 让测试聚焦业务逻辑。
+      - name: Configure git identity for tests
+        run: |
+          git config --global user.email "ci@example.com"
+          git config --global user.name "CI Runner"
+
       - name: Install dependencies
         run: pip install pyyaml ruamel.yaml "pathspec>=0.12,<1.0" ruff pytest
 
@@ -45,7 +54,7 @@ jobs:
 
       # F-005：单元测试门禁；确保 gates/ 所有 plugin 测试全绿
       - name: pytest
-        run: pytest tests/gates/ -v
+        run: pytest tests/ --ignore=tests/benchmarks/ -v
 
       - name: Verify settings.json hook references exist
         run: |

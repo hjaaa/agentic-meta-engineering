@@ -37,6 +37,11 @@ RE_SRC = re.compile(r"[（(]\s*来源\s*[：:]\s*([^）)]+?)\s*[）)]")
 RE_PENDING_USER = re.compile(r"\[待用户确认\]")
 RE_PENDING_FILL = re.compile(r"\[待补充\]")
 
+# inline code span：N 个反引号包不含反引号/换行的内容。
+# 用于和 fenced code block 一起 mask 掉示例代码——避免把"描述格式的元字符"
+# （如 review 报告里讨论 `（来源：xxx）` 引用规约时的 xxx 占位）误判为真实引用/标记。
+RE_INLINE_CODE = re.compile(r"`+[^`\n]+?`+")
+
 ASSUMPTION_ELEMENTS = ("内容", "依据", "风险", "验证时机")
 
 # 强约束动词 + 后续 30 字内出现数字，视为断言信号
@@ -96,6 +101,32 @@ def _strip_code_blocks(text: str) -> str:
             out.append("")
             continue
         out.append("" if in_block else line)
+    return "\n".join(out)
+
+
+def _mask_code_for_position(text: str) -> str:
+    """同时 mask fenced code block + inline code，用空格替换以保留行号 / 列号。
+
+    与 _strip_code_blocks 的差异：
+      - _strip_code_blocks 把代码行整行清空（行号保留但每行长度=0）→ 用于段落语义检查
+      - _mask_code_for_position 用空格 padding 保留行长度 → 用于位置敏感的检查
+        （E002/E003 行号定位、RE_PENDING_* 标记计数等需要精确位置时）
+
+    用途：让 E001~W003 跳过示例代码内容，避免把"描述格式的元字符"
+    （如 review 报告里讨论 ``（来源：xxx）`` 引用规约时的 xxx 占位）
+    误判为真实引用 / 标记。
+    """
+    out: list[str] = []
+    in_fence = False
+    for line in text.splitlines():
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+            out.append(" " * len(line))
+            continue
+        if in_fence:
+            out.append(" " * len(line))
+            continue
+        out.append(RE_INLINE_CODE.sub(lambda m: " " * len(m.group(0)), line))
     return "\n".join(out)
 
 
@@ -163,8 +194,11 @@ def _clarify_section_stats(lines: list[str]) -> tuple[bool, int]:
 
 def check_file(md_file: Path, report: Report) -> None:
     raw_text = md_file.read_text(encoding="utf-8")
-    text = _strip_code_blocks(raw_text)
-    paras = _split_paragraphs(text)
+    # masked_text：fenced + inline code 用空格替换（保留行号/列号），用于所有
+    # 位置/计数敏感的检查（E001~W003）。代码示例里的元字符（xxx 占位、`[待补充]`
+    # 等说明性文本）不应被误判为真实引用/标记 → D-015 决策（REQ-2026-008）。
+    masked_text = _mask_code_for_position(raw_text)
+    paras = _split_paragraphs(masked_text)
     file_label = rel(md_file)
 
     # E001：[待补充] 要素至少 3 个（内容/依据/风险/验证时机）
@@ -178,9 +212,9 @@ def check_file(md_file: Path, report: Report) -> None:
             )
 
     # E002 / E003：引用存在性与行号
-    for m in RE_SRC.finditer(raw_text):
+    for m in RE_SRC.finditer(masked_text):
         raw_ref = m.group(1)
-        line_no = raw_text[: m.start()].count("\n") + 1
+        line_no = masked_text[: m.start()].count("\n") + 1
         resolved, line = _resolve_reference(raw_ref, md_file)
         if resolved is None:
             report.add(
@@ -205,9 +239,9 @@ def check_file(md_file: Path, report: Report) -> None:
                     f"第 {line_no} 行引用 {raw_ref} 行号超出目标文件（共 {total} 行）",
                 )
 
-    # W001 / W003：待澄清清单
-    pending_count = len(RE_PENDING_USER.findall(raw_text)) + len(
-        RE_PENDING_FILL.findall(raw_text)
+    # W001 / W003：待澄清清单（标记计数走 masked，章节结构走 raw）
+    pending_count = len(RE_PENDING_USER.findall(masked_text)) + len(
+        RE_PENDING_FILL.findall(masked_text)
     )
     has_section, item_count = _clarify_section_stats(raw_text.splitlines())
     if pending_count > 0 and not has_section:

@@ -1,0 +1,30 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-004",
+  "status": "DONE",
+  "summary": "F-004 review-001 fix-up round-2（must_fix 8项 + should_fix 6项）：(1) must_fix：F-14 删 dispatch_precheck.py 死代码（_SHANGHAI_TZ/logging/_logger/FileHandler ~13行）；F-22 TL-006 加 q.get() 消费断言（子进程结果合法性+TimeoutError路径）；F-23 TL-009 hold_s 从 LOCK_TIMEOUT_S+1.0 改为 LOCK_TIMEOUT_S*2；F-27 dispatch_state.py 错误消息中文化（must be object → 顶层必须是 object）+ 测试断言同步；F-29/F-30 测试注释中文化；F-8 clear_state docstring 补 ValueError + dispatch_state_cleanup.py 加 ValueError 捕获分支；F-9+F-17 plan.md 追加 ADR D-010（truncate+write 实施偏差）+ D-011（测试后门文档化），dispatch_state.py 模块 docstring 同步，locate_req_dir_by_branch docstring 强化。(2) should_fix：F-1/F-2/F-5 _main_inner 从152行/CC33拆为编排层25行+4私有方法；F-6 抽 _try_load_meta_branch 消除嵌套层；F-7 yaml lazy import 统一到顶层 _yaml/_YAML_AVAILABLE；F-16 抽 _acquire_with_timeout 降 flock_state_file 嵌套。两个 commit 前后全测试通过。",
+  "commits": [
+    "6817ca0",
+    "fe273b9",
+    "999468cd7d70ed446989992040271e377a4c321e",
+    "e63eb5254ef6dcfb824fe8f3ce9e1e09e19018ce",
+    "760cd054939ea2ea1db5fcf638705487acfe35e3",
+    "3973c7fe20b4d9d080916ce43a4406863e1da672",
+    "47bcde8bf1d7b1b1f48794db1cc67fea5c4b2809"
+  ],
+  "commit_sha": "fe273b9",
+  "files_changed": [
+    "scripts/lib/dispatch_state.py",
+    "scripts/lib/dispatch_state_cleanup.py",
+    ".claude/hooks/dispatch_precheck.py",
+    "tests/lib/test_dispatch_state.py",
+    "tests/hooks/test_dispatch_precheck.bats",
+    "requirements/REQ-2026-008/plan.md"
+  ],
+  "test_summary": "pytest tests/lib/test_dispatch_state.py → 16 passed（TL-001~TL-010全覆盖，含TL-006多进程并发q.get消费/TL-009 LOCK_TIMEOUT_S*2计时/TL-010单with块原子）。bats tests/hooks/test_dispatch_precheck.bats → 20 ok（fail-open 14场景 + B-1/B-1b/B-2/B-3 BLOCKED + DISPATCH OK + 同feature重派）。bats tests/hooks/test_pre_tool_use_guard.bats → 32 ok（guard.sh既有用例无回归）。手工sanity三场景（Edit/invalid-json/prompt无feature_id）全exit=0。",
+  "touches_violations": [],
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-06T17:00:00+08:00"
+}

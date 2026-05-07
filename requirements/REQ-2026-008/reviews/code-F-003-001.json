@@ -1,0 +1,96 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-008-code-F-003-001",
+  "requirement_id": "REQ-2026-008",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-06 15:20:00",
+  "reviewed_commit": "22abb5f",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "a9762d30f3883ff75e525f68272bee4dac6aec96f2d38eb36683d366d80f8656"
+    },
+    {
+      "path": "artifacts/detailed-design.md",
+      "sha256": "c60f58a1a8a8c9bcb731d9bea359b1327a69a23257afa54301c5f7f7fd38f6ed"
+    },
+    {
+      "path": "artifacts/tasks/F-003.md",
+      "sha256": "05bfbd205f1d808baf35b2dd47d215631e208e9837e0fcb5e77882e831accff4"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 78,
+  "dimensions": {
+    "design_consistency": {
+      "score": 75,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "F-003.md frontmatter 自身缺 schema_version 字段——schema 落地者违反自定义 schema，'自举失败'；GATE-TASK-FRONTMATTER 实际跑会对此文件 fail，与 receipt.json tests_passed=true 矛盾（F-5）"
+        }
+      ]
+    },
+    "security": {
+      "score": 88,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 92,
+      "issues": []
+    },
+    "complexity": {
+      "score": 88,
+      "issues": []
+    },
+    "error_handling": {
+      "score": 70,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/gates/plugins/task_frontmatter.py:178-200 _parse_frontmatter_safe 4 个出错路径（OSError / 首行非 --- / 找不到结束 --- / yaml.YAMLError）全无 logger 调用；F-002 features_schema.py 同等位置已有 logger.exception，可观测性回退（F-3）"
+        },
+        {
+          "severity": "major",
+          "description": "scripts/gates/plugins/task_frontmatter.py:140-146 SchemaLoadError（schema 文件损坏）与数据违规共用 Decision.FAIL + R-TASK-FRONTMATTER-INVALID code，混淆 exit 1（数据违规）/ exit 2（schema 损坏）语义（F-2，should_fix，可推 F-005+ 抽公共 ValidationReport 时统一处理）"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/gates/plugins/task_frontmatter.py:164-166 _parse_frontmatter_safe -> 'dict | str' 字符串嵌套注解；已有 from __future__ import annotations 时无须引号（F-10，nice_to_have）"
+        }
+      ]
+    },
+    "performance": {
+      "score": 90,
+      "issues": []
+    },
+    "history_context": {
+      "score": 90,
+      "issues": []
+    }
+  },
+  "required_fixes": [
+    "F-5: 给 requirements/REQ-2026-008/artifacts/tasks/F-003.md frontmatter 顶部加 schema_version: \"1.0\"（一行）；修完本地手跑一次 GATE-TASK-FRONTMATTER 确认 pass",
+    "F-3: scripts/gates/plugins/task_frontmatter.py:178-200 _parse_frontmatter_safe 4 个出错路径各加 logger.exception/warning 一行（参照 features_schema.py:144/153 写法），含 task_md=%s rel_path 业务主键"
+  ],
+  "suggestions": [
+    "F-2（major, should_fix）：plugin 层区分 SchemaLoadError 与数据违规——引入 R-TASK-FRONTMATTER-SCHEMA-BROKEN code 或 (kind, msg) 返回值；F-002 features_schema.py 同位置同样存在该问题，建议推到 F-005+ 抽公共 ValidationReport 时统一处理，本次至少在 notes.md 留 follow-up 锚点",
+    "F-10（suggestion, nice_to_have）：去掉 _parse_frontmatter_safe 返回类型注解的字符串包裹，改 -> dict | str（PEP 563 lazy 化已生效）",
+    "F-1（minor → 降级）：_load_schema 错误消息含绝对 SCHEMA_PATH，与 F-002 同构既存模式，骨架仓库非生产服务，路径暴露不构成实际安全风险",
+    "F-4（minor → 降级）：main() 中 _load_task_frontmatter OSError 走 exit 1 是 F-002 既有契约对称，单点改 F-003 反引入分裂；列入统一债清单",
+    "F-7（minor → 降级）：_check_required_fields 命名分布 2:1（与 check_receipt.py / check_task_frontmatter.py 一致；F-002 _check_top_level_required 才是少数派），F-003 与多数派对齐",
+    "F-8（minor → 降级）：13 个 test 函数中只 3 个嵌入 TC 编号（test_tc_f3_1_case1/2/3），与 acceptance criteria TC-F3-1 case1/2/3 锚定，是有意为之的可追溯性设计",
+    "Drop F-6（design minor）：features.json F-003.touches 不含 INDEX.md，但改 features.json 会导致 detail-design hash drift（finding 自相矛盾），正确处置在 F-005/F-007 设计层；本次 receipt.files_touched 7 项已如实反映实际触及",
+    "Drop F-9（auxiliary minor）：F-003 separator 注释 # ===== TC-F3-1 case1: status=invalid_value → fail ===== 与 F-002 同位置 # ===== TC-F2-1 case2: complexity=giant → fail ===== 风格完全一致；finding 描述'F-002 有中文'事实错误"
+  ],
+  "scope": {
+    "feature_id": "F-003"
+  },
+  "supersedes": null
+}

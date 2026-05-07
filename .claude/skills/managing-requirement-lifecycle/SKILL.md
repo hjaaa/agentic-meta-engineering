@@ -24,6 +24,19 @@ description: 需求全生命周期管理伞形 Skill，被 8 个 /requirement:* 
 
 3. **门禁校验**：阶段切换前必走 `reference/gate-checklist.md`；submit 走同文件的"submit 前置门禁"小节。**逐条执行**：`bash scripts/...` 形式的命令型检查项必须用 Bash 工具真跑（看退出码），文件/字段/标记类检查项必须 Read/Grep 真验证——禁止"读清单自答通过"
 
+## 门禁校验补充：派发链强制结构 4 gate
+
+REQ-2026-008 新增以下 4 个 gate，已注册在 `scripts/gates/registry.yaml`，在对应触发点自动运行：
+
+| Gate | 触发点 | 核心校验 | severity |
+|---|---|---|---|
+| `GATE-POST-DEV-RECEIPT` | phase-transition（development→testing）/ submit | features.json 中每个 done feature 必须有 `artifacts/tasks/<fid>.receipt.json`，且 `status ∈ {DONE, DONE_WITH_CONCERNS}` | error |
+| `GATE-TOUCHES-VIOLATION` | phase-transition / submit | 所有 `artifacts/tasks/<fid>.receipt.json` 的 `touches_violations[]` 必须为空（开发期 touches_guard.py 软记的越界写入在此硬挡） | error |
+| `GATE-FEATURES-SCHEMA` | pre-commit / phase-transition / submit / ci（changed_files: `requirements/*/artifacts/features.json`） | features.json 结构符合 `features-schema.yaml` | error |
+| `GATE-TASK-FRONTMATTER` | pre-commit / phase-transition / submit / ci（changed_files: `requirements/*/artifacts/tasks/*.md`） | task.md frontmatter 符合 `task-frontmatter-schema.yaml`（含 `touches` 字段必填） | error |
+
+**豁免约束**：4 个 gate 均**不**带 `legacy-bypass` tag，meta.yaml `legacy: true` 无法豁免它们。历史 completed REQ 通过 trigger / changed_files 路径自然隔离，不依赖 legacy 短路（D-005 #2 / D-006 V-07 修订）。
+
 ## 硬约束
 
 - ❌ 禁止跳过门禁（例：从 `definition` 直接跳 `detail-design`）

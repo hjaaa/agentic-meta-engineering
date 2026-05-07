@@ -1,0 +1,151 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-008-code-F-004-001",
+  "requirement_id": "REQ-2026-008",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-06 16:12:07",
+  "reviewed_commit": "6889a5e",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "a9762d30f3883ff75e525f68272bee4dac6aec96f2d38eb36683d366d80f8656"
+    },
+    {
+      "path": "artifacts/tasks/F-004.md",
+      "sha256": "882a873fbf3bb3d2aef68d086ddf90eacd548d60bdd86b292336504458238a9b"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 78,
+  "dimensions": {
+    "design_consistency": {
+      "score": 75,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/dispatch_state.py:21 docstring 显式写 'atomic rename: tmp 写完后 os.replace'，但实现 lines 116-150 显式注释 '不用 atomic rename...改用 truncate+write'。文档实现矛盾客观存在（detailed-design.md:409/446/532 同样写 atomic rename）；建议 plan.md 加 ADR D-010 记录 truncate+write 选型理由 + 同步 dispatch_state.py:21 docstring，避免回头改 detailed-design.md（D-006 经验）"
+        }
+      ]
+    },
+    "security": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": ".claude/hooks/dispatch_precheck.py:357 dep_fid 路径穿越攻击面已被 scripts/lib/check_features.py:213-223 schema gate 上游守住（^F-\\d{3}$），followup 仅作纵深防御提醒"
+        }
+      ]
+    },
+    "concurrency": {
+      "score": 82,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/dispatch_state.py:50 锁轮询无 jitter；当前规模 (8 features) 影响小，follow-up"
+        },
+        {
+          "severity": "minor",
+          "description": "tests/lib/test_dispatch_state.py:192-208 TL-006 result_q 未消费（q.put 但测试体未 q.get），timeout 路径校验缺失，关键回归测试漏覆盖"
+        }
+      ]
+    },
+    "complexity": {
+      "score": 70,
+      "issues": [
+        {
+          "severity": "major",
+          "description": ".claude/hooks/dispatch_precheck.py:228 _main_inner 152 行 / CC 33 客观超 60 行阈值；hook 入口聚合天然复杂（参考 .claude/hooks/pre-tool-use-guard.sh main 95 行先例）；建议 round-2 拆分为 _parse_payload / _resolve_req / _validate_in_lock 三段，should_fix"
+        },
+        {
+          "severity": "major",
+          "description": ".claude/hooks/dispatch_precheck.py:334 _main_inner 锁内嵌套 5 超阈值 4；与 _main_inner 拆分一并解决"
+        },
+        {
+          "severity": "minor",
+          "description": ".claude/hooks/dispatch_precheck.py:345 B-1/B-2/B-3 BLOCKED 消息构造 + audit_log 重复模板，建议抽 _emit_blocked(code, fid, ctx) 一并 round-2 修"
+        },
+        {
+          "severity": "minor",
+          "description": ".claude/hooks/dispatch_precheck.py:140 locate_req_dir_by_branch 嵌套 5 / CC 8，建议拆 _find_meta_by_branch + _read_meta_branch 两段"
+        },
+        {
+          "severity": "minor",
+          "description": ".claude/hooks/dispatch_precheck.py:165/206 yaml 重复 lazy import 两处，统一到模块级 try-import 或一次 lazy"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/dispatch_state_cleanup.py:62 clear_state ValueError 未捕获 + 三层 docstring 不一致；must_fix 修文档对齐"
+        },
+        {
+          "severity": "minor",
+          "description": "tests/lib/test_dispatch_state.py:43 fixture 注释英文，CLAUDE.md §0 硬规要求中文"
+        },
+        {
+          "severity": "minor",
+          "description": "tests/hooks/test_dispatch_precheck.bats:27 helpers 注释英文，CLAUDE.md §0 硬规"
+        },
+        {
+          "severity": "minor",
+          "description": ".claude/hooks/dispatch_precheck.py 错误消息中英文混用（如 BLOCKED 中文 + audit_log 英文），CLAUDE.md §0 硬规要求统一"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 82,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": ".claude/hooks/dispatch_precheck.py CLAUDE_DISPATCH_TEST_REQ_DIR_OVERRIDE 测试后门在 detailed-design.md 全文 grep 未命中，必须 plan.md notes 一行说明 + 代码处 docstring 强化（仅测试 mode）"
+        },
+        {
+          "severity": "minor",
+          "description": ".claude/hooks/dispatch_precheck.py:60 _SHANGHAI_TZ = timezone.utc 与名称语义矛盾 + _logger FileHandler 未实际使用，4 checker 同标 dead code，0 风险必修"
+        }
+      ]
+    },
+    "performance": {
+      "score": 86,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "dispatch_precheck.py:121 locate_req_dir_by_branch 热路径无缓存；当前规模 < 10 requirements 影响小，follow-up"
+        },
+        {
+          "severity": "minor",
+          "description": "dispatch_precheck.py:286 features.json 全量 load 无缓存；同上，follow-up"
+        },
+        {
+          "severity": "minor",
+          "description": "dispatch_precheck.py:338 B-2 锁内串行读 N 个 task.md；设计上必须读最新 status (source-of-truth)，不能移到锁外，follow-up 跟踪"
+        }
+      ]
+    },
+    "history_context": {
+      "score": 90,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "tests/lib/test_dispatch_state.py TL-009 计时假设脆弱（A 持锁 6s + B 启动 >1s 时假通过/假失败可能），建议加 jitter 容忍"
+        }
+      ]
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "复杂度类 5 项 (F-1/F-2/F-5/F-6/F-7) 一并 round-2 重构 commit 解决，避免分散修补；参考 .claude/hooks/pre-tool-use-guard.sh main 95 行先例，hook 入口聚合属可接受复杂度",
+    "F-9 atomic rename ↔ truncate+write 选型偏差用 plan.md 加 ADR D-010 记录而非回改 detailed-design.md（detail-design 已 round-005 looks_clean signoff，触发 R005 stale 重审成本高）",
+    "性能/并发跨维度叠加 (F-10/F-11/F-12)：当前规模影响小，建议 features 增至 50+ 时统一回归 perf",
+    "测试质量必修 (F-22 TL-006 result_q 未消费 + F-23 计时假设脆弱)：关键回归测试漏覆盖等于无；建议 round-2 修测试同时补 TL-009 jitter",
+    "中英文混用 4 处 (F-27/F-29/F-30 + dispatch_precheck 错误消息)：CLAUDE.md §0 硬规，统一改中文一次性解决"
+  ],
+  "scope": {
+    "feature_id": "F-004"
+  },
+  "supersedes": null
+}

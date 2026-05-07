@@ -4,6 +4,7 @@ title: __TITLE__
 status: pending
 complexity: __COMPLEXITY__
 depends_on: __DEPENDS_ON__
+touches: __TOUCHES__
 created_at: __ISO8601__
 updated_at: __ISO8601__
 review_report: null
@@ -30,6 +31,9 @@ review_report: null
 （从 features.json 的 `depends_on_modules` 复制）
 
 ## 触及范围
+
+**frontmatter `touches` 字段是机器读取入口**，由 `touches_guard.py`（软拦截）和 `GATE-TOUCHES-VIOLATION`（phase-transition / submit 硬挡）两层解析。
+本正文段是供人快速参考的副本，两处不一致时以 frontmatter 为准。
 
 （从 features.json 的 `touches` 复制，作为 subagent 开发边界约束）
 

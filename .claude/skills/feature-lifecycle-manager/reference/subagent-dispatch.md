@@ -47,6 +47,7 @@
 - `prompt`: 按下方模板
 
 ```
+feature_id: F-xxx
 你是 feat/req-<REQ-ID> 分支上的 feature 实现者。当前任务 F-xxx · <title>。
 
 ## 上下文（由 task-context-builder 产出，只含当前 feature 相关信息）
@@ -55,8 +56,8 @@
 
 ## 你的任务
 
-1. 按上方上下文实现 F-xxx，严格限制在以下触及范围内：
-   <粘贴 touches 字段，如为空则写"未声明，保守处理：仅改与本 feature 直接相关的文件，新增文件优先"）
+1. 按上方上下文实现 F-xxx，严格限制在以下触及范围内（与 task .md frontmatter touches 一致）：
+   <粘贴 touches 字段；若为空数组写"未声明 touches，保守处理：仅改与本 feature 直接相关的文件；任何越界写入会被 touches_guard.py 软记入 receipt">
 
 2. 实现规范严格遵守（仓库根 CLAUDE.md + 项目 CLAUDE.md 已加载）：
    - 小步提交，先最小可行
@@ -108,3 +109,14 @@
 - ❌ 禁止把整份 `detailed-design.md` / 整份 `features.json` 塞进 prompt——必须走 `task-context-builder` 精简
 - ✅ 每次派发前读最新 task 文件（状态可能被 `/requirement:rollback` 改过）
 - ✅ 每次派发都在 `process.txt` 留一行 `[development] F-xxx 派发（model=<x>）`
+
+### 派发 Prompt 首行格式红线（D-005 #3 / D-007）
+
+`feature_id: F-xxx` 必须**独占 prompt 首行**，行首不能有任何前缀：
+
+- ✅ 合法：`feature_id: F-007`（第 1 行就是这一行）
+- ❌ 非法：`# feature_id: F-007`（加了 `#` 前缀）
+- ❌ 非法：`DISPATCH: feature_id: F-007`（嵌在其他内容同行）
+- ❌ 非法：首行是任何其他内容，`feature_id: F-007` 出现在第 2 行以后（parse_feature_id 只扫前 5 行，但首行约束是硬规范）
+
+**根本原因**：`dispatch_precheck.py` 用正则 `^feature_id:\s*(F-\d{3})\s*$`（MULTILINE）解析；任何前缀都会导致 regex 失败 → `parse_feature_id` 返回 None → fail-open 放行，派发链三校验（B-1/B-2/B-3）形同虚设。（来源：D-005 #3 + D-007，详见 requirements/REQ-2026-008/plan.md）

@@ -1,0 +1,71 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-008-detail-design-005",
+  "requirement_id": "REQ-2026-008",
+  "phase": "detail-design",
+  "reviewer": "detail-design-quality-reviewer",
+  "reviewed_at": "2026-05-06 10:59:55",
+  "reviewed_commit": "255537f",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/detailed-design.md",
+      "sha256": "c60f58a1a8a8c9bcb731d9bea359b1327a69a23257afa54301c5f7f7fd38f6ed"
+    },
+    {
+      "path": "artifacts/features.json",
+      "sha256": "a9762d30f3883ff75e525f68272bee4dac6aec96f2d38eb36683d366d80f8656"
+    },
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "f496d537801a1e65e9dbe420af04fd9bc76aea4ac2fef152c17990b6eb3153b6"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 92,
+  "dimensions": {
+    "consistency_with_outline": {
+      "score": 95,
+      "issues": []
+    },
+    "interface_completeness": {
+      "score": 92,
+      "issues": []
+    },
+    "data_model_soundness": {
+      "score": 95,
+      "issues": []
+    },
+    "sequence_correctness": {
+      "score": 92,
+      "issues": []
+    },
+    "feature_granularity": {
+      "score": 90,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "round-004 标的 1 major 已闭合：features.json 8 个 feature 全部移除 status 字段（grep '\"status\"' = 0 行），detailed-design §2.1.1 新增『状态字段读取约定』锁定 source-of-truth = tasks/<fid>.md frontmatter；§2.3 B-1/B-2 检测点列、§2.4 校验链 [8b]/[8c]、§4.3 features-schema 演化触发注释、§5.1 GATE-POST-DEV-RECEIPT 注释、F-002 description 全链同步；8 个 tasks/F-xxx.md frontmatter 各含 status: pending（前瞻 F-003 task-frontmatter-schema 字段集）。R005 hash drift 风险消除，detail-design 评审产物只锁静态字段集。",
+    "保留 round-004 minor 项不复挑（modules vs touches 重复字段、F-001/F-002/F-003 description 200+ 字、tasks frontmatter JSON vs YAML flow 风格）——F-007 落地阶段统一收口。",
+    "下游联动确认：F-002 features-schema.yaml 实施时 required_fields 不含 status；F-003 task-frontmatter-schema.yaml required_fields 含 status enum=[pending,in-progress,done]；F-004 dispatch_precheck B-1/B-2 路径已对齐 §2.4 校验链 [8b]/[8c] 从 tasks/<fid>.md 读 status；F-001 post_dev_receipt 扫 done feature 也以 tasks/<fid>.md frontmatter.status==done 为准。"
+  ],
+  "scope": null,
+  "supersedes": "REV-REQ-2026-008-detail-design-004",
+  "features_json_validation": {
+    "valid": true,
+    "issues": [],
+    "enhancement_suggestions": [
+      "features.json 已移除 status 字段后，仍含 complexity / depends_on_features / touches / interfaces_frozen 全四项机读字段，task-context-builder 阶段 7 派发可走最优策略（按 DAG 并行 + 按 complexity 选模型），无需进一步增强。",
+      "依赖闭包验证（回归 round-004 结论无变化）：F-001~F-008 共 8 节点 DAG 无悬挂引用、无环；串行链 F-001→F-004→F-005→F-007→F-008 与 outline §1.3 一致；F-002/F-003 与 F-001 并行；F-006 独立。",
+      "complexity 分布稳定：1 trivial（F-006）+ 5 medium + 2 heavy（F-004 / F-008），estimate_days 总和 11.75 与 tech-feasibility §6 工作量预估对齐。",
+      "F-006 / F-008 interfaces_frozen=false 合理（yml 单行改 / 沙盒 e2e 测试集合，非接口产物）。"
+    ]
+  },
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-06T11:01:42.197883+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
+  }
+}

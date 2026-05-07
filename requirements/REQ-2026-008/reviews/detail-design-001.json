@@ -1,0 +1,83 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-008-detail-design-001",
+  "requirement_id": "REQ-2026-008",
+  "phase": "detail-design",
+  "reviewer": "detail-design-quality-reviewer",
+  "reviewed_at": "2026-05-06 10:09:56",
+  "reviewed_commit": "70fc193",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/detail-design.md",
+      "sha256": "db248be0b89345a639fd1bb72b137f6260efd5207bd20b9029ebbf3bd866daaa"
+    },
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "f496d537801a1e65e9dbe420af04fd9bc76aea4ac2fef152c17990b6eb3153b6"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 85,
+  "dimensions": {
+    "consistency_with_outline": {
+      "score": 92,
+      "issues": []
+    },
+    "interface_completeness": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 105-108 行：§1.2.5 ERR trap 与 exec 互动描述较抽象——建议补一句『若 python3 存在但 dispatch_precheck.py 自身崩溃，exec 已替换进程，guard.sh 不再回到 shell，由 §2.6 顶层 except 兜底』，避免读者误以为 ERR trap 能接住 Python 内部崩溃"
+        }
+      ]
+    },
+    "data_model_soundness": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 372-397 行：§3.3 _flock 的 r 模式不存在文件路径与 r+ 模式自动 write_text({}) 兜底分支可读性差，建议补一行注释说明 write_state 走 r+ 路径会触发『不存在则建空文件』的副作用，方便后续维护者理解"
+        }
+      ]
+    },
+    "sequence_correctness": {
+      "score": 78,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "第 199-218 行 / 第 304-344 行：§2.4 校验链 [8] 步骤要求 read+三校验+write 在单把 LOCK_EX 锁内完成（保证 B-3 的 current_feature 判定与写入原子），但 §3.2 dispatch_state.py 公开签名只暴露 read_state / write_state / clear_state 三函数，每函数内部各自取一次 LOCK_EX。dispatch_precheck.py 若按 §2.4 顺序调用『read_state → 校验 → write_state』会取两次独立锁，中间窗口期允许另一进程插入并通过 B-3 校验导致并发派发。建议明确补充：要么 (a) dispatch_state.py 额外导出 flock_state_file(req_dir) 上下文管理器供调用方在外层取一次锁内做 read+write；要么 (b) 提供 try_acquire(req_dir, feature_id) 单一原子接口包内完成校验+写入。当前 §3.4 调用方一览也未交代这一点。"
+        }
+      ]
+    },
+    "feature_granularity": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "outline-design.md §1.3 8 features 草案合法性评审：F-001~F-008 均带 id/title 隐含描述，但本仓库流程 features.json 在 task-planning 阶段才正式落 .json 文件——detail-design 阶段无 features.json 实体可对照字段完整性。建议在 task-planning 阶段产出 features.json 后单独评估字段（status / complexity / depends_on / touches）的字面合规性"
+        }
+      ]
+    }
+  },
+  "required_fixes": [
+    "在 §3.2 或 §3.3 补充跨 read+write 同一把锁的公开 API（推荐导出 flock_state_file 上下文管理器或新增 try_acquire 原子接口），并把 §2.4 步骤 [8] 的伪代码改为通过该 API 调用——避免独立 read_state + write_state 调用造成 TOCTOU 并发派发漏洞"
+  ],
+  "suggestions": [
+    "§1.2.5 ERR trap 段落补一句『exec 替换进程后 Python 崩溃由 §2.6 顶层 except 兜底』，与 §1.2.3 的『Agent 分支用 exec』动机自洽",
+    "§3.3 _flock 函数内增加 1-2 行注释说明 r/r+ 模式下文件不存在时的兜底行为差异，提升可维护性",
+    "§9.3 PR 模板补丁建议性条目可考虑升级为 submit-rules.md 强制项（与 CI --check 双保险），避免人为漏跑 render-docs.py 后还要靠 CI 红 PR 兜底"
+  ],
+  "scope": null,
+  "supersedes": null,
+  "features_json_validation": {
+    "valid": true,
+    "issues": [],
+    "enhancement_suggestions": [
+      "task-planning 阶段产出 features.json 时建议每个 feature 补 complexity（trivial/light/medium/heavy）字段——阶段 7 subagent 派发器据此选择 sonnet/haiku 模型",
+      "F-004（dispatch_precheck + dispatch_state + POST-DEV-RECEIPT）跨 hook+lib+gate 三层，touches 数组应明确覆盖所有改动文件路径（.claude/hooks/dispatch_precheck.py / scripts/lib/dispatch_state.py / scripts/gates/plugins/post_dev_receipt.py），便于 touches_guard 软拦截判定",
+      "F-007 文档收口涉及 4 处文件，建议 depends_on_features 显式列 [F-001, F-002, F-003, F-004, F-005] 与 outline §1.3 DAG 保持一致",
+      "F-001/F-002/F-003 三件套若详细设计接口签名已冻结（§3.1 / §3.2 / §3.3 / §3.4 已给出 schema 字段表 + 三函数签名 + flock 实现细节），可在 features.json 标 interfaces_frozen: true 让派发器跳过部分 context 收集步骤"
+    ]
+  }
+}

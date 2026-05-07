@@ -86,9 +86,17 @@ EOF
   command=$(echo "$input" | jq -r '.tool_input.command // empty')
 
   case "$tool_name" in
+    Agent)
+      # PreToolUse Task 派发：matcher="Task" 命中 tool_name="Agent"（D-007 实采样）
+      # 透传退出码——dispatch_precheck.py 自负 fail-open（解析失败 / 锁 timeout 一律 exit 0）
+      # 用 exec 替换当前 shell 进程：dispatch_precheck.py 的 exit code 透传给 Claude Code Agent
+      # heredoc 二次喂 stdin：guard.sh main 已 input=$(cat) 消费过原 stdin，需重新喂给 Python hook
+      exec python3 "$( dirname "${BASH_SOURCE[0]}" )/dispatch_precheck.py" <<<"$input"
+      ;;
     Edit|Write|MultiEdit)
       check_branch_protect
       check_review_path "$file_path"
+      python3 "$( dirname "${BASH_SOURCE[0]}" )/touches_guard.py" <<<"$input" || true
       ;;
     Bash)
       check_bash_writes_review "$command"

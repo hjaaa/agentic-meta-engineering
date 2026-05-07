@@ -136,6 +136,10 @@ optional_fields:
 # 用途：标记历史需求豁免 reviewer-verdict 体系的 review 校验
 #   - 仅影响 scripts/lib/check_reviews.py 的入口短路
 #   - 不影响 check_meta / check_index / check_sourcing
+#   - 不豁免本次新增的 4 个派发链 gate（GATE-POST-DEV-RECEIPT / GATE-TOUCHES-VIOLATION /
+#     GATE-FEATURES-SCHEMA / GATE-TASK-FRONTMATTER）：D-005 #2 决议——historic
+#     completed REQ 由 trigger / changed_files 路径自然隔离，不依赖 legacy 短路。
+#     来源：D-006 V-07 修订；详见 REQ-2026-008 detailed-design.md §5.2
 #   - 适用场景：completed 阶段的历史 REQ（PR3 之前产出，meta.yaml 无 reviews 字段）
 # 语义：
 #   - true：跳过所有 R001~R007 校验
