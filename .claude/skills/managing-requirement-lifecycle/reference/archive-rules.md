@@ -33,6 +33,11 @@ PR merged ──┐
 **禁止**：主 Agent 看到 `gh pr view` state=MERGED 就自动跑 archive。
 **不确定**：主 Agent 必须问，不替用户判断"测试是否完成"。
 
+**前置硬要求**（预检 5）：触发 archive 前 `meta.yaml.lessons_extracted` 必须为 True；
+否则 archive_runner 在预检 5 直接 SystemExit(1)。意思是即使用户已说「可以归档了」，
+若经验沉淀未跑或脚本未把字段翻为 True，archive 也不会进入第 §2 步——是机器强制，
+不是 AI 自觉判断。需要先跑 `/knowledge:extract-experience <req_id>` 完成沉淀。
+
 ### 0.3 分支位置约束
 
 | 步骤 | 应在哪个分支 |
@@ -49,7 +54,7 @@ PR merged ──┐
 
 ---
 
-## 1. 4 项预检（硬门禁）
+## 1. 5 项预检（硬门禁）
 
 | # | 检查项 | 失败错误码 | 失败文案 |
 |---|---|---|---|
@@ -57,10 +62,19 @@ PR merged ──┐
 | 2 | `git status --porcelain` 输出为空 | `R-ARCHIVE-DIRTY` | `工作目录有未提交改动；先 commit 再 archive` |
 | 3 | `meta.yaml.pr_number` 非 0 且非空 | `R-ARCHIVE-NO-PR` | `meta.pr_number 缺失；先跑 /requirement:submit` |
 | 4 | `gh pr view <pr_number> --json state` == `MERGED`（除非 `--force`） | `R-ARCHIVE-PR-NOT-MERGED` | `PR #<N> state=<X>，未合并；等 merge 或加 --force` |
+| 5 | `meta.yaml.lessons_extracted is True` | `R-ARCHIVE-LESSONS-NOT-EXTRACTED` | `先跑 /knowledge:extract-experience <req_id>，Skill 收尾会调用 scripts/lib/mark_lessons_extracted.py 把字段翻为 True` |
 
 任一预检失败 → `SystemExit(1)` + stderr 输出错误码与文案；不进入第 5 步。
 
-`--force` 仅跳过预检 4，其他 3 项无法跳过。
+`--force` 仅跳过预检 4（PR-merged，异常恢复用），**不**跳过预检 5（lessons_extracted）。
+预检 5 的硬约束动机：归档时强制要求经验已沉淀，避免「跑完 archive 才发现忘了沉淀经验」的常见漏洞——
+该规则用脚本保障（archive_runner 拦下 + mark_lessons_extracted.py 翻字段），不依赖 AI / 人工自觉。
+
+`lessons_extracted` 字段的写入路径是单向且受控的：
+
+- **写入**：只能由 `scripts/lib/mark_lessons_extracted.py` 在 `/knowledge:extract-experience` Skill
+  收尾时调用；不允许 AI Edit / Write 工具或人工编辑直接翻
+- **撤销**：通过 `git revert` 撤销当次 archive 元数据 commit，不提供 mark 脚本的 `--revert`
 
 ---
 

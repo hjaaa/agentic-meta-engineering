@@ -45,8 +45,14 @@ def _make_meta(
     branch: str = "feat/req-2099-007",
     base_branch: str = "develop",
     archived_at: str = "",
+    lessons_extracted: bool = True,
 ) -> Path:
-    """构造临时 requirements/<req>/meta.yaml；返回 req 目录路径。"""
+    """构造临时 requirements/<req>/meta.yaml；返回 req 目录路径。
+
+    lessons_extracted 默认 True：archive 预检 5（R-ARCHIVE-LESSONS-NOT-EXTRACTED）
+    要求该字段为 True 才能继续，绝大多数 fixture 走"已沉淀"路径。需测预检 5
+    失败行为时显式传 False。
+    """
     req_dir = tmp_path / req_id
     req_dir.mkdir(parents=True)
     meta = {
@@ -59,6 +65,7 @@ def _make_meta(
         "archived_at": archived_at,
         "created_at": "2026-05-04 19:00:00",
         "project": "agentic-meta-engineering",
+        "lessons_extracted": lessons_extracted,
     }
     with (req_dir / "meta.yaml").open("w", encoding="utf-8") as f:
         yaml.safe_dump(meta, f, allow_unicode=True, sort_keys=False)
@@ -212,6 +219,75 @@ def test_force_skips_pr_merged_check(
     )
     assert result.phase == "completed"
     assert result.archived_at  # 已写时间戳
+
+
+# ---------- 新预检 5: lessons_extracted ----------
+
+
+def test_precheck_lessons_not_extracted_blocks(
+    fake_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """lessons_extracted=False → exit 1 + stderr 含 R-ARCHIVE-LESSONS-NOT-EXTRACTED。
+
+    用户反馈 2026-05-07：归档时强制要求经验已沉淀；--force 不豁免。
+    """
+    _make_meta(fake_repo, lessons_extracted=False)
+    plan = {
+        ("git", "status", "--porcelain"): _ok(),
+        ("gh", "pr", "view"): _ok(stdout=json.dumps({"state": "MERGED"})),
+    }
+    monkeypatch.setattr(archive_runner, "_run", _make_run_stub(plan))
+
+    with pytest.raises(SystemExit) as excinfo:
+        archive_requirement("REQ-2099-007")
+    assert excinfo.value.code == 1
+    err = capsys.readouterr().err
+    assert "R-ARCHIVE-LESSONS-NOT-EXTRACTED" in err
+    assert "/knowledge:extract-experience" in err
+    assert "mark_lessons_extracted" in err
+
+
+def test_precheck_lessons_not_extracted_force_does_not_bypass(
+    fake_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """--force 仅豁免预检 4 (PR-merged)，不豁免预检 5 (lessons_extracted)。"""
+    _make_meta(fake_repo, lessons_extracted=False)
+    plan = {("git", "status", "--porcelain"): _ok()}
+    monkeypatch.setattr(archive_runner, "_run", _make_run_stub(plan))
+
+    with pytest.raises(SystemExit) as excinfo:
+        archive_requirement("REQ-2099-007", force=True)
+    assert excinfo.value.code == 1
+    assert "R-ARCHIVE-LESSONS-NOT-EXTRACTED" in capsys.readouterr().err
+
+
+def test_precheck_lessons_extracted_missing_field_treated_as_false(
+    fake_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """meta.yaml 完全缺 lessons_extracted 字段 → 视同 False，预检 5 fail。"""
+    req_dir = _make_meta(fake_repo, lessons_extracted=True)
+    # 手工把 lessons_extracted 字段从 yaml 里删掉
+    meta_path = req_dir / "meta.yaml"
+    meta = yaml.safe_load(meta_path.read_text())
+    del meta["lessons_extracted"]
+    meta_path.write_text(yaml.safe_dump(meta, allow_unicode=True, sort_keys=False))
+
+    plan = {
+        ("git", "status", "--porcelain"): _ok(),
+        ("gh", "pr", "view"): _ok(stdout=json.dumps({"state": "MERGED"})),
+    }
+    monkeypatch.setattr(archive_runner, "_run", _make_run_stub(plan))
+
+    with pytest.raises(SystemExit) as excinfo:
+        archive_requirement("REQ-2099-007")
+    assert excinfo.value.code == 1
+    assert "R-ARCHIVE-LESSONS-NOT-EXTRACTED" in capsys.readouterr().err
 
 
 # ---------- TC-F3-5: 三问全 y ----------

@@ -7,7 +7,8 @@
                         prompts_callback) -> ArchiveResult
 
 行为流程：
-  1. 4 项预检（phase / dirty / pr_number / pr-merged）任一失败 → SystemExit(1)
+  1. 5 项预检（phase / dirty / pr_number / pr-merged / lessons_extracted）
+     任一失败 → SystemExit(1)
   2. 原子写 meta.yaml（phase=completed + archived_at）
   3. 追加 process.txt `[archived]` 事件（幂等：已有则跳过）
   4. 经验沉淀（可选；交互通道决议见 §3.5.5）
@@ -15,7 +16,13 @@
   6. 终端反馈 6 行（spec §5.3：标题 + phase + archived_at + experience + 本地 + 远程）
 
 副作用动作（3 / 4 / 5 步）失败均降级到 ArchiveResult.error_messages，
-archive 命令始终 exit 0（除非 4 项预检挂）。
+archive 命令始终 exit 0（除非 5 项预检挂）。
+
+预检 5（lessons_extracted）由 `_precheck_lessons_extracted` 实现：要求
+`meta.yaml.lessons_extracted is True`，否则 SystemExit(1)
+错误码 `R-ARCHIVE-LESSONS-NOT-EXTRACTED`。该字段的写入只允许走
+`scripts/lib/mark_lessons_extracted.py`，不允许 AI Edit/Write 工具直接编辑。
+`--force` flag 仅豁免预检 4（PR-merged），不豁免预检 5（用户反馈 2026-05-07）。
 
 为什么把交互通道做成 callback + yes_* flag 双轨：
   - 主对话场景：Skill 不能直接读 stdin，由伞形 Skill 装配 callback 串行问；
@@ -215,6 +222,31 @@ def _precheck_pr_merged(pr_number: int, req_id: str, *, force: bool) -> None:
             f"PR #{pr_number} state={state!r}，未合并；等 merge 或加 --force",
             req_id,
         )
+
+
+def _precheck_lessons_extracted(meta: dict[str, Any], req_id: str) -> None:
+    """预检 5：meta.yaml.lessons_extracted 必须为 True。
+
+    设计动机（用户反馈 2026-05-07）：归档时强制要求经验已沉淀，避免「跑完 archive
+    才发现忘了沉淀经验」的常见漏洞。lessons_extracted 字段的写入必须走脚本
+    （scripts/lib/mark_lessons_extracted.py）—— 不允许 AI Edit / 手工编辑 meta.yaml
+    来翻这个字段。`/knowledge:extract-experience` Skill 完成沉淀后调用 mark
+    脚本作为收尾。
+
+    硬约束：--force 不豁免本预检。--force 仅设计用于「PR 未 merged 异常恢复」，
+    不应被借用来绕过经验沉淀这一独立、强制的工程纪律。
+    """
+    if meta.get("lessons_extracted") is True:
+        return
+    _abort(
+        "R-ARCHIVE-LESSONS-NOT-EXTRACTED",
+        (
+            f"meta.yaml.lessons_extracted={meta.get('lessons_extracted')!r}（期望 True）；"
+            f"先跑 `claude /knowledge:extract-experience {req_id}` 沉淀经验，"
+            f"Skill 收尾会调用 scripts/lib/mark_lessons_extracted.py 把字段翻为 True"
+        ),
+        req_id,
+    )
 
 
 # ---------- 5 步执行 ----------
@@ -583,11 +615,12 @@ def archive_requirement(
 
     meta = _load_meta(req_id)
 
-    # —— 1 ~ 4 项预检（任一失败 → SystemExit(1)） ——
+    # —— 1 ~ 5 项预检（任一失败 → SystemExit(1)） ——
     _precheck_phase(meta, req_id)
     _precheck_dirty(req_id)
     pr_number = _precheck_pr_number(meta, req_id)
     _precheck_pr_merged(pr_number, req_id, force=force)
+    _precheck_lessons_extracted(meta, req_id)
 
     # —— 5 步执行 ——
     result = ArchiveResult(req_id=req_id)

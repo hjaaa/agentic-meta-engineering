@@ -47,12 +47,13 @@ archive 流程的副作用动作分布：
 | `--yes-local-branch` | false | 本地分支问跳问，等价用户答 y |
 | `--yes-remote-branch` | false | 远程分支问跳问，等价用户答 y |
 
-## 预检（4 项硬门禁，任一 fail → exit 1）
+## 预检（5 项硬门禁，任一 fail → exit 1）
 
 1. `phase ∈ {testing, completed}` —— 错误码 `R-ARCHIVE-PHASE`
 2. `git status --porcelain` 为空 —— 错误码 `R-ARCHIVE-DIRTY`
 3. `meta.yaml.pr_number` 存在且 > 0 —— 错误码 `R-ARCHIVE-NO-PR`
 4. `gh pr view <pr_number> --json state` == `MERGED`（除非 `--force`）—— 错误码 `R-ARCHIVE-PR-NOT-MERGED`
+5. `meta.yaml.lessons_extracted is True` —— 错误码 `R-ARCHIVE-LESSONS-NOT-EXTRACTED`（**`--force` 不豁免**；先跑 `claude /knowledge:extract-experience <req_id>`，Skill 会调用 `scripts/lib/mark_lessons_extracted.py` 把字段翻为 True）
 
 ## 委托
 
@@ -92,7 +93,7 @@ archive 流程的副作用动作分布：
 ## 退出码
 
 - `0` —— 正常完成（含副作用动作 failed；详情看终端反馈）
-- `1` —— 4 项预检任一失败
+- `1` —— 5 项预检任一失败
 
 ## 错误降级矩阵
 
