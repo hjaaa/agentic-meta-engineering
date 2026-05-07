@@ -2,6 +2,56 @@
 
 本文件记录 Agentic Engineering 骨架仓库的版本变更。格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.3.0] - 2026-05-07
+
+围绕"代码审查闭环 + 门禁系统统一与加固 + 需求生命周期"三条主线补强骨架能力，34 个 PR 累计沉淀。
+
+### Features
+
+#### 代码审查（reviewer verdict 结构化 + 人类卡点）
+
+- **reviewer verdict 结构化（PR1-PR4）** — 统一 reviewer 输出 schema：基础设施（#36）→ 试点 requirement-quality-reviewer（#38）→ 全量切换 + D7 写保护（#40）→ CI 升 strict + 历史治理（#42）
+- **代码审查人类必经卡点（REQ-2026-003）** — 路由确认 + 结论 sign-off 双闭环（#48），tty 双校验 + trivial 路径白名单 + schema 校验
+- **submit Codex review-loop + archive 命令（REQ-2026-007）** — `/requirement:submit` 默认走 Codex review-loop；新增 `/requirement:archive` 命令做 PR-merged 后收尾闭环（#57）
+
+#### 门禁系统统一与加固
+
+- **统一门禁系统（REQ-2026-002）** — F-001/F-002 统一注册中心（#44）；F-003 关闭 H1/H3/H4/H5 + F-004 渲染产物化与旧入口删除（#45）
+- **门禁系统加固 - 10 项缺陷修复（REQ-2026-005）** — 一次性收敛历史遗留缺陷（#50）
+- **门禁系统 A+B 重构（REQ-2026-006）** — pre-tool-use 热路径解耦 + 全局逃生 + 异步 audit（#54）
+- **archive 预检 5 强校验** — `lessons_extracted=true` 由脚本保障（#63）
+
+#### 需求生命周期
+
+- **会话结束经验提取 Hook（REQ-2026-001）** — Stop hook 自动触发经验提取写入 `context/team/experience/`（#32）
+- **派发链强制结构化升级（REQ-2026-008）** — features.json `touches` 必填 + dispatch_precheck.py 拦截 + 写时校验防 RMW 丢失（#60）
+
+### Bug Fixes
+
+- **阻止 reviewed_artifacts 包含 meta.yaml 自引用** — 防止 R005 自引用循环（#47）
+
+### Documentation
+
+- 门禁体系盘点 + reviewer verdict 结构化设计与 PR1 plan（#35）
+- 门禁系统 A+B 重构 spec + 实施计划（#53）
+- 固化 PR-merged 后 archive 时机与分支位置约束（#61）
+- reviewer verdict PR1-PR4 plan 归档到 history（#37, #39, #41, #43）
+
+### Experience（经验沉淀）
+
+- REQ-2026-005 复盘 5 条 / REQ-2026-006 复盘 4 条 / REQ-2026-007 复盘 3 条 / REQ-2026-008 复盘 3 条 / REQ-2026-001 跨需求经验 4 条
+- 全部沉淀到 `context/team/experience/`，供后续需求复用
+
+### Upgrade Notes
+
+- **下游仓库感知**：reviewer verdict CI 已升 strict 模式，PR 提交前需本地跑一遍 `check-sourcing.sh --strict`
+- **archive 流程变更**：PR merge 后必须经 `/requirement:archive` 走收尾（lessons_extracted + 删本地+远程分支提示），不再有手动路径
+- **派发链 touches 强制**：阶段 7 实现 feature 时 `touches` 字段必填，否则 dispatch_precheck 会拒绝派发
+
+**完整变更**：https://github.com/hjaaa/agentic-meta-engineering/compare/v1.2.0...v1.3.0
+
+[1.3.0]: https://github.com/hjaaa/agentic-meta-engineering/releases/tag/v1.3.0
+
 ## [1.2.0] - 2026-04-24
 
 围绕"阶段 7 subagent 化"补强开发实施能力，并对溢出区做 Hook 级清理。
