@@ -24,6 +24,20 @@
    - 跨项目 → `context/team/experience/<slug>.md`
 7. **写文件**（格式见下）
 8. **更新对应 INDEX.md**
+9. **收尾标记沉淀完成**（强制；本步骤不可跳过）：
+
+   ```bash
+   python3 scripts/lib/mark_lessons_extracted.py <REQ-ID>
+   ```
+
+   该脚本把对应需求的 `meta.yaml.lessons_extracted` 翻为 `True`（幂等；已是 True
+   则跳过）。**这是 archive 预检 5 (`R-ARCHIVE-LESSONS-NOT-EXTRACTED`) 通过的唯一
+   合法路径**——禁止 AI Edit / Write 工具或人工编辑 meta.yaml 来翻这个字段，
+   archive_runner 不会做内容来源校验，但用户和团队的工程纪律靠这条规范守住。
+
+   即使第 1~7 步发现"无新经验"（输出"_本轮无新经验_"），第 8 步更新 INDEX 不
+   适用，第 9 步**仍需执行**——用户确认"已检视过这次的 notes.md，确实没有可
+   沉淀经验"也是一种沉淀结论，meta.lessons_extracted 应当翻为 True 以解锁 archive。
 
 ## 文件格式
 
