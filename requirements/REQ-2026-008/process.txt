@@ -84,3 +84,4 @@
 2026-05-06 22:32:11 [phase-transition] development → testing（11 gates 全过；R005/R006 阻塞由 D-015/D-016 + round-006 重审解除）
 2026-05-06 22:33:23 [save] testing 阶段就绪：5 commits 落地（D-015 mask + D-016 falsy + round-006 重审 + signoff + phase 切换）；待跑测试套件 + 写 test-report.md
 2026-05-07 08:18:49 [save] testing 全绿：pytest 762 passed / 8 skipped(tty 预期) / 0 failed + bats 58/58；AC 子集 141/141；D-015/D-016 回归全绿；test-report.md 落盘
+2026-05-07 08:26:34 [gate:pass] GATE-TRACEABILITY semantic 全链通过：需求→设计→代码→测试 5 维全 PASS；dispatch_state 4 接口签名吻合；8 receipt 均合规
