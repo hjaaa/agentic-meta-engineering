@@ -44,3 +44,8 @@ _[hook-skipped: claude-exit-143]_
 - **F-4**：`scripts/lib/check_*.py` main() 中 OSError（文件不可读）走 exit 1，按契约更接近 exit 2（schema/环境损坏）。F-001/F-002/F-003 三件套同模式，应在抽公共时统一。
 
 触发条件：F-005+ 任意新 schema-driven gate 派发时，把这两条纳入 scope。
+
+
+## 会话经验（2026-05-06 22:34）
+
+_本轮无新经验_
