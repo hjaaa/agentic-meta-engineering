@@ -6,6 +6,49 @@
 
 ---
 
+## 0. 何时调用 archive（主 Agent 行为约束）
+
+archive 是**用户显式触发**的动作，不是 PR 合并的自动后置步骤。
+
+### 0.1 「PR merged」≠「立刻 archive」
+
+PR 合并只代表代码进入 base_branch，**不代表测试已闭环**。常态时间窗口：
+
+```
+PR merged ──┐
+            ├─→ 测试人员回归 / 验收
+            ├─→ 发现 bug → 新一轮 hotfix（原 feat 分支或新 hotfix 分支补 commit）
+            ├─→ 反复直到验收通过 ←─────┐
+            └─→ 用户明确说"可以归档了" ┴─→ archive
+```
+
+修复期间 `phase` 仍停留在 `testing`，不应推进到 `completed`。
+
+### 0.2 触发时机白名单（仅以下信号才调 archive）
+
+1. 用户明确口头指令：「归档」「archive」「收尾」「关掉这个需求」
+2. 用户显式确认测试反馈窗口已闭环：「测试通过没问题了」「可以归档了」「测试人员说没 bug 了」
+3. `--force` 异常恢复路径（用户已知风险）
+
+**禁止**：主 Agent 看到 `gh pr view` state=MERGED 就自动跑 archive。
+**不确定**：主 Agent 必须问，不替用户判断"测试是否完成"。
+
+### 0.3 分支位置约束
+
+| 步骤 | 应在哪个分支 |
+|---|---|
+| §1 预检 / §2.1 写 meta.yaml / §2.2 写 process.txt / §2.3 经验沉淀 | **原开发分支**（`meta.yaml.branch`，例 `feat/req-yyyy-nnn`）|
+| §2.4 删本地分支 | 由 archive_runner 内部判断；当前 HEAD == 目标分支时返回可执行错误（"先 `git switch <base_branch>` 再重跑"），主 Agent **不**预先切走 |
+
+为什么经验沉淀也在原 feat 分支：保留 git blame / file history 视角与开发期一致；切到 base_branch 后 `claude /knowledge:extract-experience` 会丢失分支上下文。
+
+主 Agent **禁止**在调 `/requirement:archive` 前主动 `git checkout`：
+
+- ❌ 错误：`PR merged → git checkout develop → /requirement:archive`
+- ✅ 正确：`PR merged → 留在 feat 分支等用户触发 → archive 跑 §1~§2.3 留在 feat → §2.4 报错引导切走 → 用户切 develop 后重跑 archive 完成 §2.4 → §2.5`
+
+---
+
 ## 1. 4 项预检（硬门禁）
 
 | # | 检查项 | 失败错误码 | 失败文案 |

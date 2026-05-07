@@ -8,6 +8,34 @@ PR 合并后做收尾闭环：phase=completed + archived_at + 经验沉淀 + 删
 
 不做：迁移 `requirements/<id>/` 目录、阶段状态机膨胀（D-005 / D-006 已锁定）。
 
+## 何时跑（前置约束 — 主 Agent 必读）
+
+**「PR merged」≠「立刻 archive」**。PR 合并只代表代码进入 develop，**不代表测试已闭环**。
+合并后通常还有：
+
+- 测试人员对合并版本做回归 / 验收
+- 反馈 bug 后需要新一轮 hotfix（在原 feat 分支或新 hotfix 分支补 commit、再开 PR、再合并）
+- 修复期间 `phase` 仍停留在 `testing`
+
+**主 Agent 不得在 PR merged 后自动调用 `/requirement:archive`**。等且仅等以下信号其一发生才触发：
+
+1. 用户明确说「归档 / archive / 收尾 / 关掉这个需求」
+2. 测试反馈窗口已经被用户显式确认结束（"测试通过没问题了"、"可以归档了" 等）
+
+不确定时主动问，**不要替用户判断"测试是否完成"**。
+
+## 分支位置（主 Agent 必读）
+
+archive 流程的副作用动作分布：
+
+| 步骤 | 应在哪个分支 |
+|---|---|
+| 预检 / 写 meta.yaml / 写 process.txt / 经验沉淀 | **原开发分支**（`meta.yaml.branch`，例 `feat/req-yyyy-nnn`）—— 让经验沉淀和 git blame 视角保持一致 |
+| 删本地分支（archive 内部 §2.4） | 必须**先**切到 `meta.yaml.base_branch`（例 `develop`），否则 `git branch -d` 报 "used by worktree"——`archive_runner` 会给出可执行错误指引 |
+
+主 Agent **禁止**在 archive 调用前主动 `git checkout` 切走原开发分支。
+切到 base_branch 是删本地分支这一步的内嵌行为，不是 archive 的"准备动作"。
+
 ## 参数
 
 | 参数 | 默认 | 语义 |
