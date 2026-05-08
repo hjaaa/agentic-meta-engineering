@@ -12,11 +12,11 @@
 
 ---
 
-## 1. 11 个 `/workflow:*` 命令接口签名（对应 outline §7 待办 #1，主责 D-008）
+## 1. 9 个 `/workflow:*` 通用命令接口签名（对应 outline §7 待办 #1，主责 D-008）
 
 ### 1.1 命令清单与 ARGUMENTS
 
-命令集合按 requirement.md AC-03 锁定（来源：requirements/REQ-2026-009/artifacts/requirement.md:117）；本节给出 ARGUMENTS 形态与触发条件。
+命令集合按"通用 workflow 引擎"语义锁定为 9 个；AC-03 原 11 命令中剔除 `submit` / `archive` 两个 PR 流程特定命令（见 §1.5 通用性裁定，来源：requirements/REQ-2026-009/artifacts/requirement.md:117）。
 
 | # | 命令 | ARGUMENTS 形态 | 触发条件 | 主要副作用 |
 |---|---|---|---|---|
@@ -29,14 +29,12 @@
 | 7 | `/workflow:reject` | `<reason>` | approval_pending 状态 | 状态机 → rejected + on_reject 路径 |
 | 8 | `/workflow:cancel` | 无 | 用户主动 | 父 jsonl 写 `cancel_requested` |
 | 9 | `/workflow:rollback` | `<to-node>` | 用户主动 | mv 产物到 `.archived/<ts>/` + jsonl 截断 |
-| 10 | `/workflow:submit` | `[--draft]` | 当前 run 进入 testing | submit gate + 推分支 + 开 PR |
-| 11 | `/workflow:archive` | 无 | PR merged 后 | 写 archived_at + 经验沉淀触发 + 删本地分支提示 |
 
-> **注**：spec / outline 早期草稿曾出现 `/workflow:new` / `/workflow:next` 等命名，本设计统一对齐 AC-03 规范名（`run` 替代 `new`；移除 `next`——引擎 main loop 自动推进，不需要用户手动 next；新增 `archive` 收尾步）。
+> **设计裁定**（§1.5 详）：原 AC-03 中的 `submit` / `archive` 与"PR 合并 / 删分支"语义强耦合，对 `code-review-embedded` / `extract-experience` 等模板不适用；改为 standard-8phase yaml 的终态节点（`pr-submit` / `archive-finalize` 等 bash 节点），不进引擎层命令集。spec / outline 早期草稿出现的 `/workflow:new` / `/workflow:next` 也已统一（`run` 替代 `new`；引擎 main loop 自动推进，无 `next`）。
 
 ### 1.2 每命令的接口字段（七字段）
 
-通用模板：每命令在 `.claude/commands/workflow/<cmd>.md` 给出 slash-command 入口（ARGUMENTS 透传），调 `.claude/skills/managing-workflow-runs/SKILL.md` 的 11 子动作派发（参考既有 `managing-requirement-lifecycle` 的 8 子动作结构）。下面 11 张表格逐一展开七字段（ARGUMENTS 解析 / 入参约束 / 前置条件 / 副作用 / 返回输出 / 失败模式 / 决策回引）。
+通用模板：每命令在 `.claude/commands/workflow/<cmd>.md` 给出 slash-command 入口（ARGUMENTS 透传），调 `.claude/skills/managing-workflow-runs/SKILL.md` 的 9 子动作派发（参考既有 `managing-requirement-lifecycle` 的 8 子动作结构）。下面 9 张表格逐一展开七字段（ARGUMENTS 解析 / 入参约束 / 前置条件 / 副作用 / 返回输出 / 失败模式 / 决策回引）。
 
 #### 1.2.1 `/workflow:run <template-id> [<args>]`
 
@@ -146,45 +144,20 @@
 | 失败模式 | state 不匹配 → exit 1；TaskStop 调用失败 → warn + jsonl 写 cancel_taskstop_failed |
 | 决策回引 | D-005 |
 
-#### 1.2.10 `/workflow:submit [--draft]`
-
-| 字段 | 内容 |
-|---|---|
-| ARGUMENTS 解析 | `--draft`（可选 flag）= 开 draft PR |
-| 入参约束 | — |
-| 前置条件 | 当前 run state = completed；阶段 = testing（阶段 7 SOP 跑完）；submit gate 全过（GATE-PR-MERGED-STATE / GATE-GH-AUTH / GATE-BASE-REACHABLE / GATE-BRANCH-MATCH 等） |
-| 副作用 | 推 origin 分支 + `gh pr create`；回写 meta.yaml.pr_url / pr_number；jsonl 事件 `pr_opened` |
-| 返回输出 | PR URL + PR #N + draft 标识 |
-| 失败模式 | gate fail → exit 2 + 缺口列表；推送冲突 → exit 1 + rebase 建议 |
-| 决策回引 | spec §12 阶段 7 SOP；submit-rules.md |
-
-#### 1.2.11 `/workflow:archive`
-
-| 字段 | 内容 |
-|---|---|
-| ARGUMENTS 解析 | 无 |
-| 入参约束 | — |
-| 前置条件 | 当前 run state = completed；meta.yaml.pr_number 已设置（即 submit 已跑过）；GATE-PR-MERGED-STATE 校验 PR 已合并 |
-| 副作用 | 写 meta.yaml.archived_at（ISO8601 East 8）+ outcome=shipped；jsonl 事件 `run_archived`；可选触发经验沉淀（lessons_extracted=true 由 `/knowledge:extract-experience` 单独触发，不在 archive 内） |
-| 返回输出 | "Archived <run-id> at <ts>; PR #N merged"；提示删除本地 / 远程分支命令（`git branch -d feat/req-<id>` / `git push origin :feat/req-<id>`） |
-| 失败模式 | PR 未 merged → exit 1 + GATE-PR-MERGED-STATE 缺口；run state ≠ completed → exit 1；无 pr_number → exit 1 + 提示先跑 submit |
-| 决策回引 | spec §12 阶段 7 SOP；既有 `requirement-archive` 行为对齐 |
-
 ### 1.3 命令×RunState 状态机矩阵
 
 行 = run state；列 = 命令；✓ = 允许；✗ = 拒绝（前置条件不满足时）；— = 无 run 上下文不适用。
 
-| state \ cmd | run | continue | save | status | list | approve | reject | rollback | cancel | submit | archive |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| (无 run) | ✓ | ✗ | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| running | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✓ | ✓ | ✗ | ✗ |
-| paused | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✓ | ✓ | ✗ | ✗ |
-| approval_pending | ✗ | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ |
-| cancel_requested | ✗ | ✗ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| cancelled | ✗ | ✗ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| failed | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ |
-| completed（PR 未 merged） | ✗ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ | ✓ | ✗ | ✓ | ✗ |
-| completed（PR merged） | ✗ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ | ✓ | ✗ | ✗ | ✓ |
+| state \ cmd | run | continue | save | status | list | approve | reject | rollback | cancel |
+|---|---|---|---|---|---|---|---|---|---|
+| (无 run) | ✓ | ✗ | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ |
+| running | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✓ | ✓ |
+| paused | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✓ | ✓ |
+| approval_pending | ✗ | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| cancel_requested | ✗ | ✗ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ |
+| cancelled | ✗ | ✗ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ |
+| failed | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✓ | ✗ |
+| completed | ✗ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ | ✓ | ✗ |
 
 矩阵实现位置：每命令 SKILL.md 子动作开头先做 state 校验；不满足直接 exit 1 + 错误文案。覆盖来源：§1.2 各命令"前置条件"字段。
 
@@ -194,10 +167,52 @@
 
 - 每命令 happy path（不同合法状态进入）
 - 每命令非法状态拒绝（取 §1.3 矩阵中"✗"格子）
-- 跨命令串行：`run → continue → save → status → submit → archive` 端到端 + 旁路 `cancel` 短路径
+- 跨命令串行：`run → continue → save → status → approve（终态 approval 节点）` 端到端（standard-8phase yaml 的终态 bash 节点 `pr-submit` / `archive-finalize` 由 yaml e2e 测试覆盖，不归本节）+ 旁路 `cancel` 短路径
 - approve/reject 走 hook 拦截（命中 → exit 2）+ tty fallback（命中 → exit 0）双路径
 
 具体用例数与 fixture 设计见 OQ-DD-A1-T（detail-design 评审前补完）。
+
+### 1.5 通用性裁定：为什么 submit / archive 不在引擎层
+
+原 AC-03 列 11 命令含 `submit` / `archive`，本设计将其下沉到 standard-8phase yaml 的终态节点，理由：
+
+| 维度 | submit / archive 的特定性 | 引擎层 9 命令的通用性 |
+|---|---|---|
+| 与 yaml 模板的耦合 | 硬编码 `gh pr create` + `feat/req-*` 分支 + GitHub PR 流程 | 仅操作 jsonl / RunState / 产物路径，与 yaml 内容无关 |
+| 对其他模板适用性 | `code-review-embedded`（输出报告）/ `extract-experience`（写 lessons）/ `release-cut`（v2 标签流程）/ `general-assist`（无产物）均不适用 | `run` / `continue` / `save` / `status` / `list` / `approve` / `reject` / `cancel` / `rollback` 对**所有** workflow 模板都有意义 |
+| 设计自洽 | spec §1.2 / AC-01 锁定"改阶段顺序只改 1 yaml 零代码改动"——意味着特定阶段动作（PR / 归档）必须在 yaml 内 | 引擎命令是模板无关的语义层 |
+
+替代方案：standard-8phase.yaml 末端引入 3 个 bash 节点（属 F-003 完整化范围）：
+
+```yaml
+- id: pr-submit
+  bash: |
+    set -e
+    git push origin "feat/req-$RUN_ID"
+    PR_URL=$(gh pr create --title "$PR_TITLE" --body-file "$PR_BODY_FILE" \
+                          --base "$BASE_BRANCH" "$DRAFT_FLAG")
+    yq e ".pr_url = \"$PR_URL\"" -i runs/$RUN_ID/meta.yaml
+  depends_on: [test-traceability-check]
+  output_format: { type: object, properties: { pr_url: { type: string } } }
+
+- id: pr-merged-gate
+  approval:
+    gate_message: |
+      PR 已合并？请 approve 进入归档；如未合并请 reject 并继续等待。
+  depends_on: [pr-submit]
+
+- id: archive-finalize
+  bash: |
+    set -e
+    yq e '.archived_at = strenv(NOW)' -i runs/$RUN_ID/meta.yaml
+    yq e '.outcome = "shipped"' -i runs/$RUN_ID/meta.yaml
+    echo "归档完成；建议手动跑：git branch -d feat/req-$RUN_ID"
+  depends_on: [pr-merged-gate]
+```
+
+用户路径：跑到 pr-submit 节点引擎自动推 PR + 写 pr_url；用户合并 PR 后回来 `/workflow:approve` 触发 archive-finalize。**无需引擎层 submit / archive 命令**。
+
+其他 yaml 模板（不需要 PR）的终态节点不写这三个节点即可，自然不受 PR 流程绑定。
 
 ---
 
@@ -389,7 +404,7 @@ A5 同时修正 §3.2 旧版"feature_id 编号空间分组"的过粗估算（65-
 | F-002 | 8 种节点类型实现（含 sub_workflow / loop / approval）| spec §6.4 + §11.2 | heavy |
 | F-003 | standard-8phase.yaml 38 节点完整化 + 阶段 prompt 抽离 | §2 | medium |
 | F-004 | code-review-embedded.yaml + sub_workflow 验证 | §2 | medium |
-| F-005 | 11 个 `/workflow:*` 命令 + managing-workflow-runs Skill | §1 | heavy |
+| F-005 | 9 个 `/workflow:*` 通用命令 + managing-workflow-runs Skill | §1 | medium |
 | F-006 | workflow-launcher 关键词触发 Skill + 仲裁 | §4 | medium |
 | F-007 | workflow_rollback.py + 跨父子归档（D-010）| §6 | medium |
 | F-008 | sub_workflow 父子状态联动（D-005 cancel + parent_cancelled）| §7 | medium |
@@ -409,7 +424,7 @@ A5 同时修正 §3.2 旧版"feature_id 编号空间分组"的过粗估算（65-
 |---|---|---|
 | F-001 engine 核心 | `[]` | DAG 起点 |
 | F-002 节点类型 | `[F-001]` | 节点执行依赖 dispatcher |
-| F-003 standard-8phase yaml | `[F-001, F-002]` | yaml 落地依赖 loader + 节点类型 |
+| F-003 standard-8phase yaml | `[F-001, F-002]` | yaml 落地依赖 loader + 节点类型；含末端 pr-submit / pr-merged-gate / archive-finalize 三 bash/approval 节点（§1.5） |
 | F-004 code-review-embedded yaml | `[F-001, F-002]` | 同 F-003 + sub_workflow 验证 |
 | F-005 11 命令 + Skill | `[F-001]` | 命令调 RunState API |
 | F-006 launcher | `[F-005]` | launcher 翻译为 `/workflow:*` 命令 |
@@ -1253,8 +1268,8 @@ F-012 Plan 7 清理：删 PHASE_REQUIREMENTS / phase_enum / code_review_signoff 
 | `/requirement:status [<id>]` | `/workflow:status [<id>]` | `$1` 直传 |
 | `/requirement:list [--filter=<expr>]` | `/workflow:list [--filter=<expr>]` | flag 直传 |
 | `/requirement:rollback <to-node>` | `/workflow:rollback <to-node>` | `$1` 直传 |
-| `/requirement:submit [--draft]` | `/workflow:submit [--draft]` | flag 直传 |
-| `/requirement:archive` | `/workflow:archive` | 无参数 |
+| `/requirement:submit [--draft]` | **无映射，保留独立旧实现** | flag 直传到旧 submit 实现；新引擎语义由 standard-8phase yaml 末端 `pr-submit` bash 节点承载（§1.5），用户跑到该节点引擎自动推 PR；3 月兼容期内旧实现并存（D-009） |
+| `/requirement:archive` | **无映射，保留独立旧实现** | 无参数；新引擎语义由 standard-8phase yaml `archive-finalize` 节点承载（§1.5），用户在 PR 合并后 `/workflow:approve` `pr-merged-gate` 触发；3 月兼容期内旧实现并存 |
 
 #### 10.2.2 deprecation warning 文案模板
 
@@ -1305,7 +1320,7 @@ Plan 7+1 删 8 个别名（兼容期到期人工触发）
 |---|---|---|
 | AC-01 改阶段顺序只改 1 yaml | tests/lib/test_workflow_loader.py（拓扑排序）+ tests/workflows/test_yaml_schema.py | §2 / F-001 |
 | AC-02 MVP 模板共存 | tests/lib/test_workflow_loader.py（standard-8phase + code-review-embedded 加载） | §2 / F-003 + F-004 |
-| AC-03 11 命令可调用 | tests/skills/test_workflow_commands.py（每命令 smoke） | §1 / F-005 |
+| AC-03 11 命令可调用 | tests/skills/test_workflow_commands.py（9 通用命令 smoke）+ tests/e2e/test_standard_8phase_terminal_nodes.py（pr-submit / archive-finalize 节点 e2e）| §1 + §1.5 / F-003 + F-005 |
 | AC-04 任意中断点续跑 | tests/lib/test_run_state.py（反扫重建）+ tests/e2e/test_continue.py（3 状态续跑） | §1.2.2 / F-001 + F-005 |
 | AC-05 5 lego 组合 | tests/e2e/test_code_review_embedded.py（8 critic 并发 + synthesize） | §2 / F-004 |
 | AC-06 节点级 model 覆盖 | tests/lib/test_workflow_loader.py（字段优先级 yaml > frontmatter > 顶层） | §2.2.1 / F-001 |
