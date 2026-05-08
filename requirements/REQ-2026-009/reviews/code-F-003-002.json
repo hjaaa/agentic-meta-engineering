@@ -62,5 +62,10 @@
     "feature_id": "F-003"
   },
   "supersedes": "REV-REQ-2026-009-code-F-003-001",
-  "human_signoff": null
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-08T23:34:37.510460+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
+  }
 }

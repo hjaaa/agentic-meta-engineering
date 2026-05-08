@@ -58,3 +58,6 @@
 2026-05-08 22:40:53 [development] F-003 派发（model=sonnet）：standard-8phase.yaml 末端 3 节点改造（pr-submit/pr-merged-gate/archive-finalize）+ 8 阶段 prompt 抽到 .claude/workflows/prompts/standard-8phase/，按 detailed-design §1.5/§2.1 落地
 2026-05-08 23:33:36 [development] F-003 修复完成（3 commit + 5 处文档跟进 commit）；rev2 review looks_clean 92/100（REV-...-code-F-003-002）；7 项 major + 3 项 minor 全 closed；待 tty sign-off
 2026-05-08 23:33:36 [review:looks_clean] design-consistency-checker rev2 92/100 (REV-REQ-2026-009-code-F-003-002) — rev1 7 major + 3 minor 全 closed；0 新 finding；可 tty sign-off
+2026-05-08 23:34:37 [signoff] REV-REQ-2026-009-code-F-003-002 approved by hj19961223@gmail.com
+2026-05-08 23:35:50 [signoff] REV-REQ-2026-009-code-F-003-002 approved by hj19961223@gmail.com
+2026-05-08 23:35:50 [development] F-003 完成（review approved sign-off / status=done / review_report=artifacts/review-20260508-233156.md / 释放派发锁 / 8 commit）
