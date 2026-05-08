@@ -77,5 +77,11 @@
   "scope": {
     "feature_id": "F-002"
   },
-  "supersedes": null
+  "supersedes": null,
+  "human_signoff": {
+    "decision": "approved-trivial",
+    "signed_at": "2026-05-08T22:33:59.987108+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
+  }
 }
