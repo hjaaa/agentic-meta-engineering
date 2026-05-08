@@ -4,3 +4,4 @@
 2026-05-08 14:30:26 [signoff] REV-REQ-2026-009-definition-002 approved by hj19961223@gmail.com
 2026-05-08 14:31:25 [phase-transition] definition → tech-research：6 项 error gate 全过；REVIEW-VERDICT 经 002 重审 + tty 签字放行
 2026-05-08 14:49:35 [save] tech-research 初版 tech-feasibility.md 落盘（feasibility=high，6 条风险，35.9 人天估算 Plan 2-7）
+2026-05-08 14:58:26 [save] tech-research 锁定 D-T1 (sub_workflow 子自检父 cancel) + D-T2 (approval hook+软约束)

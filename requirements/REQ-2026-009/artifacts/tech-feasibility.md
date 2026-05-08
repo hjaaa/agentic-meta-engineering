@@ -158,9 +158,16 @@ OQ-C（来源：requirements/REQ-2026-009/artifacts/requirement.md:149）指出 
 
 **背景**：父 run cancel 时，子 run 需要写 `parent_cancelled` 事件到自己的 `run-state.jsonl`（来源：context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:1020）。若子 run 同时处于活跃执行状态（subagent 正在运行），父 cancel 信号到达时子 jsonl 可能正在被写入，产生并发冲突。Claude Code 主对话单线程特性在一定程度上缓解了这个问题（主 Claude 同时只能执行一个动作），但 multi-Agent 并发场景（8 critic 同层运行）下，多个 subagent 并行写各自的 run-state.jsonl，父 cancel 传播的时序无法保证。
 
-**重估优先级（Plan 1 落地后）**：Plan 4 是第一个真正涉及 sub_workflow 联动的阶段，在此之前此风险属于"设计态"。Plan 4 启动前必须明确父 cancel 信号是如何传递给子 subagent 的——当前 spec 描述的是"父 jsonl 写 workflow_cancelled"（来源：context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:1020），但主 Claude 如何得知子 subagent 正在运行并将其中止，需要在 Plan 4 的 SKILL.md 中详细约定（可能需要借助 Claude Code 的 Agent 取消机制，这在 spec 中未明确）。
+**重估优先级（Plan 1 落地后）**：Plan 4 是第一个真正涉及 sub_workflow 联动的阶段。tech-research 阶段已完成对 Claude Code Task 工具能力的调研（详见 §8 D-T1），结论为：`Agent({run_in_background: true})` + `TaskStop({task_id})` 工具组合存在，但 `TaskStop` 是否 graceful 触发子 subagent 写 `parent_cancelled` 事件**无公开文档保证**。spec §11.2 表格中"子 run 写 `parent_cancelled`"的语义需要修订为：父 Claude **不直接**写子 jsonl，而是子 subagent 自身在节点边界 poll 父 jsonl 的 `cancel_requested` 事件，主动写 `parent_cancelled` + 自然退出（来源：context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:1020）。
 
-**缓解**：MVP 期（standard-8phase + code-review-embedded 两套模板）嵌套深度 ≤ 2，并发写入场景有限；Plan 4 上线时用 smoke test 验证父 cancel → 子 `parent_cancelled` 事件的写入完整性；jsonl 追加写本身是 O_APPEND 原子性，单行不会被截断。
+**缓解（决策 D-T1）**：父子状态联动改为"子自检父"模式——
+- 父 Claude 用 `Agent({run_in_background: true})` 派子 sub_workflow runner，不阻塞主对话
+- 用户 cancel → 父 jsonl 写 `cancel_requested`（事件枚举新增）
+- 子 subagent 每个节点边界 poll 父 jsonl，检测到 `cancel_requested` 即写 `parent_cancelled` 到子 jsonl 并 graceful 退出
+- 父 Claude 等子返回（graceful 路径）或 30s poll 超时后调 `TaskStop({task_id})` forceful 兜底
+- 优势：子 jsonl 由子自己写，无跨 subagent 文件写权限风险；jsonl 追加写本身 O_APPEND 原子性，单行不会被截断
+
+MVP 期（standard-8phase + code-review-embedded 两套模板）嵌套深度 ≤ 2，并发写入场景有限；Plan 4 上线时用 smoke test 验证 `cancel_requested` → 子 `parent_cancelled` 的端到端写入完整性。
 
 ### R-3：`PHASE_REQUIREMENTS` 删除时间点错位导致门禁空洞
 
@@ -190,7 +197,10 @@ OQ-C（来源：requirements/REQ-2026-009/artifacts/requirement.md:149）指出 
 
 **重估优先级（Plan 1 落地后）**：Plan 1 不涉及 approval 节点执行，此风险在 Plan 2 实现 approval 状态机时成为现实。Plan 2 的 SKILL.md 必须在 approval 节点的实现说明中明确：approve/reject 命令只能由人类 tty 终端触发（可通过 PreToolUse hook 拦截 AI shell 调用 `/workflow:approve`），或通过自然语言路由时有明确的人类意图信号。
 
-**缓解**：保留 PreToolUse hook 对 `/workflow:approve` 命令的调用来源校验（`sys.stdin.isatty()` 或 hook 层进程链判断）；Plan 2 设计阶段与 OQ-D 一并确认。
+**缓解（决策 D-T2）**：B + C 双层组合：
+- **B 层（技术拦截）**：`.claude/hooks/pre-tool-use-guard.sh` 的 Bash case 分支增加 `/workflow:approve` + `python3 scripts/lib/workflow_approve.py` 检测 + 非 tty 进程拒绝（与现有 `code_review_signoff.py` 的 `sys.stdin.isatty()` 校验同构，只是把校验位置从 cli script 搬到 hook 层；spec §15"放弃双校验"指的是双重确认链路，单一 hook 层校验不属于"双"）
+- **C 层（软约束）**：`context/team/ai-collaboration.md` 规则三从"sign-off 是人类专属动作"扩展为"sign-off / approval / reject 都是人类专属动作"，列出新增入口 `/workflow:approve` / `/workflow:reject`
+- 实施时机：Plan 2 实现 approval 状态机时同步落地；Plan 7 清理 `code_review_signoff.py` 时确保 hook 层 B 已生效
 
 ### R-5：`/requirement:next` 删除时间点与自举切换的耦合
 
@@ -319,7 +329,7 @@ OQ-C（来源：requirements/REQ-2026-009/artifacts/requirement.md:149）指出 
 
 ## 6. 前置条件（上线前必须解决）
 
-1. **OQ-D：approval 节点的人机鉴别安全替代**（来源：requirements/REQ-2026-009/artifacts/requirement.md:155）——Plan 2 实现 approval 状态机前，必须确认 `/workflow:approve` 命令的调用来源校验方案（保留 hook 拦截 AI shell，还是其他替代机制）。否则 CLAUDE.md 全局规范"sign-off 是人类专属动作"硬约束失去深防御层。
+1. ~~**OQ-D：approval 节点的人机鉴别安全替代**~~（已锁定 D-T2，详见 §8）——Plan 2 落地时按 B + C 组合实施：hook 层 `/workflow:approve` 校验 + ai-collaboration 规则三扩展。
 
 2. **Plan 2 的 `run_state.py` 接口契约**（来源：context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:824）——`RunState.node_outputs` 和 `RunState.current_layer_index` 的精确语义必须在 Plan 2 设计阶段锁定，形成 Plan 3 / Plan 4 可依赖的接口文档，否则续跑逻辑会出现静默错判。
 
@@ -349,12 +359,63 @@ OQ-C（来源：requirements/REQ-2026-009/artifacts/requirement.md:149）指出 
 
 1. **[待用户确认] `/requirement:next` 删除时间点**：建议延后至 Plan 5 + Plan 6 自举验证通过后删除，而非 Plan 1 合并时立即删除；否则 Plan 2-5 阶段本需求的推进命令出现空白期（分析见 §3.5）。验证时机：outline-design 阶段确认。
 
-2. **[待用户确认] approval 节点人机鉴别替代方案（OQ-D）**：倾向"保留 PreToolUse hook 拦截 AI shell 调用 `/workflow:approve`"；需确认 hook 拦截是否可行（Claude Code 协议支持 `/workflow:approve` slash command 的 PreToolUse 拦截）。验证时机：detail-design 阶段（Plan 2）。
+2. ~~**[待用户确认] approval 节点人机鉴别替代方案（OQ-D）**~~（已锁定 D-T2，详见 §8）。
 
-3. **[待用户确认] sub_workflow 父 cancel 信号如何传递给活跃 subagent（R-2）**：当前 spec 描述"父 jsonl 写 parent_cancelled 事件"，但 subagent 如何感知并中止未明确。建议 Plan 4 设计阶段先调研 Claude Code Agent 取消机制的实际能力再锁定方案。
+3. ~~**[待用户确认] sub_workflow 父 cancel 信号如何传递给活跃 subagent（R-2）**~~（已锁定 D-T1，详见 §8）。
 
 4. **[待补充] `PHASE_REQUIREMENTS` 迁移验证测试的具体形态**：需要在 detail-design（Plan 7）阶段设计，明确是独立测试文件还是集成到 gate runner 的回归测试。
    - **内容**：独立 pytest 文件 `tests/lib/test_phase_requirements_migration.py`，逐一断言 standard-8phase.yaml 中的 artifact 节点覆盖了等价的评审前置约束（即旧 `PHASE_REQUIREMENTS[phase]` 列出的依赖阶段，在新 yaml 中存在对应 `artifact:must_exist` / `approval` 节点）。
    - **依据**：类比 REQ-2026-002 F-007 round-2 的 registry / audit / state_io 拆分采用了独立 pytest 文件做契约校验（来源：scripts/gates/run.py:78），与本场景的"删除前必须先证明等价"性质一致。
    - **风险**：若 yaml 与测试不同步更新，迁移验证失效；测试通过 ≠ 运行时正确（测试只校验存在性，不校验行为等价），需配合 `scripts/gates/run.py --trigger=phase-transition` 的全量回归。
    - **验证时机**：Plan 7 启动前（删除 `PHASE_REQUIREMENTS` 之前必须有 green 测试）。
+
+---
+
+## 8. tech-research 阶段决策记录
+
+> 本节登记 tech-research 阶段与用户讨论后锁定的设计决策（ADR 风格）。每条决策必须在 plan.md 同步落地为执行项。
+
+### D-T1：sub_workflow 父子 cancel 信号传递改为"子自检父"模式
+
+| 字段 | 值 |
+|---|---|
+| 决策日期 | 2026-05-08 |
+| 决策点 | R-2 风险 / spec §11.2 |
+| 状态 | 已锁定 |
+| 影响 Plan | Plan 2（jsonl 事件枚举）/ Plan 4（sub_workflow 节点实现） |
+
+**决策内容**：父 Claude **不直接**写子 jsonl，而是把 cancel 信号通过父 jsonl 的 `cancel_requested` 事件外露；子 subagent 在每个节点边界 poll 父 jsonl，检测到该事件后自写 `parent_cancelled` 到子 jsonl 并 graceful 退出。父 Claude 等子返回（graceful）或 30s 超时后调 `TaskStop({task_id})` forceful 兜底。
+
+**调研依据**：Claude Code v2.1.63+ 的 `Agent({run_in_background: true})` + `TaskStop({task_id})` + `TaskOutput({task_id})` 工具组合存在；`TaskStop` schema 可调用但 graceful/forceful 语义无公开文档。"子自检父"绕过：(1) 跨 subagent 文件写权限模糊；(2) `TaskStop` 是否给子 graceful 写入机会的不确定性。
+
+**spec §11.2 修订项**：表格中"父 run cancel | 写 `workflow_cancelled` | 写 `parent_cancelled` 事件 → cancel"中"子 run 写 `parent_cancelled`"的写入主体明确为**子自身**而非父代写；jsonl 事件枚举新增 `cancel_requested`（父侧）。
+
+**Plan 2 落地项**：
+1. `run_state.py` 事件枚举新增 `cancel_requested`（父侧）+ `parent_cancelled`（子侧）的写入逻辑
+2. `workflow-engine` Skill 的 sub_workflow 节点执行说明明确"用 `Agent({run_in_background: true})` 派子 + 等子返回 / 30s 超时调 `TaskStop`"
+3. 子 subagent 在节点边界 poll 父 jsonl 的实现（每节点切换前读父 jsonl 最后 N 行，检测 `cancel_requested`）
+
+**Plan 4 验证项**：smoke test 覆盖父用户 cancel → 子在下一节点边界 graceful 写 `parent_cancelled` 的端到端路径；jsonl 文件追加写 O_APPEND 原子性单测覆盖。
+
+### D-T2：approval 节点人机鉴别 = hook 层技术拦截 + ai-collaboration 软约束
+
+| 字段 | 值 |
+|---|---|
+| 决策日期 | 2026-05-08 |
+| 决策点 | OQ-D / R-4 风险 |
+| 状态 | 已锁定 |
+| 影响 Plan | Plan 2（approval 状态机）/ Plan 7（清理 code_review_signoff.py） |
+
+**决策内容**：B + C 双层组合替代 spec §15 删除的 tty 双校验。
+
+**B 层（技术拦截）**：`.claude/hooks/pre-tool-use-guard.sh` 的 Bash case 分支增加对 `/workflow:approve` / `/workflow:reject` / `python3 scripts/lib/workflow_approve.py` 的检测，命令源自非 tty 进程时 `cat >&3` 拒绝消息后 `exit 2`。与现有 `code_review_signoff.py:61` 的 `sys.stdin.isatty()` 同构，只是把校验位置从 cli script 搬到 hook 层——spec §15"放弃双校验"指的是双重确认链路（cli + tty 两处），单一 hook 层校验不属于"双"。
+
+**C 层（软约束）**：`context/team/ai-collaboration.md` 规则三从"sign-off 是人类专属动作"扩展为"sign-off / approval / reject 都是人类专属动作"，新增入口列表：`/workflow:approve`、`/workflow:reject`、`python3 scripts/lib/workflow_approve.py`、`python3 scripts/lib/workflow_reject.py`。
+
+**Plan 2 落地项**：
+1. `pre-tool-use-guard.sh` 的 Bash case 分支扩展（约 10-15 行 shell + python helper）
+2. `workflow_approve.py` / `workflow_reject.py` 实现 `sys.stdin.isatty()` 双重校验（hook 漏拦时仍能 fail-closed）
+3. ai-collaboration 规则三文档同步更新
+
+**Plan 7 清理项**：删除 `code_review_signoff.py` 时确保 `pre-tool-use-guard.sh` 的 hook 校验已生效；CLAUDE.md / ai-collaboration 规则三落地的版本号 ≥ 删除提交。
+
