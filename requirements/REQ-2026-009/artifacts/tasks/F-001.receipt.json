@@ -2,10 +2,15 @@
   "feature_id": "F-001",
   "schema_version": "1.0",
   "status": "DONE",
-  "completed_at": "2026-05-08T20:58:00+08:00",
+  "completed_at": "2026-05-08T21:39:36+08:00",
   "commit_shas": [
-    "0b26c31"
+    "0b26c31",
+    "a3825d2",
+    "d2f7800",
+    "c1fbc5d",
+    "318fcca",
+    "069c8a3"
   ],
   "touches_violations": [],
-  "notes": "review-*.md 是 code-review-report 写盘产物（路径 artifacts/review-YYYYMMDD-*.md），属流程层产物不计入 F-001 实现 scope；其余 12 条历史 violations 见 git log（已清）"
+  "notes": "rev2 修复 5 finding 的 4 条 violations（detailed-design.md / features.json / tasks/F-003.md / common.py）已在派发 prompt 显式预授权（F-1 与 F-4 修复必须触及）；此处清空"
 }
