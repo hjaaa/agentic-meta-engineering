@@ -335,13 +335,13 @@ MVP 期（standard-8phase + code-review-embedded 两套模板）嵌套深度 ≤
 
 3. **`PHASE_REQUIREMENTS` 迁移验证测试**（来源：scripts/lib/check_reviews.py:57）——阶段 7 清理前必须有一个自动化测试，逐一确认 standard-8phase.yaml 中对应节点已覆盖 `PHASE_REQUIREMENTS` 规则的等价语义。否则删除后门禁会出现空洞。
 
-4. **OQ-A：双路径 loader 的实现细节**（来源：requirements/REQ-2026-009/artifacts/requirement.md:141）——Plan 3 启动前必须确认"loader 内置识别两种前缀"的具体实现方案，以避免 Plan 3 和 Plan 7 各自独立实现造成双轨逻辑不一致。[待用户确认]
+4. ~~**OQ-A：双路径 loader 的实现细节**~~（已锁定 D-T3，详见 §8）——Plan 3 按 loader 内置识别两前缀实施。
 
-5. **OQ-B：workflow-launcher 关键词冲突仲裁策略**（来源：requirements/REQ-2026-009/artifacts/requirement.md:145）——Plan 5 实现 workflow-launcher Skill 前必须锁定，否则自然语言入口行为不确定。[待用户确认]
+5. ~~**OQ-B：workflow-launcher 关键词冲突仲裁策略**~~（已锁定 D-T4，详见 §8）——Plan 5 按"最长匹配 + state tiebreaker"3 步规则实施。
 
-6. **OQ-C：自举失败回退策略**（来源：requirements/REQ-2026-009/artifacts/requirement.md:149）——倾向方案"保留旧命令实现作为 fallback"需用户确认，以便 Plan 6 设计阶段明确风险边界。[待用户确认]
+6. ~~**OQ-C：自举失败回退策略**~~（已锁定 D-T5，详见 §8）——3 月兼容期旧命令保留实际实现作 fallback。
 
-7. **`/requirement:next` 删除时间点**——必须明确是在 Plan 1 合并时立即删除（当前 spec 描述），还是延后至 Plan 5 上线 + 自举验证通过后再删除（本文建议）。若立即删除，本需求的 Plan 2-5 阶段推进命令需要预先约定替代方案。[待用户确认]
+7. ~~**`/requirement:next` 删除时间点**~~（已锁定 D-T5，详见 §8）——延后到 Plan 6 自举验证通过后才进入 Plan 7 清理；spec "立即删"决策被覆盖。
 
 8. **OQ-02：`/workflow:rollback` 归档后原路径处理**（来源：requirements/REQ-2026-009/artifacts/requirement.md:134）——Plan 4 实现 rollback 跨父子规则前必须确认。
 
@@ -357,7 +357,7 @@ MVP 期（standard-8phase + code-review-embedded 两套模板）嵌套深度 ≤
 
 > 以下条目为 tech-research 阶段新增发现，与 requirement.md 中的 OQ-A/B/C/D 对应并补充分析。
 
-1. **[待用户确认] `/requirement:next` 删除时间点**：建议延后至 Plan 5 + Plan 6 自举验证通过后删除，而非 Plan 1 合并时立即删除；否则 Plan 2-5 阶段本需求的推进命令出现空白期（分析见 §3.5）。验证时机：outline-design 阶段确认。
+1. ~~**[待用户确认] `/requirement:next` 删除时间点**~~（已锁定 D-T5）。
 
 2. ~~**[待用户确认] approval 节点人机鉴别替代方案（OQ-D）**~~（已锁定 D-T2，详见 §8）。
 
@@ -418,4 +418,69 @@ MVP 期（standard-8phase + code-review-embedded 两套模板）嵌套深度 ≤
 3. ai-collaboration 规则三文档同步更新
 
 **Plan 7 清理项**：删除 `code_review_signoff.py` 时确保 `pre-tool-use-guard.sh` 的 hook 校验已生效；CLAUDE.md / ai-collaboration 规则三落地的版本号 ≥ 删除提交。
+
+### D-T3：双路径 loader = 内置识别两前缀，不引入 schema 字段
+
+| 字段 | 值 |
+|---|---|
+| 决策日期 | 2026-05-08 |
+| 决策点 | OQ-A / D-002 双轨共存 |
+| 状态 | 已锁定 |
+| 影响 Plan | Plan 3（standard-8phase yaml + loader 适配） |
+
+**决策内容**：loader 解析 yaml 引用的 `<id>` 时，按 `requirements/<id>/` → `runs/<id>/` 顺序探测，命中即用。yaml schema **不**新增 `legacy_path` 字段，配置文件层也**不**新增 `loader-config.yaml`。3 月兼容期结束后只需删 loader 中"探测 `requirements/`"的 1 行代码，无 yaml 文件清理负担。
+
+**理由**：MVP 范围仅 2 个路径前缀，loader 内置探测逻辑短（约 5 行），与 schema 配置/外部配置文件相比，作者负担最低 + 清理成本最低；spec D-002 决策"双轨共存"本身就要求 loader 是统一识别入口，schema 字段化反而把"双轨"语义泄漏到每一个 yaml 文件。
+
+**Plan 3 落地项**：
+1. `workflow_loader.py` 新增 `_resolve_run_dir(req_id) -> Path`：先 stat `requirements/<req_id>/`，不存在则 stat `runs/<req_id>/`；都不存在抛 `WorkflowError`
+2. `workflow-engine` Skill 在构建 `$ARTIFACTS_DIR` / `$OUTPUT_DIR` 变量时调 `_resolve_run_dir` 而非硬编码前缀
+3. 单测覆盖 4 种场景：仅 `requirements/` 存在 / 仅 `runs/` 存在 / 都存在（取 `requirements/` 优先）/ 都不存在
+
+### D-T4：workflow-launcher 关键词冲突 = 最长匹配 + state tiebreaker
+
+| 字段 | 值 |
+|---|---|
+| 决策日期 | 2026-05-08 |
+| 决策点 | OQ-B / spec §4.2 |
+| 状态 | 已锁定 |
+| 影响 Plan | Plan 5（workflow-launcher Skill） |
+
+**决策内容**：launcher Skill 的关键词仲裁规则按以下顺序判定：
+1. **state tiebreaker**：检测当前是否有 run 处于 `approval_pending` 状态——是则优先匹配 `approve` / `reject` 关键词，绕过最长匹配
+2. **最长匹配**：所有命中关键词按匹配字符长度倒序排序，取最长的关键词对应的 `/workflow:*` 命令
+3. **兜底 ask**：若有 ≥2 个等长关键词命中（极小概率），主 Claude 必须 ask 用户消歧
+
+多步连接词（"再" / "接下来" / "and then"）的串行执行能力**不在 MVP 范围**——属于 v2 演进项（如有需要再加）。
+
+**Plan 5 落地项**：
+1. `.claude/skills/workflow-launcher/SKILL.md` 写明上述 3 步仲裁规则（5-10 行 SOP）
+2. `reference/keyword-matching.md` 列出 spec §4.2 全部关键词的字符长度排序（avoid 字符串解析时的 ambiguity）
+3. 单测覆盖 ≥3 个冲突场景：("继续这个新需求"=继续优先) / ("approve 这个需求并跑代码评审"=approval_pending 时 approve 优先) / ("跑下代码评审"=单意图直通)
+
+### D-T5：自举失败回退 = 旧命令保留实现，3 月兼容期 = 天然 fallback；`/requirement:next` 延后删除
+
+| 字段 | 值 |
+|---|---|
+| 决策日期 | 2026-05-08 |
+| 决策点 | OQ-C / R-3 / spec §4.3 |
+| 状态 | 已锁定（**覆盖 spec "立即删 `/requirement:next`" 决策**） |
+| 影响 Plan | Plan 5（命令体系）/ Plan 6（自举验证）/ Plan 7（清理） |
+
+**决策内容**：
+- 3 月兼容期内**所有** `/requirement:*` 命令保留**实际实现**（而非仅别名转发到 `/workflow:*`），与新引擎并行运行
+- `/requirement:next` 不再"立即删"——延后到 Plan 6 自举验证通过后才进入 Plan 7 清理
+- Plan 6 自举验证设硬阈值（详见 Plan 6 设计稿）：本需求自身从 `tech-research` 推到 `completed` 全程必须用新引擎跑通，过程中任何阶段 fallback 到旧命令视为验证失败 → 阻塞 Plan 7
+- 自举失败时，用户手动调旧命令推进当前 run 即可，新引擎在 Plan 6 内迭代修复
+
+**与 spec §4.3 / §15 关系**：spec 表"`/requirement:next` 处理 = 别名（3 月兼容期）"已**修订为"实现保留 + 别名（3 月兼容期）"**——别名仅用于 8 个非 `:next` 命令；`:next` 在 Plan 6 验证完成前保持原实现。
+
+**Plan 5 落地项**：
+1. 8 个 `/requirement:*` 命令（除 `:next`）的 .md 文件正文替换为"调用对应 `/workflow:*` 命令 + 输出 deprecation warning（3 月兼容期内保留）"
+2. `/requirement:next` .md 保留原 SOP（继续走 `managing-requirement-lifecycle` Skill）
+3. `managing-requirement-lifecycle` Skill 不动，与新 `managing-workflow-runs` Skill 并行存在
+
+**Plan 6 落地项**：自举验证 SOP 显式写"全程禁用旧命令"，任何 fallback 命中即 verification failed。
+
+**Plan 7 清理项**：删除 `/requirement:next` + `managing-requirement-lifecycle` Skill + `PHASE_REQUIREMENTS` 等旧实现的硬性顺序约束 = Plan 6 verification passed → 旧命令的 deprecation warning 升级为 hard error → 1 个迭代周期后真删除。
 
