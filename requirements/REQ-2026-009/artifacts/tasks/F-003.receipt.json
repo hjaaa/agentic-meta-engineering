@@ -1,0 +1,6 @@
+{
+  "feature_id": "F-003",
+  "schema_version": "1.0",
+  "touches_violations": [],
+  "notes": "subagent 实施期 hook 软记 3 条 violation：(1) tests/e2e/__init__.py — Python 包必需，按 task self-check 隐含；(2)(3) tests/workflows/test_yaml_schema.py — task self-check 明确『追加 TC-F3-1』，touches 漏列。已在 task.md frontmatter 显式扩 touches，violations 视为历史事件清空。最终 status / commit_shas 待 review approved 后 finalize。"
+}
