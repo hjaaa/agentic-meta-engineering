@@ -588,22 +588,133 @@ def rollback_run(run_id: str, to_node: str, target_id: Optional[str] = None) -> 
     """
 ```
 
-`RollbackResult` 字段表 + 异常契约见 OQ-DD-A9。
+参数：
 
-### 6.2 4 场景测试矩阵
+- `run_id`: 目标 run id（兼容 `requirements/<id>/` 与 `runs/<id>/` 双路径，走 `_resolve_run_dir`）
+- `to_node`: yaml 节点 id；必须是当前节点的拓扑上游
+- `target_id`: 跨父子 rollback 时指定子 run id（可选）；缺省时父 rollback 自动级联到所有匹配 sub_workflow 子 run
 
-| 场景 | 描述 | 关键断言 |
+### 6.2 RollbackResult 数据结构
+
+```python
+@dataclass(frozen=True)
+class RollbackResult:
+    run_id: str                              # 被回滚的 run id
+    archive_ts: str                          # 归档目录时间戳（ISO8601 East 8）
+    archive_root: Path                       # .archived/<ts>/ 绝对路径
+    moved_artifacts: list[Path]              # 被 mv 的产物文件相对路径
+    moved_sub_runs: list[SubRunArchive]      # 跨父子 mv 的子 run（F1 场景）
+    truncated_jsonl_tail: Path               # <archived>/run-state.jsonl.tail
+    new_current_node: str                    # rollback 后续跑起点（= to_node 的最近上游）
+    duration_ms: int                         # 操作耗时
+    partial: bool = False                    # True = 续跑收尾路径（不是首次 rollback）
+
+@dataclass(frozen=True)
+class SubRunArchive:
+    child_run_id: str                        # 子 run id（释放后不复用）
+    archive_path: Path                       # 父 .archived/<ts>/sub_runs/<child-id>/ 绝对路径
+    jsonl_event_count: int                   # 子 jsonl 行数（用于断言完整性）
+```
+
+### 6.3 异常契约
+
+| 异常类 | 触发条件 | exit 码（CLI 透传）|
 |---|---|---|
-| R1 单层 | 单 run 内回滚到中间节点 | 原路径删 / `.archived/<ts>/<相对路径>` 存在 / jsonl 尾部 mv 为 `.tail` |
-| F1 跨父子 | 父 run 回滚越过 sub_workflow 节点 | 子 run 整目录 mv / 子 id 释放 |
-| T1 多次 | 同 run 第二次回滚 | 两个 timestamp 目录互不覆盖 / `.in_progress` 各自独立 |
-| 到 root | rollback 到首个节点 | 全部产物归档 / jsonl 仅留 init |
+| `RollbackError` | 基类，不直接抛出 | — |
+| `RunStateNotFoundError` | `run_id` 在两条路径都查不到 run 目录 | 1 |
+| `TargetNodeNotFoundError` | `to_node` 不在 run 对应 yaml 节点 ID 集合 | 1 |
+| `TargetNodeNotUpstreamError` | `to_node` 不是当前节点的拓扑上游（或就是当前节点本身） | 1 |
+| `ConcurrentRollbackError` | `runs/<id>/.rollback.lock` 已被持有（fcntl.flock 失败） | 1 |
+| `RollbackInProgressError` | `.archived/<ts>/.in_progress` 残留且 ts ≠ 本次（中断未续跑前禁止新 rollback） | 1 |
+| `IOError` | mv 文件失败（磁盘满 / 权限） | 1（重抛标准异常） |
 
-每场景 fixture 数据 + 期望文件树 + 期望 jsonl 行数见 OQ-DD-A9。
+### 6.4 并发互斥与中断保护选型
 
-### 6.3 中断保护
+**选型决策：双层锁**——`fcntl.flock`（advisory lock，进程崩溃自动释放）+ `os.O_EXCL`（原子创建 `.in_progress` 标记）。
 
-`.in_progress` 标记 + 续跑流程：检测残留 → 完成 mv 收尾或回退；并发互斥用 `fcntl.flock` 或 `os.O_EXCL`（具体选型见 OQ-DD-A9）。
+```python
+# 伪码
+with open(run_dir / ".rollback.lock", "w") as lock_fd:
+    fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)  # 失败 → ConcurrentRollbackError
+    archive_dir = run_dir / ".archived" / archive_ts
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    in_progress = archive_dir / ".in_progress"
+    in_progress_fd = os.open(in_progress, os.O_WRONLY | os.O_CREAT | os.O_EXCL)
+    try:
+        # mv 产物 + jsonl tail + sub_run 整目录
+        os.close(in_progress_fd)
+        in_progress.unlink()                 # mv 完成后删标记
+    finally:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+```
+
+为什么不单选一个：
+
+- 单 `fcntl.flock`：进程崩溃后锁自动释放，但中间状态产物（部分 mv 完毕）会被下次 rollback 误覆盖
+- 单 `os.O_EXCL`：原子创建保证标记唯一，但进程崩溃不会清理，下次启动卡住
+- 双层组合：flock 解决"并发"，O_EXCL `.in_progress` 解决"崩溃后中间状态识别"
+
+**续跑流程**（启动时检测 `.in_progress` 残留）：
+
+1. 扫 `run_dir / ".archived" / *` 找带 `.in_progress` 标记的目录
+2. 命中 → 拿 `.rollback.lock` → 完成剩余 mv → 删 `.in_progress`
+3. 找不到 fcntl 锁但有 `.in_progress` 残留 → 进程崩溃后续跑 → 强制完成
+4. 结束后 RollbackResult.partial = True 标识
+
+### 6.5 4 场景测试矩阵 + Fixture 设计
+
+| 场景 | run 拓扑 | rollback 调用 | 期望文件树（精简） | 期望 jsonl |
+|---|---|---|---|---|
+| **R1 单层** | A → B → C → D（D 当前）| `rollback(run_id="X", to_node="C")` | `.archived/<ts>/D/output.json` 存在 / 原 `D/output.json` 删 | 截断到 C 完成处；尾部 mv 为 `<archived>/run-state.jsonl.tail`（行数 = 旧 jsonl 行数 - 截断处） |
+| **F1 跨父子** | A → B(sub_workflow→child Y) → C → D（D 当前）| `rollback(run_id="X", to_node="A")` | `.archived/<ts>/{B,C,D}/...` 存在 / `.archived/<ts>/sub_runs/Y/` 整目录存在 / `runs/Y/` 已删 | 父 jsonl 截到 A 完成；子 jsonl 整体 mv（行数保留）|
+| **T1 多次** | 第一次 rollback 后再次 rollback（两次 ts 不同）| `rollback(run_id="X", to_node="C")` 两次 | `.archived/2026-05-08T17:00:00+0800/` 与 `.archived/2026-05-08T17:30:00+0800/` 互不覆盖 | 两次截断各对应 `.tail` 文件 |
+| **到 root** | A（当前=最末节点）| `rollback(run_id="X", to_node="A")` | 全部产物 mv 到 `.archived/<ts>/` / `runs/X/artifacts/` 仅留空目录或 init 产物 | jsonl 仅留 `workflow_started` + `node_started(A)` |
+
+**Fixture 文件结构**（`tests/lib/test_workflow_rollback.py` 同目录 `fixtures/`）：
+
+```
+tests/lib/fixtures/rollback/
+  R1-single-layer/
+    workflow.yaml          # 4 节点 A-B-C-D
+    initial-jsonl.txt      # 完整执行到 D 的 jsonl
+    expected-tree-after.txt # 期望文件树（diff 断言）
+  F1-cross-parent-child/
+    workflow.yaml          # 含 sub_workflow 节点
+    parent-jsonl.txt
+    child-jsonl.txt
+    expected-tree-after.txt
+  T1-multiple-rollback/
+    workflow.yaml          # 同 R1
+    initial-jsonl.txt
+    expected-tree-first.txt
+    expected-tree-second.txt
+  to-root/
+    workflow.yaml          # 单节点 A
+    initial-jsonl.txt
+    expected-tree-after.txt
+```
+
+测试用 pytest parametrize；每场景独立 tmpdir + monkey patch `_resolve_run_dir` 指向 fixture。
+
+### 6.6 中断保护单测（追加 1 类场景）
+
+| 场景 | 触发方式 | 期望 |
+|---|---|---|
+| crash-recovery | 用 monkeypatch 在 mv 中途 raise → 模拟进程崩溃 → 重新调 `rollback_run` 续跑 | RollbackResult.partial=True；最终文件树等于无中断版本；`.in_progress` 已删 |
+| concurrent-block | 同 run_id 并发 2 个 rollback（线程或子进程）| 第二个抛 `ConcurrentRollbackError` |
+
+### 6.7 影响域
+
+新增文件：
+
+- `scripts/lib/workflow_rollback.py`（公开 API + RollbackResult dataclass + 异常类）
+- `tests/lib/test_workflow_rollback.py`（4 主场景 + 2 中断保护场景）
+- `tests/lib/fixtures/rollback/*`（4 套 fixture）
+
+不改动文件：
+
+- `scripts/lib/run_state.py`（jsonl 读取 / 写入流程不变；rollback 调 run_state 的 reverse-scan 接口）
+- workflow yaml schema（不引入新字段）
 
 ---
 
@@ -824,11 +935,7 @@ Plan 7+1 删 8 个别名（兼容期到期人工触发）
 
 - ~~**OQ-DD-A8（hook patch + 单测矩阵）**~~：**已闭合**——展开为 §5.2 ~ §5.7：拦截语义认知 / 完整 shell 片段（正则常量 + case 分支挂钩 + check 函数）/ 已知绕过通道 + 双层兜底（CLI isatty + BYPASS reason ≥ 8 + PR review）/ CLI 层 workflow_approve.py 雏形 / 24 条单测矩阵 / ai-collaboration 规则三 patch。
 
-- **OQ-DD-A9（rollback API + RollbackResult + 中断保护）**：[待补充]
-  - 内容：`RollbackResult` 字段表 + 异常契约 + 4 场景 fixture / 期望文件树 / jsonl 行数 + 并发互斥选型（fcntl.flock vs os.O_EXCL）
-  - 依据：D-010 锁定的 mv 语义 + `.in_progress` 标记
-  - 风险：并发 rollback 数据损坏；中断后状态无法恢复
-  - 验证时机：detail-design 评审前需给 4 场景单测设计文档
+- ~~**OQ-DD-A9（rollback API + RollbackResult + 中断保护）**~~：**已闭合**——§6 全章扩展：§6.1 API 签名 + 参数 / §6.2 RollbackResult dataclass（含 SubRunArchive）/ §6.3 异常契约 7 类 / §6.4 双层锁选型（fcntl.flock + O_EXCL，决策对比单选方案）/ §6.5 4 场景 fixture（含期望文件树 / jsonl tail）/ §6.6 中断保护单测追加（crash-recovery + concurrent-block）/ §6.7 影响域（新增 workflow_rollback.py + 4 fixture 套件）。
 
 - **OQ-DD-A10（sub_workflow e2e 测试运行环境）**：[待补充]
   - 内容：子 subagent 模拟方式（mock subprocess vs 真派 Agent）+ poll 间隔可调机制 + 边界场景列表（父崩 / 子崩 / 网络分区 / TaskStop graceful 不明确兜底）
