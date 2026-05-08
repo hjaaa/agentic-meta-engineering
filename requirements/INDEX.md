@@ -71,10 +71,3 @@ requirements/REQ-YYYY-NNN/
 | 7 | development | 代码 + tasks/F-NNN.receipt.json + artifacts/review-*.md | reviews/code-F-NNN-NNN.json |
 | 8 | testing | artifacts/test-report.md（可选 traceability-report.md） | — |
 | 9 | completed | meta.yaml.outcome=shipped + archived_at | — |
-
-## 历史信息
-
-- **REQ-2026-004 跳号**：详见 [REQ-2026-005/plan.md](REQ-2026-005/plan.md) `D-001`
-- **`process.tool.log` 已弃用**：spillover-redefine spec §6.3 删除了 PostToolUse Hook，本字段不再产生（旧 INDEX 残留描述已清除）
-- **`reviews/` 目录是 GATE-REVIEW-VERDICT 工作的依赖**：评审 verdict 写入由 reviewer Agent → `scripts/save-review.sh` → `reviews/<phase>-NNN.json`
-- **`tasks/<F-NNN>.receipt.json`**：REQ-2026-008 派发链结构化升级引入，是 GATE-POST-DEV-RECEIPT 的硬依赖
