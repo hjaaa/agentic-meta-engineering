@@ -110,11 +110,13 @@ refs-requirement: true
 
 > AC-* 编号沿用 input-normalizer 草料；MVP 验收以 D-001/D-002 锁定的 (b) 范围为准。
 
+> **carryover 注（detail-design §1.5 / 方案 A，2026-05-08 用户拍板）**：本节及上方"范围 / 包含"段中"11 个 `/workflow:*` 命令"为 spec §4.3 / §1090 原始口径；detail-design 收口为 **9 个通用命令**（run / continue / save / status / list / approve / reject / rollback / cancel）+ standard-8phase yaml 末端 3 节点（pr-submit / pr-merged-gate / archive-finalize）承载 submit / archive 语义。requirement.md 文本保留 11 命令历史叙述供 spec 引用兜底；测试阶段 GATE-TRACEABILITY 应按 detail-design §11 的 14 条 AC ↔ 测试 ID 映射校验，不按 AC-03 字面量做 11 比对。
+
 | ID | 描述 | 测试方式 | 来源 |
 |---|---|---|---|
 | AC-01 | 改阶段顺序只改 1 个 yaml 文件，零代码改动 | 修改 `standard-8phase.yaml` 节点顺序，不改任何 .py / .md，引擎能正确按新顺序执行 | context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:48 |
 | AC-02 | MVP 模板共存：`standard-8phase` + `code-review-embedded` 两套均可被 loader 加载无报错 | `python3 scripts/lib/workflow_loader.py --strict <yaml>` 退出码 0 | context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:1212 |
-| AC-03 | 11 个 `/workflow:*` 命令全部可调用 | 枚举 run/list/status/continue/save/approve/reject/cancel/rollback/submit/archive，逐一 smoke 调用无报错 | context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:159 |
+| AC-03 | 11 个 `/workflow:*` 命令全部可调用（D-009 修订后实际为 **9 通用命令** + 2 个 standard-8phase yaml 末端节点 `pr-submit` / `archive-finalize`；详 detailed-design §1.5 / §11） | 枚举 run/list/status/continue/save/approve/reject/cancel/rollback 9 命令逐一 smoke 调用无报错；submit / archive 通过 standard-8phase yaml 末端节点 e2e 验证 | context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:159 |
 | AC-04 | `/workflow:continue` 在任意中断点能自动续跑，无需用户告知位置 | 在 `node_started` 未完成、`approval_pending`、`paused_in_loop` 三种状态下 continue，均自动恢复 | context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:824 |
 | AC-05 | 5 种验证 lego（output_format/when/approval/bash/critic）可组合 | `code-review-embedded.yaml` 中能跑通 8 critic 并发 + synthesize 综合裁决 | context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:855 |
 | AC-06 | 节点级 model/effort/thinking 可覆盖 workflow 默认 | yaml 中 `model: opus[1m]` 的节点使用 Opus，其余节点使用顶层默认 | context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:53 |

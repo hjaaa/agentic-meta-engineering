@@ -88,6 +88,8 @@
 
 > 来源：spec §6 / §7 / §9 / §12；plan.md ADR Plan 落地点字段。
 
+> **carryover 注（detail-design §1.5 / 方案 A，2026-05-08 用户拍板）**：上文与上表"11 个 `/workflow:*` 命令"是 spec §4.3 / §1090 原始口径；detail-design 收口为 **9 个通用命令**（run / continue / save / status / list / approve / reject / rollback / cancel）+ standard-8phase yaml 末端 3 节点（pr-submit / pr-merged-gate / archive-finalize）承载 submit / archive 语义。outline 文本保留 11 命令历史叙述供 spec 引用兜底，实际接口集见 detail-design §1.1 / §1.5 / §10.2。
+
 ---
 
 ## 2. 关键流程时序
@@ -434,7 +436,7 @@ Plan 6 验证通过
 |---|---|---|---|---|
 | AC-01 | 改阶段顺序只改 1 yaml | L4 schema + L2 engine | 改 standard-8phase 节点顺序，不改 .py / .md | testing |
 | AC-02 | MVP 双模板 loader 加载无错 | L3 `workflow_loader` | `python3 workflow_loader.py --strict` exit 0 | development |
-| AC-03 | 11 个 `/workflow:*` 全可调 | L1 commands + L2 `managing-workflow-runs` | 11 命令逐一 smoke | development |
+| AC-03 | 11 个 `/workflow:*` 全可调（D-009 修订后实际为 9 通用命令 + 2 yaml 末端节点；详 detailed-design §1.5）| L1 commands + L2 `managing-workflow-runs` | 9 命令逐一 smoke + standard-8phase yaml 末端 pr-submit / archive-finalize 节点 e2e | development |
 | AC-04 | `/workflow:continue` 任意中断点续跑 | L2 `workflow-engine` `RunState` 重建 | 3 种状态续跑 | development |
 | AC-05 | 5 lego 可组合 | L3 `run_artifact_checks` + L2 engine | code-review-embedded.yaml 跑通 | development |
 | AC-06 | 节点级 model/effort/thinking 覆盖 | L4 schema + L2 engine | yaml 测试 | development |

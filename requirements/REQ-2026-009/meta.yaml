@@ -20,12 +20,12 @@ gates_passed:
   - phase: outline-design
     at: '2026-05-08 15:55:16'
     via: phase-transition
-    notes: 10 项 error gate 全过 + PLAN-FRESHNESS warning OK；先提交 INDEX.md
+    notes: 10 项 error gate 全过 + PLAN-FRESHNESS warning OK；先提交 INDEX.md 
       历史信息段删除清理脏工作区
   - phase: detail-design
     at: '2026-05-08 16:31:55'
     via: phase-transition
-    notes: 11 项 error gate 全过；outline-design-003 经 tty 签字 (cli-tty /
+    notes: 11 项 error gate 全过；outline-design-003 经 tty 签字 (cli-tty / 
       hj19961223@gmail.com) 放行；PLAN-FRESHNESS 无 warning
 pr_url: ""
 pr_number: 0
@@ -75,4 +75,18 @@ reviews:
       - REV-REQ-2026-009-outline-design-001
       - REV-REQ-2026-009-outline-design-002
       - REV-REQ-2026-009-outline-design-003
+    stale: false
+  detail-design:
+    latest: REV-REQ-2026-009-detail-design-001
+    conclusion: looks_clean
+    reviewed_commit: 8bf0352
+    artifact_hashes:
+      artifacts/detailed-design.md: 
+        0427e33f00794114240b476540a7652af3299e9977589c1984727caba03e66c0
+      artifacts/features.json: 
+        d365e0bc8731b580a6758b3a92bc9cbf975219d610d97c5c90827bf50abee034
+      artifacts/outline-design.md: 
+        858cea664a33ef51a36ec76cbba1197ec3e3475ecf74805e089d0e3d15c1227c
+    history:
+      - REV-REQ-2026-009-detail-design-001
     stale: false

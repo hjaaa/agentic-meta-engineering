@@ -117,7 +117,7 @@
 | 前置条件 | 当前 run state = approval_pending |
 | 副作用 | jsonl 事件 `approval_rejected` + reason；状态机 approval_pending → on_reject 节点（yaml 声明的回退路径） |
 | 返回输出 | "Rejected <node-id> at <ts> by <signer>: <reason>"；on_reject 节点信息 |
-| 失败模式 | reason 太短 → exit 1 + 长度要求提示；同 1.2.7 hook / isatty 拦截 |
+| 失败模式 | reason 太短 → exit 1 + 长度要求提示；同 1.2.6 hook / isatty 拦截 |
 | 决策回引 | D-006，spec §6.4 approval 节点 on_reject |
 
 #### 1.2.8 `/workflow:rollback <to-node>`
@@ -260,6 +260,7 @@
 | `idle_timeout` | 可选 | int (毫秒) | 节点空闲超时 | 引擎计时 |
 | `retry` | 可选 | `{max_attempts, delay_ms, on_error}` | 重试策略 | 引擎重试 |
 | `context_budget` | 可选 | int (token) | 主对话压力监控阈值 | 命中触发 §6.11 inline → file 切换 + warn |
+| `on_subworkflow_failure` | 可选 | enum: `fail` / `continue` / `skip` | 子 workflow 抛异常时父节点行为；仅 `sub_workflow` 类型节点生效；缺省 = `fail`（spec §6.4） | 引擎按枚举分支：fail = 父节点 fail / continue = 写 child_failed 后继续下游 / skip = 跳过本节点直接进 next |
 
 #### 2.2.1 字段优先级（覆盖规则）
 
@@ -409,7 +410,7 @@ A5 同时修正 §3.2 旧版"feature_id 编号空间分组"的过粗估算（65-
 | F-007 | workflow_rollback.py + 跨父子归档（D-010）| §6 | medium |
 | F-008 | sub_workflow 父子状态联动（D-005 cancel + parent_cancelled）| §7 | medium |
 | F-009 | D-006 hook 拦截 + workflow_approve/reject.py + ai-collaboration patch | §5 | light |
-| F-010 | 8 个 `/requirement:*` 别名兼容期保留实现（D-009）| §10.2 | light |
+| F-010 | 9 个 `/requirement:*` 别名兼容期保留实现（D-009）| §10.2 | light |
 | F-011 | 自举验证 SOP（Plan 6）+ migration 测试（R001-R007 等价）| §8 + §10.3 | medium |
 | F-012 | Plan 7 清理（删 PHASE_REQUIREMENTS / phase_enum / signoff / next）| §10.3 | light |
 | F-013 | requirements/ → runs/ 批量 rename 工具（D-002）| §9 | medium |
