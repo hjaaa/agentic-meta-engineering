@@ -13,3 +13,5 @@
 2026-05-08 16:05:08 [save] outline-design.md 起草完成（4 层模块视图 + 4 张时序图 + 改动一览表 + 自举专题独立成章 + AC 映射 + 8 项 detail-design 待办；485 行）
 2026-05-08 16:08:50 [review:needs_attention] outline-design-quality-reviewer 78/100 (REV-REQ-2026-009-outline-design-001) — 1 major: /requirement:next 处理在 outline §1.2/§5.2/§6 与 requirement.md AC-09/场景1 自相矛盾；5 minor 不阻塞
 2026-05-08 16:13:17 [save] outline-design 评审 needs_attention 修订完成：requirement.md 行 36/87/AC-09 同步 D-009；outline-design.md §6 AC-09 行 + 5 minor (§3.1 跨层禁令补 L2→L4 / §2.4 launcher 读 jsonl 仅路由 / §2.2 .in_progress 残留检测 / §1.2 PHASE_REQUIREMENTS Plan 7 删 / §7 待办+1 rename 工具) 全部修复
+2026-05-08 16:18:14 [review:looks_clean] requirement-quality-reviewer 90/100 (REV-REQ-2026-009-definition-003) — D-009 沿链同步三处修订正确反映 plan.md 语义
+2026-05-08 16:18:14 [review:looks_clean] outline-design-quality-reviewer 90/100 (REV-REQ-2026-009-outline-design-002) — major 闭合 + 5 minor 全修；可进 detail-design

@@ -46,25 +46,27 @@ completed_at: ""               # ISO8601，completed 时填
 lessons_extracted: false       # /knowledge:extract-experience 是否已跑
 reviews:
   definition:
-    latest: REV-REQ-2026-009-definition-002
+    latest: REV-REQ-2026-009-definition-003
     conclusion: looks_clean
-    reviewed_commit: c917376
+    reviewed_commit: 60f4f2e
     artifact_hashes:
       artifacts/requirement.md: 
-        8d5208f6aa532d24196d681f2ab7b19cba57da6aba09700ec4431190fdb0eb76
+        e8ffd56acbb19088102e40011821f6fe32210b2398ca3555227a45ad132d15eb
     history:
       - REV-REQ-2026-009-definition-001
       - REV-REQ-2026-009-definition-002
+      - REV-REQ-2026-009-definition-003
     stale: false
   outline-design:
-    latest: REV-REQ-2026-009-outline-design-001
-    conclusion: needs_attention
-    reviewed_commit: 06f33f0
+    latest: REV-REQ-2026-009-outline-design-002
+    conclusion: looks_clean
+    reviewed_commit: 60f4f2e
     artifact_hashes:
       artifacts/outline-design.md: 
-        8a129eae71c15c991f86d2c3e25d491146d7a59a348edb9a95e6a146f256c48f
+        0c737f2d6691dd9eb364ff62aefe526009e2649bd30b13b6a4b5819322e90a54
       artifacts/requirement.md: 
-        8d5208f6aa532d24196d681f2ab7b19cba57da6aba09700ec4431190fdb0eb76
+        e8ffd56acbb19088102e40011821f6fe32210b2398ca3555227a45ad132d15eb
     history:
       - REV-REQ-2026-009-outline-design-001
+      - REV-REQ-2026-009-outline-design-002
     stale: false
