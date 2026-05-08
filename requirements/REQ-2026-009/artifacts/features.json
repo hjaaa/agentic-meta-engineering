@@ -30,7 +30,8 @@
         "scripts/lib/run_artifact_checks.py",
         "tests/lib/test_workflow_loader.py",
         "tests/lib/test_run_state.py",
-        "tests/lib/fixtures/workflows/invalid-*.yaml",
+        "tests/lib/fixtures/workflows/**",
+        "tests/workflows/__init__.py",
         "tests/workflows/test_yaml_schema.py"
       ],
       "acceptance": [

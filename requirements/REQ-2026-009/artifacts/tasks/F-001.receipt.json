@@ -1,0 +1,9 @@
+{
+  "feature_id": "F-001",
+  "schema_version": "1.0",
+  "status": "DONE",
+  "completed_at": "2026-05-08T20:58:00+08:00",
+  "commit_shas": ["0b26c31"],
+  "touches_violations": [],
+  "notes": "原 9 条 violations（valid/sub-fixtures/__init__.py/features.json）已经用户拍板扩入 task touches 视为合规；features.json 编辑属本次 metadata 同步"
+}

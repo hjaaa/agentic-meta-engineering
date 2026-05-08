@@ -42,3 +42,4 @@
 2026-05-08 20:24:28 [save] task-planning 13 features 拆分落盘（F-001~F-013 task.md 全 schema pass）
 2026-05-08 20:28:45 [save] task-planning 阶段就绪；待用户拍板：进 development（/requirement:next）或先派 F-001
 2026-05-08 20:33:10 [phase-transition] task-planning → development（11 项 error gate 全过；features.json 13 features + tasks/F-001~F-013 schema pass；PLAN-FRESHNESS 无 warning）
+2026-05-08 20:41:53 [development] F-001 派发（model=opus）：workflow-engine 核心（loader+run-state+dispatcher），按 plan-1 TDD 切片实现 W000~W153 14 类错误码 + jsonl 损坏兜底
