@@ -2,13 +2,15 @@
 
 | 字段 | 值 |
 |---|---|
-| 状态 | DRAFT — 待用户 review |
-| 版本 | v1 |
+| 状态 | APPROVED — schema 决策全锁定，进入 writing-plans |
+| 版本 | v2 |
 | 起草日期 | 2026-05-08 |
+| v2 修订日期 | 2026-05-08 |
 | 起草人 | huangjian + Claude（brainstorming 沉淀） |
 | 参考实现 | Archon (`/Users/richardhuang/open-source/Archon`) |
 | 影响范围 | 17 Skill / 25 Agent / 8 阶段硬编码 / 8 个 `/requirement:*` 命令 |
-| 改造工作量预估 | ~5.5 周 |
+| 改造工作量预估 | ~7 周（v2 增加 sub_workflow 字段 + code-review-embedded 验证 +1.5 周） |
+| v2 主要变更 | 引入 `sub_workflow:` 节点类型 + 8 项 schema 缺陷全部锁定决策 |
 
 ---
 
@@ -359,7 +361,7 @@ applicable_when:
 nodes: [...]
 ```
 
-### 6.2 节点类型（7 种互斥字段）
+### 6.2 节点类型（8 种互斥字段）
 
 | 节点类型 | 互斥字段 | 一句话职责 |
 |---|---|---|
@@ -370,6 +372,7 @@ nodes: [...]
 | `loop` | `loop: { ... }` | AI 循环到条件满足 |
 | `approval` | `approval: { ... }` | 人工卡点 |
 | `artifact` | `artifact: { ... }` | 产物存在性 + schema 校验 |
+| `sub_workflow` | `sub_workflow: <path>` | **v2 新增**：嵌套调用另一个 workflow（最大深度 2） |
 
 ### 6.3 节点公共字段
 
@@ -543,11 +546,51 @@ nodes: [...]
 
 实现：引擎调 `scripts/lib/run_artifact_checks.py` 执行所有 check，**纯校验，不写文件**（区别于 bash 节点）。
 
+#### `sub_workflow` 节点（v2 新增）
+
+```yaml
+- id: feature-review
+  sub_workflow: review/code-review-embedded     # 路径相对 .claude/workflows/
+  args:                                          # 透传给子 workflow（替换 $ARGUMENTS）
+    feature_id: $feature-implement.output.id
+    diff_range: $feature-implement.output.diff_range
+  output_capture: review-report                  # 子 workflow 哪个节点 output 作为父节点 output
+                                                  # 缺省 = 子 workflow 最后一个节点
+  on_subworkflow_failure: fail                   # fail（默认）| continue | skip
+  timeout: 1800000                               # 子 workflow 总超时（毫秒）
+  depends_on: [feature-implement]
+```
+
+**引擎行为**：
+
+1. **创建子 run**：自动生成 sub_run_id，`meta.yaml.parent_run_id = <父 run id>`
+2. **嵌套深度限制**：≤ 2（loader 校验 parent chain，递归 sub_workflow 报错）
+3. **状态联动**：
+   - 父 cancel → 子 jsonl 写 `parent_cancelled` 事件 → 子 run 终止
+   - 父 paused（因子在 approval 等批准）→ 父 status 显示 `paused_in_subworkflow`
+4. **输出回流**：
+   - `output_capture: <node-id>` → 子 workflow 中该节点的 output 作为父节点 output
+   - 缺省（不写 `output_capture`）→ 取子 workflow 最后一个节点（拓扑末端）
+5. **失败处理**（`on_subworkflow_failure`）：
+   - `fail`（默认）：子失败 → 父节点 failed 状态传播
+   - `continue`：子失败仍继续父 workflow（下游照跑）
+   - `skip`：子失败 → 父节点 skipped 状态
+6. **观测**：`/workflow:status` 显示父子树
+   ```
+   REQ-2026-005 standard-8phase running
+     └── RUN-...a3f2 code-review-embedded paused (等批准)
+   ```
+7. **rollback 跨父子规则**（见 §11.3）：
+   - rollback 父 run 到含 sub_workflow 节点的位置 → 子 run 联动 cancel + 归档
+   - rollback 子 run → 父 run 状态变 `paused_at_subworkflow`，等用户决定 retry / cancel 父
+
+**互斥**：sub_workflow 跟其他 7 种节点类型字段（skill/agent/prompt/bash/loop/approval/artifact）互斥。
+
 ### 6.5 变量替换
 
 | 变量 | 来源 | 示例 |
 |---|---|---|
-| `$<nodeId>.output` | 上游节点完整输出 | `$gate.output` |
+| `$<nodeId>.output` | 上游节点完整输出（**=stdout 字符串**，不是产物文件） | `$gate.output` |
 | `$<nodeId>.output.<field>` | 上游 JSON 嵌套字段（解析失败返回空） | `$gate.output.verdict` |
 | `$ARGUMENTS` | `/workflow:run` 后的参数 | `$ARGUMENTS` |
 | `$1`...`$9` | 位置参数 | `$1` |
@@ -555,15 +598,34 @@ nodes: [...]
 | `$ARTIFACTS_DIR` / `$OUTPUT_DIR` | 视 category | `$ARTIFACTS_DIR/requirement.md` |
 | `$REPO_ROOT` | 仓库根 | `$REPO_ROOT/.claude/skills` |
 | `$REJECTION_REASON` | approval 拒绝时用户反馈 | 仅 on_reject 节点可见 |
-| `$LOOP_PREV_OUTPUT` | loop 上一轮输出（首轮空） | 仅 loop 节点可见 |
+| `$LOOP_PREV_OUTPUT` | loop **上一轮**输出（首轮空） | 仅 loop 节点 prompt 内可见 |
+| `$LOOP_OUTPUT` | loop **本轮**输出 | **v2 新增**：仅 interactive loop 的 gate_message 内可见 |
 | `$LOOP_USER_INPUT` | interactive loop 上轮用户输入 | 仅 interactive loop 可见 |
 | `$LOOP_ITERATION` | 当前轮次 | 1-indexed |
 | `$LOG_DIR` | `.run-logs/` | 引擎日志目录 |
 
-**注入防御**：
-- bash 节点：所有上游引用强制 `'value'`（`'\''` 转义）
+**`output` 字段的明确语义（v2 锁定）**：
+- 节点 `output` = stdout（结构化字符串，受 `output_format` JSON Schema 约束）
+- 产物文件由节点 prompt 内主动用 Bash/Edit/Write 工具写入，**不会自动捕获**
+- 下游用 `$node.output` 引用 stdout，用 `$ARTIFACTS_DIR/file.md` 路径引用产物文件
+- 节点完成判定：stdout 末尾出现约定标识（如 `DONE` / `DRAFT_COMPLETE` / 合法 JSON）
+
+**注入防御与类型转义（v2 锁定）**：
+- 字符串/数字/bool 类型 → 单引号 + `'\''` 转义（沿用 Archon `shellQuote`）
+- array/object 类型 → 序列化为 JSON 字符串后再单引号转义
+- null → 替换为空字符串 `''`
 - prompt 节点：不防御（业务可控）
 - 路径变量：必须落在 `$REPO_ROOT` 下，loader 强校验
+
+**bash 节点用 array/object 的推荐写法**：
+```bash
+# 推荐：用 jq 解析（引擎已转义为 JSON 字符串）
+MODULES='$node.output.modules'           # 引擎替换为：'["a","b","c"]'
+echo "$MODULES" | jq -r '.[0]'
+
+# 不推荐：直接拼 yq 表达式（容易踩 yq 解析坑）
+yq e ".modules = $node.output.modules" -i meta.yaml
+```
 
 ### 6.6 `when` 表达式
 
@@ -578,13 +640,51 @@ when: "$features.output.count > 0 && $design.output.complete == true"
 
 未通过条件 → 节点状态 `skipped`（不是 failed）。
 
-### 6.7 `trigger_rule` 三档
+**已知限制**（v2 接受）：
+- 不支持 `contains` / `in` / `length()` 等数组操作
+- 数组用法绕路：让节点输出 boolean 字段或转 length 比较
+  ```yaml
+  # 反例（不支持）
+  when: "$x.output.modules contains 'payment'"
+  
+  # 正例 1：节点 prompt 输出 boolean 字段
+  output_format:
+    properties:
+      payment_affected: { type: boolean }
+  when: "$x.output.payment_affected == true"
+  
+  # 正例 2：转 length 比较
+  output_format:
+    properties:
+      modules_count: { type: integer }
+  when: "$x.output.modules_count > 0"
+  ```
+- 第 5-6 月评估是否引入 contains 等运算符（视使用频率）
+
+### 6.7 `trigger_rule` 三档（v2 锁定 skipped 传递规则）
 
 | 值 | 触发条件 | 用途 |
 |---|---|---|
 | `all_success`（默认） | 所有 depends_on 节点 state=completed | 普通节点 |
 | `one_success` | 任一 depends_on state=completed | 容错综合（5 critic 里 1 个成就汇总） |
 | `all_done` | 所有 depends_on 进入 terminal（completed/failed/skipped） | 清理节点 / 最终报告 |
+
+**skipped 传递规则（v2 明示）**：
+
+skipped 算 terminal 状态，跟 completed/failed 等价。三档触发条件的精确行为：
+
+| 上游 trigger_rule | 上游 state=completed | state=failed | state=skipped |
+|---|:-:|:-:|:-:|
+| `all_success` | ✅ 计入成功 | ❌ 不计入 → 下游 skipped | ❌ 不计入 → 下游 skipped |
+| `one_success` | ✅ 一个就触发 | ❌ 不计入 | ❌ 不计入 |
+| `all_done` | ✅ 计入 done | ✅ 计入 done | ✅ 计入 done |
+
+实例（standard-8phase.yaml 阶段 8）：
+```yaml
+- id: test-runner-execute
+  depends_on: [test-traceability-check, test-fix-loop]
+  trigger_rule: all_done   # 即使 test-fix-loop 因 when=false skipped，仍会跑
+```
 
 ### 6.8 失败传播
 
@@ -880,58 +980,144 @@ scripts/lib/
 |---|---|---|
 | ① 精确显式（slash） | 自动化 / 多 active runs | `/workflow:run standard-8phase "支付重构"` |
 | ② 自然语言（Skill 触发） | 单 active run / 新用户 | `"开个新需求 支付重构"` → workflow-launcher 路由 |
-| ③ 嵌套调用（yaml 内） | workflow 编排 | `sub_workflow: code-review-embedded` |
+| ③ 嵌套调用（yaml 内 sub_workflow 节点） | workflow 编排 | `sub_workflow: review/code-review-embedded` |
 
 **所有路径汇到 `workflow-engine.start_or_continue(run_id)`**——避免功能漂移。
 
+### 11.1 嵌套调用的两种模式
+
+**A. 静态嵌套（用 sub_workflow 节点）**——适合**确定单次**调用：
+
+```yaml
+# standard-8phase.yaml 阶段 8 末尾自动触发提交
+- id: trigger-submit
+  sub_workflow: pr/submit-pr
+  args:
+    target_branch: main
+  output_capture: pr-create
+  on_subworkflow_failure: continue          # 提交失败不阻塞 workflow 完成
+  depends_on: [test-final-signoff]
+```
+
+引擎自动管：创建子 run / 父子状态联动 / 取消传播 / 输出回流。
+
+**B. 动态嵌套（loop 节点 prompt 内调 `/workflow:run`）**——适合**循环内调用**：
+
+```yaml
+# standard-8phase.yaml 阶段 7 dev-feature-loop 内 prompt
+loop:
+  prompt_file: prompts/feature-development-iteration.md  # 内含：
+                                                          # /workflow:run code-review-embedded \
+                                                          #   --parent=$RUN_ID --feature=<id>
+```
+
+主 Claude 在 loop 每轮 prompt 内动态调 `/workflow:run`——因为 loop 内**不知道有几个 feature**，无法静态展开 N 次 sub_workflow 节点。
+
+### 11.2 跨 run 状态联动
+
+| 操作 | 父 run | 子 run |
+|---|---|---|
+| 父 run cancel | 写 `workflow_cancelled` | 写 `parent_cancelled` 事件 → cancel |
+| 子 run 跑到 approval（paused） | status `paused_in_subworkflow` | status `paused`（正常） |
+| 子 run 完成 | sub_workflow 节点 completed，下游照常 | jsonl 写 `workflow_completed` |
+| 子 run 失败 | 看 `on_subworkflow_failure`：fail/continue/skip | 写 `workflow_failed` |
+| 父 run paused（用户主动）→ 子 run 怎么办 | — | 子 run 不联动，独立运行（设计取舍） |
+
+### 11.3 rollback 跨父子规则（v2 锁定）
+
+`/workflow:rollback <run-id> --to-node=X`：
+
+**对纯单层 run**（无 sub_workflow）：
+1. 截断 jsonl 到 X **之前**（不含 X）
+2. 归档 X 及以后产物到 `runs/<id>/.archived/<timestamp>/`
+3. `current_node` 重置到 X 的最近上游节点
+4. 下次 `/workflow:continue` 自动重跑 X
+
+**rollback 父 run 跨过 sub_workflow 节点**：
+1. 父 jsonl 截断（同上）
+2. 检测父 run 中 X 之后的 sub_workflow 节点对应的子 run
+3. 子 run 联动 cancel（写 `parent_rolled_back` 事件）
+4. 子 run 的产物归档到父 run 的 `.archived/` 目录
+5. 下次父 run continue 时，sub_workflow 节点重新启动新子 run
+
+**rollback 子 run**：
+1. 子 jsonl 截断
+2. 父 run status 变 `paused_at_subworkflow`
+3. 用户决定：`/workflow:continue <child-id>`（重跑子）或 `/workflow:cancel <child-id>` + 父 run 的 sub_workflow 节点重试
+
 ---
 
-## 12. 改造路线图（5.5 周）
+## 12. 改造路线图（7 周，v2 修订）
 
 ```
 阶段 1：Schema + Loader（1.5 周）
-  - workflow.yaml schema v1 定义
-  - loader 实现（YAML 解析 + Zod-style 校验 + DAG 校验）
+  - workflow.yaml schema v2 定义（含 sub_workflow 节点类型）
+  - loader 实现（YAML 解析 + Zod-style 校验 + DAG 校验 + sub_workflow 嵌套深度校验）
   - 三层模板发现机制
   - prompt_file 引用机制
-  - 变量替换库 substitute_vars.py
-  ✓ 验收：能加载 yaml 并报告语法/语义错误
+  - 变量替换库 substitute_vars.py（含 array/object JSON 序列化转义）
+  ✓ 验收：能加载 yaml 并报告语法/语义错误（含 sub_workflow）
 
-阶段 2：workflow-engine Skill（1 周）
+阶段 2：workflow-engine Skill（1.5 周，v2 +0.5 周）
   - SKILL.md + reference/ 完整文档
   - 拓扑排序 + 节点执行决策
   - run-state.jsonl 读写 + RunState 重建
   - approval 状态机 + on_reject 重做循环
-  - loop 节点完整执行
-  ✓ 验收：能跑通 e2e-smoke.yaml（最小测试 workflow）
+  - loop 节点完整执行（含 $LOOP_OUTPUT 变量）
+  - sub_workflow 节点实现（v2 新增）：
+      ① 创建子 run + parent_run_id 联动
+      ② 父子状态联动（cancel / paused / failed / output 回流）
+      ③ 嵌套深度 ≤ 2 校验
+      ④ /workflow:status 父子树视图
+  ✓ 验收：能跑通 e2e-smoke.yaml + nested-smoke.yaml（嵌套测试）
 
 阶段 3：standard-8phase yaml 完整化（0.5 周）
-  - 30+ 节点完整定义
+  - 38 节点完整定义（已在 spec 阶段写完）
   - 8 个需求阶段 Skill 的 prompt 抽到 .claude/workflows/prompts/
   - 老需求 meta.yaml 的 phase 字段映射逻辑
   ✓ 验收：现有 1 个老需求能用新引擎续跑
 
-阶段 4：/workflow:* 命令 + managing-workflow-runs Skill（0.5 周）
-  - 11 个新命令实现
-  - 8 个 /requirement:* 别名
+阶段 4：code-review-embedded yaml + 验证 sub_workflow（0.5 周，v2 新增）
+  - .claude/workflows/review/code-review-embedded.yaml
+      - 8 critic 同层并发
+      - review-critic 对抗验证
+      - code-quality-reviewer 综合裁决
+      - code-review-report 生成报告
+  - standard-8phase 阶段 7 内通过 sub_workflow 字段或 prompt 内动态调用嵌套
+  - rollback 跨父子规则测试
+  ✓ 验收：standard-8phase 跑到阶段 7 时能正确启子 run + 状态联动
+
+阶段 5：/workflow:* 命令 + managing-workflow-runs Skill（1 周，v2 +0.5 周）
+  - 11 个新命令实现（含 approve/reject/cancel/rollback 4 个 v2 新增）
+  - 8 个 /requirement:* 别名（3 月兼容期）
   - workflow-launcher 关键词触发 Skill
-  ✓ 验收：用户可用新命令跑通需求生命周期
+  - /workflow:status 父子树视图
+  - /workflow:rollback 跨父子规则实现
+  ✓ 验收：用户可用新命令跑通需求生命周期 + 含嵌套场景
 
-阶段 5：增加非需求 workflow（1 周）
-  - lite-3phase / hotfix
-  - codex-review-loop / code-review-embedded / code-review-standalone
-  - release-cut
-  - extract-experience / generate-sop
-  ✓ 验收：3 个不同 category 的 workflow 都能跑
+阶段 6：自举验证（0.5 周，v2 新增）
+  - 第 4 周开始用新引擎跑本次改造的剩余阶段
+  - 新引擎承载自身后续开发
+  ✓ 验收：本 spec 后续阶段（清理 / 文档更新）通过新引擎执行
 
-阶段 6：清理与文档（1 周）
+阶段 7：清理与文档（1.5 周，v2 +0.5 周）
   - 删除 PHASE_REQUIREMENTS / phase_enum.py
-  - 删除 code_review_signoff.py（上次决策"放弃 2"）
+  - 删除 code_review_signoff.py（"放弃 2"决策）
   - 删除 /requirement:next 命令
   - CLAUDE.md / agentic-engineer-guide.md / 所有 SOP 文档更新
   - 兼容性别名 + 迁移工具
+  - 老需求 requirements/ → runs/ 批量 rename 工具
   ✓ 验收：旧文档无残留 /requirement: 引用，pre-commit hook 拦截
+
+阶段 8（Post-MVP）：扩展模板（不在 7 周 MVP 内）
+  - lite-3phase / hotfix
+  - release-cut
+  - codex-review-loop / pr-feedback-handle
+  - extract-experience / generate-sop
+  - general-assist
 ```
+
+**总工期**：7 周（v1 是 5.5 周，v2 因 sub_workflow 字段 +1.5 周）。
 
 ---
 
@@ -970,7 +1156,7 @@ scripts/lib/
 |---|---|---|
 | 改造野心 | DAG 引擎 + 多模板共存 | 2026-05-08 |
 | 执行模型 | 主 Claude 会话调度（保留 Claude Code 形态） | 2026-05-08 |
-| MVP 模板数量 | 1 套 standard + 扩展点文档化 | 2026-05-08 |
+| ~~MVP 模板数量~~ | ~~1 套 standard~~ → **2 套 standard + code-review-embedded（验证 sub_workflow）** | v2 (2026-05-08) |
 | 重构边界 | 需求阶段 Skill 内联 / 通用 Skill + Agent 全保留 | 2026-05-08 |
 | 状态文件 | run-state.jsonl 新增 + process.txt 保留 | 2026-05-08 |
 | Provider 范围 | 仅 claude（codex 后续） | 2026-05-08 |
@@ -984,8 +1170,16 @@ scripts/lib/
 | 输出阈值 | 16KB（Archon 是 8KB） | 2026-05-08 |
 | `applicable_when` | schema 保留 MVP 不填 | 2026-05-08 |
 | Prompt 复用 | `.claude/workflows/prompts/` + `prompt_file:` 字段 | 2026-05-08 |
-| 节点类型数量 | 7 种（skill/agent/prompt/bash/loop/approval/artifact） | 2026-05-08 |
+| ~~节点类型 7 种~~ | ~~7~~ → **8 种**（新增 `sub_workflow:`） | v2 (2026-05-08) |
 | 同层并发 | multi-Agent 调用 | 2026-05-08 |
+| **嵌套 sub_workflow 字段** | 引入（嵌套深度 ≤ 2，含 args / output_capture / on_subworkflow_failure） | v2 (2026-05-08) |
+| **rollback 语义** | 截断 jsonl 到 X **之前**（不含 X），归档产物，重跑 X | v2 (2026-05-08) |
+| **trigger_rule 对 skipped** | skipped 算 terminal；all_success 不计 / all_done 计 / one_success 不计 | v2 (2026-05-08) |
+| **prompt 节点 output 语义** | output = stdout（受 output_format 约束）；产物文件靠 prompt 主动写 | v2 (2026-05-08) |
+| **bash 节点变量转义** | string/num/bool 走 shellQuote / array/object 序列化 JSON 后转义 | v2 (2026-05-08) |
+| **gate_message 变量** | 引入 `$LOOP_OUTPUT` 表示 interactive loop 本轮输出 | v2 (2026-05-08) |
+| **when 数组操作** | 不支持 contains，绕路写法（boolean 字段 / length 比较） | v2 (2026-05-08) |
+| **改造承载方式** | b 自举（前 1.5 周临时分支，第 4 周切自身） | v2 (2026-05-08) |
 
 ---
 
@@ -997,7 +1191,7 @@ scripts/lib/
 |---|---|
 | 占位符（TBD/TODO/vague） | ✅ 全部具体 |
 | 内部一致性（架构 vs 字段定义） | ✅ 一致 |
-| 范围检查（单 plan 可执行 vs 需要分拆） | ✅ 6 阶段可执行（约 5.5 周） |
+| 范围检查（单 plan 可执行 vs 需要分拆） | ✅ 7 阶段可执行（约 7 周） |
 | 模糊检查（同一需求两种解读） | ✅ 已逐项明确 |
 
 **已识别的潜在歧义并解决**：
@@ -1008,19 +1202,18 @@ scripts/lib/
 
 ---
 
-## 17. 后续决策
+## 17. 后续决策（v2 已全部锁定）
 
-需要用户 review 本 spec 后决定的 2 件事：
+1. **改造承载方式**：✅ **b 自举**
+   - 前 1.5 周临时分支推进 schema + loader + 引擎核心
+   - 第 4 周开始用新引擎自举跑剩余阶段（命令实现 / 文档更新）
+   - 这同时验证"workflow 引擎能承载自己的开发"
 
-1. **是否走 `/requirement:new` 流程承载这次改造？**
-   - 走：有完整需求生命周期追溯（dogfood 验证）
-   - 不走：本 spec 直接进入实现，节奏快但缺验收链
-   - 建议：走（既然这次改造的目的就是改这套，正好用现有版本验证）
-
-2. **MVP 是否真只做 1 套 standard 模板？**
-   - 是：周期 5.5 周，验证基础 schema
-   - 否：MVP 含 lite + hotfix，周期 7 周
-   - 建议：是（先验证再扩展，避免"建造太多没用的东西"）
+2. **MVP 模板范围**：✅ **c (standard + code-review-embedded)**
+   - 仅写 `standard-8phase` (38 节点) + `code-review-embedded`（验证 sub_workflow 真复用）
+   - 不写 lite / hotfix（Post-MVP 第一批）
+   - 周期 7 周（含 sub_workflow 字段引擎工作量）
+   - 验证最少必要组合：单 workflow + 嵌套调用
 
 ---
 
@@ -1029,7 +1222,7 @@ scripts/lib/
 本 spec 是 2026-05-08 brainstorming session 的设计沉淀，覆盖：
 - Archon 项目全方位调研（执行模型 / 多模板 / 持久化 / 同层并发 / ApprovalNode / 变量替换 / Codex provider / Claude Code 集成）
 - 本项目硬编码点盘点
-- 7 种节点类型 + 5 种验证 lego
+- 8 种节点类型（含 sub_workflow） + 5 种验证 lego
 - Loop 节点完整状态机
 - 命令体系演化（双轨 → 统一）
 - 暂停 / 恢复语义
@@ -1042,18 +1235,18 @@ scripts/lib/
 
 把 standard-8phase.yaml 完整写出来（38 节点 + 3 prompt 文件）后，发现 schema 还有几个待解决点：
 
-### 19.1 待补充的 schema 规则
+### 19.1 schema 缺陷决策（v2 全部锁定）
 
-| 编号 | 问题 | 建议处理 |
-|---|---|---|
-| S1 | **array/object 字段在 bash 节点变量替换的转义规则缺失**。例：`yq e ".affected_modules = $node.output.array_field"` 直接展开为 `[a,b,c]` 字符串，yq 解析 OK；但展开为 `[\"a\",\"b\"]`（含双引号）会破坏 shell 单引号包裹。 | 引擎层加规则：array/object 类型在 bash 上下文下统一序列化为 JSON 字符串，外层套单引号；shell 内用 `jq` 解析。yaml 文档明示此约定。 |
-| S2 | **prompt / agent 节点 output 字段的语义模糊**。节点 output 是 stdout JSON（output_format 校验对象）还是写入 $ARTIFACTS_DIR/ 的产物文件？ | schema 层明示：`output` 字段 = stdout（结构化）；产物文件由节点 prompt 内通过 Bash 工具显式写入，不会自动捕获。下游用 `$node.output` 引用 stdout，用 `$ARTIFACTS_DIR/file.md` 引用产物。 |
-| S3 | **嵌套 sub-workflow 在 loop 内的执行模型未明确**。loop 节点 `fresh_context: false` 时，主 Claude 在 loop 内调 `/workflow:run code-review-embedded` 启子 run，子 run 节点输出会进入主 Claude 上下文，污染压力。 | 两选一（待决）：A. loop 内嵌 sub-workflow 强制 `fresh_context: true`（每轮独立 subagent）；B. 引入 `sub_workflow:` 节点字段做正式声明，引擎自动派子进程隔离。MVP 倾向 A（更简单）。 |
-| S4 | **interactive loop 的 `gate_message` 变量替换时机未明确**。gate_message 引用 `$LOOP_PREV_OUTPUT` 时，应该用本轮输出还是上一轮？ | 明示：gate_message 在 AI 输出**完成后**展示给用户，所以 `$LOOP_PREV_OUTPUT` 此处指**本轮的 output**（命名稍混乱但符合"暂停时刻可见"语义）。 |
-| S5 | **when 表达式不支持数组操作**。如 `$x.output.modules contains 'payment'` 不可行。 | MVP 接受此限制——array 可转 length 比较或在节点 prompt 内手动判断后输出 boolean 字段。后续按需扩 `contains` / `in` 运算符。 |
-| S6 | **rollback 语义需要精确定义**。`/workflow:rollback --to-node=X` 是"撤销 X 之前所有节点"还是"只撤 X"？ | 明示：`--to-node=X` 截断 jsonl 到 X 节点之前（不含 X），归档 X 及以后的产物到 `.archived/<timestamp>/`，meta.yaml 重置 `current_node` 到 X 的最近上游。X 本身不撤——下次 continue 重跑 X。 |
-| S7 | **`trigger_rule: all_done` 在 skipped 节点上的传递语义**。如 test-runner-execute 的 `depends_on: [test-traceability-check, test-fix-loop]` + `trigger_rule: all_done`，若 test-fix-loop 因 when 条件不满足 skipped，此节点能正常跑吗？ | 明示：skipped 算 terminal 状态（跟 completed/failed 等价，对 all_done 友好；对 all_success 不友好——视为不通过）。yaml 文档加显式说明。 |
-| S8 | **节点 ID 内引号转义**。如果节点输出含双引号，bash 节点用单引号转义后 yq 命令可能挂。 | 沿用 Archon `shellQuote` 规则（`'\''` 转义内嵌单引号），跟 Archon 一致即可。 |
+| 编号 | 问题 | v2 决策 | 落地位置 |
+|---|---|---|---|
+| **S1** ✅ | array/object 字段在 bash 节点变量替换的转义规则缺失 | string/num/bool → `shellQuote`；array/object → JSON 序列化 + shellQuote；null → `''` | §6.5 注入防御与类型转义 |
+| **S2** ✅ | prompt 节点 output 字段的语义模糊 | output = stdout（受 output_format 约束）；产物文件靠 prompt 主动写，靠路径引用；节点完成判定看 stdout 末尾标识 | §6.5 output 字段明确语义 |
+| **S3** ✅ | 嵌套 sub-workflow 执行模型 | **方案 A**：引入 `sub_workflow:` 节点字段（args / output_capture / on_subworkflow_failure / 嵌套深度 ≤ 2）+ loop 内动态嵌套保留 prompt 内 `/workflow:run` 写法 | §6.4 sub_workflow 节点详解 + §11.1 两种嵌套模式 |
+| **S4** ✅ | interactive loop gate_message 变量替换时机 | 引入 `$LOOP_OUTPUT` 表示**本轮**输出（gate_message 内），保留 `$LOOP_PREV_OUTPUT` 表示**上一轮**输出（prompt 内） | §6.5 变量表 |
+| **S5** ✅ | when 表达式不支持数组操作 | 接受限制；绕路写法（boolean 字段 / length 比较）；第 5-6 月评估扩 contains | §6.6 已知限制 |
+| **S6** ✅ | rollback 语义 | 截断 jsonl 到 X **之前**（不含 X），归档 X 及以后产物到 `.archived/<ts>/`，重置 `current_node` 到 X 最近上游 → 下次 continue 重跑 X；跨父子规则见 §11.3 | §11.3 rollback 跨父子规则 |
+| **S7** ✅ | trigger_rule 对 skipped 节点传递 | skipped 算 terminal（对 all_done 友好，对 all_success/one_success 不计入成功） | §6.7 trigger_rule 三档表 |
+| **S8** ✅ | 节点 ID 内引号转义 | 沿用 Archon `shellQuote`（`'\''` 转义内嵌单引号） | §6.5 注入防御 |
 
 ### 19.2 新增依赖脚本（补到 §9.3）
 
@@ -1086,14 +1279,16 @@ scripts/lib/
 - ✅ Artifact 节点显著简化了产物校验（替代 5+ 个分散 bash 脚本）
 - ✅ `prompt_file:` 字段让 yaml 体量从 2500+ 行预估压到 600 行实际
 
-### 19.4 给 MVP 的修订清单
+### 19.4 v2 修订完成清单
 
-应在 §6 schema 章节补充：
-- 19.1 表格的 S1/S2/S3-A/S4/S6/S7 加进 schema 文档
-- 19.1 S5 / S8 加到"已知限制"段落
-- 19.2 脚本清单合并到 §9.3 新增文件清单
+✅ S1-S8 全部决策已写回主体章节（§6.4 / §6.5 / §6.6 / §6.7 / §11.3）
+✅ §15 决策矩阵增补 6 项 v2 新决策
+✅ §17 两个待决项已确认（b 自举 + c standard+code-review-embedded）
+✅ MVP 工期从 5.5 周 → 7 周（含 sub_workflow 字段 +1.5 周）
+✅ 节点类型从 7 种 → 8 种
+✅ §1 顶部 metadata 标记 APPROVED v2
 
-修订后 design doc 进入 **v2**。
+**design doc v2 已就绪进入 `superpowers:writing-plans` 生成实现计划阶段。**
 
 ---
 
