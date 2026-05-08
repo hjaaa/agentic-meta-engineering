@@ -3,14 +3,18 @@
 | 字段 | 值 |
 |---|---|
 | 状态 | APPROVED — schema 决策全锁定，进入 writing-plans |
-| 版本 | v2 |
+| 版本 | v2.2 |
 | 起草日期 | 2026-05-08 |
 | v2 修订日期 | 2026-05-08 |
+| v2.1 修订日期 | 2026-05-08（来自 REQ-2026-009 tech-research 阶段 D-T1） |
+| v2.2 修订日期 | 2026-05-08（来自 REQ-2026-009 tech-research 阶段 D-T6） |
 | 起草人 | huangjian + Claude（brainstorming 沉淀） |
 | 参考实现 | Archon (`/Users/richardhuang/open-source/Archon`) |
 | 影响范围 | 17 Skill / 25 Agent / 8 阶段硬编码 / 8 个 `/requirement:*` 命令 |
 | 改造工作量预估 | ~7 周（v2 增加 sub_workflow 字段 + code-review-embedded 验证 +1.5 周） |
 | v2 主要变更 | 引入 `sub_workflow:` 节点类型 + 8 项 schema 缺陷全部锁定决策 |
+| v2.1 主要变更 | §11.2 父 run cancel 时子 run 联动语义修订（子自检父 jsonl 后自写 `parent_cancelled`，非父代写）+ §5 事件枚举新增 `cancel_requested`（详见 REQ-2026-009/artifacts/tech-feasibility.md §8 D-T1） |
+| v2.2 主要变更 | §11.3 rollback 归档语义明确化：mv 原路径删除（R1）+ 子 run 目录整体 mv（F1）+ 每次独立 timestamp 目录并存（T1）；新增 `.in_progress` atomic 标记（详见 REQ-2026-009/artifacts/tech-feasibility.md §8 D-T6） |
 
 ---
 
@@ -315,11 +319,15 @@ target_branch: main
 {"ts":"2026-05-08T14:25:00Z","type":"loop_iteration_completed","node_id":"fix-loop","data":{"iteration":1,"output":"...","until_matched":false}}
 ```
 
-13 种事件类型：
+事件类型（v2.1 修订：原 13 种 + 新增 `cancel_requested`）：
 
 ```
 workflow_started | workflow_paused | workflow_completed
 workflow_failed  | workflow_cancelled
+cancel_requested  # v2.1 新增（REQ-2026-009 D-T1）：用户对父 run 发起 cancel 时，
+                  # 父 jsonl 写入此事件作为子 subagent 的可见信号；
+                  # 子 subagent 在节点边界 poll 父 jsonl，检测到此事件即写
+                  # parent_cancelled 到自己 jsonl 并 graceful 退出。
 
 node_started | node_completed | node_failed | node_skipped | node_retried
 
@@ -327,6 +335,10 @@ approval_pending | approval_approved | approval_rejected
 
 loop_iteration_started | loop_iteration_completed
 loop_completed | loop_max_iterations_exceeded
+
+# 父子联动事件（写入主体均为对应 run 自身，跨 run 写入禁止）：
+parent_cancelled       # 子 run 检测到父 cancel_requested 后自写
+parent_rolled_back     # 子 run 检测到父 rollback 越过本 sub_workflow 节点后自写（详见 §11.3）
 ```
 
 每事件至少包含：`{ts, type, run_id, node_id?, data?}`，`ts` 是 ISO 8601 UTC。
@@ -1015,30 +1027,42 @@ loop:
 
 ### 11.2 跨 run 状态联动
 
+> **v2.1 修订（REQ-2026-009 D-T1）**：本节"父 run cancel"行的语义变更——父 Claude **不直接**写子 jsonl；父在自己 jsonl 写 `cancel_requested`（新增事件）后，子 subagent 在每个节点边界 poll 父 jsonl 检测此事件，命中后自写 `parent_cancelled` 到子 jsonl 并 graceful 退出。父 30s 超时后调 `TaskStop({task_id})` 做 forceful 兜底。理由：(1) 跨 subagent 文件写权限模糊；(2) `TaskStop` graceful/forceful 语义无公开文档保证。
+
 | 操作 | 父 run | 子 run |
 |---|---|---|
-| 父 run cancel | 写 `workflow_cancelled` | 写 `parent_cancelled` 事件 → cancel |
+| 父 run cancel | 1) 写 `cancel_requested`（新）；2) 等子 graceful 返回或 30s 超时调 `TaskStop`；3) 子返回后写 `workflow_cancelled` | **子自检父 jsonl** → 检测到 `cancel_requested` 即自写 `parent_cancelled` 到子 jsonl + graceful 退出 |
 | 子 run 跑到 approval（paused） | status `paused_in_subworkflow` | status `paused`（正常） |
 | 子 run 完成 | sub_workflow 节点 completed，下游照常 | jsonl 写 `workflow_completed` |
 | 子 run 失败 | 看 `on_subworkflow_failure`：fail/continue/skip | 写 `workflow_failed` |
 | 父 run paused（用户主动）→ 子 run 怎么办 | — | 子 run 不联动，独立运行（设计取舍） |
 
-### 11.3 rollback 跨父子规则（v2 锁定）
+### 11.3 rollback 跨父子规则（v2 锁定，v2.2 修订归档语义）
+
+> **v2.2 修订（REQ-2026-009 D-T6）**：归档语义明确化——
+> - **R1 mv 语义**：归档 = `shutil.move(原路径 → .archived/<rollback-ts>/<原相对路径>)`，原路径删除；非 cp 也非 stub。X 重跑时 `artifacts/` 干净无碰撞。
+> - **F1 子 run 目录整体 mv**：父 rollback 越过 sub_workflow 节点时，子 run 整目录 `runs/<child-id>/` 完整 mv 到父 `.archived/<rollback-ts>/sub_runs/<child-id>/`；子 run id 释放，下次父 continue 时启**新** child id（不复用旧 id）。
+> - **T1 多次独立目录**：每次 rollback 独立 timestamp 子目录并存，互不覆盖（`.archived/2026-05-08T15:00:00+0800/`、`.archived/2026-05-08T18:30:00+0800/` ...）。
+> - **`.in_progress` atomic 标记**：rollback 写产物前先创建 `.archived/<rollback-ts>/.in_progress`；mv 全部完成 + jsonl 截断后删该标记。续跑时检测残留标记 → 完成或回退操作，避免被中断造成 partial state。
 
 `/workflow:rollback <run-id> --to-node=X`：
 
 **对纯单层 run**（无 sub_workflow）：
-1. 截断 jsonl 到 X **之前**（不含 X）
-2. 归档 X 及以后产物到 `runs/<id>/.archived/<timestamp>/`
+0. 创建 `runs/<id>/.archived/<rollback-ts>/.in_progress` 标记
+1. 截断 jsonl 到 X **之前**（不含 X）；被截断尾部 mv 到 `<archived>/run-state.jsonl.tail`
+2. **mv** X 及以后产物到 `runs/<id>/.archived/<rollback-ts>/<原相对路径>`（保留目录结构）
 3. `current_node` 重置到 X 的最近上游节点
-4. 下次 `/workflow:continue` 自动重跑 X
+4. 删除 `.in_progress` 标记
+5. 下次 `/workflow:continue` 自动重跑 X
 
 **rollback 父 run 跨过 sub_workflow 节点**：
+0. 创建父 `.archived/<rollback-ts>/.in_progress`
 1. 父 jsonl 截断（同上）
 2. 检测父 run 中 X 之后的 sub_workflow 节点对应的子 run
-3. 子 run 联动 cancel（写 `parent_rolled_back` 事件）
-4. 子 run 的产物归档到父 run 的 `.archived/` 目录
-5. 下次父 run continue 时，sub_workflow 节点重新启动新子 run
+3. 子 run 联动 cancel（写 `parent_rolled_back` 事件，由子 subagent 在节点边界 poll 父 jsonl 后自写——与 v2.1 D-T1 同构机制）
+4. 子 run **整目录** `runs/<child-id>/` mv 到父 `.archived/<rollback-ts>/sub_runs/<child-id>/`；子 run id 释放
+5. 删除父 `.in_progress` 标记
+6. 下次父 run continue 时，sub_workflow 节点启**新** child run id（不复用旧 id）
 
 **rollback 子 run**：
 1. 子 jsonl 截断

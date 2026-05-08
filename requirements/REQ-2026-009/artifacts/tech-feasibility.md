@@ -343,7 +343,7 @@ MVP 期（standard-8phase + code-review-embedded 两套模板）嵌套深度 ≤
 
 7. ~~**`/requirement:next` 删除时间点**~~（已锁定 D-T5，详见 §8）——延后到 Plan 6 自举验证通过后才进入 Plan 7 清理；spec "立即删"决策被覆盖。
 
-8. **OQ-02：`/workflow:rollback` 归档后原路径处理**（来源：requirements/REQ-2026-009/artifacts/requirement.md:134）——Plan 4 实现 rollback 跨父子规则前必须确认。
+8. ~~**OQ-02：`/workflow:rollback` 归档后原路径处理**~~（已锁定 D-T6，详见 §8）——Plan 5 按 R1 + F1 + T1 实施；spec §11.3 v2.2 修订同步落地。
 
 ---
 
@@ -483,4 +483,55 @@ MVP 期（standard-8phase + code-review-embedded 两套模板）嵌套深度 ≤
 **Plan 6 落地项**：自举验证 SOP 显式写"全程禁用旧命令"，任何 fallback 命中即 verification failed。
 
 **Plan 7 清理项**：删除 `/requirement:next` + `managing-requirement-lifecycle` Skill + `PHASE_REQUIREMENTS` 等旧实现的硬性顺序约束 = Plan 6 verification passed → 旧命令的 deprecation warning 升级为 hard error → 1 个迭代周期后真删除。
+
+### D-T6：rollback 归档语义 = mv 原路径 + 子 run 目录整体 mv + 每次独立 timestamp 目录
+
+| 字段 | 值 |
+|---|---|
+| 决策日期 | 2026-05-08 |
+| 决策点 | OQ-02 / spec §11.3 |
+| 状态 | 已锁定（**spec §11.3 同步 v2.2 修订**） |
+| 影响 Plan | Plan 5（`/workflow:rollback` 命令实现） |
+
+**决策内容**：
+
+1. **R1 单层 run 归档语义**：`/workflow:rollback <run-id> --to-node=X` 执行时，X 节点及之后所有产物用 `mv` 移到 `.archived/<rollback-ts>/<原相对路径>`，**原路径删除**。jsonl 自身按 §11.3 step 1 截断到 X 之前后，被截断的事件流也归档到同一 `.archived/<rollback-ts>/run-state.jsonl.tail` 便于事后审计。
+   - 优点：实现最简；X 重跑时 `artifacts/` 目录干净，无文件碰撞；多次 rollback 的历史完整保留
+   - 用户 mental model：`.archived/` 是"rollback 时间机器"，每个时间戳目录是一个完整快照
+
+2. **F1 跨父子 rollback 时子 run 目录处理**：父 rollback 越过 sub_workflow 节点时，子 run 的整个目录 `runs/<child-id>/` **完整 mv** 到父的 `.archived/<rollback-ts>/sub_runs/<child-id>/`。子 run id 释放，下次父 continue 重启 sub_workflow 节点时**生成新的 child run id**（不复用旧 id）。
+   - 子 run id 的内嵌时间戳/uuid 保证跨 rollback 不混淆历史
+   - 子 run 自己的 jsonl 也整体进父归档，避免子 run 留半残目录
+
+3. **T1 多次 rollback 归档策略**：`.archived/` 下每次 rollback 独立 timestamp 子目录并存，**互不覆盖**：
+   ```
+   runs/<id>/.archived/
+     ├── 2026-05-08T15:00:00+0800/
+     │   ├── artifacts/...（第一次 rollback 时归档）
+     │   ├── run-state.jsonl.tail
+     │   └── sub_runs/<child-id-1>/...
+     ├── 2026-05-08T18:30:00+0800/
+     │   ├── artifacts/...（第二次 rollback 时归档）
+     │   └── run-state.jsonl.tail
+     └── ...
+   ```
+   - 存储增长：N 次 rollback = N 个目录（线性，可接受）
+   - 配合 `/workflow:archive --gc` 命令（v2 后续可加）做老归档清理
+
+**spec §11.3 同步修订**：
+- 把 step 2 "归档 X 及以后产物到 `runs/<id>/.archived/<timestamp>/`" 明确为 mv 语义（非 cp / 非 stub）
+- 跨父子第 4 条 "子 run 的产物归档到父 run 的 `.archived/` 目录" 升级为子 run 整目录 mv + 子 run id 不复用
+- 新增 step 0 说明 timestamp 目录每次独立、并存策略
+
+**Plan 5 落地项**：
+1. `scripts/lib/workflow_rollback.py` 实现 `rollback_run(run_id, to_node, target_id=None)`：
+   - 按拓扑序找 X 之后的所有节点 ID 列表
+   - 计算这些节点写出的产物路径集合（参考 yaml 节点的 `artifact:` 字段 + `output_capture:` 字段）
+   - 创建 `.archived/<rollback-ts>/`，用 `shutil.move` 整体 mv
+   - 截断 jsonl，被截断尾部 mv 为 `<archived>/run-state.jsonl.tail`
+   - 父 run 跨 sub_workflow 时递归处理子 run 目录
+2. 单测覆盖 4 场景：单层 R1 / 跨父子 F1 / 多次 T1 / rollback 到 root（全归档）
+3. `/workflow:rollback` slash command 文件 + reference/rollback-semantics.md 文档同步
+
+**风险**：rollback 进行中如果用户中断（Ctrl-C），原路径文件可能已 mv 一半。Plan 5 实现 atomic rollback：先把所有目标产物收集 → 写 `.archived/<ts>/.in_progress` 标记 → 全部 mv 完成后删 `.in_progress` → 截断 jsonl。续跑时检测残留 `.in_progress` 标记 → 完成或回退操作。
 

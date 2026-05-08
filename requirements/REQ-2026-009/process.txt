@@ -6,3 +6,4 @@
 2026-05-08 14:49:35 [save] tech-research 初版 tech-feasibility.md 落盘（feasibility=high，6 条风险，35.9 人天估算 Plan 2-7）
 2026-05-08 14:58:26 [save] tech-research 锁定 D-T1 (sub_workflow 子自检父 cancel) + D-T2 (approval hook+软约束)
 2026-05-08 15:04:20 [save] tech-research 锁定 D-T3 (loader 双路径内置识别) + D-T4 (launcher 最长匹配+state) + D-T5 (旧命令 fallback / :next 延后删)
+2026-05-08 15:13:42 [save] tech-research 锁定 D-T6 (rollback 归档语义) + spec v2.1/v2.2 修订（§11.2 / §5 / §11.3）
