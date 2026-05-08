@@ -67,5 +67,11 @@
       "可选项 interfaces_frozen 字段仍未填，下一阶段实施前若想锁定接口建议 F-001 / F-005 / F-007 三个 heavy/medium feature 显式补 interfaces_frozen: true（detailed-design §1 / §6 已冻结签名）。",
       "F-008 / F-011 / F-013 acceptance 中含手工验证步骤（TC-F11-5 / TC-F13-7），建议补一个布尔字段 has_manual_step: true，让 task-context-builder 在派发任务时显式提示「此 feature 含人工验收节点」。"
     ]
+  },
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-08T20:09:52.748378+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
   }
 }
