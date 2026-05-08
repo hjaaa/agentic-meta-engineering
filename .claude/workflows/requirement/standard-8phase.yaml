@@ -1,7 +1,7 @@
 # 标准 8 阶段需求生命周期 workflow（DAG 表达）
 #
 # 把现有"硬编码 8 阶段"的需求流程完整翻译成 yaml DAG。
-# 共 ~38 节点：
+# 共 38 节点：
 #   阶段 1 bootstrap-validate            （1 节点）
 #   阶段 2 requirement-definition        （6 节点）
 #   阶段 3 tech-research                 （4 节点）
@@ -10,7 +10,7 @@
 #   阶段 6 task-planning                 （5 节点）
 #   阶段 7 development                   （3 节点，含 loop）
 #   阶段 8 testing                       （6 节点）
-#   阶段 0 cleanup-final                 （2 节点）
+#   阶段 9 cleanup-final                 （3 节点）
 #
 # 节点 ID 命名约定：<phase>-<action>，kebab-case。
 
@@ -654,37 +654,45 @@ nodes:
     depends_on: [test-report-artifact-check]
 
   # ════════════════════════════════════════════════════════════════════
-  # 阶段 9：cleanup-final（归档收尾）
-  # 实际 PR 提交由 /workflow:submit 命令触发（用户决定时机），
-  # workflow 跑到这里就结束。
+  # 阶段 9：cleanup-final（PR 提交 + 合并确认 + 归档）
+  # pr-submit：推送分支并创建 PR
+  # pr-merged-gate：人工确认 PR 已合并
+  # archive-finalize：写 meta.yaml 归档字段（吸收原 workflow-mark-completed）
+  #
+  # 注：depends_on 按当前 yaml 实际拓扑接 test-final-signoff
+  #   （详细设计原文写 test-traceability-check，但当前末端实际是 test-final-signoff）
   # ════════════════════════════════════════════════════════════════════
 
-  - id: workflow-mark-completed
+  - id: pr-submit
     bash: |
       set -e
+      git push origin "feat/req-$RUN_ID"
+      PR_URL=$(gh pr create --title "$PR_TITLE" --body-file "$PR_BODY_FILE" \
+                            --base "$BASE_BRANCH" $DRAFT_FLAG)
+      yq e ".pr_url = \"$PR_URL\"" -i runs/$RUN_ID/meta.yaml
+      echo "PR 已创建：$PR_URL"
+    timeout: 120000
+    depends_on: [test-final-signoff]
+    output_format:
+      type: object
+      properties:
+        pr_url: { type: string }
+
+  - id: pr-merged-gate
+    approval:
+      gate_message: |
+        PR 已合并？请 approve 进入归档；如未合并请 reject 并继续等待。
+    depends_on: [pr-submit]
+
+  - id: archive-finalize
+    bash: |
+      set -e
+      yq e ".archived_at = \"$(date '+%Y-%m-%d %H:%M:%S')\"" -i runs/$RUN_ID/meta.yaml
+      yq e '.outcome = "shipped"' -i runs/$RUN_ID/meta.yaml
       yq e '.phase = "completed"' -i runs/$RUN_ID/meta.yaml
       yq e '.workflow_status = "completed"' -i runs/$RUN_ID/meta.yaml
       yq e ".completed_at = \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"" -i runs/$RUN_ID/meta.yaml
-      python3 scripts/lib/append_process.py "workflow completed; ready for /workflow:submit"
+      echo "归档完成；RUN_ID=$RUN_ID"
+      echo "建议手动跑：git branch -d feat/req-$RUN_ID"
     timeout: 30000
-    depends_on: [test-final-signoff]
-
-  - id: workflow-summary
-    prompt: |
-      生成最终总结输出给用户：
-
-      ## $RUN_ID 已完成
-
-      标题：$ARGUMENTS
-
-      关键产出：
-      - 需求：$ARTIFACTS_DIR/requirement.md
-      - 详细设计：$ARTIFACTS_DIR/detailed-design.md
-      - features.json: $features-json-generate.output.total_features 个 feature
-      - 测试报告：$test-runner-execute.output.passed/$test-runner-execute.output.total_tests 通过
-
-      下一步：
-      - `/workflow:submit $RUN_ID` 触发 PR 提交流程
-      - `/workflow:archive $RUN_ID` PR 合并后归档
-    context: shared
-    depends_on: [workflow-mark-completed]
+    depends_on: [pr-merged-gate]
