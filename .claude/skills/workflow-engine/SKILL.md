@@ -16,7 +16,7 @@ description: workflow-engine 引擎核心 Skill。负责 workflow yaml 加载校
 | `topological_sort.py` | `topological_layers(nodes)` | `[[layer0_ids], [layer1_ids], ...]` |
 | `substitute_vars.py` | `substitute_vars(text, node_outputs, env, escape_for_bash)` | `str` 替换后文本 |
 | `run_state.py` | `read_events(path)` / `RunState.rebuild(path)` / `append_event(path, event)` | jsonl 安全读写 + RunState |
-| `run_state.py` | `_resolve_run_dir(run_id)` | `Path`：先 `requirements/<id>/`，否则 `runs/<id>/`（D-007） |
+| `run_state.py` | `_resolve_run_dir(run_id)`（内部，loader 调用） | `Path`：先 `requirements/<id>/`，否则 `runs/<id>/`（D-007） |
 | `run_artifact_checks.py` | CLI：`python3 scripts/lib/run_artifact_checks.py <node-yaml.json>` | exit 0 / 1 + 失败明细 |
 
 ## 决策表（spec §7.2）

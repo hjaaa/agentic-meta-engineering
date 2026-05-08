@@ -1,10 +1,12 @@
 """run-state.jsonl 读写 + RunState 反扫重建（F-001 范围）。
 
 公开 API：
-- `_resolve_run_dir(run_id)` → Path：D-007 双路径（先 requirements/<id>/，再 runs/<id>/）
 - `read_events(jsonl_path)` → tuple[list[Event], list[str]]：解析 jsonl，返回 (events, warnings)
 - `append_event(jsonl_path, event)` → None：用 fcntl.LOCK_EX + O_APPEND 原子追加
 - `RunState.rebuild(events, run_id?)` → RunState：从事件流重建状态
+
+内部工具（loader 调用，不对外暴露）：
+- `_resolve_run_dir(run_id)` → Path：D-007 双路径解析（先 requirements/<id>/，再 runs/<id>/）
 
 事件枚举（spec §5.4 + D-005 v2.1）：
 - workflow_started / workflow_paused / workflow_completed / workflow_failed / workflow_cancelled
