@@ -32,13 +32,169 @@
 | 10 | `/workflow:cancel` | 无 | 用户主动 | 父 jsonl 写 `cancel_requested` |
 | 11 | `/workflow:submit` | `[--draft]` | 当前 run 进入 testing | submit gate + 推分支 + 开 PR |
 
-### 1.2 每命令的接口模板（六字段）
+### 1.2 每命令的接口字段（七字段）
 
-每命令在 `.claude/commands/workflow/<cmd>.md` + `.claude/skills/managing-workflow-runs/SKILL.md` 中给出固定字段：ARGUMENTS 解析规则、入参约束、前置条件（当前 RunState 状态集合）、副作用（jsonl 事件 tag）、返回 / 输出（主对话回报模板）、失败模式（错误码 → 文案）、决策回引（D-XXX）。模板参考既有 `.claude/skills/managing-requirement-lifecycle/SKILL.md` 的 8 子动作派发结构。详细字段表与状态机交互矩阵见 `## 待澄清清单` OQ-DD-A1 / OQ-DD-A2。
+通用模板：每命令在 `.claude/commands/workflow/<cmd>.md` 给出 slash-command 入口（ARGUMENTS 透传），调 `.claude/skills/managing-workflow-runs/SKILL.md` 的 11 子动作派发（参考既有 `managing-requirement-lifecycle` 的 8 子动作结构）。下面 11 张表格逐一展开七字段（ARGUMENTS 解析 / 入参约束 / 前置条件 / 副作用 / 返回输出 / 失败模式 / 决策回引）。
 
-### 1.3 单测覆盖
+#### 1.2.1 `/workflow:new <template-id> [<title>]`
 
-测试落 `tests/skills/test_workflow_commands.py`，按命令×状态矩阵生成用例；用例数量与覆盖度阈值见 OQ-DD-A3。
+| 字段 | 内容 |
+|---|---|
+| ARGUMENTS 解析 | `$1` = template-id（必填）；`$2..$N` = title（可选，多 token 拼空格） |
+| 入参约束 | template-id 必须命中 `.claude/workflows/*.yaml`（loader 校验）；title ≤ 80 字符；REQ-ID 由 bootstrap 自动生成 |
+| 前置条件 | 当前 git 分支 ∉ {main, master, develop}（hook protect-branch.sh 已拦） |
+| 副作用 | 创建 `runs/<id>/` 或 `requirements/<id>/`（D-002 双轨期）+ meta.yaml + jsonl 事件 `workflow_started` + 切 `feat/req-<id>` 分支 |
+| 返回输出 | 主对话回报 REQ-ID + 起始节点名 + 下一步提示 |
+| 失败模式 | template not found → exit 1 + 可用模板列表；分支冲突 → exit 1 + 切分支建议 |
+| 决策回引 | D-002 / D-007 |
+
+#### 1.2.2 `/workflow:continue [<run-id>]`
+
+| 字段 | 内容 |
+|---|---|
+| ARGUMENTS 解析 | `$1` = run-id（可选；缺省=匹配当前分支） |
+| 入参约束 | run-id 形如 `REQ-YYYY-NNN`；缺省时需 git 分支 = `feat/req-<id>` 模式可解析 |
+| 前置条件 | 目标 run 当前 state ∈ {running, paused, failed}（completed / cancelled 拒绝；approval_pending 由命令转 approve/reject） |
+| 副作用 | 反扫 jsonl 重建 RunState + 进 main loop；jsonl 事件 `run_resumed` |
+| 返回输出 | 主对话回报当前节点 + 已完成节点数 + 下一步提示 |
+| 失败模式 | run 不存在 → exit 1 + 候选 run 列表；jsonl 损坏（spec §13）→ warn + 从最近 checkpoint 恢复 |
+| 决策回引 | D-007（_resolve_run_dir 双路径） |
+
+#### 1.2.3 `/workflow:next`
+
+| 字段 | 内容 |
+|---|---|
+| ARGUMENTS 解析 | 无参数 |
+| 入参约束 | — |
+| 前置条件 | 当前节点 state = completed；存在拓扑下游节点 |
+| 副作用 | 推进到拓扑下一节点 + 替换变量 + 派发；jsonl 事件 `node_started` |
+| 返回输出 | 主对话回报新节点名 + 类型 + 输入摘要 |
+| 失败模式 | 当前节点未完成 → exit 1 + 完成判定提示；无下游节点 → 触发 workflow_completed |
+| 决策回引 | spec §7.2 节点执行决策表 |
+
+#### 1.2.4 `/workflow:save [<note>]`
+
+| 字段 | 内容 |
+|---|---|
+| ARGUMENTS 解析 | `$1..$N` = 自由 note（可选；多 token 拼空格） |
+| 入参约束 | note ≤ 200 字符；多行不写入（换行替换为空格，与 process.txt 同语义） |
+| 前置条件 | 当前 run state ∈ {running, paused, approval_pending, failed} |
+| 副作用 | jsonl 追加 `[save]` 事件 + 触发主对话回报 status 摘要 |
+| 返回输出 | "已保存 <ts> + 当前节点 + note 摘要" |
+| 失败模式 | 无 run → exit 1 + 提示先 new/continue |
+| 决策回引 | spec §13 检查点续接 |
+
+#### 1.2.5 `/workflow:status [<run-id>]`
+
+| 字段 | 内容 |
+|---|---|
+| ARGUMENTS 解析 | `$1` = run-id（可选；缺省=当前分支匹配） |
+| 入参约束 | run-id 同 1.2.2 |
+| 前置条件 | run 目录存在 |
+| 副作用 | 只读；不改 jsonl 不改 meta |
+| 返回输出 | 父子树视图：阶段 + 节点拓扑 + 当前位置 + 已完成节点数 + 子 run 嵌套（spec §6.4 sub_workflow 观测） |
+| 失败模式 | run 不存在 → 列出候选；目录损坏 → warn |
+| 决策回引 | spec §6.4 父子树展示 |
+
+#### 1.2.6 `/workflow:list [--filter=<expr>]`
+
+| 字段 | 内容 |
+|---|---|
+| ARGUMENTS 解析 | `--filter=` 后跟 yaml-style 表达式（如 `phase=detail-design`、`state=paused`） |
+| 入参约束 | filter 字段名 ∈ {phase, state, template, requirement_id, parent_run_id}；值用 = / != / contains |
+| 前置条件 | — |
+| 副作用 | 只读；扫 `requirements/*/meta.yaml` + `runs/*/meta.yaml` |
+| 返回输出 | 表格：REQ-ID / 模板 / 状态 / 阶段 / 当前节点 / 父子标识 |
+| 失败模式 | filter 语法错 → exit 2 + 示例 |
+| 决策回引 | D-002 双轨期扫描 |
+
+#### 1.2.7 `/workflow:approve`
+
+| 字段 | 内容 |
+|---|---|
+| ARGUMENTS 解析 | 无 |
+| 入参约束 | — |
+| 前置条件 | 当前 run state = approval_pending；调用方 = tty 终端（hook + isatty 双层校验，§5） |
+| 副作用 | jsonl 事件 `approval_granted` + 状态机 approval_pending → completed + 触发 next |
+| 返回输出 | "Approved <node-id> at <ts> by <signer>"；进入下一节点提示 |
+| 失败模式 | state 不匹配 → exit 1；hook 拦截（AI 调用）→ exit 2 BLOCKED |
+| 决策回引 | D-006（hook + isatty 双层），spec §15 |
+
+#### 1.2.8 `/workflow:reject <reason>`
+
+| 字段 | 内容 |
+|---|---|
+| ARGUMENTS 解析 | `$1..$N` = reason（必填；多 token 拼空格） |
+| 入参约束 | reason ≥ 8 字符（与 `CLAUDE_GATES_GLOBAL_BYPASS` 同口径）；同 1.2.7 双层校验 |
+| 前置条件 | 当前 run state = approval_pending |
+| 副作用 | jsonl 事件 `approval_rejected` + reason；状态机 approval_pending → on_reject 节点（yaml 声明的回退路径） |
+| 返回输出 | "Rejected <node-id> at <ts> by <signer>: <reason>"；on_reject 节点信息 |
+| 失败模式 | reason 太短 → exit 1 + 长度要求提示；同 1.2.7 hook / isatty 拦截 |
+| 决策回引 | D-006，spec §6.4 approval 节点 on_reject |
+
+#### 1.2.9 `/workflow:rollback <to-node>`
+
+| 字段 | 内容 |
+|---|---|
+| ARGUMENTS 解析 | `$1` = to-node（必填，节点 ID） |
+| 入参约束 | to-node ∈ 当前 run yaml 节点 ID 集合；必须是当前节点的拓扑上游 |
+| 前置条件 | 当前 run state ∈ {running, paused, approval_pending, failed, completed}（cancelled 拒绝）；无并发 rollback（fcntl.flock 互斥） |
+| 副作用 | 调 `rollback_run(run_id, to-node)`：mv 产物到 `.archived/<ts>/` + jsonl 截断尾部 mv 为 `.tail` + 父跨子目录整体 mv（详见 §6） |
+| 返回输出 | "Rolled back <run-id> from <X> to <to-node> at <ts>"；归档目录路径 |
+| 失败模式 | to-node 不存在 → exit 1；非上游 → exit 1；并发 rollback → exit 1 + .in_progress 标记位置 |
+| 决策回引 | D-010 |
+
+#### 1.2.10 `/workflow:cancel`
+
+| 字段 | 内容 |
+|---|---|
+| ARGUMENTS 解析 | 无 |
+| 入参约束 | — |
+| 前置条件 | 当前 run state ∈ {running, paused, approval_pending} |
+| 副作用 | 父 jsonl 写 `cancel_requested`；子 subagent poll 检测后 graceful 退出（D-005）；30s 超时父调 `TaskStop` forceful 兜底 |
+| 返回输出 | "Cancel requested at <ts>; awaiting graceful exit (≤ 30s)" → graceful 完成后再回报 cancelled |
+| 失败模式 | state 不匹配 → exit 1；TaskStop 调用失败 → warn + jsonl 写 cancel_taskstop_failed |
+| 决策回引 | D-005 |
+
+#### 1.2.11 `/workflow:submit [--draft]`
+
+| 字段 | 内容 |
+|---|---|
+| ARGUMENTS 解析 | `--draft`（可选 flag）= 开 draft PR |
+| 入参约束 | — |
+| 前置条件 | 当前 run state = completed；阶段 = testing（阶段 7 SOP 跑完）；submit gate 全过（GATE-PR-MERGED-STATE / GATE-GH-AUTH / GATE-BASE-REACHABLE / GATE-BRANCH-MATCH 等） |
+| 副作用 | 推 origin 分支 + `gh pr create`；回写 meta.yaml.pr_url / pr_number；jsonl 事件 `pr_opened` |
+| 返回输出 | PR URL + PR #N + draft 标识 |
+| 失败模式 | gate fail → exit 2 + 缺口列表；推送冲突 → exit 1 + rebase 建议 |
+| 决策回引 | spec §12 阶段 7 SOP；submit-rules.md |
+
+### 1.3 命令×RunState 状态机矩阵
+
+行 = run state；列 = 命令；✓ = 允许；✗ = 拒绝（前置条件不满足时）；— = 无 run 上下文不适用。
+
+| state \ cmd | new | continue | next | save | status | list | approve | reject | rollback | cancel | submit |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| (无 run) | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| running | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✓ | ✓ | ✗ |
+| paused | ✗ | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ | ✓ | ✓ | ✗ |
+| approval_pending | ✗ | ✗ | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
+| cancel_requested | ✗ | ✗ | ✗ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| cancelled | ✗ | ✗ | ✗ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| failed | ✗ | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ | ✓ | ✗ | ✗ |
+| completed | ✗ | ✗ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ | ✓ | ✗ | ✓ |
+
+矩阵实现位置：每命令 SKILL.md 子动作开头先做 state 校验；不满足直接 exit 1 + 错误文案。覆盖来源：§1.2 各命令"前置条件"字段。
+
+### 1.4 单测覆盖
+
+测试落 `tests/skills/test_workflow_commands.py`，覆盖 4 类断言：
+
+- 每命令 happy path（不同合法状态进入）
+- 每命令非法状态拒绝（取 §1.3 矩阵中"✗"格子）
+- 跨命令串行：`new → continue → save → status → cancel` 端到端
+- approve/reject 走 hook 拦截（命中 → exit 2）+ tty fallback（命中 → exit 0）双路径
+
+具体用例数与 fixture 设计见 OQ-DD-A1-T（detail-design 评审前补完）。
 
 ---
 
@@ -574,23 +730,17 @@ Plan 7+1 删 8 个别名（兼容期到期人工触发）
 
 > 详细设计阶段后期需逐一闭合。每条按「内容 / 依据 / 风险 / 验证时机」四要素填写；闭合后从清单删除并合并到对应 §N。
 
-- **OQ-DD-A1（命令字段表）**：[待补充]
-  - 内容：11 个 `/workflow:*` 命令的六字段（ARGUMENTS 解析、入参约束、前置条件、副作用、返回输出、失败模式）逐一展开
-  - 依据：参考 requirements/REQ-2026-008/artifacts/detailed-design.md §1 ~ §7 的字段模板风格
-  - 风险：篇幅压力 ~600 行；如需可拆 `command-implementations/<cmd>.md` 多文件
-  - 验证时机：detail-design 评审前完成 11 条接口冻结（标记 `interfaces_frozen: true`）
+- ~~**OQ-DD-A1（命令字段表）**~~：**已闭合**——§1.2.1 ~ §1.2.11 逐一展开 11 命令七字段（ARGUMENTS / 入参约束 / 前置条件 / 副作用 / 返回输出 / 失败模式 / 决策回引）；篇幅控制在主文档内（约 +160 行），未拆 `command-implementations/<cmd>.md` 多文件。遗留 OQ-DD-A1-T 见下条。
 
-- **OQ-DD-A2（命令×状态机矩阵）**：[待补充]
-  - 内容：状态 × 命令 → 是否允许调用 + 副作用
-  - 依据：覆盖状态集合 = {pending, running, paused, approval_pending, cancel_requested, cancelled, completed, failed}
-  - 风险：状态 8 × 命令 11 = 88 个格子，需筛选有意义组合
-  - 验证时机：与 OQ-DD-A1 同期完成
+- ~~**OQ-DD-A2（命令×状态机矩阵）**~~：**已闭合**——§1.3 给出 8 状态 × 11 命令矩阵（含 (无 run) 行），每格 ✓/✗/— 三态；实现位置 = 每命令 SKILL.md 子动作开头先做 state 校验。
 
-- **OQ-DD-A3（命令单测用例数）**：[待补充]
-  - 内容：每命令 happy path + 非法状态拒绝的最小用例数
-  - 依据：参考既有 `tests/skills/` 覆盖密度
-  - 风险：测试过密拖慢 CI；过疏漏边界
-  - 验证时机：detail-design 评审前
+- ~~**OQ-DD-A3（命令单测用例数）**~~：与 A1-T 合并——具体用例数 / fixture 设计见 OQ-DD-A1-T。
+
+- **OQ-DD-A1-T（命令单测的具体用例数 + fixture）**：[待补充]
+  - 内容：§1.4 列出 4 类断言场景（每命令 happy ×2 / 非法状态 ×1 / 跨命令串行 / approve+reject 双路径），需逐一展开成具体用例数 + fixture YAML（jsonl 状态快照 + 命令 stdin / 期望 stdout）
+  - 依据：参考 tests/skills/ 现有 fixture 风格 + §1.3 矩阵中 ✓/✗ 格子
+  - 风险：用例过密拖慢 CI；过疏漏边界（特别是 approval_pending 行的 4 ✓ 命令交互）
+  - 验证时机：detail-design 评审前完成 fixture 落盘 + 单测骨架
 
 - ~~**OQ-DD-A4（prompt frontmatter + 注入）**~~：**已闭合**——展开为 §2.2（字段表 + 优先级 + 示例）/ §2.3（ARGUMENTS 注入）/ §2.4（`$ARTIFACTS_DIR` 父子隔离）/ §2.5（`$LOOP_OUTPUT` 读取协议）/ §2.6（派发时序图）/ §2.7（单测覆盖范围）；变量语法用 `$xxx` 形式（与 spec §6.5 对齐，无 mustache 双大括号）；遗留 OQ-DD-A4-T 见下条。
 
