@@ -106,12 +106,13 @@ reviews:
       F-001:
         history:
           - REV-REQ-2026-009-code-F-001-001
-        latest: REV-REQ-2026-009-code-F-001-001
-        conclusion: needs_attention
-        reviewed_commit: 386f2a4
+          - REV-REQ-2026-009-code-F-001-002
+        latest: REV-REQ-2026-009-code-F-001-002
+        conclusion: looks_clean
+        reviewed_commit: 4a58548
         artifact_hashes:
           artifacts/features.json: 
-            e27454b1b3af2ddab3da1c79c8af772ef6a5e19f173d5f98357b564c07a59631
+            a7a083a1f22d6aba20f399e5633ecc85bf86663e71b7d0cab774032a77068d25
           artifacts/tasks/F-001.md: 
-            1f816da063940b8ba59947ac1d0675a621785ad0e292a2d0daea02e974a0775d
+            84e5f8ac35616b9811e26430eef79066f3f92a96093160d1332728ed7ca22237
         stale: false

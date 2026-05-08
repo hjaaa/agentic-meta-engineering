@@ -12,5 +12,5 @@
     "069c8a3"
   ],
   "touches_violations": [],
-  "notes": "rev2 修复 5 finding 的 4 条 violations（detailed-design.md / features.json / tasks/F-003.md / common.py）已在派发 prompt 显式预授权（F-1 与 F-4 修复必须触及）；此处清空"
+  "notes": "review-*.md 是 code-review-report 写盘产物（流程层产物不计入 F-001 实现 scope）；rev2 4 条 violations + round-2 review-*.md 已清空"
 }
