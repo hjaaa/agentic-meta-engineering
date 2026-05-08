@@ -70,7 +70,9 @@ def _parse_frontmatter(md_path: Path) -> dict[str, Any]:
     try:
         parsed = yaml.safe_load(fm_text)
         return parsed if isinstance(parsed, dict) else {}
-    except yaml.YAMLError:
+    except yaml.YAMLError as e:
+        import sys
+        print(f"WARN: frontmatter parse failed in {md_path}: {e}", file=sys.stderr)
         return {}
 
 

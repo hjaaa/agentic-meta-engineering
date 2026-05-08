@@ -688,6 +688,11 @@ nodes:
     approval:
       gate_message: |
         PR 已合并？请 approve 进入归档；如未合并请 reject 并继续等待。
+      capture_response: true
+      on_reject:
+        prompt: |
+          PR 尚未合并，请等待合并后再次 approve。当前 PR：$pr-submit.output.pr_url
+        max_attempts: 10
     depends_on: [pr-submit]
 
   - id: archive-finalize
