@@ -31,15 +31,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from common import REPO_ROOT
+from common import REPO_ROOT, WorkflowError
 
 
 # ============================================================================
-# 异常
+# 异常：WorkflowError 统一定义在 common.py（跨模块 except 同一性保证）
 # ============================================================================
-
-class WorkflowError(Exception):
-    """run-state / loader 层运行时错误。"""
 
 
 # ============================================================================

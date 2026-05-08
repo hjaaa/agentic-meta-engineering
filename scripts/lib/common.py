@@ -13,6 +13,15 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
+class WorkflowError(Exception):
+    """workflow 引擎统一异常基类。
+
+    所有 workflow_loader / run_state / dispatcher 等模块的运行时确定性错误
+    （文件找不到、状态非法、event 校验失败等）都抛此基类，跨模块 except
+    时类对象同一性才能成立（避免重复定义导致 except 条件分支失效）。
+    """
+
+
 class Severity:
     ERROR = "error"
     WARNING = "warning"

@@ -226,3 +226,18 @@ def test_resolve_run_dir_rejects_invalid_input(tmp_path):
         _resolve_run_dir("", repo_root=tmp_path)
     with pytest.raises(WorkflowError):
         _resolve_run_dir(None, repo_root=tmp_path)  # type: ignore[arg-type]
+
+
+def test_workflow_error_is_shared_class():
+    """F-4：WorkflowError 在 common / workflow_loader / run_state 三处必须是同一类对象。
+
+    任一独立 `class WorkflowError(Exception)` 重复定义都会让跨模块 except 失效
+    （workflow_loader 抛出，run_state except 接不住）。本测试是回归围栏。
+    """
+    from common import WorkflowError as W_common
+    from run_state import WorkflowError as W_run_state
+    from workflow_loader import WorkflowError as W_loader
+
+    assert W_common is W_run_state
+    assert W_common is W_loader
+    assert W_run_state is W_loader

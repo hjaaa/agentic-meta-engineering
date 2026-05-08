@@ -44,7 +44,7 @@ from typing import Any
 
 import yaml
 
-from common import REPO_ROOT, Report, Severity, rel
+from common import REPO_ROOT, Report, Severity, WorkflowError, rel
 from topological_sort import CycleError, topological_layers
 
 
@@ -71,8 +71,8 @@ class DiscoveredWorkflow:
     source_path: Path
 
 
-class WorkflowError(Exception):
-    """loader 层确定性错误（D-007 _resolve_run_dir 找不到时抛此异常）。"""
+# WorkflowError 统一从 common.py 导入（跨模块 except 同一性保证）
+# loader 层确定性错误（D-007 _resolve_run_dir 找不到时）抛此异常
 
 
 # ============================================================================
