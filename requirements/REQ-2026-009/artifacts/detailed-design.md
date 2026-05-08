@@ -67,13 +67,138 @@
 
 8 个 cr-checker-*.md 文件名 1:1 对应 .claude/agents/*-checker.md（OQ-DD-B4 闭合，2026-05-08 用户拍板照搬）。
 
-### 2.2 frontmatter 与 ARGUMENTS 注入约定
+### 2.2 frontmatter 字段定义
 
-每个 prompt 文件 frontmatter 字段集合、ARGUMENTS 透传规则、`$ARTIFACTS_DIR` 父子隔离约定、jsonl 中 `$LOOP_OUTPUT` 读取协议——见 `## 待澄清清单` OQ-DD-A4。
+每个 prompt 文件用 YAML frontmatter 头（`---` 三连线分隔），字段语义全部对齐 spec §6.3 / §6.4 / §6.13 的节点字段；yaml workflow 是字段的唯一事实源（source of truth），prompt frontmatter 只在外置 prompt_file 时声明对应字段供引擎做"yaml 节点 ↔ prompt 文件" 一致性校验。
 
-### 2.3 单测覆盖
+**字段表**（参考来源：context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:393）：
 
-测试落 `tests/workflows/test_prompt_structure.py`：每文件 frontmatter 解析 + input 占位符与 yaml 节点 inputs 一致性。
+| 字段 | 是否必填 | 类型 | 语义 | 引擎处理 |
+|---|---|---|---|---|
+| `name` | 必填 | string | prompt 文件唯一名（kebab-case，建议 = node_id） | loader 校验唯一性 |
+| `node_id` | 必填 | string | yaml workflow 中对应的节点 id | loader 校验 yaml 节点存在且 prompt_file 字段指向本文件 |
+| `version` | 必填 | string | semver；frontmatter 演化时升 minor | 校验日志记录 |
+| `inputs[]` | 可选 | list of `{name, source, type, required}` | 输入变量声明 | loader 校验与 yaml 节点 inputs 一致；运行时引擎做 type 校验 |
+| `output_format` | 可选 | JSON Schema | 节点 output 契约（覆盖 yaml 节点字段） | 写 jsonl 前用 ajv 校验 |
+| `context` | 可选 | enum: `fresh` / `shared` | fresh = 派 subagent；shared = 主 Claude 直接跑 | 决定派发方式（spec §7.2 决策表） |
+| `allowed_tools` / `denied_tools` | 可选 | list[string] | 工具白名单 / 黑名单 | 派发时透传给 subagent |
+| `model` / `effort` / `thinking` / `fallback_model` | 可选 | 同 yaml 节点 | 模型档位覆盖（优先级见 §2.2.1） | LLM 调用参数 |
+| `idle_timeout` | 可选 | int (毫秒) | 节点空闲超时 | 引擎计时 |
+| `retry` | 可选 | `{max_attempts, delay_ms, on_error}` | 重试策略 | 引擎重试 |
+| `context_budget` | 可选 | int (token) | 主对话压力监控阈值 | 命中触发 §6.11 inline → file 切换 + warn |
+
+#### 2.2.1 字段优先级（覆盖规则）
+
+`yaml workflow 节点字段` ＞ `prompt frontmatter` ＞ `workflow 顶层默认`。yaml 是事实源；prompt frontmatter 只在 yaml 节点未显式声明对应字段时生效；冲突时以 yaml 为准并 loader 报 warning。
+
+#### 2.2.2 frontmatter 示例（cr-checker-security.md 雏形）
+
+```yaml
+---
+name: cr-checker-security
+node_id: cr-checker-security
+version: 1.0.0
+context: fresh
+allowed_tools: [Read, Grep]
+denied_tools: [Bash, Edit, Write]
+model: claude-sonnet-4-6
+effort: medium
+inputs:
+  - name: diff_range
+    source: $cr-prepare.output.diff_range
+    type: string
+    required: true
+  - name: scope_file
+    source: $cr-prepare.output.scope_file
+    type: string
+    required: true
+output_format:
+  type: object
+  properties:
+    findings:
+      type: array
+      items: { type: object }
+  required: [findings]
+idle_timeout: 300000
+context_budget: 60000
+---
+
+# Prompt 正文
+
+你是安全 checker，对 `$diff_range` 范围内的增量做 OWASP Top 10 检查。
+读 `$scope_file` 取增量文件清单。
+输出 JSON：{"findings": [...]}
+```
+
+### 2.3 ARGUMENTS 注入约定
+
+`$ARGUMENTS` 是 `/workflow:run <template> <args>` 中 `<args>` 的字面量（来源：context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:607）。注入规则：
+
+- **顶层 run**：`$ARGUMENTS` = 用户输入的命令行参数原文；`$1` ~ `$9` = 位置参数（spec §6.5）
+- **sub_workflow 节点**：父 yaml 的 `args:` 字段（如 `feature_id: $feature-implement.output.id`）经引擎替换后，整体序列化为 JSON 字符串透传给子 run 的 `$ARGUMENTS`（来源：context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:565）
+- **引擎替换时机**：派发前做字符串替换（不在 LLM 内做），变量值经 `shellQuote` 转义（spec §6.5 注入防御）
+- **prompt 文件内引用**：用 `$ARGUMENTS` / `$<nodeId>.output` 形式（无 mustache 双大括号），与 spec §6.5 变量表对齐
+
+### 2.4 `$ARTIFACTS_DIR` 父子隔离
+
+`$ARTIFACTS_DIR` 在每个 run 内独立解析；引擎按 run_id 走 `_resolve_run_dir`（D-007 双路径 loader，来源：requirements/REQ-2026-009/plan.md:110）：
+
+- **父 run**：`$ARTIFACTS_DIR = requirements/<id>/artifacts/`（兼容期路径）或 `runs/<id>/artifacts/`（rename 后路径）
+- **子 run**：`$ARTIFACTS_DIR = runs/<child-run-id>/artifacts/`（子 run 一律走 runs/ 路径）
+- **写权限**：子 run prompt 不能写父 run 的 artifacts；引擎在派发子 prompt 前替换 `$ARTIFACTS_DIR` 为子目录字面量，hook 层（`.claude/hooks/protect-branch.sh` 同位置）拒绝写跨 run 路径
+- **D-005 父 cancel 写**：父 jsonl 的 `cancel_requested` 事件由父 Claude 写父 jsonl，子 jsonl 永远由子自身写（来源：requirements/REQ-2026-009/plan.md:92），不存在跨 run 文件写
+
+### 2.5 `$LOOP_OUTPUT` / `$LOOP_PREV_OUTPUT` 读取协议
+
+引擎从 jsonl 中读最近一条 `loop_iteration_completed` 事件的 `output` 字段（来源：context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:614）：
+
+- **`$LOOP_OUTPUT`**：interactive loop 当前轮 prompt 完成后，gate_message 替换时可见；语义 = 本轮 prompt stdout（受 output_format 约束）
+- **`$LOOP_PREV_OUTPUT`**：下一轮 prompt 内可见；语义 = 上一轮 loop_iteration_completed 的 output
+- **读取实现**：引擎在 gate_message / prompt 替换前反扫 jsonl 拿最近一条事件，命不到（首轮）则替换为空字符串
+- **首轮**：`$LOOP_OUTPUT` = `""`（空字符串），`$LOOP_PREV_OUTPUT` 不可见（不替换）
+
+### 2.6 派发时序图
+
+```mermaid
+sequenceDiagram
+    participant U as 用户 / 主对话
+    participant E as workflow-engine
+    participant L as workflow-loader
+    participant J as run-state.jsonl
+    participant LLM as Claude（subagent or 主 Claude）
+
+    U->>E: /workflow:run standard-8phase / continue
+    E->>L: 加载 yaml + prompt_file
+    L->>L: 解析 frontmatter
+    L->>L: 校验 yaml 节点 ↔ frontmatter 字段一致性
+    L-->>E: 节点列表 + prompt 文本 + 字段并集
+
+    E->>J: 反扫 jsonl 重建 RunState（node_outputs Map）
+    E->>E: 替换变量（$ARGUMENTS / $node.output / $ARTIFACTS_DIR / $LOOP_OUTPUT）
+    E->>E: shellQuote / JSON 序列化转义
+
+    alt context: fresh / agent / loop fresh_context: true
+        E->>LLM: 派 subagent（透传 allowed_tools / denied_tools）
+    else context: shared / skill
+        E->>LLM: 主 Claude 直接跑
+    end
+
+    LLM-->>E: stdout（受 output_format 约束）
+    E->>J: 追加 node_completed + output 字段
+    E->>U: 回报节点状态
+```
+
+### 2.7 单测覆盖
+
+测试落 `tests/workflows/test_prompt_structure.py`，覆盖：
+
+- frontmatter 解析：合法 → pass / 缺必填字段 (`name`/`node_id`/`version`) → 拒绝 / 字段类型错（`inputs[]` 不是 list）→ 拒绝
+- yaml 节点 ↔ frontmatter 一致性：`prompt_file` 指向但 frontmatter `node_id` 不匹配 → 拒绝；`output_format` 双声明但语义冲突 → 拒绝
+- 变量占位符与 inputs 一致性：prompt 正文引用 `$X` 但 frontmatter `inputs[]` 缺 `X` → warn（不拒绝，兼容隐式上游）
+- ARGUMENTS 注入边界：含单引号 / 双引号 / 反斜杠的 args 经 `shellQuote` 后 LLM 收到的字面量与原文一致
+- `$ARTIFACTS_DIR` 父子隔离：父子 run 同名 prompt 节点替换得不同字面量
+
+具体用例数与 fixture 设计见 OQ-DD-A4-T（detail-design 评审前补完）。
 
 ---
 
@@ -329,11 +454,13 @@ Plan 7+1 删 8 个别名（兼容期到期人工触发）
   - 风险：测试过密拖慢 CI；过疏漏边界
   - 验证时机：detail-design 评审前
 
-- **OQ-DD-A4（prompt frontmatter + 注入）**：[待补充]
-  - 内容：frontmatter 字段集合（`name`/`node_id`/`model`/`tools_allowed`/`inputs[]`/`outputs[]`/`context_budget`）+ ARGUMENTS 注入 + `$ARTIFACTS_DIR` 父子隔离 + `$LOOP_OUTPUT` 读取协议
-  - 依据：spec §6.4 已提到节点级 prompt 抽离
-  - 风险：mustache 占位语法与 yaml 字段未对齐会运行时报错
-  - 验证时机：detail-design 评审前需给 1 张时序图 + frontmatter 解析单测
+- ~~**OQ-DD-A4（prompt frontmatter + 注入）**~~：**已闭合**——展开为 §2.2（字段表 + 优先级 + 示例）/ §2.3（ARGUMENTS 注入）/ §2.4（`$ARTIFACTS_DIR` 父子隔离）/ §2.5（`$LOOP_OUTPUT` 读取协议）/ §2.6（派发时序图）/ §2.7（单测覆盖范围）；变量语法用 `$xxx` 形式（与 spec §6.5 对齐，无 mustache 双大括号）；遗留 OQ-DD-A4-T 见下条。
+
+- **OQ-DD-A4-T（prompt 解析单测的具体用例数 + fixture 设计）**：[待补充]
+  - 内容：§2.7 列出 5 类断言场景，需逐一展开成具体测试用例数 + fixture YAML 数据；建议至少每类场景 2 ~ 3 条边界用例
+  - 依据：参考 tests/lib/test_check_*.py 现有 fixture 风格；frontmatter 解析与 yaml workflow 字段一致性是 Plan 2 引擎核心校验
+  - 风险：测试覆盖不足让 frontmatter 字段冲突在运行时才暴露；fixture 过密拖慢 CI
+  - 验证时机：detail-design 评审前完成 fixture 落盘 + 单测骨架
 
 - **OQ-DD-A5（features.json 拆分粒度）**：[待补充]
   - 内容：38 节点（standard-8phase 22 + code-review-embedded 16，含综合裁决，待精确点数）+ 11 命令 + 8 别名 + Plan 7 清理任务（约 10 项）→ feature_id 总数 65 ~ 75
