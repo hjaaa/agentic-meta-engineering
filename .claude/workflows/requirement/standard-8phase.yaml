@@ -667,8 +667,14 @@ nodes:
     bash: |
       set -e
       git push origin "feat/req-$RUN_ID"
-      PR_URL=$(gh pr create --title "$PR_TITLE" --body-file "$PR_BODY_FILE" \
-                            --base "$BASE_BRANCH" $DRAFT_FLAG)
+      EXISTING=$(gh pr list --head "feat/req-$RUN_ID" --state open --json url --jq '.[0].url' 2>/dev/null || true)
+      if [ -n "$EXISTING" ]; then
+        PR_URL="$EXISTING"
+      else
+        PR_URL=$(gh pr create --title "$PR_TITLE" --body-file "$PR_BODY_FILE" \
+                              --base "$BASE_BRANCH" ${DRAFT_FLAG:+--draft})
+      fi
+      [[ -z "$PR_URL" ]] && { echo "ERROR: gh pr create 未返回 PR URL（RUN_ID=$RUN_ID）" >&2; exit 1; }
       yq e ".pr_url = \"$PR_URL\"" -i runs/$RUN_ID/meta.yaml
       echo "PR 已创建：$PR_URL"
     timeout: 120000
@@ -687,11 +693,10 @@ nodes:
   - id: archive-finalize
     bash: |
       set -e
-      yq e ".archived_at = \"$(date '+%Y-%m-%d %H:%M:%S')\"" -i runs/$RUN_ID/meta.yaml
-      yq e '.outcome = "shipped"' -i runs/$RUN_ID/meta.yaml
-      yq e '.phase = "completed"' -i runs/$RUN_ID/meta.yaml
-      yq e '.workflow_status = "completed"' -i runs/$RUN_ID/meta.yaml
-      yq e ".completed_at = \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"" -i runs/$RUN_ID/meta.yaml
+      ARCHIVED_AT="$(date '+%Y-%m-%d %H:%M:%S')"
+      COMPLETED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      yq e ".archived_at = \"$ARCHIVED_AT\" | .outcome = \"shipped\" | .phase = \"completed\" | .workflow_status = \"completed\" | .completed_at = \"$COMPLETED_AT\"" -i runs/$RUN_ID/meta.yaml
+      python3 scripts/lib/append_process.py "phase-transition: completed → archived" 2>/dev/null || true
       echo "归档完成；RUN_ID=$RUN_ID"
       echo "建议手动跑：git branch -d feat/req-$RUN_ID"
     timeout: 30000
