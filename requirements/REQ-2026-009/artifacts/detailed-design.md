@@ -208,22 +208,59 @@ sequenceDiagram
 
 来源：context/team/engineering-spec/features-schema.yaml 作为 `id` / `title` / `description` 必填的事实源；可选机读字段（`complexity` / `depends_on_features` / `touches` / `interfaces_frozen`）来源：.claude/skills/task-context-builder/reference/extract-rules.md。
 
-### 3.2 feature_id 编号空间分组
+### 3.2 单文件 vs 多文件决策（A5 闭合）
 
-骨架分组前缀提案（数量精确点见 OQ-DD-A5）：`F-NODE-XXX`（节点）/ `F-CMD-XXX`（命令）/ `F-ALIAS-XXX`（兼容期别名）/ `F-CLEAN-XXX`（Plan 7 清理任务）。
+**决策：单文件 `requirements/REQ-2026-009/artifacts/features.json`。**
 
-### 3.3 依赖关系
+依据：
 
-骨架级 DAG 关键边（精确表见 OQ-DD-A6）：
+- GATE-FEATURES-SCHEMA plugin 的 glob 字面量为 `requirements/*/artifacts/features.json`（来源：scripts/gates/plugins/features_schema.py:37）；多文件方案需同时改 plugin glob、`scripts/lib/check_features.py` merge 逻辑、`feature-lifecycle-manager` Skill 拆分读取——三处脱离 REQ-2026-009 范围（落 Post-MVP 评估）
+- features-schema.yaml 已锁 schema_version=1.0 顶层结构（来源：context/team/engineering-spec/features-schema.yaml:32）；多文件需升级 schema 加 `index_file` 概念，破坏性变更
+- 文件大小不构成约束：REQ-2026-008 单文件 19KB / 8 features，本需求 ~12-14 features 估算 ~30 KB 量级
 
-- `F-NODE-engine-core` 是 `F-NODE-*` / `F-CMD-*` 的前置
-- `F-CMD-rollback` 依赖 `F-NODE-archived-state`（D-010 `.in_progress` 标记前置）
-- `F-CMD-approve/reject` 依赖 `F-NODE-hook-guard`（D-006 hook 拦截前置）
-- `F-CLEAN-PHASE_REQUIREMENTS-delete` 依赖 `F-CLEAN-migration-test`（D-009 顺序约束，来源：requirements/REQ-2026-009/plan.md:128）
+### 3.3 粒度修正：thematic feature（原"节点 / 命令" 1:1 估算作废）
 
-### 3.4 features.json 校验
+A5 同时修正 §3.2 旧版"feature_id 编号空间分组"的过粗估算（65-75 features 把节点 / 命令都当 feature）。正确粒度参考 REQ-2026-008 的 thematic level——一个 feature 覆盖一组协作模块的端到端落地（含 schema / 实现 / gate / 单测）。
 
-来源：scripts/gates/registry.yaml 已注册 GATE-FEATURES-SCHEMA（在 phase-transition / submit / pre-commit / ci 四触发点生效）；本阶段仅"承接"该 gate，不引入新规则。
+#### 初版 feature 清单（detail-design 评审前精化）
+
+| feature_id | 主题 | 主责章节 | 复杂度初判 |
+|---|---|---|---|
+| F-001 | workflow-engine 核心（loader + run-state + dispatcher）| spec §6 / §7 | heavy |
+| F-002 | 8 种节点类型实现（含 sub_workflow / loop / approval）| spec §6.4 + §11.2 | heavy |
+| F-003 | standard-8phase.yaml 38 节点完整化 + 阶段 prompt 抽离 | §2 | medium |
+| F-004 | code-review-embedded.yaml + sub_workflow 验证 | §2 | medium |
+| F-005 | 11 个 `/workflow:*` 命令 + managing-workflow-runs Skill | §1 | heavy |
+| F-006 | workflow-launcher 关键词触发 Skill + 仲裁 | §4 | medium |
+| F-007 | workflow_rollback.py + 跨父子归档（D-010）| §6 | medium |
+| F-008 | sub_workflow 父子状态联动（D-005 cancel + parent_cancelled）| §7 | medium |
+| F-009 | D-006 hook 拦截 + workflow_approve/reject.py + ai-collaboration patch | §5 | light |
+| F-010 | 8 个 `/requirement:*` 别名兼容期保留实现（D-009）| §10.2 | light |
+| F-011 | 自举验证 SOP（Plan 6）+ migration 测试（R001-R006 等价）| §8 + §10.3 | medium |
+| F-012 | Plan 7 清理（删 PHASE_REQUIREMENTS / phase_enum / signoff / next）| §10.3 | light |
+| F-013 | requirements/ → runs/ 批量 rename 工具（D-002）| §9 | medium |
+
+合计 13 features，与 REQ-2026-008 同量级。具体 modules / touches / acceptance 由 detail-design 评审前补完（OQ-DD-A5-D）。
+
+### 3.4 依赖关系（DAG 关键边）
+
+基于 §3.3 重新编号的 13 features：
+
+- `F-001`（engine 核心）是 `F-002` ~ `F-008` 的前置
+- `F-002`（节点类型）是 `F-003` / `F-004`（具体 yaml 落地）的前置
+- `F-007`（rollback）依赖 `F-001`（jsonl 截断 / 状态恢复）+ `F-002`（sub_workflow 节点 mv 语义）
+- `F-008`（父子状态联动）依赖 `F-002`（sub_workflow 节点）
+- `F-009`（hook + workflow_approve/reject.py）依赖 `F-005`（命令骨架）— hook 拦截的字面量与命令名一致
+- `F-010`（别名）依赖 `F-005`（target 命令实现存在）
+- `F-011`（自举验证 + migration 测试）依赖 `F-001` ~ `F-010`（端到端链路完整）
+- `F-012`（Plan 7 清理）依赖 `F-011` 通过（D-009 顺序约束，来源：requirements/REQ-2026-009/plan.md:128）
+- `F-013`（rename 工具）依赖 `F-001` 中 `_resolve_run_dir` 双路径已落地（D-007）
+
+完整 `depends_on_features[]` 字面量见 OQ-DD-A6（detail-design 评审前补完，与 features.json 同步落盘）。
+
+### 3.5 features.json 校验
+
+来源：scripts/gates/registry.yaml 已注册 GATE-FEATURES-SCHEMA（在 phase-transition / submit / pre-commit / ci 四触发点生效）；本阶段仅"承接"该 gate，不引入新规则。features.json 落盘后由 `scripts/lib/check_features.py` 校验 schema_version=1.0 + 顶层 required_fields + 每条 feature 的 required={id,title,description,modules,depends_on,depends_on_features,complexity,touches,acceptance}。
 
 ---
 
@@ -563,14 +600,16 @@ Plan 7+1 删 8 个别名（兼容期到期人工触发）
   - 风险：测试覆盖不足让 frontmatter 字段冲突在运行时才暴露；fixture 过密拖慢 CI
   - 验证时机：detail-design 评审前完成 fixture 落盘 + 单测骨架
 
-- **OQ-DD-A5（features.json 拆分粒度）**：[待补充]
-  - 内容：38 节点（standard-8phase 22 + code-review-embedded 16，含综合裁决，待精确点数）+ 11 命令 + 8 别名 + Plan 7 清理任务（约 10 项）→ feature_id 总数 65 ~ 75
-  - 依据：outline §1.2 改动一览表
-  - 风险：单文件超过同规模需求经验值（REQ-2026-008 约 13 个 feature），需评估拆 `features-A.json` / `features-B.json`
-  - 验证时机：detail-design 评审前与用户确认是否拆多文件
+- ~~**OQ-DD-A5（features.json 拆分粒度）**~~：**已闭合**——决策单文件（GATE-FEATURES-SCHEMA plugin glob hardcode 单路径，多文件需改 3 处脱离范围）+ 粒度修正到 thematic（原 65-75 估算把节点 / 命令当原子 feature 错误，正确粒度 ~13 features 与 REQ-2026-008 同量级）；详见 §3.2 / §3.3。遗留 OQ-DD-A5-D 见下条。
+
+- **OQ-DD-A5-D（13 features 各自的 modules / touches / acceptance 字面量）**：[待补充]
+  - 内容：F-001 ~ F-013 每个 feature 的精确 modules[] / touches[] / acceptance[] 字段；features.json 落盘内容
+  - 依据：参考 REQ-2026-008 features.json 的字段密度（每条含 ~6 modules + 4 acceptance TC）
+  - 风险：modules / touches 字面量错会让派发期 dispatch_precheck.py 报越界写入 + GATE-TOUCHES-VIOLATION 拦
+  - 验证时机：detail-design 评审前 features.json 落盘 + check_features.py 跑通
 
 - **OQ-DD-A6（features 依赖 DAG 完整表）**：[待补充]
-  - 内容：所有 `depends_on` / `blocks` 边的精确列表
+  - 内容：F-001 ~ F-013 的全部 `depends_on_features[]` 字面量（§3.4 已列关键边，缺细粒度边）
   - 依据：outline §3 模块划分 + ADR D-005 ~ D-010 的"前置条件"语义
   - 风险：循环依赖未检出会让 task-planning 拓扑排序死锁
   - 验证时机：features.json 提交前用 `tools/check_features_dag.py`（Plan 1 已合并工具）跑一遍
