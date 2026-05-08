@@ -16,37 +16,39 @@
 
 ### 1.1 命令清单与 ARGUMENTS
 
-来源：requirements/REQ-2026-009/artifacts/outline-design.md:458 锁定 11 个命令名称；本节给出 ARGUMENTS 形态与触发条件的初版骨架。
+命令集合按 requirement.md AC-03 锁定（来源：requirements/REQ-2026-009/artifacts/requirement.md:117）；本节给出 ARGUMENTS 形态与触发条件。
 
 | # | 命令 | ARGUMENTS 形态 | 触发条件 | 主要副作用 |
 |---|---|---|---|---|
-| 1 | `/workflow:new` | `<template-id> [<title>]` | 用户主动 | bootstrap run 目录 + jsonl + 初始 prompt |
+| 1 | `/workflow:run` | `<template-id> [<args>]` | 用户主动 / launcher | bootstrap run 目录 + jsonl + 初始 prompt |
 | 2 | `/workflow:continue` | `[<run-id>]`（缺省=匹配当前分支） | 用户主动 / launcher | 重建 RunState 进 main loop |
-| 3 | `/workflow:next` | 无 | 当前节点完成 | 推进到下一拓扑节点 |
-| 4 | `/workflow:save` | `[note]` | 用户主动 | jsonl 追加 `[save]` 事件 |
-| 5 | `/workflow:status` | `[<run-id>]` | 用户主动 | 只读输出（含父子树） |
-| 6 | `/workflow:list` | `[--filter=...]` | 用户主动 | 只读输出 |
-| 7 | `/workflow:approve` | 无 | approval_pending 状态 | 状态机 → approved（hook 拦 AI） |
-| 8 | `/workflow:reject` | `<reason>` | approval_pending 状态 | 状态机 → rejected + on_reject 路径 |
+| 3 | `/workflow:save` | `[note]` | 用户主动 | jsonl 追加 `[save]` 事件 |
+| 4 | `/workflow:status` | `[<run-id>]` | 用户主动 | 只读输出（含父子树） |
+| 5 | `/workflow:list` | `[--filter=...]` | 用户主动 | 只读输出 |
+| 6 | `/workflow:approve` | 无 | approval_pending 状态 | 状态机 → approved（hook 拦 AI） |
+| 7 | `/workflow:reject` | `<reason>` | approval_pending 状态 | 状态机 → rejected + on_reject 路径 |
+| 8 | `/workflow:cancel` | 无 | 用户主动 | 父 jsonl 写 `cancel_requested` |
 | 9 | `/workflow:rollback` | `<to-node>` | 用户主动 | mv 产物到 `.archived/<ts>/` + jsonl 截断 |
-| 10 | `/workflow:cancel` | 无 | 用户主动 | 父 jsonl 写 `cancel_requested` |
-| 11 | `/workflow:submit` | `[--draft]` | 当前 run 进入 testing | submit gate + 推分支 + 开 PR |
+| 10 | `/workflow:submit` | `[--draft]` | 当前 run 进入 testing | submit gate + 推分支 + 开 PR |
+| 11 | `/workflow:archive` | 无 | PR merged 后 | 写 archived_at + 经验沉淀触发 + 删本地分支提示 |
+
+> **注**：spec / outline 早期草稿曾出现 `/workflow:new` / `/workflow:next` 等命名，本设计统一对齐 AC-03 规范名（`run` 替代 `new`；移除 `next`——引擎 main loop 自动推进，不需要用户手动 next；新增 `archive` 收尾步）。
 
 ### 1.2 每命令的接口字段（七字段）
 
 通用模板：每命令在 `.claude/commands/workflow/<cmd>.md` 给出 slash-command 入口（ARGUMENTS 透传），调 `.claude/skills/managing-workflow-runs/SKILL.md` 的 11 子动作派发（参考既有 `managing-requirement-lifecycle` 的 8 子动作结构）。下面 11 张表格逐一展开七字段（ARGUMENTS 解析 / 入参约束 / 前置条件 / 副作用 / 返回输出 / 失败模式 / 决策回引）。
 
-#### 1.2.1 `/workflow:new <template-id> [<title>]`
+#### 1.2.1 `/workflow:run <template-id> [<args>]`
 
 | 字段 | 内容 |
 |---|---|
-| ARGUMENTS 解析 | `$1` = template-id（必填）；`$2..$N` = title（可选，多 token 拼空格） |
-| 入参约束 | template-id 必须命中 `.claude/workflows/*.yaml`（loader 校验）；title ≤ 80 字符；REQ-ID 由 bootstrap 自动生成 |
-| 前置条件 | 当前 git 分支 ∉ {main, master, develop}（hook protect-branch.sh 已拦） |
-| 副作用 | 创建 `runs/<id>/` 或 `requirements/<id>/`（D-002 双轨期）+ meta.yaml + jsonl 事件 `workflow_started` + 切 `feat/req-<id>` 分支 |
+| ARGUMENTS 解析 | `$1` = template-id（必填）；`$2..$N` = template-specific args（如 standard-8phase 的 title / code-review-embedded 的 feature_id 等，多 token 拼空格） |
+| 入参约束 | template-id 必须命中 `.claude/workflows/*.yaml`（loader 校验）；args 由对应 template 的 `args:` schema 校验；新 REQ-ID 由 bootstrap 自动生成 |
+| 前置条件 | 启动需求类 template（如 standard-8phase）时当前 git 分支 ∉ {main, master, develop}（hook protect-branch.sh 已拦）；启动 sub_workflow 类无此约束 |
+| 副作用 | 创建 `runs/<id>/` 或 `requirements/<id>/`（D-002 双轨期）+ meta.yaml + jsonl 事件 `workflow_started` + 需求类自动切 `feat/req-<id>` 分支 |
 | 返回输出 | 主对话回报 REQ-ID + 起始节点名 + 下一步提示 |
-| 失败模式 | template not found → exit 1 + 可用模板列表；分支冲突 → exit 1 + 切分支建议 |
-| 决策回引 | D-002 / D-007 |
+| 失败模式 | template not found → exit 1 + 可用模板列表；分支冲突 → exit 1 + 切分支建议；args schema 不符 → exit 1 + 字段缺失提示 |
+| 决策回引 | D-001（MVP 模板范围）/ D-002 / D-007 |
 
 #### 1.2.2 `/workflow:continue [<run-id>]`
 
@@ -60,19 +62,7 @@
 | 失败模式 | run 不存在 → exit 1 + 候选 run 列表；jsonl 损坏（spec §13）→ warn + 从最近 checkpoint 恢复 |
 | 决策回引 | D-007（_resolve_run_dir 双路径） |
 
-#### 1.2.3 `/workflow:next`
-
-| 字段 | 内容 |
-|---|---|
-| ARGUMENTS 解析 | 无参数 |
-| 入参约束 | — |
-| 前置条件 | 当前节点 state = completed；存在拓扑下游节点 |
-| 副作用 | 推进到拓扑下一节点 + 替换变量 + 派发；jsonl 事件 `node_started` |
-| 返回输出 | 主对话回报新节点名 + 类型 + 输入摘要 |
-| 失败模式 | 当前节点未完成 → exit 1 + 完成判定提示；无下游节点 → 触发 workflow_completed |
-| 决策回引 | spec §7.2 节点执行决策表 |
-
-#### 1.2.4 `/workflow:save [<note>]`
+#### 1.2.3 `/workflow:save [<note>]`
 
 | 字段 | 内容 |
 |---|---|
@@ -84,7 +74,7 @@
 | 失败模式 | 无 run → exit 1 + 提示先 new/continue |
 | 决策回引 | spec §13 检查点续接 |
 
-#### 1.2.5 `/workflow:status [<run-id>]`
+#### 1.2.4 `/workflow:status [<run-id>]`
 
 | 字段 | 内容 |
 |---|---|
@@ -96,7 +86,7 @@
 | 失败模式 | run 不存在 → 列出候选；目录损坏 → warn |
 | 决策回引 | spec §6.4 父子树展示 |
 
-#### 1.2.6 `/workflow:list [--filter=<expr>]`
+#### 1.2.5 `/workflow:list [--filter=<expr>]`
 
 | 字段 | 内容 |
 |---|---|
@@ -108,7 +98,7 @@
 | 失败模式 | filter 语法错 → exit 2 + 示例 |
 | 决策回引 | D-002 双轨期扫描 |
 
-#### 1.2.7 `/workflow:approve`
+#### 1.2.6 `/workflow:approve`
 
 | 字段 | 内容 |
 |---|---|
@@ -120,7 +110,7 @@
 | 失败模式 | state 不匹配 → exit 1；hook 拦截（AI 调用）→ exit 2 BLOCKED |
 | 决策回引 | D-006（hook + isatty 双层），spec §15 |
 
-#### 1.2.8 `/workflow:reject <reason>`
+#### 1.2.7 `/workflow:reject <reason>`
 
 | 字段 | 内容 |
 |---|---|
@@ -132,19 +122,19 @@
 | 失败模式 | reason 太短 → exit 1 + 长度要求提示；同 1.2.7 hook / isatty 拦截 |
 | 决策回引 | D-006，spec §6.4 approval 节点 on_reject |
 
-#### 1.2.9 `/workflow:rollback <to-node>`
+#### 1.2.8 `/workflow:rollback <to-node>`
 
 | 字段 | 内容 |
 |---|---|
 | ARGUMENTS 解析 | `$1` = to-node（必填，节点 ID） |
-| 入参约束 | to-node ∈ 当前 run yaml 节点 ID 集合；必须是当前节点的拓扑上游 |
+| 入参约束 | to-node ∈ 当前 run yaml 节点 ID 集合；to-node 必须是当前节点的拓扑上游 |
 | 前置条件 | 当前 run state ∈ {running, paused, approval_pending, failed, completed}（cancelled 拒绝）；无并发 rollback（fcntl.flock 互斥） |
 | 副作用 | 调 `rollback_run(run_id, to-node)`：mv 产物到 `.archived/<ts>/` + jsonl 截断尾部 mv 为 `.tail` + 父跨子目录整体 mv（详见 §6） |
 | 返回输出 | "Rolled back <run-id> from <X> to <to-node> at <ts>"；归档目录路径 |
 | 失败模式 | to-node 不存在 → exit 1；非上游 → exit 1；并发 rollback → exit 1 + .in_progress 标记位置 |
 | 决策回引 | D-010 |
 
-#### 1.2.10 `/workflow:cancel`
+#### 1.2.9 `/workflow:cancel`
 
 | 字段 | 内容 |
 |---|---|
@@ -156,7 +146,7 @@
 | 失败模式 | state 不匹配 → exit 1；TaskStop 调用失败 → warn + jsonl 写 cancel_taskstop_failed |
 | 决策回引 | D-005 |
 
-#### 1.2.11 `/workflow:submit [--draft]`
+#### 1.2.10 `/workflow:submit [--draft]`
 
 | 字段 | 内容 |
 |---|---|
@@ -168,20 +158,33 @@
 | 失败模式 | gate fail → exit 2 + 缺口列表；推送冲突 → exit 1 + rebase 建议 |
 | 决策回引 | spec §12 阶段 7 SOP；submit-rules.md |
 
+#### 1.2.11 `/workflow:archive`
+
+| 字段 | 内容 |
+|---|---|
+| ARGUMENTS 解析 | 无 |
+| 入参约束 | — |
+| 前置条件 | 当前 run state = completed；meta.yaml.pr_number 已设置（即 submit 已跑过）；GATE-PR-MERGED-STATE 校验 PR 已合并 |
+| 副作用 | 写 meta.yaml.archived_at（ISO8601 East 8）+ outcome=shipped；jsonl 事件 `run_archived`；可选触发经验沉淀（lessons_extracted=true 由 `/knowledge:extract-experience` 单独触发，不在 archive 内） |
+| 返回输出 | "Archived <run-id> at <ts>; PR #N merged"；提示删除本地 / 远程分支命令（`git branch -d feat/req-<id>` / `git push origin :feat/req-<id>`） |
+| 失败模式 | PR 未 merged → exit 1 + GATE-PR-MERGED-STATE 缺口；run state ≠ completed → exit 1；无 pr_number → exit 1 + 提示先跑 submit |
+| 决策回引 | spec §12 阶段 7 SOP；既有 `requirement-archive` 行为对齐 |
+
 ### 1.3 命令×RunState 状态机矩阵
 
 行 = run state；列 = 命令；✓ = 允许；✗ = 拒绝（前置条件不满足时）；— = 无 run 上下文不适用。
 
-| state \ cmd | new | continue | next | save | status | list | approve | reject | rollback | cancel | submit |
+| state \ cmd | run | continue | save | status | list | approve | reject | rollback | cancel | submit | archive |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| (无 run) | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| running | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✓ | ✓ | ✗ |
-| paused | ✗ | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ | ✓ | ✓ | ✗ |
-| approval_pending | ✗ | ✗ | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ |
-| cancel_requested | ✗ | ✗ | ✗ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| cancelled | ✗ | ✗ | ✗ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| failed | ✗ | ✓ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ | ✓ | ✗ | ✗ |
-| completed | ✗ | ✗ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ | ✓ | ✗ | ✓ |
+| (无 run) | ✓ | ✗ | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| running | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✓ | ✓ | ✗ | ✗ |
+| paused | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✓ | ✓ | ✗ | ✗ |
+| approval_pending | ✗ | ✗ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ |
+| cancel_requested | ✗ | ✗ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| cancelled | ✗ | ✗ | ✗ | ✓ | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| failed | ✗ | ✓ | ✓ | ✓ | ✓ | ✗ | ✗ | ✓ | ✗ | ✗ | ✗ |
+| completed（PR 未 merged） | ✗ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ | ✓ | ✗ | ✓ | ✗ |
+| completed（PR merged） | ✗ | ✗ | ✓ | ✓ | ✓ | ✗ | ✗ | ✓ | ✗ | ✗ | ✓ |
 
 矩阵实现位置：每命令 SKILL.md 子动作开头先做 state 校验；不满足直接 exit 1 + 错误文案。覆盖来源：§1.2 各命令"前置条件"字段。
 
@@ -191,7 +194,7 @@
 
 - 每命令 happy path（不同合法状态进入）
 - 每命令非法状态拒绝（取 §1.3 矩阵中"✗"格子）
-- 跨命令串行：`new → continue → save → status → cancel` 端到端
+- 跨命令串行：`run → continue → save → status → submit → archive` 端到端 + 旁路 `cancel` 短路径
 - approve/reject 走 hook 拦截（命中 → exit 2）+ tty fallback（命中 → exit 0）双路径
 
 具体用例数与 fixture 设计见 OQ-DD-A1-T（detail-design 评审前补完）。
@@ -1243,15 +1246,15 @@ F-012 Plan 7 清理：删 PHASE_REQUIREMENTS / phase_enum / code_review_signoff 
 
 | 旧命令 | 目标 `/workflow:*` | ARGUMENTS 透传规则 |
 |---|---|---|
-| `/requirement:new <title>` | `/workflow:new standard-8phase "<title>"` | `$@` 拼空格作 title |
+| `/requirement:new <title>` | `/workflow:run standard-8phase "<title>"` | `$@` 拼空格作 title |
 | `/requirement:continue [<id>]` | `/workflow:continue [<id>]` | `$1` 直传 |
-| `/requirement:next` | `/workflow:next` | 无参数；D-009 例外保留实际实现至 Plan 6 |
+| `/requirement:next` | **无映射，保留独立旧实现** | 无参数；D-009 例外——直接调旧 `managing-requirement-lifecycle` 的 phase-transition 子动作 + `PHASE_REQUIREMENTS` 校验，**不**转发到 `/workflow:*`（语义将被引擎 main loop 自动推进 + `/workflow:status` 替代，过渡期保留旧实现至 Plan 6 自举验证通过） |
 | `/requirement:save [<note>]` | `/workflow:save [<note>]` | `$@` 拼空格作 note |
 | `/requirement:status [<id>]` | `/workflow:status [<id>]` | `$1` 直传 |
 | `/requirement:list [--filter=<expr>]` | `/workflow:list [--filter=<expr>]` | flag 直传 |
 | `/requirement:rollback <to-node>` | `/workflow:rollback <to-node>` | `$1` 直传 |
 | `/requirement:submit [--draft]` | `/workflow:submit [--draft]` | flag 直传 |
-| `/requirement:archive` | `/workflow:archive`（新引擎归档动作）| 无参数 |
+| `/requirement:archive` | `/workflow:archive` | 无参数 |
 
 #### 10.2.2 deprecation warning 文案模板
 

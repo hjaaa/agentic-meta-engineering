@@ -32,3 +32,4 @@
 2026-05-08 17:20:50 [save] OQ-DD-A7 闭合：§4.1~§4.7 落地 6 类 20 关键词清单 + 长度排序表 + state tiebreaker 伪码 + 等长 ask 模板 + keyword-matching.md 文件结构 + 18 用例矩阵
 2026-05-08 17:25:36 [save] OQ-DD-A6/A13/A14 一并闭合：§3.4 13 features DAG 完整表 + 关键路径 / §10.2 9 命令别名映射 + deprecation warning 模板 / §11 14 AC ↔ 测试 ID 双向追溯
 2026-05-08 17:27:10 [save] detail-design 主体闭合：18 项 OQ-DD-* 全收 / 1399 行 / SOURCING strict pass；剩 3 衍生 OQ；next: features.json + 评审
+2026-05-08 17:34:49 [save] §1 / §10.2 按 AC-03 规范名修正：new→run / 删 next / 加 archive；§1.3 矩阵列对齐 + completed 行拆 PR-未/已 merged 双行；§10.2.1 别名映射 next 改为不映射保留独立旧实现
