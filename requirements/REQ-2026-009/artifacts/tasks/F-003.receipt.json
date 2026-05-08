@@ -2,5 +2,5 @@
   "feature_id": "F-003",
   "schema_version": "1.0",
   "touches_violations": [],
-  "notes": "rev1 subagent 实施期 hook 软记 3 条 violation（tests/e2e/__init__.py 必需 / tests/workflows/test_yaml_schema.py task self-check 隐含），已扩 task.md touches 显式声明。rev2 review 后主 Agent 流程层 trivial 跟进 5 处文档（review-20260508-231801.md 报告落盘 / detailed-design.md §1.5+§2.1 同步 F-20/F-21/F-23/F-24 / specs/2026-05-08-workflow-unified-redesign.md L1021/1322-1324 同步 F-27），均属流程产物不计入 F-003 实施 scope 违规——参考 F-002 receipt.json 同模式。最终 status / commit_shas 待 review approved 后 finalize。"
+  "notes": "rev1 subagent 实施期 hook 软记 3 条 violation（tests/e2e/__init__.py 必需 / tests/workflows/test_yaml_schema.py task self-check 隐含），已扩 task.md touches 显式声明。rev2 review 后主 Agent 流程层 trivial 跟进 6 处文档（review-20260508-231801.md / review-20260508-233156.md 报告落盘 / detailed-design.md §1.5+§2.1 同步 F-20/F-21/F-23/F-24 / specs/2026-05-08-workflow-unified-redesign.md L1021/1322-1324 同步 F-27），均属流程产物不计入 F-003 实施 scope 违规——参考 F-002 receipt.json 同模式。最终 status / commit_shas 待 review approved 后 finalize。"
 }
