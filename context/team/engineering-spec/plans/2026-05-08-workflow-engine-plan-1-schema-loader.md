@@ -13,7 +13,7 @@
 - pytest（测试）— 已装
 - ruff（lint，select=F）— 已装
 
-**Spec 参考:** `docs/specs/2026-05-08-workflow-unified-redesign.md`（v2，APPROVED）
+**Spec 参考:** `context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md`（v2，APPROVED）
 
 **本 Plan 范围 = Spec §6（schema）+ §11.3（rollback 不实现，仅 schema 校验）+ §13 风险中的 loader 校验项**
 **不在范围**：节点执行、run-state.jsonl 读写、命令实现、引擎主循环（这些在 Plan 2-4）
