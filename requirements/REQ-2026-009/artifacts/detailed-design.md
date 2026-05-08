@@ -916,35 +916,150 @@ D-009 自举验证锁定的硬阈值（来源：requirements/REQ-2026-009/plan.m
 
 ### 9.1 path 引用扫描范围
 
-来源：requirements/REQ-2026-009/artifacts/outline-design.md:466 列出扫描类别。骨架级覆盖：`*.py` / `*.sh` / `*.md` 全文 grep；`.claude/skills/` / `.claude/commands/` / `.claude/agents/` 引用；`scripts/gates/registry.yaml` changed_files 模式；`context/team/engineering-spec/` 文档；历史 commit message（不改 git history，但需在迁移说明文档中说明）。
+来源：requirements/REQ-2026-009/artifacts/outline-design.md:466 列出扫描类别。本节给出精确扫描矩阵：
 
-### 9.2 工具签名
+| 扫描层 | 文件类型 / 路径 | 工具 | 命中后处理 |
+|---|---|---|---|
+| 1 代码层 | `*.py` / `*.sh` 全文 | `grep -rn "requirements/REQ-"` | 字面量 path → 自动改；变量拼接 / f-string → 标 risky_unmapped 人工 review |
+| 2 配置层 | `.claude/skills/**/*.md` / `.claude/commands/**/*.md` / `.claude/agents/**/*.md` | grep + frontmatter 解析 | frontmatter 里的 path 字段自动改；正文示例 path 自动改；正文说明性文本（如「在 requirements/ 下…」）保留作历史叙述 |
+| 3 gate 层 | `scripts/gates/registry.yaml` | YAML AST | `changed_files:` 字段中的 glob 自动改 |
+| 4 文档层 | `context/team/engineering-spec/**/*.md` / `CLAUDE.md` | grep | 自动改 |
+| 5 历史层 | `requirements/REQ-2026-*/{plan,notes,artifacts/*}.md` 历史 ADR | grep | 自动改本需求引用；其他需求 ADR / 历史快照按白名单不改（§9.3）|
+| 6 git 层 | git commit message 历史 | — | **不改 git history**；迁移说明文档显式声明历史 commit 中的旧路径作快照理解 |
+
+### 9.2 公开 API 签名
 
 ```python
 def migrate_requirements_to_runs(
     dry_run: bool = True,
     include_history_comments: bool = False,
+    whitelist: Optional[list[Path]] = None,
 ) -> MigrationReport:
-    """扫描 → 列出引用清单 → 修改 → 自检"""
+    """扫描全仓 requirements/ 字面量引用并按 §9.1 矩阵改成 runs/。
+    dry_run=True 仅产出报告，不写文件 / 不 mv 目录。
+    """
 ```
 
-`MigrationReport` 字段表（`files_changed[]` / `references_found[]` / `risky_unmapped[]` / `pre_commit_added[]`）见 OQ-DD-A12。
+参数：
 
-### 9.3 pre-commit hook 拦截规则
+- `dry_run`：True = 仅扫描 + 报告；False = 实际改写 + mv 目录
+- `include_history_comments`：True = 把代码中注释 / docstring 里的 path 字面量也算入 references_found（默认 False，注释作历史叙述）
+- `whitelist`：白名单路径列表，命中的文件跳过改写（缺省走工具内置白名单见 §9.4，来源：requirements/REQ-2026-009/plan.md:69 D-002）
 
-Plan 7 后新增 pre-commit hook：拒绝任何新增的 `requirements/` 字面量引用，白名单 = 历史 ADR / 迁移文档；详细规则见 OQ-DD-A12。
+### 9.3 数据结构：MigrationReport
 
-### 9.4 自动 vs 人工 review
+```python
+@dataclass(frozen=True)
+class MigrationReport:
+    scanned_files: int                       # 扫描的文件总数
+    files_changed: list[Path]                # 实际改动的文件相对路径（dry_run=True 时 = 即将改动）
+    references_found: list[Reference]        # 命中清单（含 file / line / old / new / kind）
+    risky_unmapped: list[Reference]          # 含变量拼接，需人工 review
+    skipped_whitelist: list[Reference]       # 白名单内（历史 ADR / 迁移文档），不改
+    moved_directories: list[DirectoryMove]   # 物理 mv 的目录对（dry_run 时仍报告意图）
+    pre_commit_added: bool                   # 本次是否新增 pre-commit hook
+    dry_run: bool
+    duration_ms: int
 
-字面量 path 自动改；含变量拼接（`f"requirements/{req_id}"`）的代码必须 grep 出来人工 review，改为 `_resolve_run_dir` 调用。
+@dataclass(frozen=True)
+class Reference:
+    file_path: Path
+    line: int
+    old_text: str                            # 原文片段（如 "requirements/REQ-2026-001/artifacts/..."）
+    new_text: str                            # 改后片段（即使 dry_run 也填）
+    kind: str                                # literal | f_string | concat | comment | docstring | yaml_glob
 
-### 9.5 单测覆盖
+@dataclass(frozen=True)
+class DirectoryMove:
+    src: Path                                # requirements/REQ-2026-001/
+    dst: Path                                # runs/REQ-2026-001/
+```
 
-测试落 `tests/tools/test_migrate_requirements.py`：dry_run 报告精确 / 实际改写后 grep 全仓再无 `requirements/` 字面量（除白名单）/ pre-commit hook 拦截新引用。
+### 9.4 白名单与豁免（内置默认）
 
-### 9.6 与 D-007 协同
+工具内置白名单，命中即 skip 不改：
 
-来源：requirements/REQ-2026-009/plan.md:110 D-007——rename 工具运行**之前**双路径 loader 必须存在；rename 完成后 loader 中"探测 `requirements/`"分支才能删（D-007 锁定 1 行清理）。
+- `requirements/INDEX.md` — 索引文档；改动由本工具自身重写
+- `requirements/REQ-*/plan.md` 历史 ADR 段（含 D-002 / D-007 引用记录）— 历史决策快照，保留旧路径作叙述
+- `*.archived/` 路径下任何文件 — 已归档，不动
+- 工具自身 + pre-commit 规则文件 — 自引用循环避免
+
+migration 说明文档（新增 `context/team/engineering-spec/migration/2026-XX-runs-rename.md`）显式声明以下边界：
+
+- git commit message 里的 `requirements/` 字面量不改（历史快照）
+- 已发布的 review verdict JSON `reviewed_artifacts[].path` 字段不改（hash 锁定）
+
+### 9.5 pre-commit hook 拦截规则
+
+Plan 7 后新增 `scripts/git-hooks/pre-commit-rename-guard.sh`，触发条件：
+
+- `git diff --cached` 中**新增**（不含修改）`requirements/REQ-` 字面量字符串 → exit 2 + 提示改用 `runs/REQ-`
+- 命中 §9.4 白名单路径 → 放行
+- 命中文件类型 ∈ `*.md` 且字面量在 markdown 引用块（`> ...`）或代码块（`\`\`\`...\`\`\``）内 → 放行（叙述性引用）
+
+紧急绕过：`CLAUDE_GATES_GLOBAL_BYPASS="<reason>"` 与既有 hook 同口径。
+
+### 9.6 自动 vs 人工 review
+
+| 改写策略 | 命中 kind | 处理 |
+|---|---|---|
+| **自动改** | `literal` / `yaml_glob` | grep + sed 直接替换；写入 `files_changed[]` |
+| **自动改 + 标注** | `comment` / `docstring`（仅 `include_history_comments=True` 时）| 同自动改，但报告标 kind=comment |
+| **人工 review** | `f_string` / `concat`（如 `f"requirements/{req_id}"`、`"requirements/" + req_id`）| 写入 `risky_unmapped[]`；建议改为 `_resolve_run_dir(req_id)` 调用（D-007）|
+| **跳过** | 命中 §9.4 白名单 | 写入 `skipped_whitelist[]` |
+
+### 9.7 单测覆盖
+
+测试落 `tests/tools/test_migrate_requirements.py`，覆盖 5 类断言：
+
+- **dry_run 报告精确**：fixture 仓库（含已知 N 处引用）→ dry_run 后 `references_found.len == N` + `files_changed == []`（dry_run 不写）
+- **wet_run 全改**：dry_run + wet_run 双跑后 grep 全仓 `requirements/REQ-` 字面量数 = 白名单数
+- **risky_unmapped 识别**：fixture 含 `f"requirements/{rid}"` → 进 `risky_unmapped[]` + 不进 `files_changed[]`
+- **白名单豁免**：fixture 含 `requirements/REQ-2026-001/plan.md` 历史引用 → 进 `skipped_whitelist[]`
+- **pre-commit hook 拦截**：fixture 模拟 `git diff --cached` 含新增 `requirements/REQ-` → hook exit 2
+
+Fixture 目录：`tests/tools/fixtures/migrate_requirements/` 含 mini 仓库快照（含 `*.py` / `*.md` / `*.yaml` 各 1-2 个含引用的样本 + 1 个白名单文件）。
+
+### 9.8 顺序约束（与 D-002 / D-007 / Plan 7 协同）
+
+时序锁定：
+
+```
+F-001 ~ F-010 完成（loader 已支持双路径，D-007）
+  ↓
+F-011 自举验证通过 + migration 测试 21/21（§8.4）
+  ↓
+F-013 启动：
+  ① dry_run = True 跑 migrate_requirements_to_runs → 产出 MigrationReport
+  ② 人工 review risky_unmapped 列表 → 改为 _resolve_run_dir 调用
+  ③ dry_run = False 跑 wet_run → 实际 mv 目录 + 改代码 + 新增 pre-commit hook
+  ④ 自检：grep 全仓 `requirements/REQ-` 字面量数 ≤ 白名单数
+  ↓
+F-012 Plan 7 清理：删 PHASE_REQUIREMENTS / phase_enum / code_review_signoff / /requirement:next
+  ↓
+最后：loader 中"探测 requirements/" 1 行删（D-007 锁定）
+```
+
+### 9.9 影响域
+
+新增文件：
+
+- `scripts/lib/migrate_requirements_to_runs.py`（API 实现 + MigrationReport / Reference / DirectoryMove dataclass）
+- `scripts/git-hooks/pre-commit-rename-guard.sh`（pre-commit 拦截）
+- `tests/tools/test_migrate_requirements.py`（5 类断言）
+- `tests/tools/fixtures/migrate_requirements/`（mini 仓库快照）
+- `context/team/engineering-spec/migration/2026-XX-runs-rename.md`（迁移说明文档）
+
+改动文件：
+
+- 全仓 `requirements/REQ-` 字面量 path（自动）
+- `requirements/INDEX.md`（工具自身重写）
+
+不改动文件：
+
+- `scripts/lib/_resolve_run_dir`（D-007 双路径 loader，本工具调用方）
+- 历史 commit message（不可改）
+- 已 sign-off 的 review verdict JSON（hash 锁定）
 
 ---
 
@@ -1038,11 +1153,7 @@ Plan 7+1 删 8 个别名（兼容期到期人工触发）
 
 - ~~**OQ-DD-A11（migration 测试 R001 ~ R007 等价点 + 通过门槛）**~~：**已闭合**——§8 全章重写：§8.1 关键认知（迁移≠重写，R 函数复用）/ §8.2 R001-R007 等价点对照（修正骨架 6 条名称错位 + 补 R007）/ §8.3 双跑对照测试矩阵（21 条用例）/ §8.4 通过门槛（21/21 pass + 0 false-pass / 0 false-fail）/ §8.5 顺序约束（与 §10.3 联动）/ §8.6 影响域（保留 R 函数 / 新增 21 fixture）。
 
-- **OQ-DD-A12（rename 工具 MigrationReport + pre-commit 规则）**：[待补充]
-  - 内容：`MigrationReport` 字段（`files_changed[]` / `references_found[]` / `risky_unmapped[]` / `pre_commit_added[]`）+ pre-commit hook 拦截白名单
-  - 依据：D-002 双轨共存 + D-007 双路径 loader 协同
-  - 风险：变量拼接 path 漏改 → 运行时找不到 run 目录；白名单过宽会让旧引用永久残留
-  - 验证时机：detail-design 评审前需给设计文档；Plan 7 实施时跑 dry_run 自检
+- ~~**OQ-DD-A12（rename 工具 MigrationReport + pre-commit 规则）**~~：**已闭合**——§9 全章扩展：§9.1 6 层扫描矩阵 / §9.2 公开 API（dry_run + include_history_comments + whitelist）/ §9.3 MigrationReport + Reference + DirectoryMove dataclass / §9.4 内置白名单 + 迁移说明文档边界 / §9.5 pre-commit hook 拦截规则 / §9.6 自动 vs 人工 review 分类（kind = literal/f_string/concat/comment/docstring/yaml_glob）/ §9.7 5 类单测 + fixture 目录布局 / §9.8 顺序约束 4 步流程（dry → 人工 → wet → 自检）/ §9.9 影响域。
 
 - **OQ-DD-A13（别名 deprecation warning 文案）**：[待补充]
   - 内容：8 个 `/requirement:*` 别名的精确 warning 文案模板 + ARGUMENTS 透传规则
