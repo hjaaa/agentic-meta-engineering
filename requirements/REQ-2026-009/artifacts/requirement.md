@@ -84,7 +84,7 @@ refs-requirement: true
   - `standard-8phase.yaml` 完整化（38 节点 + 8 阶段 Skill prompt 抽到 `.claude/workflows/prompts/`）+ 老需求 `meta.yaml` 的 phase 字段映射逻辑（来源：context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:1074）
   - `code-review-embedded.yaml`（8 critic 同层并发 + review-critic 对抗 + code-quality-reviewer 综合 + code-review-report 生成报告）+ 验证 `sub_workflow` 真复用（来源：context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:1080）
   - 11 个 `/workflow:*` 命令实现 + `managing-workflow-runs` 伞形 Skill + workflow-launcher 关键词触发 Skill + `/workflow:status` 父子树 + `/workflow:rollback` 跨父子规则（来源：context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:1090）
-  - 9 个 `/requirement:*` 命令（3 月兼容期保留实际实现 + 输出 deprecation warning；`/requirement:next` 由 D-009 修订为延后至 Plan 6 自举验证后 Plan 7 才删，覆盖 spec §4.3 立即删决策）+ pre-commit hook 拦截旧 `/requirement:` 引用（来源：plan.md D-009；context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:1093)
+  - 9 个 `/requirement:*` 命令（3 月兼容期保留实际实现 + 输出 deprecation warning；`/requirement:next` 由 D-009 修订为延后至 Plan 6 自举验证后 Plan 7 才删，覆盖 spec §4.3 立即删决策）+ pre-commit hook 拦截旧 `/requirement:` 引用（来源：requirements/REQ-2026-009/plan.md:128）（来源：context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:1093）
   - 自举验证（第 4 周起用新引擎承载本次改造剩余阶段）（来源：context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:1098）
   - 阶段 7 清理：删 `PHASE_REQUIREMENTS` / `phase_enum.py` / `code_review_signoff.py` / `/requirement:next`；CLAUDE.md / agentic-engineer-guide.md / 全部 SOP 文档更新；老 `requirements/` → `runs/` 批量 rename 工具（来源：context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:1103）
 - 不包含（参考 spec §1.3 + §14 未来扩展，明确 Post-MVP）：

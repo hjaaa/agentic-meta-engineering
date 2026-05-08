@@ -117,8 +117,8 @@
  │◀──cancel ack──│                                                                      │
 ```
 
-**关键点**：
-1. 父 Claude 用 `Agent({run_in_background: true})` 派子，不阻塞主对话（spec §11.2 v2.1 修订）
+**关键点**（来源：requirements/REQ-2026-009/plan.md:92）：
+1. 父 Claude 用 `Agent({run_in_background: true})` 派子，不阻塞主对话（来源：context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:1020）
 2. 子 jsonl 永远由子自身写，无跨 run 文件写权限
 3. cancel 时延上限 = poll 间隔 (默认 30s) + 子节点 graceful 退出耗时
 4. `cancel_requested` 是 run-state.jsonl 新增事件枚举（Plan 2 落地）
@@ -239,7 +239,7 @@
 **关键点**：
 1. state tiebreaker 优先级最高（避免 "approve 这个需求并跑下评审" 误判）
 2. 关键词长度排序表写入 `reference/keyword-matching.md`
-3. Skill **不引入新能力**，只翻译为 `/workflow:*`（来源：spec §4.2 Archon 设计原则）；Step 1 state tiebreaker 读 `run-state.jsonl` 仅用于路由仲裁（确认 active runs 状态），不参与节点执行 / 数据修改
+3. Skill **不引入新能力**，只翻译为 `/workflow:*`（依据见本节末尾"来源"行 spec §4.2 Archon 设计原则）；Step 1 state tiebreaker 读 `run-state.jsonl` 仅用于路由仲裁（确认 active runs 状态），不参与节点执行 / 数据修改
 4. 多意图组合（"开新需求 + 跑评审"）分两句说，串行执行能力 v2 演进
 
 > 来源：plan.md D-008；spec §4.2（line 177）；tech-feasibility R-6 line 218。
@@ -257,7 +257,7 @@
 | `.claude/skills/workflow-launcher/SKILL.md` | 关键词路由；3 步仲裁；翻译为 `/workflow:*` | 不直接调 lib，统一走 slash command |
 | `.claude/hooks/pre-tool-use-guard.sh` | 鉴别 AI vs 人 shell；拦截 approve/reject 调用 | 命中且非 tty → exit 2 |
 
-**禁止跨层**：
+**禁止跨层**（依据 §1.1 4 层模块视图分离原则；本设计阶段确立的架构约束 [待用户确认]）：
 - L1 命令不允许直接调 `scripts/lib/workflow_*.py`，必须走 L2 Skill
 - L2 Skill 不允许直接读写 `runs/<id>/run-state.jsonl` / `meta.yaml` 等 L4 文件，必须经 L3 `run_state.py` / `workflow_loader.py` 接口；L4 文件由 L3 独占 IO 权限
 - L3 lib 不允许互相调用业务编排逻辑（topological_sort / substitute_vars / run_artifact_checks 是无状态工具，可被多方调用；其余 lib 只暴露 API 给 L2）
