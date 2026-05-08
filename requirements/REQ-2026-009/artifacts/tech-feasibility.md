@@ -158,9 +158,9 @@ OQ-C（来源：requirements/REQ-2026-009/artifacts/requirement.md:149）指出 
 
 **背景**：父 run cancel 时，子 run 需要写 `parent_cancelled` 事件到自己的 `run-state.jsonl`（来源：context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:1020）。若子 run 同时处于活跃执行状态（subagent 正在运行），父 cancel 信号到达时子 jsonl 可能正在被写入，产生并发冲突。Claude Code 主对话单线程特性在一定程度上缓解了这个问题（主 Claude 同时只能执行一个动作），但 multi-Agent 并发场景（8 critic 同层运行）下，多个 subagent 并行写各自的 run-state.jsonl，父 cancel 传播的时序无法保证。
 
-**重估优先级（Plan 1 落地后）**：Plan 4 是第一个真正涉及 sub_workflow 联动的阶段。tech-research 阶段已完成对 Claude Code Task 工具能力的调研（详见 §8 D-T1），结论为：`Agent({run_in_background: true})` + `TaskStop({task_id})` 工具组合存在，但 `TaskStop` 是否 graceful 触发子 subagent 写 `parent_cancelled` 事件**无公开文档保证**。spec §11.2 表格中"子 run 写 `parent_cancelled`"的语义需要修订为：父 Claude **不直接**写子 jsonl，而是子 subagent 自身在节点边界 poll 父 jsonl 的 `cancel_requested` 事件，主动写 `parent_cancelled` + 自然退出（来源：context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:1020）。
+**重估优先级（Plan 1 落地后）**：Plan 4 是第一个真正涉及 sub_workflow 联动的阶段。tech-research 阶段已完成对 Claude Code Task 工具能力的调研（详见 plan.md 决策记录 D-005），结论为：`Agent({run_in_background: true})` + `TaskStop({task_id})` 工具组合存在，但 `TaskStop` 是否 graceful 触发子 subagent 写 `parent_cancelled` 事件**无公开文档保证**。spec §11.2 表格中"子 run 写 `parent_cancelled`"的语义需要修订为：父 Claude **不直接**写子 jsonl，而是子 subagent 自身在节点边界 poll 父 jsonl 的 `cancel_requested` 事件，主动写 `parent_cancelled` + 自然退出（来源：context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:1020）。
 
-**缓解（决策 D-T1）**：父子状态联动改为"子自检父"模式——
+**缓解（决策 D-005）**：父子状态联动改为"子自检父"模式——
 - 父 Claude 用 `Agent({run_in_background: true})` 派子 sub_workflow runner，不阻塞主对话
 - 用户 cancel → 父 jsonl 写 `cancel_requested`（事件枚举新增）
 - 子 subagent 每个节点边界 poll 父 jsonl，检测到 `cancel_requested` 即写 `parent_cancelled` 到子 jsonl 并 graceful 退出
@@ -197,7 +197,7 @@ MVP 期（standard-8phase + code-review-embedded 两套模板）嵌套深度 ≤
 
 **重估优先级（Plan 1 落地后）**：Plan 1 不涉及 approval 节点执行，此风险在 Plan 2 实现 approval 状态机时成为现实。Plan 2 的 SKILL.md 必须在 approval 节点的实现说明中明确：approve/reject 命令只能由人类 tty 终端触发（可通过 PreToolUse hook 拦截 AI shell 调用 `/workflow:approve`），或通过自然语言路由时有明确的人类意图信号。
 
-**缓解（决策 D-T2）**：B + C 双层组合：
+**缓解（决策 D-006）**：B + C 双层组合：
 - **B 层（技术拦截）**：`.claude/hooks/pre-tool-use-guard.sh` 的 Bash case 分支增加 `/workflow:approve` + `python3 scripts/lib/workflow_approve.py` 检测 + 非 tty 进程拒绝（与现有 `code_review_signoff.py` 的 `sys.stdin.isatty()` 校验同构，只是把校验位置从 cli script 搬到 hook 层；spec §15"放弃双校验"指的是双重确认链路，单一 hook 层校验不属于"双"）
 - **C 层（软约束）**：`context/team/ai-collaboration.md` 规则三从"sign-off 是人类专属动作"扩展为"sign-off / approval / reject 都是人类专属动作"，列出新增入口 `/workflow:approve` / `/workflow:reject`
 - 实施时机：Plan 2 实现 approval 状态机时同步落地；Plan 7 清理 `code_review_signoff.py` 时确保 hook 层 B 已生效
@@ -329,21 +329,21 @@ MVP 期（standard-8phase + code-review-embedded 两套模板）嵌套深度 ≤
 
 ## 6. 前置条件（上线前必须解决）
 
-1. ~~**OQ-D：approval 节点的人机鉴别安全替代**~~（已锁定 D-T2，详见 §8）——Plan 2 落地时按 B + C 组合实施：hook 层 `/workflow:approve` 校验 + ai-collaboration 规则三扩展。
+1. ~~**OQ-D：approval 节点的人机鉴别安全替代**~~（已锁定 D-006，详见 plan.md 决策记录）——Plan 2 落地时按 B + C 组合实施：hook 层 `/workflow:approve` 校验 + ai-collaboration 规则三扩展。
 
 2. **Plan 2 的 `run_state.py` 接口契约**（来源：context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:824）——`RunState.node_outputs` 和 `RunState.current_layer_index` 的精确语义必须在 Plan 2 设计阶段锁定，形成 Plan 3 / Plan 4 可依赖的接口文档，否则续跑逻辑会出现静默错判。
 
 3. **`PHASE_REQUIREMENTS` 迁移验证测试**（来源：scripts/lib/check_reviews.py:57）——阶段 7 清理前必须有一个自动化测试，逐一确认 standard-8phase.yaml 中对应节点已覆盖 `PHASE_REQUIREMENTS` 规则的等价语义。否则删除后门禁会出现空洞。
 
-4. ~~**OQ-A：双路径 loader 的实现细节**~~（已锁定 D-T3，详见 §8）——Plan 3 按 loader 内置识别两前缀实施。
+4. ~~**OQ-A：双路径 loader 的实现细节**~~（已锁定 D-007，详见 plan.md 决策记录）——Plan 3 按 loader 内置识别两前缀实施。
 
-5. ~~**OQ-B：workflow-launcher 关键词冲突仲裁策略**~~（已锁定 D-T4，详见 §8）——Plan 5 按"最长匹配 + state tiebreaker"3 步规则实施。
+5. ~~**OQ-B：workflow-launcher 关键词冲突仲裁策略**~~（已锁定 D-008，详见 plan.md 决策记录）——Plan 5 按"最长匹配 + state tiebreaker"3 步规则实施。
 
-6. ~~**OQ-C：自举失败回退策略**~~（已锁定 D-T5，详见 §8）——3 月兼容期旧命令保留实际实现作 fallback。
+6. ~~**OQ-C：自举失败回退策略**~~（已锁定 D-009，详见 plan.md 决策记录）——3 月兼容期旧命令保留实际实现作 fallback。
 
-7. ~~**`/requirement:next` 删除时间点**~~（已锁定 D-T5，详见 §8）——延后到 Plan 6 自举验证通过后才进入 Plan 7 清理；spec "立即删"决策被覆盖。
+7. ~~**`/requirement:next` 删除时间点**~~（已锁定 D-009，详见 plan.md 决策记录）——延后到 Plan 6 自举验证通过后才进入 Plan 7 清理；spec "立即删"决策被覆盖。
 
-8. ~~**OQ-02：`/workflow:rollback` 归档后原路径处理**~~（已锁定 D-T6，详见 §8）——Plan 5 按 R1 + F1 + T1 实施；spec §11.3 v2.2 修订同步落地。
+8. ~~**OQ-02：`/workflow:rollback` 归档后原路径处理**~~（已锁定 D-010，详见 plan.md 决策记录）——Plan 5 按 R1 + F1 + T1 实施；spec §11.3 v2.2 修订同步落地。
 
 ---
 
@@ -357,11 +357,11 @@ MVP 期（standard-8phase + code-review-embedded 两套模板）嵌套深度 ≤
 
 > 以下条目为 tech-research 阶段新增发现，与 requirement.md 中的 OQ-A/B/C/D 对应并补充分析。
 
-1. ~~**[待用户确认] `/requirement:next` 删除时间点**~~（已锁定 D-T5）。
+1. ~~**[待用户确认] `/requirement:next` 删除时间点**~~（已锁定 D-009）。
 
-2. ~~**[待用户确认] approval 节点人机鉴别替代方案（OQ-D）**~~（已锁定 D-T2，详见 §8）。
+2. ~~**[待用户确认] approval 节点人机鉴别替代方案（OQ-D）**~~（已锁定 D-006，详见 plan.md 决策记录）。
 
-3. ~~**[待用户确认] sub_workflow 父 cancel 信号如何传递给活跃 subagent（R-2）**~~（已锁定 D-T1，详见 §8）。
+3. ~~**[待用户确认] sub_workflow 父 cancel 信号如何传递给活跃 subagent（R-2）**~~（已锁定 D-005，详见 plan.md 决策记录）。
 
 4. **[待补充] `PHASE_REQUIREMENTS` 迁移验证测试的具体形态**：需要在 detail-design（Plan 7）阶段设计，明确是独立测试文件还是集成到 gate runner 的回归测试。
    - **内容**：独立 pytest 文件 `tests/lib/test_phase_requirements_migration.py`，逐一断言 standard-8phase.yaml 中的 artifact 节点覆盖了等价的评审前置约束（即旧 `PHASE_REQUIREMENTS[phase]` 列出的依赖阶段，在新 yaml 中存在对应 `artifact:must_exist` / `approval` 节点）。
@@ -371,167 +371,21 @@ MVP 期（standard-8phase + code-review-embedded 两套模板）嵌套深度 ≤
 
 ---
 
-## 8. tech-research 阶段决策记录
+## 8. 决策记录索引（详见 plan.md）
 
-> 本节登记 tech-research 阶段与用户讨论后锁定的设计决策（ADR 风格）。每条决策必须在 plan.md 同步落地为执行项。
+> tech-research 阶段锁定的 6 项设计决策（D-005 ~ D-010）已迁移到 `requirements/REQ-2026-009/plan.md` 的"决策记录"节作为单一事实源。本节仅作为 tech-feasibility 内部索引，列每条决策的标题 + 工程量影响 + Plan 落地点。完整 ADR（Context / Decision / Consequences / 来源）请查 plan.md。
 
-### D-T1：sub_workflow 父子 cancel 信号传递改为"子自检父"模式
+| ID | 标题 | 影响 Plan | 工程量重估 vs §5 |
+|---|---|---|---|
+| **D-005** | sub_workflow 父子 cancel = 子自检父 + `TaskStop` 兜底 | Plan 2 / 4 | Plan 2 含 cancel_requested 事件枚举 + 子自检父 poll 逻辑（含 §5 估算） |
+| **D-006** | approval 鉴别 = hook 拦截 + ai-collaboration 软约束 | Plan 2 / 7 | Plan 2 增 hook 扩展（约 +0.5 人天）+ workflow_approve.py / workflow_reject.py（约 +0.5 人天）|
+| **D-007** | 双路径 loader 内置识别两前缀 | Plan 3 | 已含在 §5 Plan 3 "双路径 loader 实现"项 0.7 人天 |
+| **D-008** | launcher 关键词 = state tiebreaker + 最长匹配 + 兜底 ask | Plan 5 | 已含在 §5 Plan 5 "workflow-launcher Skill"项 1 人天 |
+| **D-009** | 旧命令保留实现 + `/requirement:next` 延后删 | Plan 5 / 6 / 7 | Plan 7 工期 +0.3 人天（迁移验证测试关联）；Plan 5 别名实现 +0 人天（已含）|
+| **D-010** | rollback 归档 = mv + F1 + T1 + `.in_progress` atomic | Plan 5 | §5 Plan 5 "/workflow:rollback 跨父子规则"项 1.4 人天已涵盖；新增 atomic 标记约 +0.2 人天 |
 
-| 字段 | 值 |
-|---|---|
-| 决策日期 | 2026-05-08 |
-| 决策点 | R-2 风险 / spec §11.2 |
-| 状态 | 已锁定 |
-| 影响 Plan | Plan 2（jsonl 事件枚举）/ Plan 4（sub_workflow 节点实现） |
+**§5 总计微调**：35.9 + 0.5 + 0.5 + 0.3 + 0.2 = **37.4 人天**（Plan 2-7，单人）。挂钟工期 ~5.7 周 ≈ 6 周（与 spec §12 7 周仍吻合，余 ~1 周缓冲）。
 
-**决策内容**：父 Claude **不直接**写子 jsonl，而是把 cancel 信号通过父 jsonl 的 `cancel_requested` 事件外露；子 subagent 在每个节点边界 poll 父 jsonl，检测到该事件后自写 `parent_cancelled` 到子 jsonl 并 graceful 退出。父 Claude 等子返回（graceful）或 30s 超时后调 `TaskStop({task_id})` forceful 兜底。
-
-**调研依据**：Claude Code v2.1.63+ 的 `Agent({run_in_background: true})` + `TaskStop({task_id})` + `TaskOutput({task_id})` 工具组合存在；`TaskStop` schema 可调用但 graceful/forceful 语义无公开文档。"子自检父"绕过：(1) 跨 subagent 文件写权限模糊；(2) `TaskStop` 是否给子 graceful 写入机会的不确定性。
-
-**spec §11.2 修订项**：表格中"父 run cancel | 写 `workflow_cancelled` | 写 `parent_cancelled` 事件 → cancel"中"子 run 写 `parent_cancelled`"的写入主体明确为**子自身**而非父代写；jsonl 事件枚举新增 `cancel_requested`（父侧）。
-
-**Plan 2 落地项**：
-1. `run_state.py` 事件枚举新增 `cancel_requested`（父侧）+ `parent_cancelled`（子侧）的写入逻辑
-2. `workflow-engine` Skill 的 sub_workflow 节点执行说明明确"用 `Agent({run_in_background: true})` 派子 + 等子返回 / 30s 超时调 `TaskStop`"
-3. 子 subagent 在节点边界 poll 父 jsonl 的实现（每节点切换前读父 jsonl 最后 N 行，检测 `cancel_requested`）
-
-**Plan 4 验证项**：smoke test 覆盖父用户 cancel → 子在下一节点边界 graceful 写 `parent_cancelled` 的端到端路径；jsonl 文件追加写 O_APPEND 原子性单测覆盖。
-
-### D-T2：approval 节点人机鉴别 = hook 层技术拦截 + ai-collaboration 软约束
-
-| 字段 | 值 |
-|---|---|
-| 决策日期 | 2026-05-08 |
-| 决策点 | OQ-D / R-4 风险 |
-| 状态 | 已锁定 |
-| 影响 Plan | Plan 2（approval 状态机）/ Plan 7（清理 code_review_signoff.py） |
-
-**决策内容**：B + C 双层组合替代 spec §15 删除的 tty 双校验。
-
-**B 层（技术拦截）**：`.claude/hooks/pre-tool-use-guard.sh` 的 Bash case 分支增加对 `/workflow:approve` / `/workflow:reject` / `python3 scripts/lib/workflow_approve.py` 的检测，命令源自非 tty 进程时 `cat >&3` 拒绝消息后 `exit 2`。与现有 `code_review_signoff.py:61` 的 `sys.stdin.isatty()` 同构，只是把校验位置从 cli script 搬到 hook 层——spec §15"放弃双校验"指的是双重确认链路（cli + tty 两处），单一 hook 层校验不属于"双"。
-
-**C 层（软约束）**：`context/team/ai-collaboration.md` 规则三从"sign-off 是人类专属动作"扩展为"sign-off / approval / reject 都是人类专属动作"，新增入口列表：`/workflow:approve`、`/workflow:reject`、`python3 scripts/lib/workflow_approve.py`、`python3 scripts/lib/workflow_reject.py`。
-
-**Plan 2 落地项**：
-1. `pre-tool-use-guard.sh` 的 Bash case 分支扩展（约 10-15 行 shell + python helper）
-2. `workflow_approve.py` / `workflow_reject.py` 实现 `sys.stdin.isatty()` 双重校验（hook 漏拦时仍能 fail-closed）
-3. ai-collaboration 规则三文档同步更新
-
-**Plan 7 清理项**：删除 `code_review_signoff.py` 时确保 `pre-tool-use-guard.sh` 的 hook 校验已生效；CLAUDE.md / ai-collaboration 规则三落地的版本号 ≥ 删除提交。
-
-### D-T3：双路径 loader = 内置识别两前缀，不引入 schema 字段
-
-| 字段 | 值 |
-|---|---|
-| 决策日期 | 2026-05-08 |
-| 决策点 | OQ-A / D-002 双轨共存 |
-| 状态 | 已锁定 |
-| 影响 Plan | Plan 3（standard-8phase yaml + loader 适配） |
-
-**决策内容**：loader 解析 yaml 引用的 `<id>` 时，按 `requirements/<id>/` → `runs/<id>/` 顺序探测，命中即用。yaml schema **不**新增 `legacy_path` 字段，配置文件层也**不**新增 `loader-config.yaml`。3 月兼容期结束后只需删 loader 中"探测 `requirements/`"的 1 行代码，无 yaml 文件清理负担。
-
-**理由**：MVP 范围仅 2 个路径前缀，loader 内置探测逻辑短（约 5 行），与 schema 配置/外部配置文件相比，作者负担最低 + 清理成本最低；spec D-002 决策"双轨共存"本身就要求 loader 是统一识别入口，schema 字段化反而把"双轨"语义泄漏到每一个 yaml 文件。
-
-**Plan 3 落地项**：
-1. `workflow_loader.py` 新增 `_resolve_run_dir(req_id) -> Path`：先 stat `requirements/<req_id>/`，不存在则 stat `runs/<req_id>/`；都不存在抛 `WorkflowError`
-2. `workflow-engine` Skill 在构建 `$ARTIFACTS_DIR` / `$OUTPUT_DIR` 变量时调 `_resolve_run_dir` 而非硬编码前缀
-3. 单测覆盖 4 种场景：仅 `requirements/` 存在 / 仅 `runs/` 存在 / 都存在（取 `requirements/` 优先）/ 都不存在
-
-### D-T4：workflow-launcher 关键词冲突 = 最长匹配 + state tiebreaker
-
-| 字段 | 值 |
-|---|---|
-| 决策日期 | 2026-05-08 |
-| 决策点 | OQ-B / spec §4.2 |
-| 状态 | 已锁定 |
-| 影响 Plan | Plan 5（workflow-launcher Skill） |
-
-**决策内容**：launcher Skill 的关键词仲裁规则按以下顺序判定：
-1. **state tiebreaker**：检测当前是否有 run 处于 `approval_pending` 状态——是则优先匹配 `approve` / `reject` 关键词，绕过最长匹配
-2. **最长匹配**：所有命中关键词按匹配字符长度倒序排序，取最长的关键词对应的 `/workflow:*` 命令
-3. **兜底 ask**：若有 ≥2 个等长关键词命中（极小概率），主 Claude 必须 ask 用户消歧
-
-多步连接词（"再" / "接下来" / "and then"）的串行执行能力**不在 MVP 范围**——属于 v2 演进项（如有需要再加）。
-
-**Plan 5 落地项**：
-1. `.claude/skills/workflow-launcher/SKILL.md` 写明上述 3 步仲裁规则（5-10 行 SOP）
-2. `reference/keyword-matching.md` 列出 spec §4.2 全部关键词的字符长度排序（avoid 字符串解析时的 ambiguity）
-3. 单测覆盖 ≥3 个冲突场景：("继续这个新需求"=继续优先) / ("approve 这个需求并跑代码评审"=approval_pending 时 approve 优先) / ("跑下代码评审"=单意图直通)
-
-### D-T5：自举失败回退 = 旧命令保留实现，3 月兼容期 = 天然 fallback；`/requirement:next` 延后删除
-
-| 字段 | 值 |
-|---|---|
-| 决策日期 | 2026-05-08 |
-| 决策点 | OQ-C / R-3 / spec §4.3 |
-| 状态 | 已锁定（**覆盖 spec "立即删 `/requirement:next`" 决策**） |
-| 影响 Plan | Plan 5（命令体系）/ Plan 6（自举验证）/ Plan 7（清理） |
-
-**决策内容**：
-- 3 月兼容期内**所有** `/requirement:*` 命令保留**实际实现**（而非仅别名转发到 `/workflow:*`），与新引擎并行运行
-- `/requirement:next` 不再"立即删"——延后到 Plan 6 自举验证通过后才进入 Plan 7 清理
-- Plan 6 自举验证设硬阈值（详见 Plan 6 设计稿）：本需求自身从 `tech-research` 推到 `completed` 全程必须用新引擎跑通，过程中任何阶段 fallback 到旧命令视为验证失败 → 阻塞 Plan 7
-- 自举失败时，用户手动调旧命令推进当前 run 即可，新引擎在 Plan 6 内迭代修复
-
-**与 spec §4.3 / §15 关系**：spec 表"`/requirement:next` 处理 = 别名（3 月兼容期）"已**修订为"实现保留 + 别名（3 月兼容期）"**——别名仅用于 8 个非 `:next` 命令；`:next` 在 Plan 6 验证完成前保持原实现。
-
-**Plan 5 落地项**：
-1. 8 个 `/requirement:*` 命令（除 `:next`）的 .md 文件正文替换为"调用对应 `/workflow:*` 命令 + 输出 deprecation warning（3 月兼容期内保留）"
-2. `/requirement:next` .md 保留原 SOP（继续走 `managing-requirement-lifecycle` Skill）
-3. `managing-requirement-lifecycle` Skill 不动，与新 `managing-workflow-runs` Skill 并行存在
-
-**Plan 6 落地项**：自举验证 SOP 显式写"全程禁用旧命令"，任何 fallback 命中即 verification failed。
-
-**Plan 7 清理项**：删除 `/requirement:next` + `managing-requirement-lifecycle` Skill + `PHASE_REQUIREMENTS` 等旧实现的硬性顺序约束 = Plan 6 verification passed → 旧命令的 deprecation warning 升级为 hard error → 1 个迭代周期后真删除。
-
-### D-T6：rollback 归档语义 = mv 原路径 + 子 run 目录整体 mv + 每次独立 timestamp 目录
-
-| 字段 | 值 |
-|---|---|
-| 决策日期 | 2026-05-08 |
-| 决策点 | OQ-02 / spec §11.3 |
-| 状态 | 已锁定（**spec §11.3 同步 v2.2 修订**） |
-| 影响 Plan | Plan 5（`/workflow:rollback` 命令实现） |
-
-**决策内容**：
-
-1. **R1 单层 run 归档语义**：`/workflow:rollback <run-id> --to-node=X` 执行时，X 节点及之后所有产物用 `mv` 移到 `.archived/<rollback-ts>/<原相对路径>`，**原路径删除**。jsonl 自身按 §11.3 step 1 截断到 X 之前后，被截断的事件流也归档到同一 `.archived/<rollback-ts>/run-state.jsonl.tail` 便于事后审计。
-   - 优点：实现最简；X 重跑时 `artifacts/` 目录干净，无文件碰撞；多次 rollback 的历史完整保留
-   - 用户 mental model：`.archived/` 是"rollback 时间机器"，每个时间戳目录是一个完整快照
-
-2. **F1 跨父子 rollback 时子 run 目录处理**：父 rollback 越过 sub_workflow 节点时，子 run 的整个目录 `runs/<child-id>/` **完整 mv** 到父的 `.archived/<rollback-ts>/sub_runs/<child-id>/`。子 run id 释放，下次父 continue 重启 sub_workflow 节点时**生成新的 child run id**（不复用旧 id）。
-   - 子 run id 的内嵌时间戳/uuid 保证跨 rollback 不混淆历史
-   - 子 run 自己的 jsonl 也整体进父归档，避免子 run 留半残目录
-
-3. **T1 多次 rollback 归档策略**：`.archived/` 下每次 rollback 独立 timestamp 子目录并存，**互不覆盖**：
-   ```
-   runs/<id>/.archived/
-     ├── 2026-05-08T15:00:00+0800/
-     │   ├── artifacts/...（第一次 rollback 时归档）
-     │   ├── run-state.jsonl.tail
-     │   └── sub_runs/<child-id-1>/...
-     ├── 2026-05-08T18:30:00+0800/
-     │   ├── artifacts/...（第二次 rollback 时归档）
-     │   └── run-state.jsonl.tail
-     └── ...
-   ```
-   - 存储增长：N 次 rollback = N 个目录（线性，可接受）
-   - 配合 `/workflow:archive --gc` 命令（v2 后续可加）做老归档清理
-
-**spec §11.3 同步修订**：
-- 把 step 2 "归档 X 及以后产物到 `runs/<id>/.archived/<timestamp>/`" 明确为 mv 语义（非 cp / 非 stub）
-- 跨父子第 4 条 "子 run 的产物归档到父 run 的 `.archived/` 目录" 升级为子 run 整目录 mv + 子 run id 不复用
-- 新增 step 0 说明 timestamp 目录每次独立、并存策略
-
-**Plan 5 落地项**：
-1. `scripts/lib/workflow_rollback.py` 实现 `rollback_run(run_id, to_node, target_id=None)`：
-   - 按拓扑序找 X 之后的所有节点 ID 列表
-   - 计算这些节点写出的产物路径集合（参考 yaml 节点的 `artifact:` 字段 + `output_capture:` 字段）
-   - 创建 `.archived/<rollback-ts>/`，用 `shutil.move` 整体 mv
-   - 截断 jsonl，被截断尾部 mv 为 `<archived>/run-state.jsonl.tail`
-   - 父 run 跨 sub_workflow 时递归处理子 run 目录
-2. 单测覆盖 4 场景：单层 R1 / 跨父子 F1 / 多次 T1 / rollback 到 root（全归档）
-3. `/workflow:rollback` slash command 文件 + reference/rollback-semantics.md 文档同步
-
-**风险**：rollback 进行中如果用户中断（Ctrl-C），原路径文件可能已 mv 一半。Plan 5 实现 atomic rollback：先把所有目标产物收集 → 写 `.archived/<ts>/.in_progress` 标记 → 全部 mv 完成后删 `.in_progress` → 截断 jsonl。续跑时检测残留 `.in_progress` 标记 → 完成或回退操作。
-
+**spec 同步修订**（详见 spec doc 头部 v2.1 / v2.2 主要变更）：
+- D-005 → spec v2.1（§11.2 父 cancel 行 + §5 事件枚举新增 `cancel_requested` / `parent_cancelled` / `parent_rolled_back`）
+- D-010 → spec v2.2（§11.3 rollback 三段流程 + `.in_progress` atomic 标记）
