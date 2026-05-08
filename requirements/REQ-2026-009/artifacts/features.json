@@ -45,7 +45,7 @@
     {
       "id": "F-002",
       "title": "8 种节点类型实现（含 sub_workflow / loop / approval）",
-      "description": "在 F-001 dispatcher 之上落地 8 种节点类型（agent / skill / bash / approval / loop / sub_workflow / artifact_checks / phase_transition）的执行决策表 + 字段互斥 + 嵌套深度 ≤ 2 校验（来源：detailed-design §1.5 末端 3 节点示例 / §2.2 frontmatter 字段表 / outline §6 模块视图 / spec §6.4 / §11.2）。每节点至多 1 类型字段；sub_workflow 透传 args 经 shellQuote 转义注入子 run $ARGUMENTS；loop 节点读 jsonl 最近一条 loop_iteration_completed 事件填 $LOOP_OUTPUT / $LOOP_PREV_OUTPUT。run_state.py 新增事件枚举 cancel_requested / parent_cancelled / parent_rolled_back（D-005 / D-010 落地依赖）。",
+      "description": "在 F-001 dispatcher 之上落地 8 种节点类型字段（agent / skill / prompt（含 prompt_file）/ bash / approval / loop / sub_workflow / artifact）的执行决策表 + 字段互斥 + 嵌套深度 ≤ 2 校验（来源：detailed-design §1.5 末端 3 节点示例 / §2.2 frontmatter 字段表 / outline §6 模块视图 / spec §6.2 / §6.4 / §11.2）。每节点至多 1 类型字段；sub_workflow 透传 args 经 shellQuote 转义注入子 run $ARGUMENTS；loop 节点读 jsonl 最近一条 loop_iteration_completed 事件填 $LOOP_OUTPUT / $LOOP_PREV_OUTPUT。run_state.py 新增事件枚举 cancel_requested / parent_cancelled / parent_rolled_back（D-005 / D-010 落地依赖）。",
       "modules": [
         ".claude/skills/workflow-engine/reference/node-types.md",
         ".claude/skills/workflow-engine/SKILL.md",
@@ -71,11 +71,11 @@
         "tests/lib/test_run_state.py"
       ],
       "acceptance": [
-        "TC-F2-1: pytest tests/lib/test_node_types.py::test_8_node_mutex 绿——invalid-mutex.yaml（同节点声明 2 类型字段）loader 拒绝 + 错误码精确（AC-07）",
-        "TC-F2-2: pytest tests/lib/test_node_types.py::test_nest_depth_limit 绿——invalid-deep-nest.yaml（sub_workflow 嵌套 3 层）loader 拒绝（AC-07）",
-        "TC-F2-3: pytest tests/lib/test_node_types.py::test_sub_workflow_args 绿——sub_workflow 节点 args:{feature_id: $upstream.output.id} 经 shellQuote 注入子 $ARGUMENTS 字面量与原文一致（spec §6.4 / §6.5）",
-        "TC-F2-4: pytest tests/lib/test_node_types.py::test_loop_output_inject 绿——loop 节点本轮 $LOOP_OUTPUT = stdout / 下轮 $LOOP_PREV_OUTPUT = 上轮 stdout / 首轮 $LOOP_OUTPUT 替换为空字符串（spec §6.5）",
-        "TC-F2-5: pytest tests/lib/test_run_state.py::test_event_enum_extension 绿——cancel_requested / parent_cancelled / parent_rolled_back 三新事件枚举可写入 + 反扫识别（D-005 / D-010 联动）"
+        "TC-F2-1: pytest tests/lib/test_node_types.py -k '8_node_mutex' 绿——invalid-mutex.yaml（同节点声明 2 类型字段）loader 拒绝 + 错误码精确（AC-07）",
+        "TC-F2-2: pytest tests/lib/test_node_types.py -k 'nest_depth_limit' 绿——invalid-deep-nest.yaml（sub_workflow 嵌套 3 层）loader 拒绝 + 边界 depth=2 通过（AC-07）",
+        "TC-F2-3: pytest tests/lib/test_node_types.py -k 'sub_workflow_args or shell_quote' 绿——sub_workflow 节点 args:{feature_id: $upstream.output.id} 经 shellQuote 注入子 $ARGUMENTS 字面量与原文一致（spec §6.4 / §6.5）",
+        "TC-F2-4: pytest tests/lib/test_node_types.py -k 'loop_output' 绿——loop 节点本轮 $LOOP_OUTPUT = stdout / 下轮 $LOOP_PREV_OUTPUT = 上轮 stdout / 首轮 $LOOP_OUTPUT 与 $LOOP_PREV_OUTPUT 均替换为空字符串（spec §6.5）",
+        "TC-F2-5: pytest tests/lib/test_run_state.py -k 'event_enum' 绿——cancel_requested / parent_cancelled / parent_rolled_back 三新事件枚举可写入 + 反扫识别（D-005 / D-010 联动）"
       ]
     },
     {

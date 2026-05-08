@@ -1,0 +1,13 @@
+{
+  "feature_id": "F-002",
+  "schema_version": "1.0",
+  "status": "DONE",
+  "completed_at": "2026-05-08T22:35:00+08:00",
+  "commit_shas": [
+    "c74918c",
+    "c50d0d8",
+    "3f08da0"
+  ],
+  "touches_violations": [],
+  "notes": "F-002 subagent 实施期 0 越界（5 yaml fixture + 2 Python 测试 + 1 Markdown reference 全部在 touches 内）；review approved 后 4 处 minor 文档跟进由主 Agent 亲手修复（detailed-design.md §2.5 单行 / node-types.md:86 approval 字段名 / features.json:48 节点类型名错引 / tasks/F-002.md acceptance pytest 节点 ID 改 -k 形式），属流程层 trivial 跟进，不计入 F-002 实施 scope 违规。"
+}

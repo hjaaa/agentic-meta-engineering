@@ -49,3 +49,5 @@
 2026-05-08 21:49:47 [signoff] REV-REQ-2026-009-code-F-001-002 approved by hj19961223@gmail.com
 2026-05-08 21:50:46 [development] F-001 完成（review approved sign-off / status=done / review_report=artifacts/review-20260508-214811.md / 释放派发锁）
 2026-05-08 21:54:07 [save] F-001 闭环（done + sign-off + 释放锁 + 9 commit / rev2 looks_clean 90）；F-002 touches 预扩 commit 862078d；待用户拍板派 F-002（heavy/opus）
+2026-05-08 21:58:02 [development] F-002 派发（model=opus）：8 种节点类型实现（互斥/嵌套/sub_workflow args/$LOOP_OUTPUT/事件枚举测试），TDD 切片 5 个 TC + node-types.md reference
+2026-05-08 22:25:50 [review:approved] F-002 code-review 88/100 looks_clean (REV-REQ-2026-009-code-F-002-001) — 6 finding 经 critic + judge 降级到 4 minor (3 文档命名 + 1 文档冲突)，归 trivial 跟进；待 tty sign-off

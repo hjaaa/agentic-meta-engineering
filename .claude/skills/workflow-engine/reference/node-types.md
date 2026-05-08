@@ -81,9 +81,10 @@
 
 ```yaml
 # approval：写状态文件后退出，等用户 /workflow:approve
+# spec §6.4 主字段名是 message；loader 同时接受 gate_message 作为别名
 - id: pr-merged-gate
   approval:
-    gate_message: 'PR 已合并？approve 进入归档。'
+    message: 'PR 已合并？approve 进入归档。'
 ```
 
 ```yaml
