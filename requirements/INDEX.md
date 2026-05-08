@@ -2,26 +2,97 @@
 
 本目录承载全部需求的全生命周期产出物。入 git，是团队资产。
 
-## 当前无活跃需求
+新需求用 `/requirement:new <标题>` 创建；恢复用 `/requirement:continue`；查看进度用 `/requirement:status`；提 PR 用 `/requirement:submit`。
 
-用 `/requirement:new` 创建你的第一个需求。
+## 当前活跃需求
 
-## 目录结构（每个需求一个子目录）
+| ID | 标题 | 阶段 | 分支 |
+|---|---|---|---|
+| [REQ-2026-009](REQ-2026-009/) | 自定义工作流改造 | `tech-research` | `feat/req-2026-009` |
+
+## 已完成需求（按 ID 倒序）
+
+| ID | 标题 | PR | 归档 |
+|---|---|---|---|
+| [REQ-2026-008](REQ-2026-008/) | 派发链强制结构化升级 | #60 | 2026-05-07 |
+| [REQ-2026-007](REQ-2026-007/) | submit Codex review-loop + archive 命令 | #57 | 2026-05-05 |
+| [REQ-2026-006](REQ-2026-006/) | 门禁系统 A+B 重构（pre-tool-use 热路径解耦 + 全局逃生 + 异步 audit） | #54 | — |
+| [REQ-2026-005](REQ-2026-005/) | 门禁系统加固：strict 失效 / Hook 覆盖 / submit 门禁等 10 项缺陷 | #50 | — |
+| [REQ-2026-003](REQ-2026-003/) | 代码审查人类必经卡点（路由确认 + 结论 sign-off） | #48 | — |
+| [REQ-2026-002](REQ-2026-002/) | 统一门禁系统 | #45 | — |
+| [REQ-2026-001](REQ-2026-001/) | 会话结束经验提取 Hook | #32 | — |
+
+> REQ-2026-004 跳号（不复用，详见 [REQ-2026-005/plan.md](REQ-2026-005/plan.md) `D-001`）。
+
+## 单需求目录结构
 
 ```
 requirements/REQ-YYYY-NNN/
-├── meta.yaml         # 元信息：阶段、分支、服务、门禁历史、log_layout
-├── plan.md           # 阶段级计划
-├── process.txt       # 语义事件日志（阶段切换 / 评审 / 门禁 / SESSION_END 等）
-├── process.tool.log  # v2: 工具级日志（Hook 自动追加 Edit/Write/Bash，不入 git）
-├── notes.md          # 随手笔记
-└── artifacts/
-    ├── requirement.md          # 需求文档（阶段 2）
-    ├── tech-feasibility.md     # 技术预研（阶段 3）
-    ├── outline-design.md       # 概要设计（阶段 4）
-    ├── detailed-design.md      # 详细设计（阶段 5）
-    ├── features.json           # 功能点清单
-    ├── tasks/<feature-id>.md   # 任务拆分（阶段 6）
-    ├── review-YYYYMMDD-HHMMSS.md   # 代码审查报告（阶段 7）
-    └── test-report.md          # 测试报告（阶段 8）
+├── meta.yaml        # 元信息：phase / branch / services / gates_passed / reviews / 语义字段
+├── plan.md          # 活档案：上半（可覆盖）+ 下半 ## 决策记录 ADR（append-only）
+├── process.txt      # 时间线状态事件流（推进/停滞有意义的事；append-only）
+├── notes.md         # 跨需求可复用知识池（/knowledge:extract-experience 的原料；append-only）
+├── artifacts/       # 阶段产出（详见下文 8 阶段映射）
+│   ├── requirement.md          # 阶段 2 需求文档
+│   ├── tech-feasibility.md     # 阶段 3 技术预研
+│   ├── outline-design.md       # 阶段 4 概要设计
+│   ├── detailed-design.md      # 阶段 5 详细设计
+│   ├── features.json           # 阶段 5/6 功能点清单
+│   ├── tasks/<F-NNN>.md        # 阶段 6 单 feature 任务卡
+│   ├── tasks/<F-NNN>.receipt.json  # 阶段 7 派发链回执（GATE-POST-DEV-RECEIPT 依赖）
+│   ├── review-YYYYMMDD-HHMMSS.md   # 阶段 7 代码审查报告
+│   ├── codex-reviews/          # 可选：submit 走 codex review-loop 的产出
+│   ├── test-report.md          # 阶段 8 测试报告
+│   ├── traceability-report.md  # 可选：阶段 8 追溯链报告
+│   └── retrospective.md        # 可选：自定义回溯文档
+└── reviews/         # 评审 verdict JSON（GATE-REVIEW-VERDICT 依赖）
+    ├── definition-NNN.json         # 阶段 2 评审
+    ├── outline-design-NNN.json     # 阶段 4 评审
+    ├── detail-design-NNN.json      # 阶段 5 评审
+    └── code-F-NNN-NNN.json         # 阶段 7 单 feature 代码审查
 ```
+
+## 三文件职责区分（按 [spillover-redefine spec §3](../context/team/engineering-spec/specs/2026-04-24-spillover-redefine-design.md)）
+
+| 文件 | 写什么 | 不写什么 | 写入通道 |
+|---|---|---|---|
+| **process.txt** | 时间线事件流（推进/停滞有意义） | 经验沉淀 / 决策（去 notes.md / plan.md） | 仅 `requirement-progress-logger` Skill |
+| **notes.md** | 跨需求可复用经验（坑 / 假设 / 工具细节 / 待澄清） | 当前需求一次性细节 / 时间线事件 | `/note <内容>` 命令 + 主 Agent 自主 append |
+| **plan.md** 上半 | 目标 / 范围 / 里程碑 / 风险 | 决策（走下半 ADR） | 主 Agent 阶段对齐时**覆盖** |
+| **plan.md** 下半 | `## 决策记录` ADR 小卡集（D-NNN） | 风险跟踪、临时备忘 | 主 Agent 决策时**append** |
+
+**判断口诀**：
+
+- 「时间线发生过的事」→ process.txt
+- 「将来 `/knowledge:extract-experience` 会提到 `context/team/experience/` 吗」→ 会 → notes.md
+- 「影响架构/契约/工期/依赖的选择」→ plan.md `## 决策记录`
+
+**process.txt 事件标签白名单**：`[phase-transition]` / `[save]` / `[review:approved|needs_revision|rejected]` / `[gate:pass|fail]` / `[blocker]` / `[blocker-resolved]` / `[archived]` / `[codex-review-triggered]` / `[codex-review-received]` / `[signoff]`
+
+**plan.md ADR 写入规则**：
+
+- 新决策 append 一个 `### D-NNN` 小节（D-NNN 自增不复用）
+- 废弃旧决策不回删，新开一条带 `Supersedes: D-NNN`
+- 哪些决策必须写：影响架构 / 契约 / 工期 / 依赖
+- 哪些不写：目录命名 / 纯文档风格 / 临时测试策略
+
+## 8 阶段 ↔ artifact 映射
+
+| # | 阶段 | 必备产物 | 评审 verdict |
+|---|---|---|---|
+| 1 | bootstrap | meta.yaml / plan.md 骨架 | — |
+| 2 | definition | artifacts/requirement.md | reviews/definition-NNN.json |
+| 3 | tech-research | artifacts/tech-feasibility.md | — |
+| 4 | outline-design | artifacts/outline-design.md | reviews/outline-design-NNN.json |
+| 5 | detail-design | artifacts/detailed-design.md + features.json | reviews/detail-design-NNN.json |
+| 6 | task-planning | artifacts/tasks/F-NNN.md | — |
+| 7 | development | 代码 + tasks/F-NNN.receipt.json + artifacts/review-*.md | reviews/code-F-NNN-NNN.json |
+| 8 | testing | artifacts/test-report.md（可选 traceability-report.md） | — |
+| 9 | completed | meta.yaml.outcome=shipped + archived_at | — |
+
+## 历史信息
+
+- **REQ-2026-004 跳号**：详见 [REQ-2026-005/plan.md](REQ-2026-005/plan.md) `D-001`
+- **`process.tool.log` 已弃用**：spillover-redefine spec §6.3 删除了 PostToolUse Hook，本字段不再产生（旧 INDEX 残留描述已清除）
+- **`reviews/` 目录是 GATE-REVIEW-VERDICT 工作的依赖**：评审 verdict 写入由 reviewer Agent → `scripts/save-review.sh` → `reviews/<phase>-NNN.json`
+- **`tasks/<F-NNN>.receipt.json`**：REQ-2026-008 派发链结构化升级引入，是 GATE-POST-DEV-RECEIPT 的硬依赖
