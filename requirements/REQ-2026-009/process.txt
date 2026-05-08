@@ -31,3 +31,4 @@
 2026-05-08 17:17:41 [save] OQ-DD-A12 闭合：§9.1~§9.9 落地 6 层扫描矩阵 + MigrationReport/Reference/DirectoryMove 三 dataclass + 内置白名单 + pre-commit hook + 5 类单测 + 顺序约束 4 步流程
 2026-05-08 17:20:50 [save] OQ-DD-A7 闭合：§4.1~§4.7 落地 6 类 20 关键词清单 + 长度排序表 + state tiebreaker 伪码 + 等长 ask 模板 + keyword-matching.md 文件结构 + 18 用例矩阵
 2026-05-08 17:25:36 [save] OQ-DD-A6/A13/A14 一并闭合：§3.4 13 features DAG 完整表 + 关键路径 / §10.2 9 命令别名映射 + deprecation warning 模板 / §11 14 AC ↔ 测试 ID 双向追溯
+2026-05-08 17:27:10 [save] detail-design 主体闭合：18 项 OQ-DD-* 全收 / 1399 行 / SOURCING strict pass；剩 3 衍生 OQ；next: features.json + 评审
