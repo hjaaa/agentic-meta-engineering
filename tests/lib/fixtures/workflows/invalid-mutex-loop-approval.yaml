@@ -1,0 +1,11 @@
+# W110: 节点同时声明 loop + approval（互斥违反 / TC-F2-1）
+name: mutex-loop-approval
+version: 1
+category: assist
+nodes:
+  - id: bad-node
+    loop:
+      max_iterations: 3
+      prompt: 'iter'
+    approval:
+      message: '请确认'
