@@ -58,15 +58,16 @@ reviews:
       - REV-REQ-2026-009-definition-003
     stale: false
   outline-design:
-    latest: REV-REQ-2026-009-outline-design-002
+    latest: REV-REQ-2026-009-outline-design-003
     conclusion: looks_clean
-    reviewed_commit: 60f4f2e
+    reviewed_commit: 914a7e1
     artifact_hashes:
       artifacts/outline-design.md: 
-        0c737f2d6691dd9eb364ff62aefe526009e2649bd30b13b6a4b5819322e90a54
+        858cea664a33ef51a36ec76cbba1197ec3e3475ecf74805e089d0e3d15c1227c
       artifacts/requirement.md: 
-        e8ffd56acbb19088102e40011821f6fe32210b2398ca3555227a45ad132d15eb
+        0906b57d0979c6106fb34ba3deccd2cb3f34914b387ca6ce3e7918716a6d58dc
     history:
       - REV-REQ-2026-009-outline-design-001
       - REV-REQ-2026-009-outline-design-002
+      - REV-REQ-2026-009-outline-design-003
     stale: false
