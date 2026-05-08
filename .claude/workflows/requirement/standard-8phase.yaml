@@ -270,7 +270,7 @@ nodes:
   # ════════════════════════════════════════════════════════════════════
 
   - id: outline-design-draft
-    prompt_file: prompts/outline-design-draft.md
+    prompt_file: prompts/standard-8phase/outline-design.md
     context: shared
     model: opus[1m]
     effort: high
@@ -346,7 +346,7 @@ nodes:
   # ════════════════════════════════════════════════════════════════════
 
   - id: detail-design-draft
-    prompt_file: prompts/detail-design-draft.md
+    prompt_file: prompts/standard-8phase/detail-design.md
     context: shared
     model: opus[1m]
     effort: high
@@ -524,7 +524,7 @@ nodes:
 
   - id: dev-feature-loop
     loop:
-      prompt_file: prompts/feature-development-iteration.md
+      prompt_file: prompts/standard-8phase/development.md
       until: "ALL_FEATURES_DONE"
       max_iterations: 50               # 一次需求最多 50 个 feature 上限
       fresh_context: false             # 累积上下文（看到之前轮次进展）
