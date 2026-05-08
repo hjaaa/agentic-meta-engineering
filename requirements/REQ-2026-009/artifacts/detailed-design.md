@@ -103,7 +103,7 @@
 | ARGUMENTS 解析 | 无 |
 | 入参约束 | — |
 | 前置条件 | 当前 run state = approval_pending；调用方 = tty 终端（hook + isatty 双层校验，§5） |
-| 副作用 | jsonl 事件 `approval_granted` + 状态机 approval_pending → completed + 触发 next |
+| 副作用 | jsonl 事件 `approval_approved` + 状态机 approval_pending → completed + 触发 next |
 | 返回输出 | "Approved <node-id> at <ts> by <signer>"；进入下一节点提示 |
 | 失败模式 | state 不匹配 → exit 1；hook 拦截（AI 调用）→ exit 2 BLOCKED |
 | 决策回引 | D-006（hook + isatty 双层），spec §15 |

@@ -105,7 +105,7 @@
         "TC-F3-1: pytest tests/workflows/test_yaml_schema.py::test_standard_8phase_loadable 绿——38 节点全部解析 + 拓扑序合法 + 每节点 prompt_file 指向真实存在的 .md（覆盖 AC-01 / AC-02）",
         "TC-F3-2: pytest tests/workflows/test_prompt_structure.py::test_8phase_prompt_frontmatter 绿——8 阶段 prompt frontmatter 必填字段（name/node_id/version）齐 + node_id 与 yaml 节点 id 一致",
         "TC-F3-3: pytest tests/e2e/test_standard_8phase_terminal_nodes.py::test_pr_submit_node 绿——mock gh pr create + yq → pr-submit 节点 stdout 含 pr_url + meta.yaml.pr_url 写入（覆盖 AC-03 末端节点）",
-        "TC-F3-4: pytest tests/e2e/test_standard_8phase_terminal_nodes.py::test_pr_merged_gate_approval 绿——approval 节点 gate_message 字段非空 + capture_response 写 jsonl approval_granted（D-006 hook 拦截 AI 由 F-009 单独验证，本测试用 tty mock 直接放行）",
+        "TC-F3-4: pytest tests/e2e/test_standard_8phase_terminal_nodes.py::test_pr_merged_gate_approval 绿——approval 节点 gate_message 字段非空 + capture_response 写 jsonl approval_approved（D-006 hook 拦截 AI 由 F-009 单独验证，本测试用 tty mock 直接放行）",
         "TC-F3-5: pytest tests/e2e/test_standard_8phase_terminal_nodes.py::test_archive_finalize_node 绿——archive-finalize bash 写 meta.archived_at（YYYY-MM-DD HH:MM:SS 格式）+ outcome=shipped + stdout 含「归档完成」提示行"
       ]
     },
