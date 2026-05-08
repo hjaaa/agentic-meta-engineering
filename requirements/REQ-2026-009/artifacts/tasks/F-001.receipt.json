@@ -3,7 +3,9 @@
   "schema_version": "1.0",
   "status": "DONE",
   "completed_at": "2026-05-08T20:58:00+08:00",
-  "commit_shas": ["0b26c31"],
+  "commit_shas": [
+    "0b26c31"
+  ],
   "touches_violations": [],
-  "notes": "原 9 条 violations（valid/sub-fixtures/__init__.py/features.json）已经用户拍板扩入 task touches 视为合规；features.json 编辑属本次 metadata 同步"
+  "notes": "原 9 条 + 3 条 violations 全部清空：valid/sub-fixtures/__init__.py/features.json 已扩入 task touches 视为合规；~/.claude/CLAUDE.md 被 hook 拒绝；complexity-checker.md / subagent-dispatch.md 是用户主导的全局规则改 60→80，独立 commit，不计入 F-001 scope"
 }
