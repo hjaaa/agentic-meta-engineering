@@ -810,6 +810,10 @@ def _apply_defaults(workflow: dict[str, Any], report: Report, file_label: str) -
             except KeyError:
                 report.add(file_label, Severity.ERROR, "W153",
                            f"节点 {node.get('id')} 类型 {ntype} 无默认 idle_timeout")
+        # spec §6.13: prompt/prompt_file/loop 节点 context 默认 shared
+        # bash / approval / sub_workflow 等其他类型由引擎固定处理（不在此补默认）
+        if ntype in ("prompt", "prompt_file", "loop"):
+            node.setdefault("context", "shared")
 
 
 # ============================================================================

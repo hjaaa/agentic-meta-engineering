@@ -83,6 +83,79 @@ def test_defaults_applied_when_optional_fields_missing():
     assert node["idle_timeout"] == 60_000
 
 
+def test_should_set_context_default_shared_when_prompt_node_omits_it(tmp_path):
+    """spec §6.13：prompt 节点未声明 context 时应自动补 'shared'。"""
+    yaml_path = tmp_path / "wf-prompt.yaml"
+    yaml_path.write_text(
+        "name: wf-prompt\nversion: 1\ncategory: assist\n"
+        "provider: claude\nmodel: sonnet\n"
+        "nodes:\n"
+        "  - id: ask\n"
+        "    prompt: 'do something'\n",
+        encoding="utf-8",
+    )
+    result = load_workflow(yaml_path)
+    assert result.report.errors == 0, result.report.render()
+    assert result.workflow["nodes"][0]["context"] == "shared"
+
+
+def test_should_set_context_default_shared_when_loop_node_omits_it(tmp_path):
+    """spec §6.13：loop 节点未声明 context 时应自动补 'shared'。"""
+    yaml_path = tmp_path / "wf-loop.yaml"
+    yaml_path.write_text(
+        "name: wf-loop\nversion: 1\ncategory: assist\n"
+        "provider: claude\nmodel: sonnet\n"
+        "nodes:\n"
+        "  - id: lp\n"
+        "    loop:\n"
+        "      max_iterations: 3\n"
+        "      prompt: 'iterate'\n",
+        encoding="utf-8",
+    )
+    result = load_workflow(yaml_path)
+    assert result.report.errors == 0, result.report.render()
+    assert result.workflow["nodes"][0]["context"] == "shared"
+
+
+def test_should_preserve_explicit_context_when_prompt_node_declares_fresh(tmp_path):
+    """AC-06：节点显式 context: fresh 时 setdefault 不覆盖（字段优先级）。"""
+    yaml_path = tmp_path / "wf-prompt-fresh.yaml"
+    yaml_path.write_text(
+        "name: wf-prompt-fresh\nversion: 1\ncategory: assist\n"
+        "provider: claude\nmodel: sonnet\n"
+        "nodes:\n"
+        "  - id: ask\n"
+        "    prompt: 'do something'\n"
+        "    context: fresh\n",
+        encoding="utf-8",
+    )
+    result = load_workflow(yaml_path)
+    assert result.report.errors == 0, result.report.render()
+    assert result.workflow["nodes"][0]["context"] == "fresh"
+
+
+def test_should_not_apply_context_default_for_bash_approval_subworkflow_nodes(tmp_path):
+    """spec §6.13 反例：bash / approval / sub_workflow 节点 context 不补默认（语义由引擎固定处理）。"""
+    yaml_path = tmp_path / "wf-non-prompt.yaml"
+    yaml_path.write_text(
+        "name: wf-non-prompt\nversion: 1\ncategory: assist\n"
+        "provider: claude\nmodel: sonnet\n"
+        "nodes:\n"
+        "  - id: b\n"
+        "    bash: 'echo hi'\n"
+        "  - id: a\n"
+        "    depends_on: [b]\n"
+        "    approval:\n"
+        "      gate_message: 'please approve'\n",
+        encoding="utf-8",
+    )
+    result = load_workflow(yaml_path)
+    assert result.report.errors == 0, result.report.render()
+    nodes = {n["id"]: n for n in result.workflow["nodes"]}
+    assert "context" not in nodes["b"]
+    assert "context" not in nodes["a"]
+
+
 def test_implicit_depends_on_inherits_previous_node_id():
     """spec §6.12：depends_on 缺省 = 隐式接上一节点 id。"""
     result = load_workflow(FIXTURES / "valid-multi-layer.yaml")
