@@ -37,8 +37,10 @@ YAML_PATH = REPO_ROOT / ".claude" / "workflows" / "requirement" / "standard-8pha
 def workflow_nodes() -> list[dict[str, Any]]:
     """加载 standard-8phase.yaml，返回节点列表。"""
     result = load_workflow(YAML_PATH)
-    assert result.report.errors == 0, result.report.render()
-    assert result.workflow is not None
+    if result.report.errors != 0:
+        pytest.fail(result.report.render())
+    if result.workflow is None:
+        pytest.fail("workflow_loader 返回 workflow=None，yaml 可能为空或结构异常")
     return result.workflow["nodes"]
 
 
@@ -118,7 +120,7 @@ class TestPrSubmitNode:
         # 模拟引擎执行路径：mock subprocess.run
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0, stdout="https://github.com/pr/1")
-            result = subprocess.run(["bash", "-c", "echo mock"], capture_output=True)
+            subprocess.run(["bash", "-c", "echo mock"], capture_output=True)
             assert mock_run.called
 
 
@@ -261,3 +263,37 @@ def test_terminal_nodes_in_order(workflow_nodes: list[dict[str, Any]]) -> None:
     assert last_three == ["pr-submit", "pr-merged-gate", "archive-finalize"], (
         f"末端 3 节点顺序不对：{last_three}"
     )
+
+
+# ============================================================================
+# Acceptance 入口 wrapper（TC-F3-3/4/5 模块级函数，对应 features.json acceptance 路径）
+# 保留上方 27 个类内测试不变；wrapper 仅做关键断言委托。
+# ============================================================================
+
+
+def test_pr_submit_node(nodes_by_id: dict[str, dict[str, Any]]) -> None:
+    """Acceptance TC-F3-3 入口：委托给 TestPrSubmitNode 关键断言。"""
+    node = nodes_by_id.get("pr-submit")
+    assert node is not None, "pr-submit 节点缺失"
+    assert "bash" in node, "pr-submit 必须为 bash 类型"
+    assert "gh pr create" in node["bash"] or "gh pr list" in node["bash"]
+    assert "pr_url" in node["bash"]
+    assert "yq" in node["bash"]
+
+
+def test_pr_merged_gate_approval(nodes_by_id: dict[str, dict[str, Any]]) -> None:
+    """Acceptance TC-F3-4 入口：委托给 TestPrMergedGateNode 关键断言。"""
+    node = nodes_by_id.get("pr-merged-gate")
+    assert node is not None
+    assert "approval" in node
+    assert node["approval"].get("gate_message", "").strip() != ""
+
+
+def test_archive_finalize_node(nodes_by_id: dict[str, dict[str, Any]]) -> None:
+    """Acceptance TC-F3-5 入口：委托给 TestArchiveFinalizeNode 关键断言。"""
+    node = nodes_by_id.get("archive-finalize")
+    assert node is not None
+    assert "bash" in node
+    assert "archived_at" in node["bash"]
+    assert "outcome" in node["bash"]
+    assert "归档完成" in node["bash"]
