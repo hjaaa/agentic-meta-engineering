@@ -1,0 +1,71 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-009-detail-design-002",
+  "requirement_id": "REQ-2026-009",
+  "phase": "detail-design",
+  "reviewer": "detail-design-quality-reviewer",
+  "reviewed_at": "2026-05-08 20:03:45",
+  "reviewed_commit": "f39ddfa",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/detailed-design.md",
+      "sha256": "2025827d4d3de8328cbf0edf58322afd24f31615c863f6a0afecf769d6c5ae58"
+    },
+    {
+      "path": "artifacts/features.json",
+      "sha256": "a55b20ded5f54d133af5403fe64a1446191a5b0d1dc192ebc792a1f5a9cd20b4"
+    },
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "74b5477b55c7acc1e32e6af449432c377a094d9a09ad2d9d5c5b20d97eaf11bf"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 91,
+  "dimensions": {
+    "consistency_with_outline": {
+      "score": 95,
+      "issues": []
+    },
+    "interface_completeness": {
+      "score": 92,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "detailed-design §1.2.7 第 116 行「入参约束 | reason ≥ 8 字符（与 CLAUDE_GATES_GLOBAL_BYPASS 同口径）；同 1.2.7 双层校验」仍含 §1.2.7 自引用残留——同 -001 §1.2.7 第 120 行（已修为「同 1.2.6 hook / isatty 拦截」）属同源笔误。语义无害（reject 命令本身就在 §1.2.7，「同 1.2.7」可视为「与本节其他字段一致」的自参照），但建议 development 期将「同 1.2.7 双层校验」改为「同 1.2.6 双层校验」与 §1.2.7 第 120 行修订口径完全对齐。"
+        }
+      ]
+    },
+    "data_model_soundness": {
+      "score": 90,
+      "issues": []
+    },
+    "sequence_correctness": {
+      "score": 92,
+      "issues": []
+    },
+    "feature_granularity": {
+      "score": 92,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "§1.2.7 第 116 行「同 1.2.7 双层校验」是 -001 minor #2（§1.2.7 第 120 行）同源残留，development 期顺手把「同 1.2.7」改「同 1.2.6」与已修行口径完全对齐。",
+    "本轮 -001 carryover 5 处修订全部精确落地（fix #1 outline §1.1 / §1.2 + requirement.md AC-03 双 carryover 注 / fix #2 §1.2.7 第 120 行 / fix #3 §3.3 概览 F-010 改 9 / fix #4 features.json F-010 title 改 9 / fix #5 §2.2 frontmatter 表新增 on_subworkflow_failure 一行 enum 字段 + spec §6.4 引用），未引入新设计漂移。",
+    "-001 提到的 development 期落地建议（RollbackResult.SubRunArchive.state_at_archive / Reference.kind 收敛 typing.Literal / OQ-DD-A1-T 等 fixture）本轮按用户已知不变项约定不再重复提；development 阶段实施时复核。",
+    "F-005 complexity medium → heavy 升档建议（-001 enhancement_suggestions #2）保留为 development 启动前由实施小组复核 F-005 拆分粒度的输入。"
+  ],
+  "scope": null,
+  "supersedes": "REV-REQ-2026-009-detail-design-001",
+  "features_json_validation": {
+    "valid": true,
+    "issues": [],
+    "enhancement_suggestions": [
+      "13 features schema 完整性与 -001 一致（id / title / description / modules / depends_on / depends_on_features / complexity / touches / acceptance 必填齐全）；F-010 title 由「8 个」改为「9 个」与 description / modules（9 commands）/ §10.2.1 映射表 9 行已对齐。",
+      "DAG 拓扑序合法性本轮再验：F-001(none)→F-002(F-001)→F-005(F-001)→F-003(F-001,F-002)→F-004(F-001,F-002)→F-007(F-001,F-002)→F-008(F-002)→F-006(F-005)→F-009(F-005)→F-010(F-005)→F-011(F-001..F-010)→F-013(F-011)→F-012(F-013) — Kahn 拓扑序完整无环，与 -001 一致。",
+      "可选项 interfaces_frozen 字段仍未填，下一阶段实施前若想锁定接口建议 F-001 / F-005 / F-007 三个 heavy/medium feature 显式补 interfaces_frozen: true（detailed-design §1 / §6 已冻结签名）。",
+      "F-008 / F-011 / F-013 acceptance 中含手工验证步骤（TC-F11-5 / TC-F13-7），建议补一个布尔字段 has_manual_step: true，让 task-context-builder 在派发任务时显式提示「此 feature 含人工验收节点」。"
+    ]
+  }
+}
