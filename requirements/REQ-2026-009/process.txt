@@ -46,3 +46,5 @@
 2026-05-08 21:27:44 [review:needs_revision] F-001 code-review 78/100 needs_attention（3 major：approval_granted 三处文档漂移 / _apply_defaults 漏 context 默认 / WorkflowError 重复定义）；2 minor + 2 follow-up；6/8 checker 跳过
 2026-05-08 21:40:13 [development] F-001 rev2 修复完成（5 commit：a3825d2/d2f7800/c1fbc5d/318fcca/069c8a3）；pytest 243 passed +5 新测；待第 2 轮 /code-review
 2026-05-08 21:49:01 [review:approved] F-001 rev2 code-review 90/100 looks_clean（5 finding 闭合 + 2 误报 drop）；REV-REQ-2026-009-code-F-001-002 待 tty sign-off
+2026-05-08 21:49:47 [signoff] REV-REQ-2026-009-code-F-001-002 approved by hj19961223@gmail.com
+2026-05-08 21:50:46 [development] F-001 完成（review approved sign-off / status=done / review_report=artifacts/review-20260508-214811.md / 释放派发锁）

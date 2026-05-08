@@ -12,5 +12,5 @@
     "069c8a3"
   ],
   "touches_violations": [],
-  "notes": "review-*.md 是 code-review-report 写盘产物（流程层产物不计入 F-001 实现 scope）；rev2 4 条 violations + round-2 review-*.md 已清空"
+  "notes": ".dispatch-state.json 是派发锁释放产物（流程层产物不计入 F-001 实现 scope）；F-001 status → done"
 }
