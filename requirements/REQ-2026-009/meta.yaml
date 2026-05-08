@@ -1,7 +1,7 @@
 # ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-009
 title: 自定义工作流改造
-phase: outline-design
+phase: detail-design
 created_at: '2026-05-08 11:38:56'
 branch: feat/req-2026-009
 base_branch: develop
@@ -20,8 +20,13 @@ gates_passed:
   - phase: outline-design
     at: '2026-05-08 15:55:16'
     via: phase-transition
-    notes: 10 项 error gate 全过 + PLAN-FRESHNESS warning OK；先提交 INDEX.md 
+    notes: 10 项 error gate 全过 + PLAN-FRESHNESS warning OK；先提交 INDEX.md
       历史信息段删除清理脏工作区
+  - phase: detail-design
+    at: '2026-05-08 16:31:55'
+    via: phase-transition
+    notes: 11 项 error gate 全过；outline-design-003 经 tty 签字 (cli-tty /
+      hj19961223@gmail.com) 放行；PLAN-FRESHNESS 无 warning
 pr_url: ""
 pr_number: 0
 log_layout: split
