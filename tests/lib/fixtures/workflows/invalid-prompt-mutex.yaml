@@ -1,0 +1,8 @@
+# W140: prompt 与 prompt_file 互斥
+name: prompt-mutex
+version: 1
+category: assist
+nodes:
+  - id: a
+    prompt: 'inline prompt'
+    prompt_file: prompts/some.md

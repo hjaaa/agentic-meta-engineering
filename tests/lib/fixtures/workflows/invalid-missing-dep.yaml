@@ -1,0 +1,8 @@
+# W121: depends_on 引用不存在节点
+name: missing-dep
+version: 1
+category: assist
+nodes:
+  - id: a
+    bash: 'echo a'
+    depends_on: [nonexistent]

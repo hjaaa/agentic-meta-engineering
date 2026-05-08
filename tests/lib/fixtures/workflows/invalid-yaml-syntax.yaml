@@ -1,0 +1,9 @@
+# W001: yaml 解析失败（: 前空格 + 错误嵌套）
+name: bad-syntax
+version: 1
+category: assist
+nodes:
+  - id: a
+    bash: |
+      echo unmatched
+    extra_field: [unbalanced

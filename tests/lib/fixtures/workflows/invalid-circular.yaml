@@ -1,0 +1,11 @@
+# W120: DAG 存在环
+name: circular
+version: 1
+category: assist
+nodes:
+  - id: a
+    bash: 'echo a'
+    depends_on: [b]
+  - id: b
+    bash: 'echo b'
+    depends_on: [a]

@@ -1,0 +1,7 @@
+# W141: prompt_file 越仓
+name: out-of-tree
+version: 1
+category: assist
+nodes:
+  - id: a
+    prompt_file: '../../etc/passwd'
