@@ -38,3 +38,6 @@
 2026-05-08 19:47:03 [save] features.json 落盘 13 features（F-001 ~ F-013）；schema 校验通过 + DAG 自检拓扑序合法
 2026-05-08 20:09:52 [signoff] REV-REQ-2026-009-detail-design-002 approved by hj19961223@gmail.com
 2026-05-08 20:11:10 [phase-transition] detail-design → task-planning（11 gate 全过；detail-design-002 approved 签字 by hj19961223@gmail.com）
+2026-05-08 20:13:12 [save] task-planning 阶段开启；features.json 13 锁定；下一步拆 tasks/F-XXX.md（heavy F-001/F-002 优先）
+2026-05-08 20:24:28 [save] task-planning 13 features 拆分落盘（F-001~F-013 task.md 全 schema pass）
+2026-05-08 20:28:45 [save] task-planning 阶段就绪；待用户拍板：进 development（/requirement:next）或先派 F-001
