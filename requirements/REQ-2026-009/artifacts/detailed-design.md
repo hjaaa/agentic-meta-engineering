@@ -398,21 +398,37 @@ A5 同时修正 §3.2 旧版"feature_id 编号空间分组"的过粗估算（65-
 
 合计 13 features，与 REQ-2026-008 同量级。具体 modules / touches / acceptance 由 detail-design 评审前补完（OQ-DD-A5-D）。
 
-### 3.4 依赖关系（DAG 关键边）
+### 3.4 依赖关系（DAG 完整表）
 
-基于 §3.3 重新编号的 13 features：
+基于 §3.3 重新编号的 13 features，每条 `depends_on_features[]` 字面量：
 
-- `F-001`（engine 核心）是 `F-002` ~ `F-008` 的前置
-- `F-002`（节点类型）是 `F-003` / `F-004`（具体 yaml 落地）的前置
-- `F-007`（rollback）依赖 `F-001`（jsonl 截断 / 状态恢复）+ `F-002`（sub_workflow 节点 mv 语义）
-- `F-008`（父子状态联动）依赖 `F-002`（sub_workflow 节点）
-- `F-009`（hook + workflow_approve/reject.py）依赖 `F-005`（命令骨架）— hook 拦截的字面量与命令名一致
-- `F-010`（别名）依赖 `F-005`（target 命令实现存在）
-- `F-011`（自举验证 + migration 测试）依赖 `F-001` ~ `F-010`（端到端链路完整）
-- `F-012`（Plan 7 清理）依赖 `F-011` 通过（D-009 顺序约束，来源：requirements/REQ-2026-009/plan.md:128）
-- `F-013`（rename 工具）依赖 `F-001` 中 `_resolve_run_dir` 双路径已落地（D-007）
+| feature_id | depends_on_features | 依赖理由 |
+|---|---|---|
+| F-001 engine 核心 | `[]` | DAG 起点 |
+| F-002 节点类型 | `[F-001]` | 节点执行依赖 dispatcher |
+| F-003 standard-8phase yaml | `[F-001, F-002]` | yaml 落地依赖 loader + 节点类型 |
+| F-004 code-review-embedded yaml | `[F-001, F-002]` | 同 F-003 + sub_workflow 验证 |
+| F-005 11 命令 + Skill | `[F-001]` | 命令调 RunState API |
+| F-006 launcher | `[F-005]` | launcher 翻译为 `/workflow:*` 命令 |
+| F-007 rollback | `[F-001, F-002]` | jsonl 截断（F-001）+ sub_workflow mv 语义（F-002） |
+| F-008 父子状态联动 | `[F-002]` | 依赖 sub_workflow 节点类型已实现 |
+| F-009 hook + approve/reject.py | `[F-005]` | hook 拦截 `/workflow:approve` 字面量需命令骨架 |
+| F-010 别名兼容期 | `[F-005]` | 9 个 `/requirement:*` 别名转 `/workflow:*` 调用 |
+| F-011 自举 + migration 测试 | `[F-001, F-002, F-003, F-004, F-005, F-006, F-007, F-008, F-009, F-010]` | 端到端链路全要在位 |
+| F-013 rename 工具 | `[F-011]` | §9.8 顺序：自举验证通过后才能跑 rename |
+| F-012 Plan 7 清理 | `[F-013]` | §9.8 顺序：rename 完成后才能删 PHASE_REQUIREMENTS |
 
-完整 `depends_on_features[]` 字面量见 OQ-DD-A6（detail-design 评审前补完，与 features.json 同步落盘）。
+DAG 验证（自检）：
+
+- 无环：拓扑序合法 = `[F-001, F-002, F-003, F-004, F-005, F-006, F-007, F-008, F-009, F-010, F-011, F-013, F-012]`
+- 关键路径：F-001 → F-005 → F-011 → F-013 → F-012（5 节点串行；其余可并行）
+- 工具校验：`tools/check_features_dag.py` 在 features.json 落盘后跑（Plan 1 已合并）
+
+DAG 关键边解读（与 §6 / §7 / §9 联动）：
+
+- F-007（rollback）= §6 落地 + 提供 §7 跨父子复用
+- F-008（父子状态联动）= §7 落地 + 复用 F-007 实现
+- F-013（rename 工具）= §9 落地 + 解锁 D-007 loader 1 行清理（在 F-012 内）
 
 ### 3.5 features.json 校验
 
@@ -1221,7 +1237,46 @@ F-012 Plan 7 清理：删 PHASE_REQUIREMENTS / phase_enum / code_review_signoff 
 
 ### 10.2 `/requirement:*` 别名兼容期
 
-来源：requirements/REQ-2026-009/plan.md:128 D-009：8 个别名 3 月兼容期内输出 deprecation warning + 转 `/workflow:*` ARGUMENTS 透传；`/requirement:next` 例外保留实际实现到 Plan 6 自举验证通过。具体 warning 文案模板见 OQ-DD-A13。
+来源：requirements/REQ-2026-009/plan.md:128 D-009：9 个旧 `/requirement:*` 命令 3 月兼容期内**保留实际实现** + 输出 deprecation warning + 转 `/workflow:*` ARGUMENTS 透传；`/requirement:next` 例外保留实际实现到 Plan 6 自举验证通过（覆盖 spec §4.3 立即删决策）。
+
+#### 10.2.1 9 命令别名映射表
+
+| 旧命令 | 目标 `/workflow:*` | ARGUMENTS 透传规则 |
+|---|---|---|
+| `/requirement:new <title>` | `/workflow:new standard-8phase "<title>"` | `$@` 拼空格作 title |
+| `/requirement:continue [<id>]` | `/workflow:continue [<id>]` | `$1` 直传 |
+| `/requirement:next` | `/workflow:next` | 无参数；D-009 例外保留实际实现至 Plan 6 |
+| `/requirement:save [<note>]` | `/workflow:save [<note>]` | `$@` 拼空格作 note |
+| `/requirement:status [<id>]` | `/workflow:status [<id>]` | `$1` 直传 |
+| `/requirement:list [--filter=<expr>]` | `/workflow:list [--filter=<expr>]` | flag 直传 |
+| `/requirement:rollback <to-node>` | `/workflow:rollback <to-node>` | `$1` 直传 |
+| `/requirement:submit [--draft]` | `/workflow:submit [--draft]` | flag 直传 |
+| `/requirement:archive` | `/workflow:archive`（新引擎归档动作）| 无参数 |
+
+#### 10.2.2 deprecation warning 文案模板
+
+每命令调用时主对话先回报固定模板（落 `.claude/commands/requirement/<cmd>.md` 入口处）：
+
+```
+[DEPRECATION] /requirement:<cmd> 已纳入 3 月兼容期（截至 2026-08-08）。
+请改用：/workflow:<target> <args>
+本次仍执行旧实现以保证兼容；Plan 6 自举验证通过 + 兼容期到期后将物理删除。
+详见：context/team/engineering-spec/migration/2026-XX-runs-rename.md
+```
+
+`/requirement:next` 例外文案：
+
+```
+[DEPRECATION-NEXT] /requirement:next 是 D-009 例外项，保留实际实现至 Plan 6 自举验证通过。
+新链路对应：/workflow:next（语义等价但走 yaml workflow phase-transition 节点）。
+建议在自举验证 SOP 中评估切换时机。
+```
+
+#### 10.2.3 实现位置
+
+- 9 个 `.claude/commands/requirement/<cmd>.md` 文件保留 SOP（不删），首段加 DEPRECATION warning + ARGUMENTS 透传到 `/workflow:<target>` 的 Skill 入口
+- 兼容期到期 = `created_at + 90 days`（D-009 锁定 3 月）；本设计取 `2026-05-08 + 3 月 = 2026-08-08`
+- 兼容期到期后由人工触发删除（D-003 锁定，不引入时间型 CI 自动门禁）
 
 ### 10.3 `PHASE_REQUIREMENTS` 删除顺序约束
 
@@ -1241,13 +1296,32 @@ Plan 7+1 删 8 个别名（兼容期到期人工触发）
 
 ## 11. 验收对齐（AC ↔ 接口 / 测试 ID 双向追溯）
 
-继承 outline-design.md §6 的 AC ↔ 模块映射，本阶段补充 AC ↔ 测试 ID 映射；完整 AC 表见 requirements/REQ-2026-009/artifacts/requirement.md。骨架示例如下，完整表见 OQ-DD-A14。
+继承 outline-design.md §6 的 AC ↔ 模块映射，本阶段补充 AC ↔ 测试 ID 完整映射。AC 来源：requirements/REQ-2026-009/artifacts/requirement.md:115（AC-01 ~ AC-CLEAN 共 14 条）。
 
-| AC | 验证测试 ID | 主责章节 |
+| AC | 验证测试 ID | 主责章节 / feature |
 |---|---|---|
-| AC-01 yaml schema v2 | tests/workflows/test_yaml_schema.py | §3.4 |
-| AC-09 兼容期别名 | tests/skills/test_alias_passthrough.py | §10.2 |
-| AC-CLEAN 旧路径清理 | tests/tools/test_migrate_requirements.py | §9 |
+| AC-01 改阶段顺序只改 1 yaml | tests/lib/test_workflow_loader.py（拓扑排序）+ tests/workflows/test_yaml_schema.py | §2 / F-001 |
+| AC-02 MVP 模板共存 | tests/lib/test_workflow_loader.py（standard-8phase + code-review-embedded 加载） | §2 / F-003 + F-004 |
+| AC-03 11 命令可调用 | tests/skills/test_workflow_commands.py（每命令 smoke） | §1 / F-005 |
+| AC-04 任意中断点续跑 | tests/lib/test_run_state.py（反扫重建）+ tests/e2e/test_continue.py（3 状态续跑） | §1.2.2 / F-001 + F-005 |
+| AC-05 5 lego 组合 | tests/e2e/test_code_review_embedded.py（8 critic 并发 + synthesize） | §2 / F-004 |
+| AC-06 节点级 model 覆盖 | tests/lib/test_workflow_loader.py（字段优先级 yaml > frontmatter > 顶层） | §2.2.1 / F-001 |
+| AC-07 8 节点互斥 + 嵌套 ≤ 2 | tests/lib/fixtures/workflows/{invalid-mutex,invalid-deep-nest}.yaml + loader 拒绝断言 | §2 / F-002 |
+| AC-08 14 类 yaml 错误识别 | tests/lib/fixtures/workflows/invalid-*.yaml 全集（14 fixture）+ 行号断言 | §2 / F-001 |
+| AC-09 兼容期别名 | tests/skills/test_alias_passthrough.py（9 命令 × deprecation warning 文案 + ARGUMENTS 透传） | §10.2 / F-010 |
+| AC-10 跨父子 rollback | tests/lib/test_workflow_rollback.py（F1 场景，§6.5）+ tests/e2e/test_sub_workflow_lifecycle.py（主-2，§7.4） | §6 + §7 / F-007 + F-008 |
+| AC-11 父 cancel 子终止 | tests/e2e/test_sub_workflow_lifecycle.py（主-1 graceful + 边-3 TaskStop 兜底） | §7 / F-008 |
+| AC-E2E 老需求新引擎续跑 | tests/e2e/test_legacy_run_compat.py（选 1 个 paused 历史 run 跑通 continue） | §10 + §3 / F-011 |
+| AC-SELF 自举验证 | F-011 SOP（手工 + migration 测试 21/21，§8.4）+ Plan 6 验证日志 | §8 / F-011 |
+| AC-CLEAN 旧路径清理 | tests/tools/test_migrate_requirements.py（5 类断言，§9.7）+ pre-commit hook + grep 自检 | §9 / F-012 + F-013 |
+
+**双向追溯**：
+
+- AC → 测试：每条 AC 对应具体测试 ID（GATE-TRACEABILITY 切到 testing 时校验）
+- 测试 → feature：每条测试归属一个 feature_id（写入 features.json 的 `acceptance[]` 字段，§3.1 所列必填字段）
+- feature → AC：features.json `acceptance[]` 文本含 AC-XX 引用（dispatch_precheck 已支持 acceptance 字段提取）
+
+完整覆盖度自检（detail-design 评审前）：14 AC 全部映射到测试 ID；任何 AC 缺测试 ID → 评审 blocker。
 
 ---
 
@@ -1283,11 +1357,7 @@ Plan 7+1 删 8 个别名（兼容期到期人工触发）
   - 风险：modules / touches 字面量错会让派发期 dispatch_precheck.py 报越界写入 + GATE-TOUCHES-VIOLATION 拦
   - 验证时机：detail-design 评审前 features.json 落盘 + check_features.py 跑通
 
-- **OQ-DD-A6（features 依赖 DAG 完整表）**：[待补充]
-  - 内容：F-001 ~ F-013 的全部 `depends_on_features[]` 字面量（§3.4 已列关键边，缺细粒度边）
-  - 依据：outline §3 模块划分 + ADR D-005 ~ D-010 的"前置条件"语义
-  - 风险：循环依赖未检出会让 task-planning 拓扑排序死锁
-  - 验证时机：features.json 提交前用 `tools/check_features_dag.py`（Plan 1 已合并工具）跑一遍
+- ~~**OQ-DD-A6（features 依赖 DAG 完整表）**~~：**已闭合**——§3.4 给出 13 features 的完整 `depends_on_features[]` 字面量表 + DAG 自检（无环 / 拓扑序 / 关键路径 5 节点）+ 与 §6/§7/§9 联动解读。features.json 落盘前用 `tools/check_features_dag.py` 跑一遍兜底校验。
 
 - ~~**OQ-DD-A7（关键词字面量 + 长度表 + 单测）**~~：**已闭合**——§4 全章扩展：§4.1 字符长度计数规则（汉字 1 + ASCII 1，Python `len()`）+ 6 类 20 关键词清单 + 排序后最长匹配序（length=7 是冲突主层）/ §4.2 匹配语义（ASCII 词边界 / 中文 substring / 混合标点字面量）/ §4.3 state tiebreaker 伪码（含 ConflictReason 返回值）/ §4.4 等长冲突 ask prompt 模板 / §4.5 keyword-matching.md 文件结构 / §4.6 6 类断言 ~18 用例矩阵 / §4.7 影响域。
 
@@ -1301,17 +1371,9 @@ Plan 7+1 删 8 个别名（兼容期到期人工触发）
 
 - ~~**OQ-DD-A12（rename 工具 MigrationReport + pre-commit 规则）**~~：**已闭合**——§9 全章扩展：§9.1 6 层扫描矩阵 / §9.2 公开 API（dry_run + include_history_comments + whitelist）/ §9.3 MigrationReport + Reference + DirectoryMove dataclass / §9.4 内置白名单 + 迁移说明文档边界 / §9.5 pre-commit hook 拦截规则 / §9.6 自动 vs 人工 review 分类（kind = literal/f_string/concat/comment/docstring/yaml_glob）/ §9.7 5 类单测 + fixture 目录布局 / §9.8 顺序约束 4 步流程（dry → 人工 → wet → 自检）/ §9.9 影响域。
 
-- **OQ-DD-A13（别名 deprecation warning 文案）**：[待补充]
-  - 内容：8 个 `/requirement:*` 别名的精确 warning 文案模板 + ARGUMENTS 透传规则
-  - 依据：D-009 兼容期保留实现 + 3 月到期人工清理
-  - 风险：警告过密扰民；过宽会让用户无意识依赖旧入口
-  - 验证时机：detail-design 评审前
+- ~~**OQ-DD-A13（别名 deprecation warning 文案）**~~：**已闭合**——§10.2.1 给 9 命令完整映射表（注：实际 9 命令含 archive，骨架原写 8 是错算）/ §10.2.2 标准 deprecation warning 模板 + `/requirement:next` 例外文案 / §10.2.3 实现位置（兼容期到期日 = 2026-08-08）。
 
-- **OQ-DD-A14（AC ↔ 测试 ID 完整映射表）**：[待补充]
-  - 内容：requirement.md AC-01 ~ AC-CLEAN 全部 12 ~ 15 条逐一映射到 §1 ~ §9 中的某个测试 ID
-  - 依据：outline-design.md §6 已给 AC ↔ 模块映射作上游
-  - 风险：未映射的 AC 会在 testing 阶段成为追溯链断点（GATE-TRACEABILITY 拦）
-  - 验证时机：detail-design 评审前
+- ~~**OQ-DD-A14（AC ↔ 测试 ID 完整映射表）**~~：**已闭合**——§11 给 14 条 AC（AC-01 ~ AC-11 + AC-E2E + AC-SELF + AC-CLEAN）逐一映射到测试 ID + 主责章节 + feature_id；附双向追溯解读（AC↔测试↔feature）+ 14/14 全覆盖自检。
 
 - ~~**OQ-DD-B1（output_threshold 字节 vs 行数语义）**~~：**已闭合**——spec §6.11 锁定 16KB 字节阈值 + 超出写 `.run-logs/<node-id>.txt`（来源：context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:732）；本设计无歧义。
 
