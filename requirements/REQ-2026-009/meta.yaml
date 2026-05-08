@@ -25,17 +25,17 @@ gates_passed:
   - phase: detail-design
     at: '2026-05-08 16:31:55'
     via: phase-transition
-    notes: 11 项 error gate 全过；outline-design-003 经 tty 签字 (cli-tty /
+    notes: 11 项 error gate 全过；outline-design-003 经 tty 签字 (cli-tty / 
       hj19961223@gmail.com) 放行；PLAN-FRESHNESS 无 warning
   - phase: task-planning
     at: '2026-05-08 20:10:45'
     via: phase-transition
-    notes: 11 项 error gate 全过；detail-design-002 经 tty 签字 (cli-tty /
+    notes: 11 项 error gate 全过；detail-design-002 经 tty 签字 (cli-tty / 
       hj19961223@gmail.com / approved) 放行；PLAN-FRESHNESS 无 warning
   - phase: development
     at: '2026-05-08 20:32:51'
     via: phase-transition
-    notes: 11 项 error gate 全过；features.json 13 features + tasks/F-001~F-013 落盘
+    notes: 11 项 error gate 全过；features.json 13 features + tasks/F-001~F-013 落盘 
       schema pass；PLAN-FRESHNESS 无 warning
 pr_url: ""
 pr_number: 0
@@ -101,3 +101,17 @@ reviews:
       - REV-REQ-2026-009-detail-design-001
       - REV-REQ-2026-009-detail-design-002
     stale: false
+  code:
+    by_feature:
+      F-001:
+        history:
+          - REV-REQ-2026-009-code-F-001-001
+        latest: REV-REQ-2026-009-code-F-001-001
+        conclusion: needs_attention
+        reviewed_commit: 386f2a4
+        artifact_hashes:
+          artifacts/features.json: 
+            e27454b1b3af2ddab3da1c79c8af772ef6a5e19f173d5f98357b564c07a59631
+          artifacts/tasks/F-001.md: 
+            1f816da063940b8ba59947ac1d0675a621785ad0e292a2d0daea02e974a0775d
+        stale: false

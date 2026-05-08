@@ -7,5 +7,5 @@
     "0b26c31"
   ],
   "touches_violations": [],
-  "notes": "原 9 条 + 3 条 violations 全部清空：valid/sub-fixtures/__init__.py/features.json 已扩入 task touches 视为合规；~/.claude/CLAUDE.md 被 hook 拒绝；complexity-checker.md / subagent-dispatch.md 是用户主导的全局规则改 60→80，独立 commit，不计入 F-001 scope"
+  "notes": "review-*.md 是 code-review-report 写盘产物（路径 artifacts/review-YYYYMMDD-*.md），属流程层产物不计入 F-001 实现 scope；其余 12 条历史 violations 见 git log（已清）"
 }
