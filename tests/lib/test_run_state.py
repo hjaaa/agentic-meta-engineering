@@ -241,3 +241,67 @@ def test_workflow_error_is_shared_class():
     assert W_common is W_run_state
     assert W_common is W_loader
     assert W_run_state is W_loader
+
+
+# ============================================================================
+# TC-F2-5：三新事件枚举写入 + 反扫识别（D-005 / D-010 联动）
+# ============================================================================
+
+def test_event_enum_extension(tmp_path):
+    """F-002 · TC-F2-5：cancel_requested / parent_cancelled / parent_rolled_back
+    三新事件能 append_event 写入（不抛 ValueError / WorkflowError），
+    read_events 反扫不报损坏行 warn，RunState 重建在 cancel_requested 后
+    state == 'cancel_requested'。
+    """
+    jsonl = tmp_path / "run-state.jsonl"
+
+    # 1) workflow_started 起头
+    append_event(jsonl, {
+        "ts": "2026-05-08T10:00:00Z",
+        "type": "workflow_started",
+        "run_id": "REQ-2026-099",
+        "data": {"workflow_name": "standard-8phase", "arguments": ""},
+    })
+    # 2) 三新事件按 D-005 / D-010 语义依次写入
+    append_event(jsonl, {
+        "ts": "2026-05-08T10:00:01Z",
+        "type": "cancel_requested",
+        "run_id": "REQ-2026-099",
+        "data": {"reason": "user requested"},
+    })
+    append_event(jsonl, {
+        "ts": "2026-05-08T10:00:02Z",
+        "type": "parent_cancelled",
+        "run_id": "REQ-2026-099-CHILD",
+        "data": {"parent_run_id": "REQ-2026-099"},
+    })
+    append_event(jsonl, {
+        "ts": "2026-05-08T10:00:03Z",
+        "type": "parent_rolled_back",
+        "run_id": "REQ-2026-099-CHILD",
+        "data": {"to_node": "phase-1"},
+    })
+
+    # 3) 反扫不报损坏行 warn（type 在白名单内）
+    events, warnings = read_events(jsonl)
+    assert len(events) == 4, [e["type"] for e in events]
+    assert {"workflow_started", "cancel_requested", "parent_cancelled",
+            "parent_rolled_back"} == {e["type"] for e in events}
+    # 不应出现"不在白名单"或"JSON 解析失败"类型的 warn
+    bad_warns = [w for w in warnings if "不在白名单" in w or "解析失败" in w]
+    assert not bad_warns, bad_warns
+
+    # 4) RunState 重建：cancel_requested 是最后一个 workflow 级事件，state 应锁定 cancel_requested
+    state = RunState.rebuild(events, run_id="REQ-2026-099")
+    assert state.state == "cancel_requested", state.state
+
+
+def test_event_enum_three_events_in_valid_set():
+    """F-002 · TC-F2-5 围栏：三新事件必须存在于 VALID_EVENT_TYPES。
+
+    若 F-001 后续有人误删事件枚举，本测试会立即红灯（D-005 / D-010 联动失效）。
+    """
+    from run_state import VALID_EVENT_TYPES
+
+    for event_type in ("cancel_requested", "parent_cancelled", "parent_rolled_back"):
+        assert event_type in VALID_EVENT_TYPES, f"事件 {event_type} 缺失于 VALID_EVENT_TYPES"
