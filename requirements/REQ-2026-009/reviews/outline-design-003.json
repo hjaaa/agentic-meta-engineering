@@ -49,5 +49,11 @@
   "supersedes": "REV-REQ-2026-009-outline-design-002",
   "architectural_concerns": [
     "本轮变动纯属 GATE-SOURCING 格式合规修复（来源括号格式 + W002 三态标记），无语义/决策/模块边界/接口契约层面的改动，与 ADR D-005 ~ D-010 锁定的设计完全一致；02 轮的两条 architectural_concerns（.archived/<ts>/ 长期 GC 策略 + Plan 6 自举失败回退 SOP）继承到本轮，仍指向 detail-design 阶段补完。"
-  ]
+  ],
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-08T16:29:22.278285+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
+  }
 }
