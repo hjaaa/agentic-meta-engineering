@@ -44,3 +44,4 @@
 2026-05-08 20:33:10 [phase-transition] task-planning → development（11 项 error gate 全过；features.json 13 features + tasks/F-001~F-013 schema pass；PLAN-FRESHNESS 无 warning）
 2026-05-08 20:41:53 [development] F-001 派发（model=opus）：workflow-engine 核心（loader+run-state+dispatcher），按 plan-1 TDD 切片实现 W000~W153 14 类错误码 + jsonl 损坏兜底
 2026-05-08 21:27:44 [review:needs_revision] F-001 code-review 78/100 needs_attention（3 major：approval_granted 三处文档漂移 / _apply_defaults 漏 context 默认 / WorkflowError 重复定义）；2 minor + 2 follow-up；6/8 checker 跳过
+2026-05-08 21:40:13 [development] F-001 rev2 修复完成（5 commit：a3825d2/d2f7800/c1fbc5d/318fcca/069c8a3）；pytest 243 passed +5 新测；待第 2 轮 /code-review
