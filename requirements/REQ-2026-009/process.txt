@@ -20,3 +20,4 @@
 2026-05-08 16:29:49 [save] outline-design 阶段全链就绪：D-009 沿链同步 + 5 minor 修复 + SOURCING 格式合规；definition-003 / outline-design-003 双 looks_clean (91/100)；等用户 tty 签字 REV-...-outline-design-003 即可推进 detail-design
 2026-05-08 16:32:24 [phase-transition] outline-design → detail-design：11 项 error gate 全过；outline-design-003 tty 签字放行；PLAN-FRESHNESS 无 warning
 2026-05-08 16:43:37 [save] detailed-design.md 骨架起草完成（423 行；§1~§9 对应 outline §7 九项待办；GATE-SOURCING strict 通过；14 项 OQ-DD-* 集中到待澄清清单）
+2026-05-08 16:47:56 [save] OQ-DD-B 4 项闭合：B1/B2/B3 spec 已锁定（§6.11/§6.5/§6.4）；B4 用户拍板 8 critic 照搬 agent 命名（cr-checker-*.md）

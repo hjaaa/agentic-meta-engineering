@@ -51,8 +51,21 @@
 ```
 .claude/workflows/prompts/
   standard-8phase/      # 8 阶段对应 prompt
-  code-review-embedded/ # 8 critic + critic 对抗 + 综合裁决
+  code-review-embedded/
+    cr-prepare.md       # /code-review 预检（识别 mode + diff scope）
+    cr-checker-security.md
+    cr-checker-performance.md
+    cr-checker-complexity.md
+    cr-checker-concurrency.md
+    cr-checker-error-handling.md
+    cr-checker-design-consistency.md
+    cr-checker-auxiliary-spec.md
+    cr-checker-history-context.md
+    cr-critic.md         # review-critic 对抗
+    cr-judge.md          # 综合裁决（code-quality-reviewer）
 ```
+
+8 个 cr-checker-*.md 文件名 1:1 对应 .claude/agents/*-checker.md（OQ-DD-B4 闭合，2026-05-08 用户拍板照搬）。
 
 ### 2.2 frontmatter 与 ARGUMENTS 注入约定
 
@@ -382,29 +395,13 @@ Plan 7+1 删 8 个别名（兼容期到期人工触发）
   - 风险：未映射的 AC 会在 testing 阶段成为追溯链断点（GATE-TRACEABILITY 拦）
   - 验证时机：detail-design 评审前
 
-- **OQ-DD-B1（output_threshold 字节 vs 行数语义，继承 outline §7 提示性）**：[待用户确认]
-  - 内容：spec §6.11 `output_threshold` 字段语义按字节还是按行数
-  - 依据：默认建议字节（避免多字节字符行数偏差），假设阈值 16KB
-  - 风险：触发 truncate 后丢上下文；按行数易被超长行打穿
-  - 验证时机：detail-design 评审前与用户确认
+- ~~**OQ-DD-B1（output_threshold 字节 vs 行数语义）**~~：**已闭合**——spec §6.11 锁定 16KB 字节阈值 + 超出写 `.run-logs/<node-id>.txt`（来源：context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:732）；本设计无歧义。
 
-- **OQ-DD-B2（loop 节点 $LOOP_OUTPUT 多变量场景，继承 outline §7 提示性）**：[待补充]
-  - 内容：单 `$LOOP_OUTPUT` 字符串 vs 多 outputs 字段
-  - 依据：默认假设单字符串；如需多需 yaml schema 加 `loop_outputs[]` 字段
-  - 风险：loop 节点输出耦合度增加 schema 演化压力
-  - 验证时机：Plan 2 loop 节点实现期间确认
+- ~~**OQ-DD-B2（loop 节点 $LOOP_OUTPUT 多变量场景）**~~：**已闭合**——spec §6.5 锁定双变量：`$LOOP_OUTPUT`（本轮，gate_message 内）+ `$LOOP_PREV_OUTPUT`（上一轮，prompt 内）（来源：context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:614）；本设计无新增。
 
-- **OQ-DD-B3（sub_workflow inputs 透传约束，继承 outline §7 提示性）**：[待用户确认]
-  - 内容：白名单（显式列必传字段）vs 黑名单 vs 全透
-  - 依据：默认建议白名单 + 显式 `inputs:` 段
-  - 风险：父子 run 数据耦合度难评估；全透会让父 run 大对象进子 run 上下文
-  - 验证时机：detail-design 评审前与用户确认
+- ~~**OQ-DD-B3（sub_workflow inputs 透传约束）**~~：**已闭合**——spec §6.4 锁定 yaml 字段 `args:` 显式白名单（例：`feature_id: $feature-implement.output.id`）（来源：context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:565）；本设计无新增。
 
-- **OQ-DD-B4（8 critic 文件名约定）**：[待用户确认]
-  - 内容：`.claude/workflows/prompts/code-review-embedded/cr-checker-*.md` 是否照搬现有 `.claude/agents/*-checker.md` 8 个文件名
-  - 依据：现有 8 个 checker 已稳定 = security / performance / complexity / concurrency / error-handling / design-consistency / auxiliary-spec / history-context
-  - 风险：重命名会让既有 review 报告引用断链；不变会让命名不一致
-  - 验证时机：detail-design 评审前与用户确认
+- ~~**OQ-DD-B4（8 critic 文件名约定）**~~：**已闭合**——用户拍板照搬 .claude/agents/*-checker.md 命名 1:1（cr-checker-{security,performance,complexity,concurrency,error-handling,design-consistency,auxiliary-spec,history-context}.md）；详见 §2.1。
 
 ---
 
