@@ -1,0 +1,690 @@
+# 标准 8 阶段需求生命周期 workflow（DAG 表达）
+#
+# 把现有"硬编码 8 阶段"的需求流程完整翻译成 yaml DAG。
+# 共 ~38 节点：
+#   阶段 1 bootstrap-validate            （1 节点）
+#   阶段 2 requirement-definition        （6 节点）
+#   阶段 3 tech-research                 （4 节点）
+#   阶段 4 outline-design                （5 节点）
+#   阶段 5 detail-design                 （6 节点）
+#   阶段 6 task-planning                 （5 节点）
+#   阶段 7 development                   （3 节点，含 loop）
+#   阶段 8 testing                       （6 节点）
+#   阶段 0 cleanup-final                 （2 节点）
+#
+# 节点 ID 命名约定：<phase>-<action>，kebab-case。
+
+name: standard-8phase
+description: |
+  标准 8 阶段需求生命周期：初始化 → 需求定义 → 技术预研 → 概要设计
+  → 详细设计 → 任务规划 → 开发实施 → 测试验收 → 归档
+
+  适用：feature / refactor / enhancement 类需求，工作量预估 ≥ 1 工作日。
+
+version: 1
+category: requirement
+default_for: requirement
+
+# 默认配置（节点级可覆盖）
+provider: claude
+model: sonnet
+thinking: enabled
+effort: medium
+
+# 模板挑选辅助
+applicable_when:
+  change_type: [feature, refactor, enhancement]
+  recommended: true
+
+# ====================================================================
+# 节点定义
+# ====================================================================
+
+nodes:
+
+  # ════════════════════════════════════════════════════════════════════
+  # 阶段 1：bootstrap-validate
+  # bootstrap 实际工作（建目录、生成 REQ-ID、切分支、写 meta.yaml 骨架）
+  # 由 /workflow:run 命令在 yaml 加载之前完成。这里只校验 bootstrap 正确。
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: bootstrap-validate
+    artifact:
+      must_exist:
+        - $ARTIFACTS_DIR/../meta.yaml
+        - $ARTIFACTS_DIR/../plan.md
+      schema_check:
+        - script: scripts/lib/check_meta_schema.py
+          args: [$ARTIFACTS_DIR/../meta.yaml]
+          expected_exit_code: 0
+    depends_on: []
+
+  # ════════════════════════════════════════════════════════════════════
+  # 阶段 2：requirement-definition（需求定义）
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: req-input-normalize
+    skill: requirement-input-normalizer
+    args:
+      raw_title: $ARGUMENTS
+    depends_on: [bootstrap-validate]
+
+  - id: req-draft
+    skill: requirement-doc-writer
+    args:
+      normalized_input: $req-input-normalize.output
+    depends_on: [req-input-normalize]
+
+  - id: req-quality-review
+    agent: requirement-quality-reviewer
+    context: fresh
+    model: opus[1m]
+    effort: high
+    prompt_override: |
+      对 $ARTIFACTS_DIR/requirement.md 做六维评审：
+      完整性 / 一致性 / 可追溯性 / 清晰度 / 可测性 / 业务合理性
+
+      额外校验项：
+      - 所有关键信息必须有 [来源：xxx] 或标注 [待确认] / [待补充]
+      - 必含章节：角色与场景 / 验收标准 / 待确认清单
+      - features.json 暂不校验（阶段 5 才生成）
+
+      输出严格 JSON。
+    output_format:
+      type: object
+      properties:
+        verdict:
+          type: string
+          enum: [approved, needs-revision, rejected]
+        missing_dimensions:
+          type: array
+          items: { type: string }
+        issues:
+          type: array
+          items:
+            type: object
+            properties:
+              dimension: { type: string }
+              severity: { type: string, enum: [critical, major, minor] }
+              description: { type: string }
+              fix_suggestion: { type: string }
+        sources_completeness:
+          type: object
+          properties:
+            total_claims: { type: integer }
+            with_source: { type: integer }
+            need_confirm: { type: integer }
+            need_supplement: { type: integer }
+      required: [verdict, missing_dimensions, issues, sources_completeness]
+    depends_on: [req-draft]
+
+  - id: req-artifact-check
+    artifact:
+      must_exist:
+        - $ARTIFACTS_DIR/requirement.md
+      schema_check:
+        - script: scripts/lib/check_sourcing.py
+          args: [--strict, $ARTIFACTS_DIR/requirement.md]
+          expected_exit_code: 0
+      must_contain_sections:
+        - file: $ARTIFACTS_DIR/requirement.md
+          sections: [角色与场景, 验收标准, 待确认清单]
+    depends_on: [req-quality-review]
+
+  - id: req-signoff
+    approval:
+      message: |
+        ## 需求定义阶段完成
+
+        AI 评审结论：$req-quality-review.output.verdict
+
+        ### 评审维度
+        - 缺失维度：$req-quality-review.output.missing_dimensions
+        - 来源完整度：$req-quality-review.output.sources_completeness
+
+        ### 问题清单
+        $req-quality-review.output.issues
+
+        ### 文件位置
+        - $ARTIFACTS_DIR/requirement.md
+
+        请审阅后回复：
+        - `/workflow:approve $RUN_ID` — 通过，进入技术预研
+        - `/workflow:reject $RUN_ID --reason="<具体反馈>"` — AI 修订（最多 3 次）
+        - `/workflow:cancel $RUN_ID` — 中止 workflow
+      capture_response: true
+      on_reject:
+        prompt: |
+          用户对需求文档提出反馈：
+
+          $REJECTION_REASON
+
+          请基于反馈修订 $ARTIFACTS_DIR/requirement.md。
+          重点关注用户指出的具体问题，不要扩展无关章节。
+
+          修订完成后：
+          1. 重新生成完整文档（覆盖原文件）
+          2. 输出 "DONE: 已修订章节 [X, Y]"
+        max_attempts: 3
+    when: "$req-quality-review.output.verdict != 'rejected'"
+    depends_on: [req-artifact-check]
+
+  - id: phase-to-tech-research
+    bash: |
+      set -e
+      yq e '.phase = "tech-research"' -i runs/$RUN_ID/meta.yaml
+      yq e '.gates_passed += ["GATE-REQUIREMENT-SIGNOFF"]' -i runs/$RUN_ID/meta.yaml
+      python3 scripts/lib/append_process.py "phase-transition: definition → tech-research"
+    timeout: 30000
+    depends_on: [req-signoff]
+
+  # ════════════════════════════════════════════════════════════════════
+  # 阶段 3：tech-research（技术预研）
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: tech-feasibility-assess
+    agent: tech-feasibility-assessor
+    context: fresh
+    model: opus[1m]
+    effort: high
+    prompt_override: |
+      读取 $ARTIFACTS_DIR/requirement.md。
+
+      评估技术可行性：
+      1. 现有技术栈能否实现（列出涉及模块/组件）
+      2. 风险识别（技术风险 / 集成风险 / 性能风险 / 安全风险）
+      3. 工作量估算（人天，按 feature 拆分粒度）
+      4. 替代方案对比（如有）
+
+      产出：$ARTIFACTS_DIR/tech-feasibility.md
+
+      引用要求：所有技术决策必须有理由，引用现有代码 file:line 或权威文档。
+    output_format:
+      type: object
+      properties:
+        feasibility:
+          type: string
+          enum: [feasible, partially-feasible, infeasible, needs-poc]
+        risks:
+          type: array
+          items:
+            type: object
+            properties:
+              category: { type: string }
+              severity: { type: string }
+              description: { type: string }
+              mitigation: { type: string }
+        estimated_person_days: { type: number }
+        affected_modules:
+          type: array
+          items: { type: string }
+      required: [feasibility, risks, estimated_person_days, affected_modules]
+    depends_on: [phase-to-tech-research]
+
+  - id: tech-research-artifact-check
+    artifact:
+      must_exist:
+        - $ARTIFACTS_DIR/tech-feasibility.md
+      must_contain_sections:
+        - file: $ARTIFACTS_DIR/tech-feasibility.md
+          sections: [可行性结论, 风险识别, 工作量估算]
+    depends_on: [tech-feasibility-assess]
+
+  - id: tech-research-signoff
+    approval:
+      message: |
+        ## 技术预研阶段完成
+
+        可行性结论：$tech-feasibility-assess.output.feasibility
+        预估工作量：$tech-feasibility-assess.output.estimated_person_days 人天
+        影响模块：$tech-feasibility-assess.output.affected_modules
+
+        ### 风险清单
+        $tech-feasibility-assess.output.risks
+
+        请审阅 $ARTIFACTS_DIR/tech-feasibility.md：
+        - approve → 进入概要设计
+        - reject + 反馈 → AI 补充调研
+        - cancel
+      capture_response: true
+      on_reject:
+        prompt: |
+          用户反馈：$REJECTION_REASON
+          补充技术预研内容，覆盖反馈中提到的疑问。
+          修订 $ARTIFACTS_DIR/tech-feasibility.md。完成输出 "DONE"。
+        max_attempts: 3
+    depends_on: [tech-research-artifact-check]
+    when: "$tech-feasibility-assess.output.feasibility != 'infeasible'"
+
+  - id: phase-to-outline-design
+    bash: |
+      set -e
+      yq e '.phase = "outline-design"' -i runs/$RUN_ID/meta.yaml
+      yq e ".affected_modules = $tech-feasibility-assess.output.affected_modules" -i runs/$RUN_ID/meta.yaml
+      python3 scripts/lib/append_process.py "phase-transition: tech-research → outline-design"
+    timeout: 30000
+    depends_on: [tech-research-signoff]
+
+  # ════════════════════════════════════════════════════════════════════
+  # 阶段 4：outline-design（概要设计）
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: outline-design-draft
+    prompt_file: prompts/outline-design-draft.md
+    context: shared
+    model: opus[1m]
+    effort: high
+    idle_timeout: 600000
+    depends_on: [phase-to-outline-design]
+
+  - id: outline-design-review
+    agent: outline-design-quality-reviewer
+    context: fresh
+    model: opus[1m]
+    effort: high
+    output_format:
+      type: object
+      properties:
+        verdict: { type: string, enum: [approved, needs-revision, rejected] }
+        architecture_review: { type: string, enum: [pass, concerns, fail] }
+        module_partition_review: { type: string, enum: [pass, concerns, fail] }
+        tech_choice_review: { type: string, enum: [pass, concerns, fail] }
+        issues:
+          type: array
+          items:
+            type: object
+            properties:
+              category: { type: string }
+              severity: { type: string }
+              description: { type: string }
+      required: [verdict, architecture_review, module_partition_review, tech_choice_review, issues]
+    depends_on: [outline-design-draft]
+
+  - id: outline-design-artifact-check
+    artifact:
+      must_exist:
+        - $ARTIFACTS_DIR/outline-design.md
+      must_contain_sections:
+        - file: $ARTIFACTS_DIR/outline-design.md
+          sections: [架构方案, 模块划分, 技术选型, 关键流程]
+    depends_on: [outline-design-review]
+
+  - id: outline-design-signoff
+    approval:
+      message: |
+        ## 概要设计阶段完成
+
+        AI 评审：$outline-design-review.output.verdict
+        - 架构方案：$outline-design-review.output.architecture_review
+        - 模块划分：$outline-design-review.output.module_partition_review
+        - 技术选型：$outline-design-review.output.tech_choice_review
+
+        ### 问题清单
+        $outline-design-review.output.issues
+
+        请审阅 $ARTIFACTS_DIR/outline-design.md。
+      capture_response: true
+      on_reject:
+        prompt: |
+          用户反馈：$REJECTION_REASON
+          基于反馈修订 $ARTIFACTS_DIR/outline-design.md。
+          完成输出 "DONE"。
+        max_attempts: 3
+    when: "$outline-design-review.output.verdict != 'rejected'"
+    depends_on: [outline-design-artifact-check]
+
+  - id: phase-to-detail-design
+    bash: |
+      set -e
+      yq e '.phase = "detail-design"' -i runs/$RUN_ID/meta.yaml
+      python3 scripts/lib/append_process.py "phase-transition: outline-design → detail-design"
+    timeout: 30000
+    depends_on: [outline-design-signoff]
+
+  # ════════════════════════════════════════════════════════════════════
+  # 阶段 5：detail-design（详细设计）
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: detail-design-draft
+    prompt_file: prompts/detail-design-draft.md
+    context: shared
+    model: opus[1m]
+    effort: high
+    idle_timeout: 900000
+    depends_on: [phase-to-detail-design]
+
+  - id: features-json-generate
+    prompt: |
+      基于 $ARTIFACTS_DIR/detailed-design.md 拆分功能点。
+
+      产出 $ARTIFACTS_DIR/features.json，schema：
+      {
+        "features": [
+          {
+            "id": "feat-001",
+            "title": "<简短标题>",
+            "description": "<描述>",
+            "module": "<所属模块>",
+            "estimated_hours": <数字>,
+            "depends_on": ["feat-XXX"],
+            "acceptance_criteria": ["..."],
+            "status": "pending"
+          }
+        ],
+        "total_features": <数字>,
+        "total_estimated_hours": <数字>
+      }
+
+      规则：
+      - 每个 feature 工作量 0.5-2 天（超出必须拆分）
+      - 验收标准对应 requirement.md 的验收条款
+      - 依赖关系不可成环
+      - id 用 feat-NNN 三位数字
+    context: shared
+    model: opus[1m]
+    output_format:
+      type: object
+      properties:
+        total_features: { type: integer, minimum: 1 }
+        total_estimated_hours: { type: number }
+      required: [total_features, total_estimated_hours]
+    depends_on: [detail-design-draft]
+
+  - id: detail-design-review
+    agent: detail-design-quality-reviewer
+    context: fresh
+    model: opus[1m]
+    effort: high
+    output_format:
+      type: object
+      properties:
+        verdict: { type: string, enum: [approved, needs-revision, rejected] }
+        interface_design_review: { type: string, enum: [pass, concerns, fail] }
+        data_structure_review: { type: string, enum: [pass, concerns, fail] }
+        sequence_diagram_review: { type: string, enum: [pass, concerns, fail] }
+        features_json_review: { type: string, enum: [pass, concerns, fail] }
+        issues:
+          type: array
+      required: [verdict, interface_design_review, data_structure_review, sequence_diagram_review, features_json_review, issues]
+    depends_on: [features-json-generate]
+
+  - id: detail-design-artifact-check
+    artifact:
+      must_exist:
+        - $ARTIFACTS_DIR/detailed-design.md
+        - $ARTIFACTS_DIR/features.json
+      schema_check:
+        - script: scripts/lib/check_features.py
+          args: [$ARTIFACTS_DIR/features.json]
+          expected_exit_code: 0
+      must_contain_sections:
+        - file: $ARTIFACTS_DIR/detailed-design.md
+          sections: [接口签名, 数据结构, 时序图, 异常处理]
+    depends_on: [detail-design-review]
+
+  - id: detail-design-signoff
+    approval:
+      message: |
+        ## 详细设计阶段完成
+
+        AI 评审：$detail-design-review.output.verdict
+        - 接口设计：$detail-design-review.output.interface_design_review
+        - 数据结构：$detail-design-review.output.data_structure_review
+        - 时序图：$detail-design-review.output.sequence_diagram_review
+        - features.json：$detail-design-review.output.features_json_review
+
+        ### features.json 摘要
+        - 总 feature 数：$features-json-generate.output.total_features
+        - 总估算工时：$features-json-generate.output.total_estimated_hours h
+
+        ### 问题
+        $detail-design-review.output.issues
+
+        请审阅 $ARTIFACTS_DIR/detailed-design.md 与 features.json。
+      capture_response: true
+      on_reject:
+        prompt: |
+          用户反馈：$REJECTION_REASON
+          修订 $ARTIFACTS_DIR/detailed-design.md 和/或 features.json。
+          完成输出 "DONE"。
+        max_attempts: 3
+    when: "$detail-design-review.output.verdict != 'rejected'"
+    depends_on: [detail-design-artifact-check]
+
+  - id: phase-to-task-planning
+    bash: |
+      set -e
+      yq e '.phase = "task-planning"' -i runs/$RUN_ID/meta.yaml
+      python3 scripts/lib/append_process.py "phase-transition: detail-design → task-planning"
+    timeout: 30000
+    depends_on: [detail-design-signoff]
+
+  # ════════════════════════════════════════════════════════════════════
+  # 阶段 6：task-planning（任务规划）
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: task-decompose
+    skill: feature-lifecycle-manager
+    args:
+      mode: split
+      features_json: $ARTIFACTS_DIR/features.json
+    depends_on: [phase-to-task-planning]
+
+  - id: task-frontmatter-check
+    artifact:
+      must_exist:
+        - $ARTIFACTS_DIR/tasks/
+      schema_check:
+        - script: scripts/lib/check_task_frontmatter.py
+          args: [$ARTIFACTS_DIR/tasks/]
+          expected_exit_code: 0
+    depends_on: [task-decompose]
+
+  - id: task-list-summary
+    bash: |
+      set -e
+      ls $ARTIFACTS_DIR/tasks/*.md | wc -l > $LOG_DIR/task-count.txt
+      python3 scripts/lib/summarize_tasks.py $ARTIFACTS_DIR/tasks/
+    timeout: 30000
+    depends_on: [task-frontmatter-check]
+
+  - id: task-signoff
+    approval:
+      message: |
+        ## 任务规划阶段完成
+
+        任务清单已生成在 $ARTIFACTS_DIR/tasks/
+
+        $task-list-summary.output
+
+        请审阅任务拆分是否合理。
+      capture_response: true
+      on_reject:
+        prompt: |
+          用户反馈：$REJECTION_REASON
+          调整 $ARTIFACTS_DIR/tasks/ 目录下的任务文件。
+          完成输出 "DONE"。
+        max_attempts: 3
+    depends_on: [task-list-summary]
+
+  - id: phase-to-development
+    bash: |
+      set -e
+      yq e '.phase = "development"' -i runs/$RUN_ID/meta.yaml
+      python3 scripts/lib/append_process.py "phase-transition: task-planning → development"
+    timeout: 30000
+    depends_on: [task-signoff]
+
+  # ════════════════════════════════════════════════════════════════════
+  # 阶段 7：development（开发实施）
+  # 用 loop 节点封装"实现 N 个 feature + 每个跑 code-review"流程。
+  # 每轮 AI 自主选下一个 pending feature，调 task-context-builder 构建
+  # 上下文，派 subagent 实现，触发 /code-review，user 批准后进下一轮。
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: dev-feature-loop
+    loop:
+      prompt_file: prompts/feature-development-iteration.md
+      until: "ALL_FEATURES_DONE"
+      max_iterations: 50               # 一次需求最多 50 个 feature 上限
+      fresh_context: false             # 累积上下文（看到之前轮次进展）
+      interactive: true                # 每轮 feature 完成后等用户批准
+      gate_message: |
+        ## Feature 第 $LOOP_ITERATION 轮已完成
+
+        本轮处理结果：
+        $LOOP_PREV_OUTPUT
+
+        请审阅：
+        - approve → 标记本 feature done，进入下一个
+        - 输入反馈文字 → AI 修订当前 feature
+        - cancel → 中止开发
+    depends_on: [phase-to-development]
+
+  - id: dev-all-features-done-check
+    artifact:
+      schema_check:
+        - script: scripts/lib/check_features.py
+          args: [--all-done, $ARTIFACTS_DIR/features.json]
+          expected_exit_code: 0
+    depends_on: [dev-feature-loop]
+
+  - id: phase-to-testing
+    bash: |
+      set -e
+      yq e '.phase = "testing"' -i runs/$RUN_ID/meta.yaml
+      python3 scripts/lib/append_process.py "phase-transition: development → testing"
+    timeout: 30000
+    depends_on: [dev-all-features-done-check]
+
+  # ════════════════════════════════════════════════════════════════════
+  # 阶段 8：testing（测试验收）
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: test-traceability-check
+    skill: traceability-gate-checker
+    args:
+      run_id: $RUN_ID
+    depends_on: [phase-to-testing]
+
+  - id: test-fix-loop
+    loop:
+      prompt: |
+        上轮结果：
+        $LOOP_PREV_OUTPUT
+
+        traceability-gate 校验失败。修复"需求 → 设计 → 代码 → 测试"
+        追溯链中的不完整项。规则：
+
+        1. 优先补测试用例（不要改 design / requirement 文档）
+        2. 如必须改 design，先在 notes.md 记录变更原因
+        3. 修复完成后跑 traceability-gate-checker 自检
+        4. 自检通过输出 "DONE"
+      until: "DONE"
+      until_bash: |
+        python3 scripts/lib/check_traceability.py --req-id=$RUN_ID --check-only
+      max_iterations: 5
+      fresh_context: false
+    when: "$test-traceability-check.output.passed == false"
+    depends_on: [test-traceability-check]
+
+  - id: test-runner-execute
+    agent: test-runner
+    context: fresh
+    model: sonnet
+    effort: high
+    prompt_override: |
+      读取 $ARTIFACTS_DIR/detailed-design.md 中定义的测试用例。
+      执行 JUnit / PyTest / Go test 套件（按项目类型自动识别）。
+
+      产出 $ARTIFACTS_DIR/test-report.md，包含：
+      - 总用例数 / 通过数 / 失败数 / 跳过数
+      - 失败用例详情（含 stack trace）
+      - 覆盖率（如可获取）
+    output_format:
+      type: object
+      properties:
+        total_tests: { type: integer }
+        passed: { type: integer }
+        failed: { type: integer }
+        skipped: { type: integer }
+        coverage_percent: { type: number }
+        all_passed: { type: boolean }
+      required: [total_tests, passed, failed, all_passed]
+    depends_on: [test-traceability-check, test-fix-loop]
+    trigger_rule: all_done             # 即使 fix-loop skipped 也跑
+
+  - id: test-report-artifact-check
+    artifact:
+      must_exist:
+        - $ARTIFACTS_DIR/test-report.md
+      must_contain_sections:
+        - file: $ARTIFACTS_DIR/test-report.md
+          sections: [测试总结, 失败用例, 覆盖率]
+    depends_on: [test-runner-execute]
+
+  - id: test-final-signoff
+    approval:
+      message: |
+        ## 测试验收阶段完成
+
+        测试结果：
+        - 总用例：$test-runner-execute.output.total_tests
+        - 通过：$test-runner-execute.output.passed
+        - 失败：$test-runner-execute.output.failed
+        - 跳过：$test-runner-execute.output.skipped
+        - 覆盖率：$test-runner-execute.output.coverage_percent%
+
+        全部通过：$test-runner-execute.output.all_passed
+
+        ### 完整报告
+        $ARTIFACTS_DIR/test-report.md
+
+        请审阅：
+        - approve → 进入提交 PR 准备
+        - reject + 反馈 → 修复测试
+        - cancel
+      capture_response: true
+      on_reject:
+        prompt: |
+          用户反馈：$REJECTION_REASON
+          修复测试用例或代码。完成输出 "DONE"。
+        max_attempts: 5
+    when: "$test-runner-execute.output.all_passed == true"
+    depends_on: [test-report-artifact-check]
+
+  # ════════════════════════════════════════════════════════════════════
+  # 阶段 9：cleanup-final（归档收尾）
+  # 实际 PR 提交由 /workflow:submit 命令触发（用户决定时机），
+  # workflow 跑到这里就结束。
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: workflow-mark-completed
+    bash: |
+      set -e
+      yq e '.phase = "completed"' -i runs/$RUN_ID/meta.yaml
+      yq e '.workflow_status = "completed"' -i runs/$RUN_ID/meta.yaml
+      yq e ".completed_at = \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"" -i runs/$RUN_ID/meta.yaml
+      python3 scripts/lib/append_process.py "workflow completed; ready for /workflow:submit"
+    timeout: 30000
+    depends_on: [test-final-signoff]
+
+  - id: workflow-summary
+    prompt: |
+      生成最终总结输出给用户：
+
+      ## $RUN_ID 已完成
+
+      标题：$ARGUMENTS
+
+      关键产出：
+      - 需求：$ARTIFACTS_DIR/requirement.md
+      - 详细设计：$ARTIFACTS_DIR/detailed-design.md
+      - features.json: $features-json-generate.output.total_features 个 feature
+      - 测试报告：$test-runner-execute.output.passed/$test-runner-execute.output.total_tests 通过
+
+      下一步：
+      - `/workflow:submit $RUN_ID` 触发 PR 提交流程
+      - `/workflow:archive $RUN_ID` PR 合并后归档
+    context: shared
+    depends_on: [workflow-mark-completed]

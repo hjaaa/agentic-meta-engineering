@@ -1035,3 +1035,76 @@ scripts/lib/
 - 暂停 / 恢复语义
 
 完整对话过程不入仓库，仅沉淀决策结论到本文档。
+
+---
+
+## 19. Schema 验证发现（基于完整 yaml 试写）
+
+把 standard-8phase.yaml 完整写出来（38 节点 + 3 prompt 文件）后，发现 schema 还有几个待解决点：
+
+### 19.1 待补充的 schema 规则
+
+| 编号 | 问题 | 建议处理 |
+|---|---|---|
+| S1 | **array/object 字段在 bash 节点变量替换的转义规则缺失**。例：`yq e ".affected_modules = $node.output.array_field"` 直接展开为 `[a,b,c]` 字符串，yq 解析 OK；但展开为 `[\"a\",\"b\"]`（含双引号）会破坏 shell 单引号包裹。 | 引擎层加规则：array/object 类型在 bash 上下文下统一序列化为 JSON 字符串，外层套单引号；shell 内用 `jq` 解析。yaml 文档明示此约定。 |
+| S2 | **prompt / agent 节点 output 字段的语义模糊**。节点 output 是 stdout JSON（output_format 校验对象）还是写入 $ARTIFACTS_DIR/ 的产物文件？ | schema 层明示：`output` 字段 = stdout（结构化）；产物文件由节点 prompt 内通过 Bash 工具显式写入，不会自动捕获。下游用 `$node.output` 引用 stdout，用 `$ARTIFACTS_DIR/file.md` 引用产物。 |
+| S3 | **嵌套 sub-workflow 在 loop 内的执行模型未明确**。loop 节点 `fresh_context: false` 时，主 Claude 在 loop 内调 `/workflow:run code-review-embedded` 启子 run，子 run 节点输出会进入主 Claude 上下文，污染压力。 | 两选一（待决）：A. loop 内嵌 sub-workflow 强制 `fresh_context: true`（每轮独立 subagent）；B. 引入 `sub_workflow:` 节点字段做正式声明，引擎自动派子进程隔离。MVP 倾向 A（更简单）。 |
+| S4 | **interactive loop 的 `gate_message` 变量替换时机未明确**。gate_message 引用 `$LOOP_PREV_OUTPUT` 时，应该用本轮输出还是上一轮？ | 明示：gate_message 在 AI 输出**完成后**展示给用户，所以 `$LOOP_PREV_OUTPUT` 此处指**本轮的 output**（命名稍混乱但符合"暂停时刻可见"语义）。 |
+| S5 | **when 表达式不支持数组操作**。如 `$x.output.modules contains 'payment'` 不可行。 | MVP 接受此限制——array 可转 length 比较或在节点 prompt 内手动判断后输出 boolean 字段。后续按需扩 `contains` / `in` 运算符。 |
+| S6 | **rollback 语义需要精确定义**。`/workflow:rollback --to-node=X` 是"撤销 X 之前所有节点"还是"只撤 X"？ | 明示：`--to-node=X` 截断 jsonl 到 X 节点之前（不含 X），归档 X 及以后的产物到 `.archived/<timestamp>/`，meta.yaml 重置 `current_node` 到 X 的最近上游。X 本身不撤——下次 continue 重跑 X。 |
+| S7 | **`trigger_rule: all_done` 在 skipped 节点上的传递语义**。如 test-runner-execute 的 `depends_on: [test-traceability-check, test-fix-loop]` + `trigger_rule: all_done`，若 test-fix-loop 因 when 条件不满足 skipped，此节点能正常跑吗？ | 明示：skipped 算 terminal 状态（跟 completed/failed 等价，对 all_done 友好；对 all_success 不友好——视为不通过）。yaml 文档加显式说明。 |
+| S8 | **节点 ID 内引号转义**。如果节点输出含双引号，bash 节点用单引号转义后 yq 命令可能挂。 | 沿用 Archon `shellQuote` 规则（`'\''` 转义内嵌单引号），跟 Archon 一致即可。 |
+
+### 19.2 新增依赖脚本（补到 §9.3）
+
+实写 yaml 时发现要新增的辅助脚本：
+
+```
+scripts/lib/
+├── append_process.py            # 追加事件到 process.txt（已有）
+├── check_meta_schema.py         # 校验 meta.yaml schema（已有，需扩 workflow_name 字段）
+├── check_sourcing.py            # 校验 [来源：xxx] 标注（已有）
+├── check_features.py            # 校验 features.json schema（已有，需扩 --all-done 参数）
+├── check_task_frontmatter.py    # 校验 tasks/*.md frontmatter（已有）
+├── check_traceability.py        # 校验追溯链（新增，封装 traceability-gate-checker Skill 的逻辑供 bash 调）
+├── summarize_tasks.py           # 任务清单摘要（新增）
+├── substitute_vars.py           # 变量替换（新增，引擎核心）
+├── topological_sort.py          # 拓扑排序（新增，引擎核心）
+├── run_state.py                 # jsonl 读写 + RunState 重建（新增，引擎核心）
+├── run_artifact_checks.py       # artifact 节点 5 种校验（新增，引擎核心）
+└── workflow_loader.py           # yaml 加载 + 强校验（新增，引擎核心）
+```
+
+### 19.3 yaml 试写发现的"足够性确认"
+
+正面信号——schema **够用**的证据：
+
+- ✅ 现有 17 Skill / 25 Agent 全部能映射到 yaml 节点
+- ✅ 8 阶段全部能用 DAG 表达，节点数控制在 38（可读性可接受）
+- ✅ Loop 节点能优雅承载阶段 7 的"N 个 feature 迭代实施"
+- ✅ Approval + on_reject 能承载 6 个阶段的人工 sign-off
+- ✅ Artifact 节点显著简化了产物校验（替代 5+ 个分散 bash 脚本）
+- ✅ `prompt_file:` 字段让 yaml 体量从 2500+ 行预估压到 600 行实际
+
+### 19.4 给 MVP 的修订清单
+
+应在 §6 schema 章节补充：
+- 19.1 表格的 S1/S2/S3-A/S4/S6/S7 加进 schema 文档
+- 19.1 S5 / S8 加到"已知限制"段落
+- 19.2 脚本清单合并到 §9.3 新增文件清单
+
+修订后 design doc 进入 **v2**。
+
+---
+
+## 20. 完整 yaml 样例位置
+
+- `.claude/workflows/requirement/standard-8phase.yaml` — 完整 standard-8phase（38 节点）
+- `.claude/workflows/prompts/feature-development-iteration.md` — 阶段 7 loop 内 prompt（最复杂）
+- `.claude/workflows/prompts/outline-design-draft.md` — 阶段 4 起草 prompt
+- `.claude/workflows/prompts/detail-design-draft.md` — 阶段 5 起草 prompt
+
+未写但 yaml 引用了的 prompt 文件（占位，留待后续）：
+- `prompts/req-quality-review.md`（节点 req-quality-review 当前用 prompt_override 内联，可后续抽离）
+- `prompts/tech-feasibility-summary.md`（节点 tech-feasibility-assess 当前用 prompt_override 内联）
+- `prompts/code-review-synthesize.md`（review category 子 workflow 用，不在 standard-8phase）
