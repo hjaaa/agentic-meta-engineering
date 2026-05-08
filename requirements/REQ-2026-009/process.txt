@@ -48,3 +48,4 @@
 2026-05-08 21:49:01 [review:approved] F-001 rev2 code-review 90/100 looks_clean（5 finding 闭合 + 2 误报 drop）；REV-REQ-2026-009-code-F-001-002 待 tty sign-off
 2026-05-08 21:49:47 [signoff] REV-REQ-2026-009-code-F-001-002 approved by hj19961223@gmail.com
 2026-05-08 21:50:46 [development] F-001 完成（review approved sign-off / status=done / review_report=artifacts/review-20260508-214811.md / 释放派发锁）
+2026-05-08 21:54:07 [save] F-001 闭环（done + sign-off + 释放锁 + 9 commit / rev2 looks_clean 90）；F-002 touches 预扩 commit 862078d；待用户拍板派 F-002（heavy/opus）
