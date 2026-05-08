@@ -34,3 +34,4 @@
 2026-05-08 17:27:10 [save] detail-design 主体闭合：18 项 OQ-DD-* 全收 / 1399 行 / SOURCING strict pass；剩 3 衍生 OQ；next: features.json + 评审
 2026-05-08 17:34:49 [save] §1 / §10.2 按 AC-03 规范名修正：new→run / 删 next / 加 archive；§1.3 矩阵列对齐 + completed 行拆 PR-未/已 merged 双行；§10.2.1 别名映射 next 改为不映射保留独立旧实现
 2026-05-08 17:41:34 [save] §1 / §3 / §10.2 / §11 按方案 A 修正：删 /workflow:submit + archive 引擎层命令；改 standard-8phase yaml 末端 3 节点（pr-submit/pr-merged-gate/archive-finalize）；F-005 heavy→medium
+2026-05-08 17:42:14 [save] §1 重构：AC-03 对齐 + 方案 A 删 submit/archive；9 通用命令 + 下沉 yaml 末端 3 节点；F-005 heavy→medium
