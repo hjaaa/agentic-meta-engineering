@@ -720,21 +720,118 @@ tests/lib/fixtures/rollback/
 
 ## 7. `sub_workflow` 父子状态联动 e2e 测试设计（对应 outline §7 待办 #7，主责 D-005 / D-010）
 
-### 7.1 cancel graceful 路径
+### 7.1 cancel graceful 路径（D-005）
 
-来源：requirements/REQ-2026-009/plan.md:92 D-005 锁定"子自检父"模式：父 jsonl 写 `cancel_requested` → 子 subagent poll 检测 → 子写 `parent_cancelled` graceful 退出 → 父等子返回或 30s 超时调 `TaskStop` forceful 兜底。
+来源：requirements/REQ-2026-009/plan.md:92 D-005 锁定"子自检父"模式。完整时序：
 
-### 7.2 rollback 跨父子路径
+```mermaid
+sequenceDiagram
+    participant U as 用户
+    participant P as 父 Claude
+    participant J as 父 jsonl
+    participant C as 子 subagent
+    participant Cj as 子 jsonl
 
-父 N+5 → N+1 节点产物归档 + 子 run 整目录 mv 到 `sub_runs/<child-id>/` + 子 id 释放（D-010，来源：requirements/REQ-2026-009/plan.md:138）。
+    P->>C: Agent({run_in_background: true})
+    Note over P,C: 父不阻塞，主对话继续接受输入
+    U->>P: /workflow:cancel
+    P->>J: append cancel_requested
+    loop 节点边界（每节点完成时）
+        C->>J: 反读最近事件
+        alt 检测到 cancel_requested
+            C->>Cj: append parent_cancelled
+            C->>C: graceful 退出当前节点
+        else 未检测到
+            C->>C: 继续下一节点
+        end
+    end
+    alt 子 graceful 返回（≤ 30s）
+        C-->>P: 子 jsonl tail = parent_cancelled
+        P->>J: append child_graceful_exited
+    else 超时
+        P->>C: TaskStop({task_id})  # forceful 兜底
+        P->>J: append child_force_killed
+    end
+```
 
-### 7.3 测试运行环境
+关键约束：
 
-子 subagent 在测试中的模拟方式（mock subprocess vs 真派 Agent）、poll 间隔可调缩短到 100ms 加速测试——具体方案见 OQ-DD-A10。
+- 子 jsonl **永远由子自身写**——父不跨 run 写文件（D-005 第 4 项决策）（来源：requirements/REQ-2026-009/plan.md:92）
+- poll 间隔默认 30s（spec §6.10 idle_timeout 单位毫秒；测试中可调到 100ms 见 §7.3）
+- TaskStop API graceful / forceful 语义无公开文档——本设计当作**force kill** 使用，graceful 收尾由子主动做
 
-### 7.4 单测覆盖
+### 7.2 rollback 跨父子路径（D-010）
 
-测试落 `tests/e2e/test_sub_workflow_lifecycle.py`：2 条端到端 + 边界（父进程崩 / 子崩 / 网络分区 / TaskStop graceful 不明确兜底）。
+父 N+5 → N+1 节点产物归档 + 子 run 整目录 mv 到 `.archived/<ts>/sub_runs/<child-id>/` + 子 id 释放（D-010，来源：requirements/REQ-2026-009/plan.md:138）。本路径**复用 §6 `workflow_rollback.py`** 的 F1 场景实现 + RollbackResult.moved_sub_runs[] 字段。
+
+与 §7.1 cancel 路径的协作：rollback 越过 sub_workflow 节点 → workflow_rollback.py 内部触发子 jsonl 写 `parent_rolled_back`（spec line 341）→ 子 graceful 退出（同 cancel 收尾）→ 父继续 mv 子整目录。
+
+### 7.3 测试运行环境与 fixture 设计
+
+#### 7.3.1 子 subagent 模拟方式：mock 优先
+
+**决策：mock 模式（pytest-mock）作主路径，真派 Agent 仅手工 smoke 验证。**
+
+| 模式 | 优 | 缺 | 用途 |
+|---|---|---|---|
+| **mock subprocess**（推荐） | 速度快（< 5s 跑完）/ CI 可靠 / 状态可控 | 不能验真 Claude Code Agent 的 task_id 派发 | §7.4 全部场景 |
+| 真派 Agent | 验真派发链路 | 计费 / 不稳定 / CI 不可跑 | 手工 smoke（Plan 4 阶段一次） |
+
+mock 实现要点：
+
+```python
+# tests/e2e/fixtures/sub_workflow_mock.py
+class MockSubAgent:
+    """模拟 Claude Code Agent({run_in_background: true}) 派发的子 subagent"""
+    def __init__(self, child_run_id: str, jsonl_path: Path, poll_interval_ms: int = 100):
+        self.child_run_id = child_run_id
+        self.jsonl_path = jsonl_path
+        self.poll_interval_ms = poll_interval_ms
+
+    def run(self, parent_jsonl: Path, scripted_nodes: list[str]):
+        """按 scripted_nodes 顺序执行；每节点完成前 poll parent_jsonl"""
+        for node in scripted_nodes:
+            if self._poll_parent_cancel(parent_jsonl):
+                self._append_event("parent_cancelled")
+                return "graceful_exit"
+            self._execute_node(node)
+        return "completed"
+```
+
+#### 7.3.2 poll 间隔可调
+
+通过 `MockSubAgent(poll_interval_ms=100)` 注入；生产默认值由 spec §6.10 决定，本设计**不引入新 yaml 字段**（来源：context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:732）。测试场景因此可在 < 5s 内跑完整个 cancel graceful 链路。
+
+#### 7.3.3 共享 fixture（与 §6 F1 复用）
+
+`tests/e2e/fixtures/sub_workflow/` 复用 `tests/lib/fixtures/rollback/F1-cross-parent-child/` 的 workflow.yaml + 父子 jsonl 模板（symlink 或 conftest.py 共享 loader），避免维护两套同源 fixture。
+
+### 7.4 单测覆盖矩阵
+
+测试落 `tests/e2e/test_sub_workflow_lifecycle.py`，覆盖 2 主场景 + 4 边界场景：
+
+| # | 场景 | 触发 | 期望 |
+|---|---|---|---|
+| **主-1** | cancel graceful 全链路 | mock 子在节点 N+2 之前 poll 命中 cancel_requested | 子 jsonl 末尾 = `parent_cancelled` / 父 jsonl 含 `child_graceful_exited` / 不调 TaskStop / 总耗时 ≤ 5 秒 |
+| **主-2** | rollback 跨父子全链路 | 调 `rollback_run(parent_id, to_node="A")` | RollbackResult.moved_sub_runs 含 1 项 / `.archived/<ts>/sub_runs/<child-id>/` 整目录存在 / 子 jsonl 含 `parent_rolled_back` / 父 jsonl 截断 |
+| 边-1 | 子崩（节点中途 raise） | mock 子在节点 N 抛 `RuntimeError` | 父检测子异常退出 → jsonl 写 `child_failed` / 父按 `on_subworkflow_failure` 字段决定 fail / continue / skip（spec §6.4） |
+| 边-2 | 父崩（cancel 写入后立即 raise） | parent_jsonl 写 `cancel_requested` 后 monkeypatch 父 raise | 子继续 poll，命中后正常 graceful 退出 / 父崩重启后续跑 = 子已 graceful 完成 |
+| 边-3 | TaskStop graceful 不明确兜底 | mock 子 poll 命中但故意阻塞 60s | 父 30s 超时调 TaskStop / 子 jsonl 末尾 = `parent_cancelled`（已写入）/ 父 jsonl 含 `child_force_killed` |
+| 边-4 | poll 频率边界 | poll_interval_ms=10000（10s）vs scripted 节点耗时 1s | cancel 检测时延 ≈ poll_interval；不超过 poll_interval × 1.1 上界 |
+
+### 7.5 影响域
+
+新增文件：
+
+- `tests/e2e/test_sub_workflow_lifecycle.py`（2 主 + 4 边界共 6 用例）
+- `tests/e2e/fixtures/sub_workflow_mock.py`（MockSubAgent 类）
+- `tests/e2e/fixtures/conftest.py`（与 `tests/lib/fixtures/rollback/F1-*` 共享 fixture loader）
+
+不改动文件：
+
+- `scripts/lib/workflow_rollback.py`（§6 实现，本节复用）
+- `scripts/lib/run_state.py`（jsonl 读写不变）
+- workflow yaml schema（不引入新字段，poll 间隔走 spec §6.10）
 
 ---
 
@@ -937,11 +1034,7 @@ Plan 7+1 删 8 个别名（兼容期到期人工触发）
 
 - ~~**OQ-DD-A9（rollback API + RollbackResult + 中断保护）**~~：**已闭合**——§6 全章扩展：§6.1 API 签名 + 参数 / §6.2 RollbackResult dataclass（含 SubRunArchive）/ §6.3 异常契约 7 类 / §6.4 双层锁选型（fcntl.flock + O_EXCL，决策对比单选方案）/ §6.5 4 场景 fixture（含期望文件树 / jsonl tail）/ §6.6 中断保护单测追加（crash-recovery + concurrent-block）/ §6.7 影响域（新增 workflow_rollback.py + 4 fixture 套件）。
 
-- **OQ-DD-A10（sub_workflow e2e 测试运行环境）**：[待补充]
-  - 内容：子 subagent 模拟方式（mock subprocess vs 真派 Agent）+ poll 间隔可调机制 + 边界场景列表（父崩 / 子崩 / 网络分区 / TaskStop graceful 不明确兜底）
-  - 依据：D-005 子自检父模式 + D-010 跨父子归档
-  - 风险：mock 模式覆盖不到真 subagent 的并发 race；真派模式 CI 时长爆
-  - 验证时机：detail-design 评审前 + Plan 4 实现期间 smoke test 落地
+- ~~**OQ-DD-A10（sub_workflow e2e 测试运行环境）**~~：**已闭合**——§7 全章扩展：§7.1 cancel graceful Mermaid 时序图（父子 jsonl 跨进程协作明示）/ §7.2 rollback 跨父子复用 §6 F1 实现 / §7.3 决策 mock 优先 + 真派 Agent 仅 smoke / MockSubAgent 雏形 / §7.3.3 共享 §6 F1 fixture / §7.4 单测矩阵（2 主 + 4 边界 = 6 用例）/ §7.5 影响域。
 
 - ~~**OQ-DD-A11（migration 测试 R001 ~ R007 等价点 + 通过门槛）**~~：**已闭合**——§8 全章重写：§8.1 关键认知（迁移≠重写，R 函数复用）/ §8.2 R001-R007 等价点对照（修正骨架 6 条名称错位 + 补 R007）/ §8.3 双跑对照测试矩阵（21 条用例）/ §8.4 通过门槛（21/21 pass + 0 false-pass / 0 false-fail）/ §8.5 顺序约束（与 §10.3 联动）/ §8.6 影响域（保留 R 函数 / 新增 21 fixture）。
 
