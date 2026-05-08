@@ -57,7 +57,7 @@ def test_should_apply_topological_layer_order_for_multi_layer_yaml():
     assert layers == [["a"], ["b", "c"], ["d"]]
 
 
-def test_field_priority_yaml_node_overrides_workflow_top_default():
+def test_should_use_yaml_node_value_when_top_default_conflicts():
     """AC-06：节点 yaml 字段 > workflow 顶层默认（model/effort）。"""
     result = load_workflow(FIXTURES / "valid-multi-layer.yaml")
     assert result.report.errors == 0
@@ -70,7 +70,7 @@ def test_field_priority_yaml_node_overrides_workflow_top_default():
     assert nodes["d"]["effort"] == "high"
 
 
-def test_defaults_applied_when_optional_fields_missing():
+def test_should_apply_default_values_when_optional_fields_missing():
     """trigger_rule / retry / idle_timeout 缺省时应自动补默认值。"""
     result = load_workflow(FIXTURES / "valid-minimal.yaml")
     assert result.report.errors == 0
@@ -156,7 +156,7 @@ def test_should_not_apply_context_default_for_bash_approval_subworkflow_nodes(tm
     assert "context" not in nodes["a"]
 
 
-def test_implicit_depends_on_inherits_previous_node_id():
+def test_should_inherit_previous_node_id_when_depends_on_omitted():
     """spec §6.12：depends_on 缺省 = 隐式接上一节点 id。"""
     result = load_workflow(FIXTURES / "valid-multi-layer.yaml")
     assert result.report.errors == 0
@@ -261,7 +261,7 @@ def test_w153_sub_workflow_parse_failure():
     assert "W153" in _codes_of(result)
 
 
-def test_invalid_yaml_14():
+def test_should_detect_all_14_error_codes_when_loading_invalid_fixtures():
     """一次性聚合断言 14 类错误码全覆盖。
 
     本测试是 features.json 中 TC-F1-2 的整体看板：单独 14 个用例任意一个挂掉
@@ -297,7 +297,7 @@ def test_invalid_yaml_14():
 # 三层 discover_workflows
 # ============================================================================
 
-def test_discover_workflows_three_layer_override(tmp_path):
+def test_should_override_in_priority_order_when_three_layers_have_same_workflow(tmp_path):
     """bundled → home → project，后者覆盖前者。"""
     bundled = tmp_path / "bundled"
     home = tmp_path / "home"
@@ -344,7 +344,7 @@ def test_discover_workflows_three_layer_override(tmp_path):
 # CLI 入口
 # ============================================================================
 
-def test_cli_exit_zero_for_valid_workflow():
+def test_should_exit_zero_when_cli_loads_valid_workflow():
     proc = subprocess.run(
         [sys.executable, "scripts/lib/workflow_loader.py", "--quiet",
          "tests/lib/fixtures/workflows/valid-minimal.yaml"],
@@ -353,7 +353,7 @@ def test_cli_exit_zero_for_valid_workflow():
     assert proc.returncode == 0, proc.stderr or proc.stdout
 
 
-def test_cli_exit_one_for_invalid_workflow():
+def test_should_exit_one_when_cli_loads_invalid_workflow():
     proc = subprocess.run(
         [sys.executable, "scripts/lib/workflow_loader.py",
          "tests/lib/fixtures/workflows/invalid-mutex.yaml"],
@@ -364,7 +364,7 @@ def test_cli_exit_one_for_invalid_workflow():
     assert "W110" in combined
 
 
-def test_cli_json_output_contains_findings():
+def test_should_include_findings_when_cli_outputs_json():
     proc = subprocess.run(
         [sys.executable, "scripts/lib/workflow_loader.py", "--json",
          "tests/lib/fixtures/workflows/invalid-mutex.yaml"],
