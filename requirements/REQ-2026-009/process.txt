@@ -41,3 +41,4 @@
 2026-05-08 20:13:12 [save] task-planning 阶段开启；features.json 13 锁定；下一步拆 tasks/F-XXX.md（heavy F-001/F-002 优先）
 2026-05-08 20:24:28 [save] task-planning 13 features 拆分落盘（F-001~F-013 task.md 全 schema pass）
 2026-05-08 20:28:45 [save] task-planning 阶段就绪；待用户拍板：进 development（/requirement:next）或先派 F-001
+2026-05-08 20:33:10 [phase-transition] task-planning → development（11 项 error gate 全过；features.json 13 features + tasks/F-001~F-013 schema pass；PLAN-FRESHNESS 无 warning）
