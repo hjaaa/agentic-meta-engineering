@@ -392,7 +392,7 @@ A5 同时修正 §3.2 旧版"feature_id 编号空间分组"的过粗估算（65-
 | F-008 | sub_workflow 父子状态联动（D-005 cancel + parent_cancelled）| §7 | medium |
 | F-009 | D-006 hook 拦截 + workflow_approve/reject.py + ai-collaboration patch | §5 | light |
 | F-010 | 8 个 `/requirement:*` 别名兼容期保留实现（D-009）| §10.2 | light |
-| F-011 | 自举验证 SOP（Plan 6）+ migration 测试（R001-R006 等价）| §8 + §10.3 | medium |
+| F-011 | 自举验证 SOP（Plan 6）+ migration 测试（R001-R007 等价）| §8 + §10.3 | medium |
 | F-012 | Plan 7 清理（删 PHASE_REQUIREMENTS / phase_enum / signoff / next）| §10.3 | light |
 | F-013 | requirements/ → runs/ 批量 rename 工具（D-002）| §9 | medium |
 
@@ -629,26 +629,78 @@ def rollback_run(run_id: str, to_node: str, target_id: Optional[str] = None) -> 
 
 ## 8. migration 测试设计（对应 outline §7 待办 #8，主责 D-009 / R-3）
 
-### 8.1 旧门禁规则与新引擎等价语义对照
+### 8.1 关键认知（迁移不是重写）
 
-来源：scripts/lib/check_reviews.py 现有 R001 ~ R006 规则；本节列骨架对照表，每条规则的"新引擎等价点"见 OQ-DD-A11。
+骨架曾把"migration 测试"理解为**重写 R001-R007 实现到新引擎**——这是错的。
 
-| 规则 | 含义 | 新引擎等价点（骨架占位） |
-|---|---|---|
-| R001 | 各阶段必备 review latest != null | 见 OQ-DD-A11 |
-| R002 | 评审 conclusion ≠ rejected | 见 OQ-DD-A11 |
-| R003 | tty 签字 | D-006 hook 层（已锁定，§5） |
-| R004 | hash 一致性（sha256 与当前 commit） | 见 OQ-DD-A11 |
-| R005 | 无自引用循环（reviews/* 黑名单） | 见 OQ-DD-A11 |
-| R006 | features.json schema valid | GATE-FEATURES-SCHEMA（已存在，仅迁移触发点） |
+正确语义（PHASE_REQUIREMENTS 字典定义位置，来源：scripts/lib/check_reviews.py:57）：
 
-### 8.2 测试运行约定
+- 旧链路：`/requirement:next` → `managing-requirement-lifecycle` Skill → 调 `check_reviews.py` → 查 `PHASE_REQUIREMENTS[target_phase]` → 跑 R001-R007 函数
+- 新链路：yaml workflow `phase-transition` 节点 → 调 `scripts/gates/run.py --trigger=phase-transition` → 调 `GATE-REVIEW-VERDICT` plugin → 复用同一份 R001-R007 函数（来源：scripts/gates/registry.yaml）
 
-双跑对照（旧引擎 + 新引擎跑同 fixture，比对结论），落 `tests/migration/test_phase_requirements_equivalence.py`；通过门槛见 OQ-DD-A11。
+R001-R007 的 Python 函数本身**保留**；migration 测试要保证的是"yaml workflow 在 phase-transition 节点上正确调用 gate runner，结论与旧 Skill 直接调 check_reviews.py 一致"。Plan 7 真删的是 `PHASE_REQUIREMENTS` 字典 + `managing-requirement-lifecycle` 的 Skill 逻辑，**不是** R001-R007 函数。
 
-### 8.3 顺序约束
+### 8.2 R001 ~ R007 等价语义对照（修正骨架表）
 
-来源：requirements/REQ-2026-009/plan.md:128 D-009——本测试通过是 Plan 7 删除 `PHASE_REQUIREMENTS` 的前置条件。
+骨架 §8.1 旧版的 6 条规则名称与含义错位且漏 R007；本节修正：
+
+| Rule | 含义 | 旧入口 | 新引擎等价点 |
+|---|---|---|---|
+| R001 | target_phase 要求的 review 必须 latest != null | check_reviews.py:76 | yaml `phase-transition` 节点 → GATE-REVIEW-VERDICT plugin → check_reviews._r001 |
+| R002 | review JSON schema 合法（save_review 校验函数复用）| check_reviews.py:148 | save-review.sh 写入流程保留；GATE-REVIEW-VERDICT 跑 _r002 |
+| R003 | latest.conclusion ≠ blocked **且** 必须有 `human_signoff` 字段 | check_reviews.py:103 | yaml `approval:` 节点 + `capture_response: true` 天然等价；GATE-REVIEW-VERDICT 跑 _r003 兜底 |
+| R004 | latest.conclusion = `needs_attention` → WARNING（--strict 升 ERROR）| check_reviews.py:187 | yaml `when:` 表达式 `$review.output.conclusion == "needs_attention"` 软提示；--strict 走 GATE-REVIEW-VERDICT |
+| R005 | `reviewed_artifacts[].sha256` 与当前 HEAD commit 一致（hash drift）| check_reviews.py:203 | GATE-REVIEWS-CONSISTENCY plugin（来源：scripts/gates/registry.yaml）+ R005 函数复用；触发点扩到 yaml `phase-transition` 节点 |
+| R006 | supersedes 链无环 / 无悬挂引用 | check_reviews.py:259 | GATE-REVIEW-VERDICT plugin 包含 _r006；新引擎仅做 trigger wire |
+| R007 | testing 阶段 `code.by_feature` 必须覆盖 features.json 中所有 status=done 的 feature | check_reviews.py:294 | yaml standard-8phase 阶段 7 → 8 切换节点 → `bash:` 节点调 `python3 scripts/lib/check_reviews.py --target-phase=testing` 或 GATE-REVIEW-VERDICT plugin |
+
+### 8.3 测试设计：双跑对照
+
+测试位于 `tests/migration/test_phase_requirements_equivalence.py`；用 pytest parametrize 跑 7 条规则 × 多 fixture：
+
+**测试矩阵**（每条规则的 fixture 组）：
+
+| 规则 | happy fixture | failure fixture | 边界 fixture |
+|---|---|---|---|
+| R001 | meta.yaml 完整有 latest | latest 缺失 | latest 字段为 null vs "" 双形态 |
+| R002 | review JSON schema 合规 | 缺 schema_version / required 字段 | dimensions issues 数组类型错 |
+| R003 | conclusion=looks_clean + signoff 完整 | conclusion=blocked / 缺 human_signoff | rejected（旧枚举）等价 blocked（新枚举）|
+| R004 | conclusion=looks_clean | conclusion=needs_attention（非 strict 走 WARNING）| --strict 升 ERROR |
+| R005 | hash 全匹配 | reviewed_artifacts 中某文件 sha256 偏移 | meta.yaml 自引用（黑名单兜底）|
+| R006 | supersedes 链直链 | 链含环 | 悬挂引用（指向不存在 review_id） |
+| R007 | by_feature 覆盖全 done features | 缺 by_feature 项 / latest 为空 | conclusion=rejected（旧枚举）等价 blocked + 缺 human_signoff |
+
+**断言协议**：双跑对照 = 同 fixture 在两条链路上运行，断言结论枚举（pass / fail / warn）和 violation 字段集合**完全一致**；错误码可不同（旧 exit 1 vs 新 exit 2 是允许的差异，由 GATE-REVIEW-VERDICT 内部归一化）。
+
+### 8.4 通过门槛（自举硬阈值）
+
+D-009 自举验证锁定的硬阈值（来源：requirements/REQ-2026-009/plan.md:128）落到 migration 测试上的具体含义：
+
+- **完整覆盖**：7 条规则 × 3 类 fixture（happy / failure / 边界）= 21 条对照用例全 pass
+- **零误差**：0 false-pass（旧 fail 但新 pass）+ 0 false-fail（旧 pass 但新 fail）
+- **签字一致性**：R003 在新链路下 sign-off 走 §5 hook + isatty 双层（已 D-006 锁定，不允许新引擎跳过签字）
+- **触发点完整**：phase-transition / submit / ci 三触发点都要跑过（与 GATE-REVIEW-VERDICT 注册的 trigger 一致）
+
+测试通过 = 解锁 Plan 7 删除 `PHASE_REQUIREMENTS` 字典 / `managing-requirement-lifecycle` Skill 旧逻辑 / `check_reviews.py main()` CLI 入口（R 函数本身保留供 plugin 复用）。
+
+### 8.5 顺序约束（与 §10.3 联动）
+
+来源：requirements/REQ-2026-009/plan.md:128 D-009——本测试通过是 Plan 7 删除 `PHASE_REQUIREMENTS` 字典 + `managing-requirement-lifecycle` Skill 旧 SOP 的前置条件；具体时序见 §10.3。
+
+测试 Failed 时的 fallback：保留 `/requirement:*` 别名实际实现（D-009 已锁定）+ 用户手动切回旧命令推进。
+
+### 8.6 影响域
+
+新增 / 改动文件：
+
+- 新增 `tests/migration/test_phase_requirements_equivalence.py`（21 条对照用例）
+- 新增 `tests/migration/fixtures/<rule>/{happy,failure,boundary}.yaml`（21 个 fixture 文件 + 共享 fixture loader）
+- 改动 `scripts/gates/registry.yaml`（如需为 GATE-REVIEW-VERDICT 添加新触发点；具体改动由 F-001 / F-011 期完成）
+
+不改动文件：
+
+- `scripts/lib/check_reviews.py` R001-R007 函数（保留供 plugin 复用）
+- `scripts/lib/save_review.py`（写 verdict 流程不变）
 
 ---
 
@@ -705,7 +757,7 @@ Plan 7 后新增 pre-commit hook：拒绝任何新增的 `requirements/` 字面�
 ```
 Plan 6 自举验证通过（本需求自身用新引擎跑通）
   ↓
-migration 测试 6/6 全 pass（§8.2）
+migration 测试 21/21 全 pass（§8.4）
   ↓
 Plan 7 真删 PHASE_REQUIREMENTS / phase_enum.py / code_review_signoff.py / /requirement:next
   ↓
@@ -784,11 +836,7 @@ Plan 7+1 删 8 个别名（兼容期到期人工触发）
   - 风险：mock 模式覆盖不到真 subagent 的并发 race；真派模式 CI 时长爆
   - 验证时机：detail-design 评审前 + Plan 4 实现期间 smoke test 落地
 
-- **OQ-DD-A11（migration 测试 R001 ~ R006 等价点 + 通过门槛）**：[待补充]
-  - 内容：每条规则在新引擎中的等价 hook / yaml 节点 / gate；通过门槛（如 6/6 规则全 pass + 0 false-pass / false-fail）
-  - 依据：D-009 自举硬阈值 + R-3 风险（PHASE_REQUIREMENTS 删除时机）
-  - 风险：等价语义判定不严会让 Plan 7 删除时引入门禁空洞
-  - 验证时机：Plan 6 自举验证 + Plan 7 删除前必须 6/6 通过
+- ~~**OQ-DD-A11（migration 测试 R001 ~ R007 等价点 + 通过门槛）**~~：**已闭合**——§8 全章重写：§8.1 关键认知（迁移≠重写，R 函数复用）/ §8.2 R001-R007 等价点对照（修正骨架 6 条名称错位 + 补 R007）/ §8.3 双跑对照测试矩阵（21 条用例）/ §8.4 通过门槛（21/21 pass + 0 false-pass / 0 false-fail）/ §8.5 顺序约束（与 §10.3 联动）/ §8.6 影响域（保留 R 函数 / 新增 21 fixture）。
 
 - **OQ-DD-A12（rename 工具 MigrationReport + pre-commit 规则）**：[待补充]
   - 内容：`MigrationReport` 字段（`files_changed[]` / `references_found[]` / `risky_unmapped[]` / `pre_commit_added[]`）+ pre-commit hook 拦截白名单
