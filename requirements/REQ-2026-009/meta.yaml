@@ -1,7 +1,7 @@
 # ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-009
 title: 自定义工作流改造
-phase: definition
+phase: tech-research
 created_at: '2026-05-08 11:38:56'
 branch: feat/req-2026-009
 base_branch: develop
@@ -12,6 +12,10 @@ gates_passed:
     at: '2026-05-08 11:43:56'
     via: phase-transition
     notes: GATE-PLAN-FRESHNESS warning (W001/W003) — definition 阶段刷新 plan.md
+  - phase: tech-research
+    at: '2026-05-08 14:30:48'
+    via: phase-transition
+    notes: 6 项 error gate 全过；REVIEW-VERDICT 经 002 重审 + tty 签字放行；5 项后置 gate 自然 skip（features.json/tasks/* 未到任务规划阶段）
 pr_url: ""
 pr_number: 0
 log_layout: split
