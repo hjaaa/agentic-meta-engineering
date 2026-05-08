@@ -189,26 +189,41 @@
   bash: |
     set -e
     git push origin "feat/req-$RUN_ID"
-    PR_URL=$(gh pr create --title "$PR_TITLE" --body-file "$PR_BODY_FILE" \
-                          --base "$BASE_BRANCH" "$DRAFT_FLAG")
+    EXISTING=$(gh pr list --head "feat/req-$RUN_ID" --state open --json url --jq '.[0].url' 2>/dev/null || true)
+    if [ -n "$EXISTING" ]; then
+      PR_URL="$EXISTING"
+    else
+      PR_URL=$(gh pr create --title "$PR_TITLE" --body-file "$PR_BODY_FILE" \
+                            --base "$BASE_BRANCH" ${DRAFT_FLAG:+--draft})
+    fi
+    [[ -z "$PR_URL" ]] && { echo "ERROR: gh pr create 未返回 PR URL（RUN_ID=$RUN_ID）" >&2; exit 1; }
     yq e ".pr_url = \"$PR_URL\"" -i runs/$RUN_ID/meta.yaml
-  depends_on: [test-traceability-check]
+  depends_on: [test-final-signoff]   # 落地修订：原文 [test-traceability-check]，按 yaml 实际拓扑末端 test-final-signoff 接（F-003 review F-20 同步）
   output_format: { type: object, properties: { pr_url: { type: string } } }
 
 - id: pr-merged-gate
   approval:
     gate_message: |
       PR 已合并？请 approve 进入归档；如未合并请 reject 并继续等待。
+    capture_response: true
+    on_reject:
+      prompt: |
+        PR 尚未合并，请等待合并后再次 approve。当前 PR：$pr-submit.output.pr_url
+      max_attempts: 10
   depends_on: [pr-submit]
 
 - id: archive-finalize
   bash: |
     set -e
-    yq e '.archived_at = strenv(NOW)' -i runs/$RUN_ID/meta.yaml
-    yq e '.outcome = "shipped"' -i runs/$RUN_ID/meta.yaml
+    ARCHIVED_AT="$(date '+%Y-%m-%d %H:%M:%S')"
+    COMPLETED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    yq e ".archived_at = \"$ARCHIVED_AT\" | .outcome = \"shipped\" | .phase = \"completed\" | .workflow_status = \"completed\" | .completed_at = \"$COMPLETED_AT\"" -i runs/$RUN_ID/meta.yaml
     echo "归档完成；建议手动跑：git branch -d feat/req-$RUN_ID"
+    python3 scripts/lib/append_process.py "phase-transition: completed → archived" 2>/dev/null || true
   depends_on: [pr-merged-gate]
 ```
+
+落地修订（F-003 review F-21 同步）：原 archive-finalize 仅锁定 `archived_at` + `outcome` 2 字段；实际落地吸收原 `workflow-mark-completed` 节点的 `phase=completed` / `workflow_status=completed` / `completed_at`，合并写一条 yq 管道表达式（原子性）。`append_process.py` 兜底 `|| true` 防 F-005 落地前 script 缺失抛错。
 
 用户路径：跑到 pr-submit 节点引擎自动推 PR + 写 pr_url；用户合并 PR 后回来 `/workflow:approve` 触发 archive-finalize。**无需引擎层 submit / archive 命令**。
 
@@ -240,6 +255,12 @@
 ```
 
 8 个 cr-checker-*.md 文件名 1:1 对应 .claude/agents/*-checker.md（OQ-DD-B4 闭合，2026-05-08 用户拍板照搬）。
+
+**占位 prompt 规则（F-003 review F-23 / F-24 同步）**：
+
+- standard-8phase/ 下 8 个阶段 prompt（initialization / definition / tech-research / outline-design / detail-design / task-planning / development / testing）属"占位 prompt"——它们的 frontmatter `node_id` 仅锚定到该阶段内**任意一个**已存在的 yaml 节点，loader 只校验单向引用（frontmatter.node_id 在 yaml 中存在），**不**要求 yaml 节点反向 `prompt_file:` 指回这些占位文件。
+- 当某 yaml 节点显式声明 `prompt_file: prompts/standard-8phase/<phase>.md` 时，loader 才执行双向校验（frontmatter.node_id ↔ yaml.<id>）。
+- 占位 prompt 的 `node_id` 选择规则：优先选阶段内**第一个**有实际 prompt 内容（`prompt_override` / `prompt`）可抽离的节点；如阶段全为 skill / agent / artifact 节点（无 inline prompt），允许选阶段内任一具代表性节点（约定但不强制对齐入口节点）。
 
 ### 2.2 frontmatter 字段定义
 

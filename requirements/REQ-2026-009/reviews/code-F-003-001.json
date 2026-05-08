@@ -1,0 +1,156 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-009-code-F-003-001",
+  "requirement_id": "REQ-2026-009",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-08 23:20:05",
+  "reviewed_commit": "0bd5769",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "19e3c9c4bc303500791112817c6a4efe6096c105d9fdb1c31d553fb35634a7c5"
+    },
+    {
+      "path": "artifacts/tasks/F-003.md",
+      "sha256": "54c824986e5fe91d1d937be7d0317254e0c3f43c7d972029a3bd46c19194b070"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 76,
+  "dimensions": {
+    "design_consistency": {
+      "score": 70,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "yaml:675 pr-submit.depends_on=[test-final-signoff] 偏离 detailed-design §1.5 L195 (test-traceability-check)；yaml 注释解释了但设计文档未同步"
+        },
+        {
+          "severity": "major",
+          "description": "yaml:687-697 archive-finalize 写 5 字段 (archived_at/outcome/phase/workflow_status/completed_at)，detailed-design §1.5 L204-210 仅锁 2 字段；超契约且未更新设计"
+        },
+        {
+          "severity": "major",
+          "description": "tests/e2e/test_standard_8phase_terminal_nodes.py 用 TestPrSubmitNode 类结构，features.json F-003 acceptance 与 tasks/F-003.md 自检要求精确路径 ::test_pr_submit_node 模块级函数；执行 acceptance 命令会 not found"
+        },
+        {
+          "severity": "minor",
+          "description": ".claude/workflows/prompts/standard-8phase/initialization.md:3 node_id=bootstrap-validate (artifact 类型节点) 占位 prompt 双向校验未豁免"
+        },
+        {
+          "severity": "minor",
+          "description": ".claude/workflows/prompts/standard-8phase/{definition,testing,...}.md 占位 prompt 选阶段中部节点而非入口；选择规则未在 §2.1 文档明确"
+        }
+      ]
+    },
+    "security": {
+      "score": 78,
+      "issues": [
+        {
+          "severity": "major",
+          "description": ".claude/workflows/requirement/standard-8phase.yaml:671 $DRAFT_FLAG 未加引号 + escape_for_bash=True 把空值替成字面 ''，gh 收到空字符串作位置参数；critical → major 降级"
+        },
+        {
+          "severity": "minor",
+          "description": ".claude/workflows/requirement/standard-8phase.yaml:672 $PR_URL 直接插入 yq 表达式；理论可注入但 gh stdout 受控（critic 反证存疑）"
+        }
+      ]
+    },
+    "concurrency": {
+      "score": 72,
+      "issues": [
+        {
+          "severity": "major",
+          "description": ".claude/workflows/requirement/standard-8phase.yaml:666-673 pr-submit 裸调 gh pr create 无幂等保护；workflow 重试会创建多个 open PR；submit-rules.md:87 已实现 gh pr list --head 模式可复用"
+        },
+        {
+          "severity": "major",
+          "description": ".claude/workflows/requirement/standard-8phase.yaml:687-697 archive-finalize 5 次独立 yq -i 写 meta.yaml 无原子性；中途崩溃留 partial state；与 perf checker 同根因合并"
+        },
+        {
+          "severity": "major",
+          "description": ".claude/workflows/requirement/standard-8phase.yaml:681-685 pr-merged-gate approval 缺 on_reject + max_attempts，与 gate_message 「继续等待」语义矛盾；其他 6 个 approval 节点都有"
+        }
+      ]
+    },
+    "complexity": {
+      "score": 90,
+      "issues": []
+    },
+    "error_handling": {
+      "score": 75,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "tests/workflows/test_prompt_structure.py:70-74 _parse_frontmatter 吞 yaml.YAMLError 返回 {}，与无 frontmatter 表现相同；测试失败诊断信息丢失"
+        },
+        {
+          "severity": "major",
+          "description": ".claude/workflows/requirement/standard-8phase.yaml:670-672 PR_URL=$(gh pr create) 后未校验非空；gh CLI 偶有 stdout 空但 exit 0 边界，会把空字符串写入 meta.yaml"
+        },
+        {
+          "severity": "minor",
+          "description": ".claude/workflows/requirement/standard-8phase.yaml:687-698 archive-finalize 缺 python3 scripts/lib/append_process.py 调用；其他 6 个 phase-to-* 节点都有；归档事件不进 process.txt"
+        },
+        {
+          "severity": "minor",
+          "description": "tests/e2e/test_standard_8phase_terminal_nodes.py:36-42 workflow_nodes fixture 用 assert 而非 pytest.fail；yaml 不存在时 22 个测试集体 ERROR"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "tests/e2e/test_standard_8phase_terminal_nodes.py:121 result = subprocess.run(...) 赋值后未读"
+        }
+      ]
+    },
+    "performance": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "major",
+          "description": ".claude/workflows/requirement/standard-8phase.yaml:690-694 archive-finalize 5 次 yq -i 重复 read-parse-write 同文件；与 concurrency CC-002 同根因（合并修复）"
+        }
+      ]
+    },
+    "history_context": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:1021,1322-1324 仍引旧 prompt 路径 prompts/feature-development-iteration.md / prompts/outline-design-draft.md / prompts/detail-design-draft.md；F-003 已迁到 prompts/standard-8phase/，spec 文档失效"
+        }
+      ]
+    }
+  },
+  "required_fixes": [
+    "F-2 (security) yaml:671 $DRAFT_FLAG 改 ${DRAFT_FLAG:+--draft} 条件展开",
+    "F-8 (concurrency) pr-submit 加 gh pr list --head 幂等检查",
+    "F-9 (concurrency+perf) archive-finalize 5 次 yq 合并为单条 yq 表达式（带 | 管道）",
+    "F-10 (concurrency) pr-merged-gate 加 on_reject + max_attempts",
+    "F-14 (error) _parse_frontmatter except YAMLError 至少 print warn 或 raise",
+    "F-15 (error) pr-submit 加 [[ -z \"$PR_URL\" ]] && exit 1 兜底",
+    "F-20 (design) 同步 detailed-design.md §1.5 L195 depends_on=test-final-signoff 并加解释",
+    "F-21 (design) 同步 detailed-design.md §1.5 L204-210 archive-finalize 字段表加 phase/workflow_status/completed_at",
+    "F-22 (design) tests/e2e/test_standard_8phase_terminal_nodes.py 改回模块级函数 OR 修 features.json/tasks/F-003.md acceptance 路径",
+    "F-27 (history) 同步 specs/2026-05-08-workflow-unified-redesign.md L1021/1322-1324 旧 prompt 路径"
+  ],
+  "suggestions": [
+    "F-3 yq env-var 注入加固（PR_URL=\"$PR_URL\" yq e '.pr_url = env(PR_URL)' -i）— 理论安全，可选",
+    "F-17 archive-finalize 加 append_process.py 与其他 phase-to-* 模式一致",
+    "F-18 workflow_nodes fixture 改 pytest.fail 让错误信号更清晰",
+    "F-23 initialization.md frontmatter 加 placeholder: true 字段，或在 §2.1 文档明确占位 prompt 豁免规则",
+    "F-24 占位 prompt 选阶段入口节点；详设 §2.1 加规则",
+    "F-30 result = subprocess.run(...) 改 _ = 或去掉左侧",
+    "Follow-up：F-5/F-6/F-11/F-12/F-13/F-16/F-26/F-28/F-31/F-32/F-33 不阻塞，下次 sweep"
+  ],
+  "scope": {
+    "feature_id": "F-003"
+  },
+  "supersedes": null,
+  "human_signoff": null
+}

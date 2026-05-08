@@ -1018,9 +1018,9 @@ scripts/lib/
 ```yaml
 # standard-8phase.yaml 阶段 7 dev-feature-loop 内 prompt
 loop:
-  prompt_file: prompts/feature-development-iteration.md  # 内含：
-                                                          # /workflow:run code-review-embedded \
-                                                          #   --parent=$RUN_ID --feature=<id>
+  prompt_file: prompts/standard-8phase/development.md  # 内含：
+                                                       # /workflow:run code-review-embedded \
+                                                       #   --parent=$RUN_ID --feature=<id>
 ```
 
 主 Claude 在 loop 每轮 prompt 内动态调 `/workflow:run`——因为 loop 内**不知道有几个 feature**，无法静态展开 N 次 sub_workflow 节点。
@@ -1319,9 +1319,10 @@ scripts/lib/
 ## 20. 完整 yaml 样例位置
 
 - `.claude/workflows/requirement/standard-8phase.yaml` — 完整 standard-8phase（38 节点）
-- `.claude/workflows/prompts/feature-development-iteration.md` — 阶段 7 loop 内 prompt（最复杂）
-- `.claude/workflows/prompts/outline-design-draft.md` — 阶段 4 起草 prompt
-- `.claude/workflows/prompts/detail-design-draft.md` — 阶段 5 起草 prompt
+- `.claude/workflows/prompts/standard-8phase/development.md` — 阶段 7 loop 内 prompt（最复杂）
+- `.claude/workflows/prompts/standard-8phase/outline-design.md` — 阶段 4 起草 prompt
+- `.claude/workflows/prompts/standard-8phase/detail-design.md` — 阶段 5 起草 prompt
+- `.claude/workflows/prompts/standard-8phase/{initialization,definition,tech-research,task-planning,testing}.md` — 其余 5 阶段占位 prompt（F-003 落地，2026-05-08）
 
 未写但 yaml 引用了的 prompt 文件（占位，留待后续）：
 - `prompts/req-quality-review.md`（节点 req-quality-review 当前用 prompt_override 内联，可后续抽离）
