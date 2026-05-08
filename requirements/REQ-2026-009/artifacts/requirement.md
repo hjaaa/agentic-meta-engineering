@@ -33,7 +33,7 @@ refs-requirement: true
 - 前置：兼容期 3 个月内（来源：context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:194）
 - 主流程：用户调用 `/requirement:new|continue|status|list|save|rollback|submit|archive` 任一命令 → 命令以别名形式转发到对应 `/workflow:*` 命令 → 输出 deprecation warning 提示迁移
 - 期望结果：业务行为与旧命令完全等价，仅多一行迁移提示
-- 例外：`/requirement:next` **立即删除**，无兼容期（被 `/workflow:continue` 吸收；来源：context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:204）
+- `/requirement:next`：3 月兼容期内**保留实际实现**，行为等价于推动需求到下一阶段（语义被 `/workflow:continue` 吸收）；Plan 6 自举验证通过后 Plan 7 才真正删除（D-009 修订，覆盖 spec §4.3 立即删决策；来源：plan.md D-009；context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:204）
 
 ### 场景 2：新命令直接触发（`/workflow:run`）
 - 角色：需求工程师 / 工作流模板作者
@@ -84,7 +84,7 @@ refs-requirement: true
   - `standard-8phase.yaml` 完整化（38 节点 + 8 阶段 Skill prompt 抽到 `.claude/workflows/prompts/`）+ 老需求 `meta.yaml` 的 phase 字段映射逻辑（来源：context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:1074）
   - `code-review-embedded.yaml`（8 critic 同层并发 + review-critic 对抗 + code-quality-reviewer 综合 + code-review-report 生成报告）+ 验证 `sub_workflow` 真复用（来源：context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:1080）
   - 11 个 `/workflow:*` 命令实现 + `managing-workflow-runs` 伞形 Skill + workflow-launcher 关键词触发 Skill + `/workflow:status` 父子树 + `/workflow:rollback` 跨父子规则（来源：context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:1090）
-  - 8 个 `/requirement:*` 别名（3 月兼容期；`/requirement:next` 立即删除）+ pre-commit hook 拦截旧 `/requirement:` 引用（来源：context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:1093)
+  - 9 个 `/requirement:*` 命令（3 月兼容期保留实际实现 + 输出 deprecation warning；`/requirement:next` 由 D-009 修订为延后至 Plan 6 自举验证后 Plan 7 才删，覆盖 spec §4.3 立即删决策）+ pre-commit hook 拦截旧 `/requirement:` 引用（来源：plan.md D-009；context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:1093)
   - 自举验证（第 4 周起用新引擎承载本次改造剩余阶段）（来源：context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:1098）
   - 阶段 7 清理：删 `PHASE_REQUIREMENTS` / `phase_enum.py` / `code_review_signoff.py` / `/requirement:next`；CLAUDE.md / agentic-engineer-guide.md / 全部 SOP 文档更新；老 `requirements/` → `runs/` 批量 rename 工具（来源：context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:1103）
 - 不包含（参考 spec §1.3 + §14 未来扩展，明确 Post-MVP）：
@@ -120,7 +120,7 @@ refs-requirement: true
 | AC-06 | 节点级 model/effort/thinking 可覆盖 workflow 默认 | yaml 中 `model: opus[1m]` 的节点使用 Opus，其余节点使用顶层默认 | context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:53 |
 | AC-07 | 8 种节点类型互斥 + sub_workflow 嵌套深度 ≤ 2 | loader 拒绝 `invalid-mutex.yaml` 和 `invalid-deep-nest.yaml` 并输出具体错误 | context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:763;context/team/engineering-spec/plans/2026-05-08-workflow-engine-plan-1-schema-loader.md:2148 |
 | AC-08 | 14 类 yaml 错误 loader 可识别并输出行号 | 跑 `tests/lib/fixtures/workflows/invalid-*.yaml` 全部返非零退出码，错误信息含行号 | context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:753;context/team/engineering-spec/plans/2026-05-08-workflow-engine-plan-1-schema-loader.md:2129 |
-| AC-09 | 旧 `/requirement:*` 别名（除 `:next`）3 月兼容期内行为等价 + 输出 deprecation warning | 8 个别名命令各自调一次，主流程结果与历史一致；`/requirement:next` 调用直接报错"已删除，请用 /workflow:continue" | context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:194 |
+| AC-09 | 9 个旧 `/requirement:*` 命令 3 月兼容期内**保留实际实现** + 输出 deprecation warning（含 `:next`，D-009 覆盖 spec §4.3 立即删决策；语义被 `/workflow:continue` 吸收但实现保留） | 9 个命令各自调一次，主流程结果与历史一致；deprecation warning 内容含"请改用 /workflow:..."；Plan 6 自举验证通过后再于 Plan 7 真正删除 | context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:194；plan.md D-009 |
 | AC-10 | 跨父子 rollback 规则正确 | rollback 父 run 跨过 sub_workflow 节点时，子 run 写 `parent_rolled_back` 事件 + 联动 cancel + 产物归档到父 `.archived/` | context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:1036 |
 | AC-11 | 父 run cancel 时子 run 立即终止 | 在子 run 处于 `paused_at_subworkflow` 时父 cancel，子 jsonl 末尾应写 `parent_cancelled` + 状态 `cancelled` | context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:1020（D-004 决策） |
 | AC-E2E | 现有 1 个老需求能用新引擎续跑 | 选取已有 `requirements/*` 中一个 paused 需求，用 `/workflow:continue` 续跑至下一 approval 节点，状态一致 | context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:1078 |

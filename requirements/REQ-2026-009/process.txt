@@ -9,3 +9,7 @@
 2026-05-08 15:13:42 [save] tech-research 锁定 D-T6 (rollback 归档语义) + spec v2.1/v2.2 修订（§11.2 / §5 / §11.3）
 2026-05-08 15:22:01 [save] D-T1~D-T6 重构并入 plan.md ADR (D-005~D-010 顺序号)；tech-feasibility §8 退化为薄壳索引；spec 回引同步
 2026-05-08 15:48:11 [save] INDEX.md 按 spillover spec §3 重写；去掉需求列表表；补 reviews / receipt / codex-reviews 说明
+2026-05-08 15:55:43 [phase-transition] tech-research → outline-design：10 项 error gate 全过 + PLAN-FRESHNESS warning OK；先提交 INDEX.md 历史信息段删除清理脏工作区
+2026-05-08 16:05:08 [save] outline-design.md 起草完成（4 层模块视图 + 4 张时序图 + 改动一览表 + 自举专题独立成章 + AC 映射 + 8 项 detail-design 待办；485 行）
+2026-05-08 16:08:50 [review:needs_attention] outline-design-quality-reviewer 78/100 (REV-REQ-2026-009-outline-design-001) — 1 major: /requirement:next 处理在 outline §1.2/§5.2/§6 与 requirement.md AC-09/场景1 自相矛盾；5 minor 不阻塞
+2026-05-08 16:13:17 [save] outline-design 评审 needs_attention 修订完成：requirement.md 行 36/87/AC-09 同步 D-009；outline-design.md §6 AC-09 行 + 5 minor (§3.1 跨层禁令补 L2→L4 / §2.4 launcher 读 jsonl 仅路由 / §2.2 .in_progress 残留检测 / §1.2 PHASE_REQUIREMENTS Plan 7 删 / §7 待办+1 rename 工具) 全部修复

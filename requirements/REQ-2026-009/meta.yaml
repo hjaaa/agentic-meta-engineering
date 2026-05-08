@@ -1,7 +1,7 @@
 # ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-009
 title: 自定义工作流改造
-phase: tech-research
+phase: outline-design
 created_at: '2026-05-08 11:38:56'
 branch: feat/req-2026-009
 base_branch: develop
@@ -15,7 +15,13 @@ gates_passed:
   - phase: tech-research
     at: '2026-05-08 14:30:48'
     via: phase-transition
-    notes: 6 项 error gate 全过；REVIEW-VERDICT 经 002 重审 + tty 签字放行；5 项后置 gate 自然 skip（features.json/tasks/* 未到任务规划阶段）
+    notes: 6 项 error gate 全过；REVIEW-VERDICT 经 002 重审 + tty 签字放行；5 项后置 gate 自然 
+      skip（features.json/tasks/* 未到任务规划阶段）
+  - phase: outline-design
+    at: '2026-05-08 15:55:16'
+    via: phase-transition
+    notes: 10 项 error gate 全过 + PLAN-FRESHNESS warning OK；先提交 INDEX.md 
+      历史信息段删除清理脏工作区
 pr_url: ""
 pr_number: 0
 log_layout: split
@@ -49,4 +55,16 @@ reviews:
     history:
       - REV-REQ-2026-009-definition-001
       - REV-REQ-2026-009-definition-002
+    stale: false
+  outline-design:
+    latest: REV-REQ-2026-009-outline-design-001
+    conclusion: needs_attention
+    reviewed_commit: 06f33f0
+    artifact_hashes:
+      artifacts/outline-design.md: 
+        8a129eae71c15c991f86d2c3e25d491146d7a59a348edb9a95e6a146f256c48f
+      artifacts/requirement.md: 
+        8d5208f6aa532d24196d681f2ab7b19cba57da6aba09700ec4431190fdb0eb76
+    history:
+      - REV-REQ-2026-009-outline-design-001
     stale: false
