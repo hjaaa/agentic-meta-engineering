@@ -63,9 +63,12 @@
         ".claude/skills/workflow-engine/**",
         "scripts/lib/workflow_loader.py",
         "scripts/lib/run_state.py",
-        "tests/lib/fixtures/workflows/invalid-*.yaml",
+        "scripts/lib/common.py",
+        "tests/lib/fixtures/workflows/**",
+        "tests/workflows/__init__.py",
         "tests/workflows/test_yaml_schema.py",
-        "tests/lib/test_node_types.py"
+        "tests/lib/test_node_types.py",
+        "tests/lib/test_run_state.py"
       ],
       "acceptance": [
         "TC-F2-1: pytest tests/lib/test_node_types.py::test_8_node_mutex 绿——invalid-mutex.yaml（同节点声明 2 类型字段）loader 拒绝 + 错误码精确（AC-07）",
