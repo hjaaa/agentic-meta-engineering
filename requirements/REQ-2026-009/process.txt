@@ -22,3 +22,4 @@
 2026-05-08 16:43:37 [save] detailed-design.md 骨架起草完成（423 行；§1~§9 对应 outline §7 九项待办；GATE-SOURCING strict 通过；14 项 OQ-DD-* 集中到待澄清清单）
 2026-05-08 16:47:56 [save] OQ-DD-B 4 项闭合：B1/B2/B3 spec 已锁定（§6.11/§6.5/§6.4）；B4 用户拍板 8 critic 照搬 agent 命名（cr-checker-*.md）
 2026-05-08 16:51:40 [save] OQ-DD-A4 闭合：§2.2~§2.7 落地 frontmatter 字段表 / ARGUMENTS 注入 / 父子隔离 / LOOP_OUTPUT 协议 / Mermaid 时序图 / 单测覆盖范围；遗留 A4-T（用例数+fixture）
+2026-05-08 16:54:50 [save] OQ-DD-A8 闭合：§5.2~§5.7 落地 hook patch 完整 shell 片段 + 双层兜底（hook + isatty + BYPASS reason）+ 24 条单测矩阵 + ai-collaboration 规则三扩展

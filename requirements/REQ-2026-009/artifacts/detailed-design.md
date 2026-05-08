@@ -255,25 +255,126 @@ sequenceDiagram
 - spec §15 决策删除该校验（来源：context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md）
 - 新拦截点：`.claude/hooks/pre-tool-use-guard.sh` 同构搬到 hook 层（D-006，来源：requirements/REQ-2026-009/plan.md:101）
 
-### 5.2 patch 形态
+### 5.2 拦截语义（关键认知）
 
-新增 case 分支拦截 `/workflow:approve` / `/workflow:reject` / `python3 scripts/lib/workflow_approve.py` / `python3 scripts/lib/workflow_reject.py` 四个入口；命中且非 tty 进程时通过 fd 3 写拒绝消息后 exit 2（与 hook 既有约定一致）。完整 shell 片段见 OQ-DD-A8。
+PreToolUse hook **只对 Claude Code Agent 调 Bash / Edit / Write 等工具时触发**（case 分支按 `tool_name` 派发，来源：.claude/hooks/pre-tool-use-guard.sh:88）。用户在 tty 终端直接打命令不会进 hook。因此本 patch 的拦截语义 = "AI 正在尝试调用 approval / reject 入口"，命中 = 拒绝（无需也无法在 hook 内做"是否 tty"判断）。
 
-### 5.3 fd 3 / exit 码约定
+CLI 层 `workflow_approve.py` / `workflow_reject.py` 走 `sys.stdin.isatty()` 兜底（§5.4），覆盖 hook 被 disable / 绕过的边界场景——构成"hook 拦 AI / isatty 拦非交互进程"的双层。
 
-来源：scripts/lib/check_reviews.py 中既有 hook 调用模式；本 patch 不引入新约定。
+### 5.3 patch 形态：完整 shell 片段
 
-### 5.4 兜底 isatty
+**改动定位**（pre-tool-use-guard.sh 增量 patch）：
 
-新增 `scripts/lib/workflow_approve.py` / `scripts/lib/workflow_reject.py` 仍 fail-closed 校验 `sys.stdin.isatty()`，避免 hook 漏拦。
+1. 顶部新增正则常量（与 `WRITE_OPS_PATTERN` 同位置）：
 
-### 5.5 单测覆盖
+```bash
+# D-006 approval / reject 是人类专属（来源：requirements/REQ-2026-009/plan.md:101）
+# 命中即拒绝——hook 只对 AI Bash 触发，tty 用户不走此路径
+readonly APPROVAL_SLASH_PATTERN='(/workflow:(approve|reject))(\b|[[:space:]])'
+readonly APPROVAL_PYTHON_PATTERN='python3?[[:space:]]+([^[:space:]]+/)?(scripts/lib/)?workflow_(approve|reject)\.py(\b|[[:space:]])'
+```
 
-测试落 `tests/hooks/test_pre_tool_use_guard.py`：覆盖 4 入口 × {tty / 非 tty} × {直接调用 / python 包装路径} 矩阵；具体用例与 fixture 见 OQ-DD-A8。
+2. `case "$tool_name" in ... Bash) ... esac` 分支增加一行调用：
 
-### 5.6 ai-collaboration.md 规则三 patch
+```bash
+    Bash)
+      check_workflow_approval_human_only "$command"   # ← 新增
+      check_bash_writes_review "$command"
+      ;;
+```
 
-来源：context/team/ai-collaboration.md 现规则三仅写 sign-off 是人类专属；patch 后扩展到 sign-off / approval / reject 三类，列出新入口 `/workflow:approve` / `/workflow:reject`。
+3. 文件尾部 `check_bash_writes_review` 之后追加新函数：
+
+```bash
+check_workflow_approval_human_only() {
+  local cmd="$1"
+  [[ -z "$cmd" ]] && return 0
+  if echo "$cmd" | grep -qE "$APPROVAL_SLASH_PATTERN" \
+     || echo "$cmd" | grep -qE "$APPROVAL_PYTHON_PATTERN"; then
+    cat >&3 <<EOF
+BLOCKED: /workflow:approve / /workflow:reject 是人类专属动作（D-006）。
+AI 在主对话或 subagent 中不能调用以下入口：
+  - /workflow:approve / /workflow:reject（slash command）
+  - python3 scripts/lib/workflow_approve.py / workflow_reject.py（CLI 直入）
+请由人类在 tty 终端运行；详见 context/team/ai-collaboration.md 规则三。
+紧急绕过：CLAUDE_GATES_GLOBAL_BYPASS="<原因>" <重新执行>
+EOF
+    exit 2
+  fi
+}
+```
+
+### 5.4 已知绕过通道（与 F-002 carryover-A 一致接受）
+
+变量间接引用形式无法被正则命中，例如：
+
+```bash
+P=/workflow:approve; eval "$P"          # 命中不到 SLASH 正则
+S=workflow_approve.py; python3 "$S"     # 命中不到 PYTHON 正则
+```
+
+此类绕过的兜底防线（carryover-A 决策接受，来源：.claude/hooks/pre-tool-use-guard.sh:15）：
+
+- **CLI 层 isatty fail-closed**（§5.5）：`workflow_approve.py` / `workflow_reject.py` 顶端 `if not sys.stdin.isatty(): sys.exit(2)`
+- **CLAUDE_GATES_GLOBAL_BYPASS reason ≥ 8 字符**（pre-tool-use-guard.sh:60）：要求显式给原因，audit 全文记录
+- **PR review 人工**（D-006 软约束）：ai-collaboration.md 规则三明文禁止；review 时人工抓取相关 commit
+
+### 5.5 兜底 isatty 实现（CLI 层）
+
+新增 `scripts/lib/workflow_approve.py` / `scripts/lib/workflow_reject.py` 顶端模板：
+
+```python
+# scripts/lib/workflow_approve.py（雏形）
+import sys
+
+def main() -> int:
+    if not sys.stdin.isatty():
+        print(
+            "ERROR: /workflow:approve 必须在 tty 终端执行。\n"
+            "AI 主对话 / subagent / CI / pipe 调用一律拒绝（D-006）。",
+            file=sys.stderr,
+        )
+        return 2
+    # ... 业务逻辑（写 verdict.human_signoff / 状态机推进）
+    return 0
+```
+
+注意 `code_review_signoff.py:61` 的同构 isatty 检查在 Plan 7 删除前作 fallback 共存（D-009 兼容期）；删除时机由 §10.3 顺序约束控制。
+
+### 5.6 单测矩阵
+
+测试落 `tests/hooks/test_pre_tool_use_guard.py`，组合维度：
+
+| 维度 | 取值 |
+|---|---|
+| **入口形态** | (a) `/workflow:approve` / (b) `/workflow:reject reason-text` / (c) `python3 scripts/lib/workflow_approve.py` / (d) `python3 scripts/lib/workflow_reject.py "reason"` |
+| **包装方式** | (1) 直接调 / (2) `bash -c "..."` 包装 / (3) 命令前后加无关 token（环境变量 / 重定向） / (4) 从绝对路径调 python（`python3 /repo/scripts/lib/workflow_approve.py`）|
+| **预期** | hook 命中 → exit 2 + BLOCKED 消息 / hook 不命中 → exit 0 |
+
+**用例数**（建议 detail-design 评审前完成 fixture 落盘）：
+
+- 命中场景：4 入口 × 4 包装 = 16 条 happy block
+- 边界放行场景：5 条（grep 搜索字面量 / 注释中 / 字符串字面量在另一文件 / `--help` 显示帮助 / `dry-run` flag）
+- 已知绕过通道场景：2 条（变量间接引用直接 eval / `python3 "$S"`）— 期望 hook 放行 + CLI 层 isatty 拒绝（双层验证）
+- audit 行格式：1 条（命中时 audit log 不写 `BYPASS used`，因为本类拦截不属于 BYPASS 路径，与 audit_log 现有约定一致）
+
+合计 24 条，按 pytest parametrize 落 fixture YAML（参考 tests/hooks/ 既有风格）。
+
+### 5.7 ai-collaboration.md 规则三 patch
+
+现状（来源：context/team/ai-collaboration.md:38）规则三仅写"sign-off 是人类专属动作"，列出 `code_review_signoff.py` / `/code-review:signoff` / `save_review.py signoff` 三入口。
+
+patch 后扩展到 sign-off / approval / reject 三类，新增入口段：
+
+```markdown
+**Approval 唯一入口**（人类在 tty 终端执行）：
+
+  /workflow:approve   # slash command 形式（最终调 workflow_approve.py）
+  /workflow:reject <reason>
+
+底层实现 `python3 scripts/lib/workflow_approve.py` / `workflow_reject.py` 同样禁止 AI 调用。
+hook 层（.claude/hooks/pre-tool-use-guard.sh）已加 D-006 拦截；CLI 层 isatty fail-closed 兜底。
+```
 
 ---
 
@@ -480,11 +581,7 @@ Plan 7+1 删 8 个别名（兼容期到期人工触发）
   - 风险：汉字与 ASCII 字符长度计数不统一会让排序错乱
   - 验证时机：detail-design 评审前 + Plan 5 实现期间持续校准
 
-- **OQ-DD-A8（hook patch + 单测矩阵）**：[待补充]
-  - 内容：完整 case 分支 shell 片段 + 4 入口 × {tty / 非 tty} × {直接调用 / python 包装路径} 测试矩阵
-  - 依据：scripts/lib/code_review_signoff.py:61 现有 isatty 校验作同构参考
-  - 风险：python 包装路径漏拦会让 AI 绕过 sign-off
-  - 验证时机：detail-design 评审前
+- ~~**OQ-DD-A8（hook patch + 单测矩阵）**~~：**已闭合**——展开为 §5.2 ~ §5.7：拦截语义认知 / 完整 shell 片段（正则常量 + case 分支挂钩 + check 函数）/ 已知绕过通道 + 双层兜底（CLI isatty + BYPASS reason ≥ 8 + PR review）/ CLI 层 workflow_approve.py 雏形 / 24 条单测矩阵 / ai-collaboration 规则三 patch。
 
 - **OQ-DD-A9（rollback API + RollbackResult + 中断保护）**：[待补充]
   - 内容：`RollbackResult` 字段表 + 异常契约 + 4 场景 fixture / 期望文件树 / jsonl 行数 + 并发互斥选型（fcntl.flock vs os.O_EXCL）
