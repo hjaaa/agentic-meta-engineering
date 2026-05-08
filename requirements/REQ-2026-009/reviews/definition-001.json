@@ -63,5 +63,11 @@
   "supersedes": null,
   "project_specific_issues": [
     "项目索引 context/project/agentic-meta-engineering/INDEX.md 仅列出 areas.yaml，未声明并发限制 / 合规约束等额外动态维度；本次评审无项目特定关注点叠加。"
-  ]
+  ],
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-08T14:20:55.627474+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
+  }
 }
