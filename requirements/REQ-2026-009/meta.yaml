@@ -1,0 +1,24 @@
+# ============ 流程组（bootstrap 时填） ============
+id: REQ-2026-009
+title: 自定义工作流改造
+phase: bootstrap
+created_at: '2026-05-08 11:38:56'
+branch: feat/req-2026-009
+base_branch: develop
+project: agentic-meta-engineering
+services: []
+gates_passed: []
+pr_url: ""
+pr_number: 0
+log_layout: split
+
+# ============ 语义组（definition 阶段补齐，供跨需求检索） ============
+feature_area: ""                         # definition 起必填；值必须在 context/project/<project>/areas.yaml 白名单内
+change_type: ""                          # definition 起必填；枚举：feature / bugfix / refactor / perf / security
+affected_modules: []                     # definition 起必填；自由词，建议与 services 子模块对齐
+tags: []                                 # 可选；长尾标签，不归一化
+
+# ============ 结果组（completed 时才填） ============
+outcome: ""                    # shipped / abandoned / rolled-back
+completed_at: ""               # ISO8601，completed 时填
+lessons_extracted: false       # /knowledge:extract-experience 是否已跑
