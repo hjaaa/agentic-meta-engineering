@@ -422,21 +422,171 @@ A5 同时修正 §3.2 旧版"feature_id 编号空间分组"的过粗估算（65-
 
 ## 4. `keyword-matching.md` 关键词长度排序表（对应 outline §7 待办 #4，主责 D-008）
 
-### 4.1 6 类基础关键词
+### 4.1 字符长度计数规则
 
-来源：requirements/REQ-2026-009/artifacts/outline-design.md:201 列出 6 类（new / continue / review / release / approve / reject）；具体关键词字面量与字符长度排序表见 OQ-DD-A7（含汉字 1 字符 + ASCII 1 字符 的统一计数规则）。
+统一规则（D-008 锁定，来源：requirements/REQ-2026-009/artifacts/outline-design.md:218）：
 
-### 4.2 state tiebreaker 规则
+- 一个汉字 = 1 字符
+- 一个 ASCII 字符 = 1 字符（含字母 / 数字 / 标点）
+- 计数用 Python `len(s)`（Python 3 原生 Unicode 字符长度），跨平台一致
+
+#### 4.1.1 6 类关键词清单与长度
+
+| 类 | 关键词 | 长度 | 映射命令 / ARGUMENTS |
+|---|---|---:|---|
+| **continue** | `继续之前的需求` | 7 | `/workflow:continue` |
+| **continue** | `继续这个需求` | 6 | `/workflow:continue` |
+| **continue** | `接着做` | 3 | `/workflow:continue` |
+| **continue** | `继续` | 2 | `/workflow:continue` |
+| **review** | `code review` | 11 | `/workflow:run code-review-embedded` |
+| **review** | `跑下代码评审` | 6 | `/workflow:run code-review-embedded` |
+| **review** | `跑代码评审` | 5 | `/workflow:run code-review-embedded` |
+| **review** | `审一下` | 3 | `/workflow:run code-review-embedded` |
+| **new** | `开个新需求` | 5 | `/workflow:new standard-8phase "<title>"` |
+| **new** | `新建需求` | 4 | `/workflow:new standard-8phase "<title>"` |
+| **new** | `创建需求` | 4 | `/workflow:new standard-8phase "<title>"` |
+| **release** | `release` | 7 | `/workflow:run release-cut`（Post-MVP） |
+| **release** | `我要发版` | 4 | `/workflow:run release-cut`（Post-MVP） |
+| **release** | `打版本` | 3 | `/workflow:run release-cut`（Post-MVP） |
+| **approve** | `approve` | 7 | `/workflow:approve` |
+| **approve** | `批准` | 2 | `/workflow:approve` |
+| **approve** | `通过` | 2 | `/workflow:approve` |
+| **reject** | `reject:` | 7 | `/workflow:reject <reason>` |
+| **reject** | `不通过` | 3 | `/workflow:reject <reason>` |
+| **reject** | `驳回` | 2 | `/workflow:reject <reason>` |
+
+#### 4.1.2 排序后的最长匹配表（按 length DESC）
+
+```
+length=11: code review (review)
+length= 7: 继续之前的需求 (continue) | release (release) | approve (approve) | reject: (reject)
+length= 6: 继续这个需求 (continue) | 跑下代码评审 (review)
+length= 5: 跑代码评审 (review) | 开个新需求 (new)
+length= 4: 新建需求 (new) | 创建需求 (new) | 我要发版 (release)
+length= 3: 接着做 (continue) | 审一下 (review) | 打版本 (release) | 不通过 (reject)
+length= 2: 继续 (continue) | 批准 (approve) | 通过 (approve) | 驳回 (reject)
+```
+
+length=7 共 4 条（继续之前的需求 / release / approve / reject:）—— 这是**等长冲突**的主要发生层（§4.4 兜底 ask）。其余层多数无冲突。
+
+### 4.2 匹配语义
+
+| 关键词类型 | 匹配方式 | 示例 |
+|---|---|---|
+| ASCII（如 `approve` / `release`） | `\b<keyword>\b` 词边界 | `approved` / `releases` 不命中（避免假阳性）|
+| 中文（如 `继续`） | substring 匹配 | "我要继续之前的需求" → 命中"继续之前的需求"（最长匹配优先）|
+| 混合标点（如 `reject:`） | 必须含冒号字面量 | "rejected" 不命中；"reject:理由太弱" 命中 |
+
+### 4.3 state tiebreaker 伪码
 
 来源：requirements/REQ-2026-009/plan.md:120 D-008 第 1 步——若有 run 处于 `approval_pending` 状态，优先匹配 approve / reject，绕过最长匹配。
 
-### 4.3 ≥2 等长冲突的 ask 兜底
+```python
+def match_keyword(
+    user_input: str,
+    active_runs: list[RunState],
+) -> tuple[Optional[Command], Optional[str], Optional[ConflictReason]]:
+    # Step 1: state tiebreaker
+    has_approval_pending = any(r.state == "approval_pending" for r in active_runs)
+    if has_approval_pending:
+        for kw in [k for k in KEYWORDS if k.category in ("approve", "reject")]:
+            if kw.matches(user_input):
+                return kw.command, kw.extract_args(user_input), None
+    # Step 2: 最长匹配
+    sorted_kws = sorted(KEYWORDS, key=lambda k: -k.length)
+    hits = [kw for kw in sorted_kws if kw.matches(user_input)]
+    # Step 3: 等长冲突兜底
+    if len(hits) >= 2 and hits[0].length == hits[1].length:
+        equal_top = [h for h in hits if h.length == hits[0].length]
+        return None, None, ConflictReason("equal_length", equal_top)
+    # Step 4: 命中或空
+    if hits:
+        return hits[0].command, hits[0].extract_args(user_input), None
+    return None, None, None  # 无命中：launcher 不接管，主对话正常处理
+```
 
-主 Claude 应 ask 用户消歧；prompt 模板见 OQ-DD-A7。
+### 4.4 等长冲突 ask 兜底
 
-### 4.4 单测覆盖
+length=7 等长冲突最常见——例：用户说 "approve 这个需求并跑下评审" 同时命中 `approve` (7) 与 `跑下代码评审` (6)，**长度不等**走最长匹配（approve 7 胜出）；但 "我要 reject: 这个 release"（如果同时含 reject: 7 和 release 7）则触发 ask。
 
-测试落 `tests/skills/test_keyword_matching.py`：每类基础关键词、等长冲突、state tiebreaker、空匹配兜底各覆盖；具体用例数见 OQ-DD-A7。
+**兜底 prompt 模板**：
+
+```
+我同时检测到以下 N 个意图（关键词长度都为 K）：
+  1. "<kw1>" → <command1>
+  2. "<kw2>" → <command2>
+  ...
+请明示要执行哪一个，或换一种说法。
+```
+
+具体替换示例：
+
+```
+我同时检测到以下 2 个意图（关键词长度都为 7）：
+  1. "approve" → /workflow:approve
+  2. "reject:" → /workflow:reject
+请明示要执行哪一个，或换一种说法。
+```
+
+ask 后用户的回复直接送回 launcher 第二轮匹配；本设计**不引入轮次状态**，避免 launcher 复杂化（参考 D-008 "MVP 不支持多步连接词"决策）。
+
+### 4.5 `keyword-matching.md` reference 文件结构
+
+落 `.claude/skills/workflow-launcher/reference/keyword-matching.md`，主结构：
+
+```markdown
+# 关键词路由表（D-008 锁定）
+
+## 计数规则
+（§4.1 内容）
+
+## 6 类关键词清单
+| 类 | 关键词 | 长度 | 命令映射 |
+（§4.1.1 表）
+
+## 排序后的最长匹配序
+（§4.1.2 表）
+
+## 匹配语义（ASCII vs 中文 vs 混合）
+（§4.2 表）
+
+## state tiebreaker 伪码
+（§4.3 代码）
+
+## 等长冲突 ask 模板
+（§4.4 模板）
+```
+
+引用关系：launcher Skill 的 SKILL.md 主入口提示「具体关键词与长度见 reference/keyword-matching.md」；本文件由本设计直接生成首版，运行期不变（演化走 PR review）。
+
+### 4.6 单测矩阵
+
+测试落 `tests/skills/test_keyword_matching.py`，覆盖 6 类断言：
+
+| # | 断言类 | 用例样本 | 期望 |
+|---|---|---|---|
+| 1 | 每类命中 happy | 6 类各 1 条标准输入（如 "继续" / "跑下代码评审"）| 命中 → 返回正确 command + ARGUMENTS |
+| 2 | 最长匹配优先 | "我要继续之前的需求做下一步" 同时含"继续之前的需求"(7) 与"继续"(2) | 命中 7 长版本，绕过 2 长版本 |
+| 3 | state tiebreaker | active_run.state=approval_pending + 输入"approve 这个需求并跑下评审" | approve 优先，绕过最长匹配；返回 `/workflow:approve` |
+| 4 | 等长冲突 ask | active_run.state ≠ approval_pending + 输入触发 length=7 多命中 | 返回 ConflictReason("equal_length", [...]) + 不调命令 |
+| 5 | ASCII 词边界 | 输入 "approved this" / "releases" | 不命中 approve / release（词边界保护）|
+| 6 | 空匹配 | "今天天气真好" / "what's the schema for X?" | 全部返回 (None, None, None) |
+
+**用例数估算**：6 类断言 × ~3 fixture/类 = ~18 条 pytest parametrize 用例。fixture 文件 `tests/skills/fixtures/keyword_matching.yaml` 含 `inputs[]` + `expected[]` 双字段。
+
+### 4.7 影响域
+
+新增文件：
+
+- `.claude/skills/workflow-launcher/SKILL.md`（launcher Skill 入口；按 D-008 §4.3 伪码实现）
+- `.claude/skills/workflow-launcher/reference/keyword-matching.md`（路由表，§4.5 结构）
+- `tests/skills/test_keyword_matching.py`（6 类断言）
+- `tests/skills/fixtures/keyword_matching.yaml`（输入 / 期望对照）
+
+不改动文件：
+
+- yaml workflow schema（关键词路由不进 yaml，是 launcher Skill 的内部逻辑）
+- 主对话上下文格式（launcher 仅做意图翻译，不修改 RunState）
 
 ---
 
@@ -1139,11 +1289,7 @@ Plan 7+1 删 8 个别名（兼容期到期人工触发）
   - 风险：循环依赖未检出会让 task-planning 拓扑排序死锁
   - 验证时机：features.json 提交前用 `tools/check_features_dag.py`（Plan 1 已合并工具）跑一遍
 
-- **OQ-DD-A7（关键词字面量 + 长度表 + 单测）**：[待补充]
-  - 内容：6 类关键词的字面量集合 / 字符长度数字 / 排序后顺序 / 等长冲突的 ask 兜底文案 / 单测用例数
-  - 依据：outline §2.4 锁定 3 步仲裁
-  - 风险：汉字与 ASCII 字符长度计数不统一会让排序错乱
-  - 验证时机：detail-design 评审前 + Plan 5 实现期间持续校准
+- ~~**OQ-DD-A7（关键词字面量 + 长度表 + 单测）**~~：**已闭合**——§4 全章扩展：§4.1 字符长度计数规则（汉字 1 + ASCII 1，Python `len()`）+ 6 类 20 关键词清单 + 排序后最长匹配序（length=7 是冲突主层）/ §4.2 匹配语义（ASCII 词边界 / 中文 substring / 混合标点字面量）/ §4.3 state tiebreaker 伪码（含 ConflictReason 返回值）/ §4.4 等长冲突 ask prompt 模板 / §4.5 keyword-matching.md 文件结构 / §4.6 6 类断言 ~18 用例矩阵 / §4.7 影响域。
 
 - ~~**OQ-DD-A8（hook patch + 单测矩阵）**~~：**已闭合**——展开为 §5.2 ~ §5.7：拦截语义认知 / 完整 shell 片段（正则常量 + case 分支挂钩 + check 函数）/ 已知绕过通道 + 双层兜底（CLI isatty + BYPASS reason ≥ 8 + PR review）/ CLI 层 workflow_approve.py 雏形 / 24 条单测矩阵 / ai-collaboration 规则三 patch。
 
