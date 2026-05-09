@@ -1,0 +1,132 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-009-code-F-007-001",
+  "requirement_id": "REQ-2026-009",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-09 16:10:42",
+  "reviewed_commit": "36902d0",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "c9d3ac66899da2c4c52d5c618cd44fbcf3f9f5b9634059d215b24577a8d8d403"
+    },
+    {
+      "path": "artifacts/tasks/F-007.md",
+      "sha256": "c44f963d6fc059ad5044dfa52c45c492a6c9adbeec6dfd4c727f5743ae476c20"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 74,
+  "dimensions": {
+    "design_consistency": {
+      "score": 70,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/workflow_rollback.py:290-326 vs 852-883 子 run 发现策略首次/续跑路径不对称（_collect_sub_run_ids 走 runs+requirements 全扫 + 命名约定；_find_matching_child_run_dirs 走 run_dir/sub_runs/ 直挂），同一 rollback 两次执行可能归档到不同子集"
+        },
+        {
+          "severity": "major",
+          "description": "scripts/lib/workflow_rollback.py:553-624 _resume_in_progress 续跑未恢复原 to_node：调用方需重新传入 to_node，若与崩溃首次不一致则归档结果污染（§6.4 设计未保存元信息）"
+        },
+        {
+          "severity": "minor",
+          "description": "requirements/REQ-2026-009/artifacts/features.json:239-243 F-007 touches 缺 tests/skills/test_workflow_commands.py（task.md 与 diff 都已含），feature 定义漂移"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback.py:650-653 _determine_new_current_node 未使用 nodes 参数，签名冗余"
+        }
+      ]
+    },
+    "security": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback.py:660 rollback_run 未对 to_node / target_id 做 path-traversal 防御（CLI 可传 ../../etc/passwd 形态字符串），虽底层 _resolve_run_dir 走 REPO_ROOT 拼接，但 target_id 透传到 root/runs/<target_id> 与 root/requirements/<target_id> 拼接，在写权限下可能逃逸"
+        }
+      ]
+    },
+    "concurrency": {
+      "score": 75,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/workflow_rollback.py:728-737 vs §6.4 伪码顺序不一致——实现先 mkdir archive_root 再 _acquire_dual_lock；伪码 flock → mkdir → O_EXCL。.in_progress O_EXCL 兜底虽避免了重复进入，但违反单一 critical-section 原则，混合派系下 archive_dir mkdir 可能在两进程 race 中重叠"
+        },
+        {
+          "severity": "major",
+          "description": "scripts/lib/workflow_rollback.py:737-754 mv 完成后 unlink(.in_progress) 与 flock 释放分离：若 unlink 失败但 flock 已释放，下次 rollback 误判为崩溃残留触发续跑（应保证 unlink 在持锁内完成 + 出错也得释放锁）"
+        }
+      ]
+    },
+    "complexity": {
+      "score": 72,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/workflow_rollback.py 单文件 929 行触发硬阈值（仓库内函数体超 80 行 / 文件超 600 行的拆分约束），建议按 锁模块 / archive 执行 / sub_run 处理 / CLI 拆 3-4 个模块"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback.py:660-765 rollback_run 主函数实际行数 ≈70（critic 反证有效）但 12 步 inline 拼接逻辑读起来仍重，建议提取 _resolve_and_validate / _setup_archive 两步"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback.py:290-326 _collect_sub_run_ids 嵌套 4 层 + 启发式命名匹配（child_dir.name in run_dir.name or nid in child_dir.name），CC 偏高且语义不清"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 82,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback.py:484-494 _archive_sub_run 内对 append_event 失败仅 logger.warning 不重抛，可能导致子 jsonl 缺 parent_rolled_back 事件却仍 mv 整目录（不可逆操作前的可恢复异常应该 fail-fast）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback.py:362 import json 在函数内部局部导入，与文件顶端 import 风格不一致"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 86,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "tests/lib/test_workflow_rollback.py:297-341 test_crash_recovery 用手工构造 .in_progress 替代 §6.6 设计的 'monkeypatch mv 中途 raise'，覆盖效果接近但与 acceptance TC-F7-5 描述不严格一致"
+        }
+      ]
+    },
+    "performance": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback.py:290-326 _collect_sub_run_ids 走 root/runs + root/requirements 全目录扫，repo 体量增大时为 O(N×节点数)；建议读 run_state metadata 拿 sub_run id 列表"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback.py:333-372 _truncate_jsonl_to_tail 全文 read_events → 写两次 jsonl，大 jsonl 场景内存占用可控但有改进空间（流式截断）"
+        }
+      ]
+    },
+    "history_context": {
+      "score": 90,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "并发 + 错误处理叠加：F-1 锁顺序 + F-11 unlink/flock 分离 + F-9 append_event warning 容忍三处叠加，崩溃路径下子 jsonl 缺事件 + 残留误判 + race 三个失败模式可能同时发生，建议把锁/archive/jsonl/sub_run 整理成 4 个明确的串行 stage 加单元测试覆盖每 stage 的失败路径",
+    "复杂度 + 设计一致性叠加：F-25 文件拆分 + F-20 子 run 发现策略统一 应一并处理——目前 _collect_sub_run_ids/_find_matching_child_run_dirs 不一致 + 文件 929 行，拆模块时同时统一为单一发现策略（建议读 run_state 元数据 + 命名约定回退）",
+    "测试 + 设计契约：F-23 test_crash_recovery 与 §6.6 描述不一致 + F-21 features.json touches 漂移，发版前补一个 fixture-driven 'mv 半途崩' 用例 + 同步 features.json"
+  ],
+  "scope": {
+    "feature_id": "F-007"
+  },
+  "supersedes": null
+}
