@@ -135,4 +135,8 @@ def main(args: list[str], repo_root: Path | None = None, _skip_wait: bool = Fals
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    try:
+        sys.exit(main(sys.argv[1:] if len(sys.argv) > 1 else []))
+    except WorkflowError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(1)

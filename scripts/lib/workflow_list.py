@@ -16,7 +16,7 @@ _LIB_DIR = Path(__file__).resolve().parent
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
-from common import REPO_ROOT  # noqa: E402
+from common import REPO_ROOT, WorkflowError  # noqa: E402
 from run_state import RunState, read_events  # noqa: E402
 
 _FILTER_FIELDS = {"phase", "state", "template", "requirement_id", "parent_run_id"}
@@ -63,8 +63,8 @@ def _load_run_entry(run_dir: Path) -> dict[str, Any] | None:
             except (json.JSONDecodeError, OSError) as exc2:
                 print(f"WARN: meta 解析失败（json） {run_dir.name}: {exc2}", file=sys.stderr)
                 meta = {}
-        except Exception as exc:
-            # 非 yaml 解析错误（IO 等）→ 尝试 json fallback
+        except (yaml.YAMLError, OSError) as exc:
+            # 非 yaml 解析错误（OSError 类 IO/权限）→ 尝试 json fallback
             try:
                 import json  # noqa: PLC0415 — 与 yaml fallback 路径合并
                 with meta_path.open("r", encoding="utf-8") as fh:
@@ -190,4 +190,8 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    try:
+        sys.exit(main(sys.argv[1:] if len(sys.argv) > 1 else []))
+    except WorkflowError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        sys.exit(1)
