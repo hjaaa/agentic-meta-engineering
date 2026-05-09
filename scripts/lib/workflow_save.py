@@ -2,28 +2,26 @@
 
 /workflow:save [<note>]
 
-追加 workflow_paused（代表保存检查点）jsonl 事件。
+追加 `save` 事件到 jsonl（检查点，不改 state）。
 
 详细设计 §1.2.3。
-
-注意：spec `save` 事件类型不在 VALID_EVENT_TYPES 白名单（F-001 版本未扩展）。
-本模块用 `workflow_paused` 作为保存事件代理，等 F-001 扩展白名单后迁移。
 """
 from __future__ import annotations
 
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 _LIB_DIR = Path(__file__).resolve().parent
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
-from common import REPO_ROOT, WorkflowError  # noqa: E402
+from common import REPO_ROOT, WorkflowError, infer_run_id_from_branch  # noqa: E402
 from run_state import RunState, _resolve_run_dir, append_event, read_events  # noqa: E402
 from workflow_state_validator import validate_state_for_cmd  # noqa: E402
 
-# save 对应的 jsonl 事件类型（workflow_paused 是白名单内事件，用作保存检查点代理）
-_SAVE_EVENT_TYPE = "workflow_paused"
+# save 对应的 jsonl 事件类型（不映射 WORKFLOW_EVENT_TO_STATE，不改 state；§1.3 矩阵 5 态均允许）
+_SAVE_EVENT_TYPE = "save"
 
 _NOTE_MAX_LEN = 200
 
@@ -42,7 +40,7 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
     note = " ".join(args).replace("\n", " ")[:_NOTE_MAX_LEN]
 
     # 推断 run_id
-    run_id = _infer_run_id(root)
+    run_id = infer_run_id_from_branch(root)
     if not run_id:
         print(
             "ERROR: 无法推断当前 run_id；请先 /workflow:run 或切到 feat/req-<id> 分支",
@@ -76,28 +74,11 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
         print(f"ERROR: 写 jsonl 事件失败：{exc}", file=sys.stderr)
         return 1
 
-    from datetime import datetime, timezone
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     current = run_state.current_node or "(none)"
     note_summary = f"，note：{note[:50]}" if note else ""
     print(f"已保存 {ts}，当前节点：{current}{note_summary}")
     return 0
-
-
-def _infer_run_id(repo_root: Path) -> str | None:
-    """从当前 git 分支推断 run_id。"""
-    import subprocess
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True, text=True, cwd=str(repo_root), timeout=5,
-        )
-        branch = result.stdout.strip()
-        if branch.startswith("feat/req-"):
-            return branch[len("feat/req-"):]
-    except Exception:
-        pass
-    return None
 
 
 if __name__ == "__main__":
