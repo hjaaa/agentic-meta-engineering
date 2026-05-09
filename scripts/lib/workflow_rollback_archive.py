@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -56,7 +57,6 @@ def _move_artifacts(
 
     返回已成功 mv 的路径列表。
     """
-    import shutil
     moved: list[Path] = []
     for src in artifacts:
         if not src.exists():

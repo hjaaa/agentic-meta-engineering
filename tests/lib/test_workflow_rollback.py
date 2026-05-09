@@ -21,6 +21,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -30,7 +31,6 @@ sys.path.insert(0, str(REPO_ROOT / "scripts" / "lib"))
 
 from workflow_rollback import (  # noqa: E402
     ConcurrentRollbackError,
-    RollbackInProgressError,
     RollbackResult,
     RunStateNotFoundError,
     SubRunArchive,
@@ -76,7 +76,7 @@ def _create_artifact_dir(run_dir: Path, node_id: str, filename: str = "output.js
     return output_file
 
 
-def _read_jsonl(jsonl_path: Path) -> list[dict]:
+def _read_jsonl(jsonl_path: Path) -> list[dict[str, Any]]:
     """读取 jsonl 文件，返回事件列表。"""
     if not jsonl_path.is_file():
         return []
@@ -103,7 +103,7 @@ def _get_completed_node_ids(jsonl_path: Path) -> set[str]:
 # TC-F7-1: 单层 rollback
 # ============================================================================
 
-def test_R1_single_layer(tmp_path, monkeypatch):
+def test_R1_single_layer(tmp_path):
     """TC-F7-1: 单层 4 节点（A→B→C→D），rollback 到 C，D 的产物 mv + jsonl tail。"""
     run_id = "TEST-R1"
     run_dir = _setup_run_dir(tmp_path, "R1-single-layer", run_id)
@@ -149,7 +149,7 @@ def test_R1_single_layer(tmp_path, monkeypatch):
 # TC-F7-2: 跨父子 rollback
 # ============================================================================
 
-def test_F1_cross_parent_child(tmp_path, monkeypatch):
+def test_F1_cross_parent_child(tmp_path):
     """TC-F7-2: 父 rollback 到 node-a，跨 sub_workflow 节点 node-b 级联归档子 run。"""
     parent_run_id = "TEST-F1-PARENT"
     child_run_id = "TEST-F1-CHILD"
@@ -202,7 +202,7 @@ def test_F1_cross_parent_child(tmp_path, monkeypatch):
 # TC-F7-3: 多次 rollback（两次 ts 目录并存）
 # ============================================================================
 
-def test_T1_multiple_rollback(tmp_path, monkeypatch):
+def test_T1_multiple_rollback(tmp_path):
     """TC-F7-3: 两次 rollback，.archived/ 下有两个不同 ts 目录，互不覆盖。"""
     run_id = "TEST-T1"
     run_dir = _setup_run_dir(tmp_path, "T1-multiple-rollback", run_id)
@@ -229,10 +229,20 @@ def test_T1_multiple_rollback(tmp_path, monkeypatch):
     # 在 jsonl 中追加 C/D 的事件（模拟重跑后的状态）
     jsonl_path = run_dir / "run-state.jsonl"
     with jsonl_path.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps({"type": "node_started", "ts": "2026-05-08T11:00:00Z", "node_id": "node-c"}) + "\n")
-        fh.write(json.dumps({"type": "node_completed", "ts": "2026-05-08T11:00:01Z", "node_id": "node-c", "data": {"output": "C2"}}) + "\n")
-        fh.write(json.dumps({"type": "node_started", "ts": "2026-05-08T11:00:02Z", "node_id": "node-d"}) + "\n")
-        fh.write(json.dumps({"type": "node_completed", "ts": "2026-05-08T11:00:03Z", "node_id": "node-d", "data": {"output": "D2"}}) + "\n")
+        fh.write(json.dumps({
+            "type": "node_started", "ts": "2026-05-08T11:00:00Z", "node_id": "node-c",
+        }) + "\n")
+        fh.write(json.dumps({
+            "type": "node_completed", "ts": "2026-05-08T11:00:01Z",
+            "node_id": "node-c", "data": {"output": "C2"},
+        }) + "\n")
+        fh.write(json.dumps({
+            "type": "node_started", "ts": "2026-05-08T11:00:02Z", "node_id": "node-d",
+        }) + "\n")
+        fh.write(json.dumps({
+            "type": "node_completed", "ts": "2026-05-08T11:00:03Z",
+            "node_id": "node-d", "data": {"output": "D2"},
+        }) + "\n")
 
     # 等待 1 秒确保第二次 ts 不同（时间戳精度秒级）
     time.sleep(1)
@@ -257,7 +267,7 @@ def test_T1_multiple_rollback(tmp_path, monkeypatch):
 # TC-F7-4: rollback 到第一个节点（to-root）
 # ============================================================================
 
-def test_to_root(tmp_path, monkeypatch):
+def test_to_root(tmp_path):
     """TC-F7-4: 3 节点（A→B→C），rollback 到 node-a，归档 B 和 C 的全部产物。"""
     run_id = "TEST-ROOT"
     run_dir = _setup_run_dir(tmp_path, "to-root", run_id)
@@ -295,7 +305,7 @@ def test_to_root(tmp_path, monkeypatch):
 # TC-F7-5: crash recovery（monkeypatch mv 中途 raise，重调续跑）
 # ============================================================================
 
-def test_crash_recovery(tmp_path, monkeypatch):
+def test_crash_recovery(tmp_path):
     """TC-F7-5: 手动构造 .in_progress 残留（模拟进程崩溃），
     重新调 rollback_run 续跑 → partial=True，
     最终 node-d 已归档，.in_progress 已删。
@@ -386,11 +396,10 @@ def test_crash_recovery_via_monkeypatch_mv(tmp_path, monkeypatch):
     monkeypatch.setattr(shutil, "move", raising_mock)
 
     # 首次 rollback：应在产物 mv 中途崩溃（抛 OSError 或包装后的异常）
-    crashed = False
     try:
         rollback_run(run_id, "node-c", repo_root=tmp_path)
     except (OSError, Exception):
-        crashed = True
+        pass
 
     # 注意：因为 M-2 把 unlink 放进 finally，flock 会释放，但 .in_progress 可能已删
     # 实际上 unlink 在 mv 失败之后的 finally 中执行，所以 .in_progress 会被删
@@ -409,10 +418,9 @@ def test_crash_recovery_via_monkeypatch_mv(tmp_path, monkeypatch):
         archive_dir = run_dir / ".archived" / fake_ts
         archive_dir.mkdir(parents=True)
         # 写 .meta.json（模拟首次成功写入 meta.json 后崩溃）
-        import json as _json
         meta_path = archive_dir / ".meta.json"
         meta_path.write_text(
-            _json.dumps({"run_id": run_id, "to_node": "node-c", "started_at": "2026-05-08T10:00:00Z"}),
+            json.dumps({"run_id": run_id, "to_node": "node-c", "started_at": "2026-05-08T10:00:00Z"}),
             encoding="utf-8",
         )
         (archive_dir / ".in_progress").touch()
@@ -425,9 +433,8 @@ def test_crash_recovery_via_monkeypatch_mv(tmp_path, monkeypatch):
         # 确保 .meta.json 存在
         meta_path = archive_dir / ".meta.json"
         if not meta_path.exists():
-            import json as _json
             meta_path.write_text(
-                _json.dumps({"run_id": run_id, "to_node": "node-c", "started_at": "2026-05-08T10:00:00Z"}),
+                json.dumps({"run_id": run_id, "to_node": "node-c", "started_at": "2026-05-08T10:00:00Z"}),
                 encoding="utf-8",
             )
 
@@ -485,7 +492,6 @@ def test_concurrent_block(tmp_path):
     thread2_done_event = threading.Event() # 线程 2 完成后 set
 
     second_exception: list[Exception] = []  # 线程 2 的异常
-    first_result: list[object] = []          # 线程 1 的结果
 
     # 线程 1：持锁，在 thread2_done_event 后完成
     import fcntl as _fcntl
@@ -532,7 +538,7 @@ def test_concurrent_block(tmp_path):
 # TC-F7-7: to_node 不是上游 → TargetNodeNotUpstreamError
 # ============================================================================
 
-def test_target_not_upstream_rejected(tmp_path, monkeypatch):
+def test_target_not_upstream_rejected(tmp_path):
     """TC-F7-7: to_node 指向比当前节点更后（下游）的位置，应抛 TargetNodeNotUpstreamError。
 
     场景：只有 A/B 完成（C/D 未跑），current_pos = 2（B+1）；
