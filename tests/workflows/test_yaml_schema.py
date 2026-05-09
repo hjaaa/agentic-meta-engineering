@@ -39,7 +39,8 @@ def test_standard_8phase_yaml_is_loadable():
 def test_code_review_embedded_yaml_is_loadable_if_present():
     """code-review-embedded.yaml 是 F-004 产物；F-001 阶段不存在，跳过。"""
     target = WORKFLOWS_DIR / "code-review-embedded.yaml"
-    alternates = list(WORKFLOWS_DIR.rglob("code-review-embedded.yaml"))
+    # 短路：target 存在时不触发全目录扫描（F-5 修复：避免 target 已找到时仍扫描）
+    alternates = [] if target.exists() else list(WORKFLOWS_DIR.rglob("code-review-embedded.yaml"))
     if not target.exists() and not alternates:
         pytest.skip("code-review-embedded.yaml 由 F-004 提供，本 feature 阶段未就绪")
     yaml_path = target if target.exists() else alternates[0]

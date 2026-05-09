@@ -115,7 +115,7 @@ class TestConcurrentCheckers:
         node = nodes_by_id[node_id]
         deps = node.get("depends_on", [])
         assert "cr-prepare" in deps, (
-            f"{node_id} 必须 depends_on cr-prepare（并发并发起点），实际: {deps}"
+            f"{node_id} 必须 depends_on cr-prepare（并发起点），实际: {deps}"
         )
 
     @pytest.mark.parametrize("node_id", CHECKER_NODE_IDS)
@@ -309,7 +309,9 @@ class TestCriticRebuttalFlow:
 
         # cr-judge 节点的 output_format 有 merged_issues，应只含 not_rebutted
         judge_node = nodes_by_id["cr-judge"]
-        assert "cr-judge" in {n["id"] for n in [judge_node]}
+        assert nodes_by_id["cr-judge"]["depends_on"] == ["cr-critic"], (
+            f"cr-judge 必须 depends_on=[cr-critic]，实际: {nodes_by_id['cr-judge'].get('depends_on')}"
+        )
         assert judge_node.get("agent") == "code-quality-reviewer", (
             "cr-judge 必须使用 code-quality-reviewer agent"
         )
@@ -445,3 +447,57 @@ class TestSubWorkflowArgsPassthrough:
         assert "cr-judge" not in all_deps, (
             "cr-judge 应是出口节点，不应被其他节点依赖"
         )
+
+
+# ============================================================================
+# TC-F4-6（F-004 rev2 新增）：cr-critic / cr-judge 无通配引用 $cr-checker-*
+#
+# F-12 修复验证：cr-critic.md / cr-judge.md 中不得出现 $cr-checker-*.output.findings
+# 通配语法（substitute_vars VAR_REF_RE 不支持 *），且 8 个具体节点引用全部在场。
+# ============================================================================
+
+
+class TestNoCriticWildcardRefs:
+    """TC-F4-6：cr-critic / cr-judge 不含通配引用，8 路显式引用全在。"""
+
+    # 8 个预期的显式 checker 引用前缀（在 prompt 文本中查找）
+    _EXPECTED_EXPLICIT_REFS = [
+        "$cr-checker-security.output.findings",
+        "$cr-checker-performance.output.findings",
+        "$cr-checker-complexity.output.findings",
+        "$cr-checker-concurrency.output.findings",
+        "$cr-checker-error-handling.output.findings",
+        "$cr-checker-design-consistency.output.findings",
+        "$cr-checker-auxiliary-spec.output.findings",
+        "$cr-checker-history-context.output.findings",
+    ]
+
+    def test_critic_judge_no_wildcard_in_input_refs(self) -> None:
+        """cr-critic.md / cr-judge.md 不含 $cr-checker-*.output.findings 通配字面量，
+        且 8 个具体 checker 节点引用全部存在。
+
+        背景（F-12）：substitute_vars VAR_REF_RE = r'\\$(?P<node>[a-z][a-z0-9-]*)\\.output...'
+        字符类不含 *，通配字符串不会被替换，cr-critic/cr-judge 会拿到字面量而非真实 findings。
+        """
+        wildcard_pattern = "$cr-checker-*.output.findings"
+
+        for filename in ("cr-critic.md", "cr-judge.md"):
+            fpath = PROMPTS_DIR / filename
+            assert fpath.exists(), f"{filename} 不存在: {fpath}"
+            content = fpath.read_text(encoding="utf-8")
+
+            # 1) 不含通配字面量
+            assert wildcard_pattern not in content, (
+                f"{filename} 仍含通配引用 '{wildcard_pattern}'，"
+                "substitute_vars 运行时无法替换，请展开为 8 个显式节点引用"
+            )
+
+            # 2) 8 个显式引用全在
+            missing_refs = [
+                ref for ref in self._EXPECTED_EXPLICIT_REFS
+                if ref not in content
+            ]
+            assert not missing_refs, (
+                f"{filename} 缺少以下显式 checker 引用:\n"
+                + "\n".join(f"  {r}" for r in missing_refs)
+            )
