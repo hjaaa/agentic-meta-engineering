@@ -230,7 +230,7 @@ def _execute_rollback(
     # 跨父子 mv 子 run（F1 场景）
     to_pos = ordered.index(to_node) if to_node in ordered else -1
     nodes_after = ordered[to_pos + 1:] if to_pos >= 0 else []
-    node_map = {n["id"]: n for n in nodes if isinstance(n, dict) and "id" in n}
+    node_map = _build_node_map(nodes)
     child_dirs = _discover_sub_runs(run_dir, nodes_after, root, node_map, target_id)
     sub_runs_archive_dir = archive_root / "sub_runs"
     moved_sub_runs = [
@@ -252,46 +252,13 @@ def _execute_rollback(
     )
 
 
-def _validate_resume_meta(meta: dict[str, Any] | None, to_node: str) -> str:
-    """验证续跑时 .meta.json 中记录的 to_node 与调用方传入的 to_node 是否一致。
+def _build_node_map(nodes: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """构造 nid -> node 字典；过滤非 dict 或缺 id 的项。
 
-    三分支：
-    - meta 为 None：.meta.json 缺失，fallback 到调用方 to_node（记 warning）
-    - meta_to_node ≠ to_node：不一致 → 抛 RollbackResumeMismatchError
-    - meta_to_node == to_node（或 None）：返回最终有效 to_node
-
-    H-6 helper：抽出，将 _resume_in_progress 的 meta 验证三分支集中到此。
+    F-20 helper：在 _resume_in_progress / _execute_rollback 中统一构造，
+    把 dict comprehension + isinstance/含 id 过滤集中到一处。
     """
-    if meta is None:
-        # 由调用方 logger.warning；这里仅返回 fallback 值
-        return to_node
-    meta_to_node = meta.get("to_node")
-    if meta_to_node is not None and meta_to_node != to_node:
-        raise RollbackResumeMismatchError(
-            f"续跑 to_node 不一致：.meta.json 记录 {meta_to_node!r}，"
-            f"调用方传入 {to_node!r}；请使用 {meta_to_node!r} 续跑"
-        )
-    return meta_to_node if meta_to_node is not None else to_node
-
-
-def _release_with_unlink(lock_fd: Any, in_progress_path: Path) -> None:
-    """finally 清理：unlink .in_progress + 释放 flock。
-
-    unlink 失败记 logger.error（不抛 RollbackError），让原始异常继续传播。
-    H-6 helper / H-1a + H-1b 修复：统一两处 finally 的 unlink 行为。
-    """
-    try:
-        if in_progress_path.exists():
-            in_progress_path.unlink()
-    except OSError as exc:
-        logger.error(
-            ".in_progress 删除失败（%s）：%s — 需手动清理或等待下次 rollback 续跑兜底",
-            in_progress_path, exc,
-        )
-        # 不再 raise RollbackError，让原始异常（mv 失败等）继续传播
-    finally:
-        fcntl.flock(lock_fd, fcntl.LOCK_UN)
-        lock_fd.close()
+    return {n["id"]: n for n in nodes if isinstance(n, dict) and "id" in n}
 
 
 def _resume_in_progress(
@@ -306,8 +273,12 @@ def _resume_in_progress(
     """续跑：持锁后读 .meta.json 验证 to_node，完成剩余 mv，删 .in_progress，返回 partial=True。
 
     H-6 重构：CC 从 14 降至 ≤ 10，抽出 _validate_resume_meta + _release_with_unlink helpers。
+    F-20 重构：_build_node_map 抽 helper，CC 从 12 → 9。
+    F-21 重构：_validate_resume_meta + _release_with_unlink 下沉至 _lock 子模块。
     """
-    from workflow_rollback_lock import _acquire_flock
+    from workflow_rollback_lock import (
+        _acquire_flock, _release_with_unlink, _validate_resume_meta,
+    )
     from workflow_rollback_topology import _get_ordered_node_ids
     from workflow_rollback_archive import (
         _collect_artifacts_to_archive, _move_artifacts, _truncate_jsonl_to_tail,
@@ -340,7 +311,7 @@ def _resume_in_progress(
 
         to_pos = ordered.index(to_node) if to_node in ordered else -1
         nodes_after = ordered[to_pos + 1:] if to_pos >= 0 else []
-        node_map = {n["id"]: n for n in nodes if isinstance(n, dict) and "id" in n}
+        node_map = _build_node_map(nodes)
         child_dirs = _discover_sub_runs(run_dir, nodes_after, repo_root, node_map)
         sub_runs_archive_dir = archive_root / "sub_runs"
         sub_runs_done = [
@@ -387,7 +358,10 @@ def _execute_with_in_progress(
     """合并 .in_progress 文件管理 + _execute_rollback 调用（G-12 提取）。
 
     G-1：_write_meta_json 在 try 内，失败时 .in_progress 由 finally 清理。
+    F-15 重构：unlink 内联 6 行替换为 _unlink_in_progress helper（与 _release_with_unlink 共用）。
     """
+    from workflow_rollback_lock import _unlink_in_progress
+
     try:
         _write_meta_json(archive_root, run_id, to_node)
         return _execute_rollback(
@@ -398,15 +372,7 @@ def _execute_with_in_progress(
         )
     finally:
         # H-1b 修复：unlink 失败改 logger.error 不抛，让原始异常（mv 失败等）继续传播
-        try:
-            if in_progress_path.exists():
-                in_progress_path.unlink()
-        except OSError as exc:
-            logger.error(
-                ".in_progress 删除失败（%s）：%s — 需手动清理或等待下次 rollback 续跑兜底",
-                in_progress_path, exc,
-            )
-            # 不再 raise RollbackError，让原始异常继续传播
+        _unlink_in_progress(in_progress_path)
 
 
 # 公开 API

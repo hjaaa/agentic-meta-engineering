@@ -17,6 +17,41 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+def _discover_by_target_id(
+    target_id: str,
+    repo_root: Path,
+) -> list[Path]:
+    """策略 1：target_id 显式指定时的精确匹配。"""
+    for base in [repo_root / "runs", repo_root / "requirements"]:
+        candidate = base / target_id
+        if candidate.is_dir():
+            _check_path_traversal(candidate, base)
+            return [candidate]
+    return []
+
+
+def _discover_by_prefix(
+    run_dir: Path,
+    repo_root: Path,
+) -> list[Path]:
+    """策略 3：精确前缀匹配 run_id-（兜底，仅当直挂目录未命中时使用）。
+
+    精确前缀匹配（run_dir.name + "-"），避免短 run_id 误匹配。
+    """
+    prefix = run_dir.name + "-"
+    found: list[Path] = []
+    for base in [repo_root / "runs", repo_root / "requirements"]:
+        if not base.is_dir():
+            continue
+        for child_dir in sorted(base.iterdir()):
+            if not child_dir.is_dir():
+                continue
+            if child_dir.name.startswith(prefix):
+                _check_path_traversal(child_dir, base)
+                found.append(child_dir)
+    return found
+
+
 def _discover_sub_runs(
     run_dir: Path,
     nodes_after: list[str],
@@ -30,7 +65,6 @@ def _discover_sub_runs(
     1. target_id 指定 → 精确匹配（跳过 sub_workflow 类型判断）
     2. run_dir/sub_runs/<node_id>/ 目录（子 run 直挂父 run 目录下）
     3. 精确前缀匹配 run_id-（在 repo_root/runs/ 或 repo_root/requirements/ 下）
-       注意：精确前缀匹配（run_dir.name + "-"），避免短 run_id 误匹配
 
     参数：
         run_dir     — 父 run 目录
@@ -40,18 +74,13 @@ def _discover_sub_runs(
         target_id   — 可选：精确指定子 run id
 
     返回：子 run 目录绝对路径列表（去重）
+    rev5 重构：策略 1 / 策略 3 抽 helper，主体 CC 13 → ≤ 10。
     """
     if target_id:
-        # 策略 1：精确匹配 target_id
-        for base in [repo_root / "runs", repo_root / "requirements"]:
-            candidate = base / target_id
-            if candidate.is_dir():
-                _check_path_traversal(candidate, base)
-                return [candidate]
-        return []
+        return _discover_by_target_id(target_id, repo_root)
 
-    result: list[Path] = []
     seen: set[Path] = set()
+    result: list[Path] = []
 
     def _add(p: Path) -> None:
         if p not in seen:
@@ -67,18 +96,9 @@ def _discover_sub_runs(
         if result:
             return result
 
-    # 策略 3：精确前缀匹配（只有直挂目录未找到时才走）
-    prefix = run_dir.name + "-"
-    for base in [repo_root / "runs", repo_root / "requirements"]:
-        if not base.is_dir():
-            continue
-        for child_dir in sorted(base.iterdir()):
-            if not child_dir.is_dir():
-                continue
-            if child_dir.name.startswith(prefix):
-                _check_path_traversal(child_dir, base)
-                _add(child_dir)
-
+    # 策略 3：兜底走精确前缀匹配
+    for child_dir in _discover_by_prefix(run_dir, repo_root):
+        _add(child_dir)
     return result
 
 
