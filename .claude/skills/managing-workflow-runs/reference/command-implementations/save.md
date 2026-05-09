@@ -17,9 +17,8 @@
 5. **状态矩阵校验**
 6. 调 `append_event(jsonl_path, {"type": "save", "run_id": run_id, "data": {"note": note}})`
 
-   > 注：`save` 不在当前 VALID_EVENT_TYPES 白名单中（F-001 版本）。
-   > 测试时需先将 `save` 加入本模块的 allowed set，或用 `workflow_paused` 替代做链路测试。
-   > （待 F-001 扩展 VALID_EVENT_TYPES；F-005 在 workflow_save.py 内临时 patch 白名单）
+   > 注：`save` 已加入 VALID_EVENT_TYPES 白名单（rev2 扩展）；不映射 WORKFLOW_EVENT_TO_STATE，
+   > save 操作不改变 RunState.state（§1.3 矩阵 5 态均允许，正是此语义保证）。
 
 7. 输出：`已保存 <ts>，当前节点：<current_node>，note：<note 摘要>`
 
