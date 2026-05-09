@@ -153,11 +153,11 @@ class TestHappyPath:
             rc = workflow_save.main(["测试 note"], repo_root=tmp_repo)
 
         assert rc == 0, f"save 在 running 状态应返回 0，实际 rc={rc}"
-        # 验证 jsonl 追加了事件（workflow_paused 代理）
+        # 验证 jsonl 追加了 save 事件（直接写 save 类型，不再代理为 workflow_paused）
         jsonl_path = tmp_repo / "runs" / run_id / "run-state.jsonl"
         events, _ = read_events(jsonl_path)
         types = [e["type"] for e in events]
-        assert "workflow_paused" in types, f"save 应追加保存事件，实际事件：{types}"
+        assert "save" in types, f"save 应追加 save 事件，实际事件：{types}"
 
     def test_status_in_running_state_prints_run_info(self, tmp_repo: Path, capsys):
         """given_run_state_running_when_status_then_run_info_printed。"""
@@ -440,8 +440,8 @@ class TestChainCommands:
         events, _ = read_events(jsonl_path)
         types = [e["type"] for e in events]
         assert "workflow_started" in types, "链路应含 workflow_started"
-        # save 代理事件（workflow_paused）
-        assert "workflow_paused" in types, "save 链路应含 workflow_paused 代理事件"
+        # save 事件（直接写 save 类型，不再代理）
+        assert "save" in types, "save 链路应含 save 事件"
 
 
 # ============================================================
@@ -550,4 +550,76 @@ class TestStateMachineMatrix:
             f"cmd={cmd!r} 的允许状态与 spec §1.3 不符\n"
             f"实际：{actual}\n"
             f"期望：{expected}"
+        )
+
+
+# ============================================================
+# rev2 新增：3 个新事件不改变 RunState.state 的验证
+# ============================================================
+
+class TestNewEventsDoNotChangeState:
+    """验证 cancel_taskstop_failed / run_resumed / save 三个新事件写出后，
+    RunState.state 不被 WORKFLOW_EVENT_TO_STATE 错误推送。"""
+
+    def test_cancel_taskstop_failed_event_does_not_change_state(self, tmp_repo: Path):
+        """given_cancel_requested_state_when_cancel_taskstop_failed_event_appended_then_state_unchanged。"""
+        run_id = "RUN-20260509-900"
+        run_dir = _make_run_dir(tmp_repo, run_id, "running")
+        jsonl_path = run_dir / "run-state.jsonl"
+
+        # 先写 cancel_requested 推进状态
+        append_event(jsonl_path, {"type": "cancel_requested", "run_id": run_id})
+
+        # 再写 cancel_taskstop_failed
+        append_event(jsonl_path, {
+            "type": "cancel_taskstop_failed",
+            "run_id": run_id,
+            "data": {"error": "TaskStop 模拟失败"},
+        })
+
+        events, _ = read_events(jsonl_path)
+        state = RunState.rebuild(events, run_id=run_id)
+
+        # cancel_taskstop_failed 不应把 state 推到 failed，应保持 cancel_requested
+        assert state.state == "cancel_requested", (
+            f"cancel_taskstop_failed 事件不应改变 state，期望 cancel_requested，"
+            f"实际：{state.state}"
+        )
+
+    def test_run_resumed_event_does_not_change_state(self, tmp_repo: Path):
+        """given_paused_state_when_run_resumed_event_appended_then_state_still_paused。"""
+        run_id = "RUN-20260509-901"
+        run_dir = _make_run_dir(tmp_repo, run_id, "paused")
+        jsonl_path = run_dir / "run-state.jsonl"
+
+        # 写 run_resumed 事件
+        append_event(jsonl_path, {"type": "run_resumed", "run_id": run_id})
+
+        events, _ = read_events(jsonl_path)
+        state = RunState.rebuild(events, run_id=run_id)
+
+        # run_resumed 不应改变 state，应保持 paused
+        assert state.state == "paused", (
+            f"run_resumed 事件不应改变 state，期望 paused，实际：{state.state}"
+        )
+
+    def test_save_event_does_not_change_state(self, tmp_repo: Path):
+        """given_running_state_when_save_event_appended_then_state_still_running。"""
+        run_id = "RUN-20260509-902"
+        run_dir = _make_run_dir(tmp_repo, run_id, "running")
+        jsonl_path = run_dir / "run-state.jsonl"
+
+        # 写 save 事件（不应把 state 推到 paused）
+        append_event(jsonl_path, {
+            "type": "save",
+            "run_id": run_id,
+            "data": {"note": "测试检查点"},
+        })
+
+        events, _ = read_events(jsonl_path)
+        state = RunState.rebuild(events, run_id=run_id)
+
+        # save 不应改变 state，应保持 running
+        assert state.state == "running", (
+            f"save 事件不应改变 state，期望 running，实际：{state.state}"
         )
