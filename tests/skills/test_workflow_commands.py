@@ -13,10 +13,8 @@ pytest 命名规范：test_<场景>_<期望>（CLAUDE.md §7）。
 """
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
