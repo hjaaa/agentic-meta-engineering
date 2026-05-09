@@ -731,7 +731,7 @@ class TestOSErrorWrappedAsWorkflowError:
             f"WorkflowError 消息应含'写 jsonl 失败'，实际：{exc_info.value}"
         )
 
-    def test_run_meta_write_oserror_returns_1(self, tmp_repo: Path, sample_template: str):
+    def test_run_meta_write_oserror_returns_1(self, tmp_repo: Path, sample_template: str, capsys):
         """given_meta_open_raises_oserror_when_workflow_run_main_then_returns_1。
 
         mock _generate_run_id 返回固定 id，mock Path.open 在写 meta.yaml 时抛 OSError
@@ -763,4 +763,8 @@ class TestOSErrorWrappedAsWorkflowError:
 
         assert rc == 1, (
             f"meta.yaml 写入 OSError 经 WorkflowError 包装后 dispatcher 应返回 1，实际 rc={rc}"
+        )
+        captured = capsys.readouterr()
+        assert "Traceback" not in captured.err, (
+            f"dispatcher 应兜住 traceback 不暴露，实际 stderr：{captured.err}"
         )
