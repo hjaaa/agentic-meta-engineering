@@ -220,9 +220,12 @@
     {
       "id": "F-007",
       "title": "workflow_rollback.py + 跨父子归档 + 双层锁中断保护",
-      "description": "落地 rollback_run(run_id, to_node, target_id=None) → RollbackResult（来源：detailed-design §6 全章 / D-010）：mv 语义 = shutil.move 产物到 .archived/<ts>/；父跨 sub_workflow 节点时整目录 mv 子 run 到 sub_runs/<child-id>/；多次 rollback 独立 timestamp 目录并存；jsonl 尾部 mv 为 .tail。双层锁选型：fcntl.flock（advisory）+ os.O_EXCL（原子 .in_progress 标记）解决并发互斥 + 崩溃中间状态识别。续跑流程：扫 .in_progress 残留 → 拿锁完成剩余 mv → 删标记 + RollbackResult.partial=True。F-008 e2e 测试 §7.2 复用本 feature 的 F1 实现。",
+      "description": "落地 rollback_run(run_id, to_node, target_id=None) → RollbackResult（来源：detailed-design §6 全章 / D-010）：mv 语义 = shutil.move 产物到 .archived/<ts>/；父跨 sub_workflow 节点时整目录 mv 子 run 到 sub_runs/<child-id>/；多次 rollback 独立 timestamp 目录并存；jsonl 尾部 mv 为 .tail。双层锁选型：fcntl.flock（advisory）+ os.O_EXCL（原子 .in_progress 标记）解决并发互斥 + 崩溃中间状态识别；§6.4 顺序 flock→mkdir→O_EXCL。续跑流程：扫 .in_progress 残留 → 拿锁完成剩余 mv → 删标记 + RollbackResult.partial=True。.archived/<ts>/.meta.json 持久化 to_node 供续跑验证（RollbackResumeMismatchError）。拆 4 子模块：_lock / _archive / _subrun / 主模块公开 API。F-008 e2e 测试 §7.2 复用本 feature 的 F1 实现。",
       "modules": [
         "scripts/lib/workflow_rollback.py",
+        "scripts/lib/workflow_rollback_lock.py",
+        "scripts/lib/workflow_rollback_archive.py",
+        "scripts/lib/workflow_rollback_subrun.py",
         "tests/lib/test_workflow_rollback.py",
         "tests/lib/fixtures/rollback/R1-single-layer/workflow.yaml",
         "tests/lib/fixtures/rollback/R1-single-layer/initial-jsonl.txt",
@@ -238,8 +241,12 @@
       "complexity": "medium",
       "touches": [
         "scripts/lib/workflow_rollback.py",
+        "scripts/lib/workflow_rollback_lock.py",
+        "scripts/lib/workflow_rollback_archive.py",
+        "scripts/lib/workflow_rollback_subrun.py",
         "tests/lib/test_workflow_rollback.py",
-        "tests/lib/fixtures/rollback/**"
+        "tests/lib/fixtures/rollback/**",
+        "tests/skills/test_workflow_commands.py"
       ],
       "acceptance": [
         "TC-F7-1: pytest tests/lib/test_workflow_rollback.py::test_R1_single_layer 绿——A-B-C-D 拓扑回滚到 C → .archived/<ts>/D/output.json 存在 + 原 D/output.json 删 + jsonl 截断到 C 完成处（§6.5 R1）",
