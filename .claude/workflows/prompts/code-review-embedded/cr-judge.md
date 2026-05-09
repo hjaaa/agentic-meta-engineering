@@ -43,7 +43,15 @@ output_format:
 
 ## 核心逻辑
 
-1. 收集 8 个 checker 的 findings（来自 `$cr-checker-*.output`）
+1. 收集 8 个 checker 的 findings，来自各自的显式节点引用：
+   - `$cr-checker-security.output.findings`
+   - `$cr-checker-performance.output.findings`
+   - `$cr-checker-complexity.output.findings`
+   - `$cr-checker-concurrency.output.findings`
+   - `$cr-checker-error-handling.output.findings`
+   - `$cr-checker-design-consistency.output.findings`
+   - `$cr-checker-auxiliary-spec.output.findings`
+   - `$cr-checker-history-context.output.findings`
 2. 读取 cr-critic 的 verdicts（来自 `$cr-critic.output`）
 3. **只保留 `not_rebutted` 的 finding** 进入最终报告
 4. 去重合并（同文件同行 + 描述语义相近 → 合并，保留最高 severity）
@@ -58,6 +66,12 @@ output_format:
 - `keep`：critic `not_rebutted` 或证据充分 → 保留原 severity
 - `downgrade`：critic `not_proven` + 证据薄弱 → 降一级
 - `follow-up`：不够正式但值得提醒
+
+## META-checker-missing 处理
+
+cr-critic 若标记了 `META-<checker-name>-missing` 类 finding，在最终 conclusion
+摘要的 `final_verdict` 字段末尾追加注记，标注哪些 checker skipped/failed，
+以便 sign-off 人知晓数据覆盖缺口。
 
 ## 禁止行为
 

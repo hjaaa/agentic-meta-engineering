@@ -39,8 +39,23 @@ output_format:
 
 ## 输入
 
-收集 8 个 checker 的所有 findings（来自 $cr-checker-*.output.findings），
-整合为 `candidate_findings` 列表，每条格式：
+收集 8 个 checker 的所有 findings，整合为 `candidate_findings` 列表。
+每个 checker 的 findings 来自各自的输出字段：
+
+- `$cr-checker-security.output.findings`
+- `$cr-checker-performance.output.findings`
+- `$cr-checker-complexity.output.findings`
+- `$cr-checker-concurrency.output.findings`
+- `$cr-checker-error-handling.output.findings`
+- `$cr-checker-design-consistency.output.findings`
+- `$cr-checker-auxiliary-spec.output.findings`
+- `$cr-checker-history-context.output.findings`
+
+若某 checker output 为空字符串或 findings=[]，在 verdicts 输出末尾追加一条
+`severity: major, finding_id: META-<checker-name>-missing` 的 meta-finding，
+标注哪些 checker missing/failed（避免无报警静默通过）。
+
+每条 finding 格式：
 
 ```json
 {
