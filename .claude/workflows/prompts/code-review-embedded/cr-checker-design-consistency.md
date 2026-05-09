@@ -50,6 +50,6 @@ output_format:
 
 ## 输出
 
-返回 JSON：`{"findings": {...}, "stats": {...}}`
+返回 JSON：`{"findings": [...], "stats": {"total": N, "critical": N, "major": N, "minor": N}}`
 
 每条 finding 必须引用设计文档位置（如 `detailed-design.md:行号`）与代码位置。
