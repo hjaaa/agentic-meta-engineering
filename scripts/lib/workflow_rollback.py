@@ -230,6 +230,48 @@ def _execute_rollback(
     )
 
 
+def _validate_resume_meta(meta: dict[str, Any] | None, to_node: str) -> str:
+    """验证续跑时 .meta.json 中记录的 to_node 与调用方传入的 to_node 是否一致。
+
+    三分支：
+    - meta 为 None：.meta.json 缺失，fallback 到调用方 to_node（记 warning）
+    - meta_to_node ≠ to_node：不一致 → 抛 RollbackResumeMismatchError
+    - meta_to_node == to_node（或 None）：返回最终有效 to_node
+
+    H-6 helper：抽出，将 _resume_in_progress 的 meta 验证三分支集中到此。
+    """
+    if meta is None:
+        # 由调用方 logger.warning；这里仅返回 fallback 值
+        return to_node
+    meta_to_node = meta.get("to_node")
+    if meta_to_node is not None and meta_to_node != to_node:
+        raise RollbackResumeMismatchError(
+            f"续跑 to_node 不一致：.meta.json 记录 {meta_to_node!r}，"
+            f"调用方传入 {to_node!r}；请使用 {meta_to_node!r} 续跑"
+        )
+    return meta_to_node if meta_to_node is not None else to_node
+
+
+def _release_with_unlink(lock_fd: Any, in_progress_path: Path) -> None:
+    """finally 清理：unlink .in_progress + 释放 flock。
+
+    unlink 失败记 logger.error（不抛 RollbackError），让原始异常继续传播。
+    H-6 helper / H-1a + H-1b 修复：统一两处 finally 的 unlink 行为。
+    """
+    try:
+        if in_progress_path.exists():
+            in_progress_path.unlink()
+    except OSError as exc:
+        logger.error(
+            ".in_progress 删除失败（%s）：%s — 需手动清理或等待下次 rollback 续跑兜底",
+            in_progress_path, exc,
+        )
+        # 不再 raise RollbackError，让原始异常（mv 失败等）继续传播
+    finally:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        lock_fd.close()
+
+
 def _resume_in_progress(
     run_dir: Path,
     stale_archive_dir: Path,
@@ -239,7 +281,10 @@ def _resume_in_progress(
     run_id: str,
     repo_root: Path,
 ) -> RollbackResult:
-    """续跑：持锁后读 .meta.json 验证 to_node，完成剩余 mv，删 .in_progress，返回 partial=True。"""
+    """续跑：持锁后读 .meta.json 验证 to_node，完成剩余 mv，删 .in_progress，返回 partial=True。
+
+    H-6 重构：CC 从 14 降至 ≤ 10，抽出 _validate_resume_meta + _release_with_unlink helpers。
+    """
     from workflow_rollback_lock import _acquire_flock
     from workflow_rollback_topology import _get_ordered_node_ids
     from workflow_rollback_archive import (
@@ -254,20 +299,12 @@ def _resume_in_progress(
     lock_fd = _acquire_flock(run_dir / ".rollback.lock")
     try:
         meta = _read_meta_json(stale_archive_dir)
-        if meta is not None:
-            meta_to_node = meta.get("to_node")
-            if meta_to_node is not None and meta_to_node != to_node:
-                raise RollbackResumeMismatchError(
-                    f"续跑 to_node 不一致：.meta.json 记录 {meta_to_node!r}，"
-                    f"调用方传入 {to_node!r}；请使用 {meta_to_node!r} 续跑"
-                )
-            if meta_to_node is not None:
-                to_node = meta_to_node
-        else:
+        if meta is None:
             logger.warning(
                 "续跑：.meta.json 缺失（run_id=%s, archive=%s），fallback 到调用方 to_node=%s",
                 run_id, stale_archive_dir, to_node,
             )
+        to_node = _validate_resume_meta(meta, to_node)
 
         archive_root = stale_archive_dir
         artifacts = _collect_artifacts_to_archive(run_dir, nodes, run_state, to_node)
@@ -279,7 +316,6 @@ def _resume_in_progress(
         if not tail_path.exists():
             tail_path, _ = _truncate_jsonl_to_tail(jsonl_path, archive_root, to_node, ordered)
 
-        # 子 run 续跑（跳过已归档的目录）
         to_pos = ordered.index(to_node) if to_node in ordered else -1
         nodes_after = ordered[to_pos + 1:] if to_pos >= 0 else []
         node_map = {n["id"]: n for n in nodes if isinstance(n, dict) and "id" in n}
@@ -309,15 +345,7 @@ def _resume_in_progress(
             partial=True,
         )
     finally:
-        # M-2：unlink 进 finally 紧贴 flock 释放前；unlink 失败包装为 RollbackError
-        try:
-            if in_prog.exists():
-                in_prog.unlink()
-        except OSError as exc:
-            raise RollbackError(f".in_progress 删除失败（{in_prog}）：{exc}") from exc
-        finally:
-            fcntl.flock(lock_fd, fcntl.LOCK_UN)
-            lock_fd.close()
+        _release_with_unlink(lock_fd, in_prog)
 
 
 def _execute_with_in_progress(
@@ -347,11 +375,16 @@ def _execute_with_in_progress(
             start_ms=start_ms, events=events,
         )
     finally:
+        # H-1b 修复：unlink 失败改 logger.error 不抛，让原始异常（mv 失败等）继续传播
         try:
             if in_progress_path.exists():
                 in_progress_path.unlink()
         except OSError as exc:
-            raise RollbackError(f".in_progress 删除失败（{in_progress_path}）：{exc}") from exc
+            logger.error(
+                ".in_progress 删除失败（%s）：%s — 需手动清理或等待下次 rollback 续跑兜底",
+                in_progress_path, exc,
+            )
+            # 不再 raise RollbackError，让原始异常继续传播
 
 
 # 公开 API
