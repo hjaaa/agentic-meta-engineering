@@ -13,6 +13,7 @@
 """
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,7 @@ if str(_LIB_DIR) not in sys.path:
 
 import yaml  # noqa: E402
 
+from common import REPO_ROOT  # noqa: E402
 from topological_sort import topological_layers  # noqa: E402
 
 
@@ -42,13 +44,13 @@ def _find_workflow_yaml(run_dir: Path) -> Path:
     sibling = run_dir.parent / "workflow.yaml"
     if sibling.is_file():
         return sibling
-    # 向上两级（runs/<id>/ 场景）
-    for candidate in run_dir.parents:
+    # 向上最多 3 层，遇到 REPO_ROOT 或文件系统根停止（H-14：加 root 边界防止越界）
+    for candidate in [run_dir.parent, run_dir.parent.parent, run_dir.parent.parent.parent]:
+        if candidate == Path("/") or not candidate.is_relative_to(REPO_ROOT):
+            break
         c = candidate / "workflow.yaml"
         if c.is_file():
             return c
-        if candidate == run_dir.parents[2]:  # 最多向上 3 层
-            break
     raise TargetNodeNotFoundError(
         f"run_dir {run_dir} 未找到 workflow.yaml；无法校验 to_node"
     )
@@ -82,6 +84,17 @@ def _load_nodes(run_dir: Path) -> list[dict[str, Any]]:
         raise TargetNodeNotFoundError(
             f"workflow.yaml nodes 不是列表（{yaml_path}）"
         )
+
+    # H-13：校验节点 id 合法性（仅允许字母/数字/下划线/横线）
+    _NODE_ID_PATTERN = re.compile(r'^[A-Za-z0-9_\-]+$')
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        nid = node.get("id", "")
+        if nid and not _NODE_ID_PATTERN.fullmatch(nid):
+            raise TargetNodeNotFoundError(
+                f"非法节点 id：{nid!r}（仅允许字母/数字/下划线/横线）"
+            )
 
     # 展开隐式 depends_on（缺省 = 接上一节点）
     _expand_implicit_depends_on(nodes)

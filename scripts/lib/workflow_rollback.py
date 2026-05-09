@@ -70,7 +70,13 @@ class RollbackResult:
 # 异常体系
 
 class RollbackError(WorkflowError):
-    """rollback 专用异常基类（不直接抛出）。"""
+    """Rollback 通用基类异常。
+
+    本类直接用于参数校验失败 / 资源清理失败等无独立子类语义的场景；
+    具体的失败子类见 RunStateNotFoundError / TargetNodeNotFoundError /
+    TargetNodeNotUpstreamError / ConcurrentRollbackError /
+    RollbackInProgressError / RollbackResumeMismatchError。
+    """
 
 class RunStateNotFoundError(RollbackError):
     """run_id 在两条路径都查不到 run 目录。"""
