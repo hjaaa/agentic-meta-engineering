@@ -8,16 +8,18 @@
 - 父 run 跨 sub_workflow 节点时，递归 mv 子 run 整目录
 - 写 .in_progress atomic 标记保护中断
 - 截断 jsonl 尾部 mv 为 <archived>/run-state.jsonl.tail
-- 双层锁：fcntl.flock（advisory）+ os.O_EXCL（原子 .in_progress 标记）
+- 双层锁：§6.4 顺序 = flock → mkdir → O_EXCL，flock 先行
+- .archived/<ts>/.meta.json 持久化 run_id/to_node/started_at，续跑读取
 
 详细设计：requirements/REQ-2026-009/artifacts/detailed-design.md §6.1~§6.7
 """
 from __future__ import annotations
 
 import fcntl
+import json
 import logging
 import os
-import shutil
+import re
 import sys
 import time
 from dataclasses import dataclass, field
@@ -65,7 +67,7 @@ class RollbackResult:
     moved_artifacts: list[Path]              # 被 mv 的产物文件相对路径
     moved_sub_runs: list[SubRunArchive]      # 跨父子 mv 的子 run（F1 场景）
     truncated_jsonl_tail: Path               # <archived>/run-state.jsonl.tail
-    new_current_node: str                    # rollback 后续跑起点（= to_node 的最近上游）
+    new_current_node: str                    # rollback 后续跑起点（= to_node，从此节点重新执行）
     duration_ms: int                         # 操作耗时
     partial: bool = False                    # True = 续跑收尾路径（不是首次 rollback）
 
@@ -98,6 +100,10 @@ class RollbackInProgressError(RollbackError):
     """.archived/<ts>/.in_progress 残留且 ts ≠ 本次（中断未续跑前禁止新 rollback）。"""
 
 
+class RollbackResumeMismatchError(RollbackError):
+    """.meta.json 中记录的 to_node 与调用方传入的 to_node 不一致。"""
+
+
 # IOError（标准异常）重抛，不在此定义
 
 # ============================================================================
@@ -108,6 +114,11 @@ def _make_archive_ts() -> str:
     """生成 ISO8601 东八区时间戳，如 2026-05-08T17:00:00+0800。"""
     east8 = timezone(timedelta(hours=8))
     return datetime.now(east8).strftime("%Y-%m-%dT%H:%M:%S+0800")
+
+
+def _now_iso8601() -> str:
+    """返回当前 UTC ISO8601 时间戳。"""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 # ============================================================================
@@ -254,7 +265,7 @@ def _find_current_position(
 
 
 # ============================================================================
-# 内部工具：产物路径收集
+# 内部工具：产物路径收集（委托给 workflow_rollback_archive）
 # ============================================================================
 
 def _collect_artifacts_to_archive(
@@ -263,286 +274,112 @@ def _collect_artifacts_to_archive(
     run_state: "RunState",
     to_node: str,
 ) -> list[Path]:
-    """收集需要 mv 到 .archived 的产物文件列表。
-
-    策略：to_node 之后（不含 to_node）所有已完成节点的产物目录/文件。
-    """
-    ordered = _get_ordered_node_ids(nodes)
-    to_pos = ordered.index(to_node) if to_node in ordered else -1
-
-    artifacts: list[Path] = []
-    # 找 to_node 之后的节点（含当前运行中的）
-    nodes_to_archive = ordered[to_pos + 1:] if to_pos >= 0 else []
-
-    for nid in nodes_to_archive:
-        # 节点对应的产物目录
-        node_dir = run_dir / nid
-        if node_dir.is_dir():
-            artifacts.append(node_dir)
-        # 节点直接产物文件（output.json 等扁平文件）
-        for f in run_dir.glob(f"{nid}.*"):
-            if f.is_file() and f not in artifacts:
-                artifacts.append(f)
-
-    return artifacts
+    """收集需要 mv 到 .archived 的产物文件列表（委托给 archive 子模块）。"""
+    from workflow_rollback_archive import _collect_artifacts_to_archive as _impl
+    return _impl(run_dir, nodes, run_state, to_node)
 
 
-def _collect_sub_run_ids(
-    run_dir: Path,
-    nodes: list[dict[str, Any]],
-    to_node: str,
-    repo_root: Path,
-) -> list[str]:
-    """收集需要级联 mv 的子 run id 列表（跨 sub_workflow 节点时触发）。
+def _move_artifacts(
+    artifacts: list[Path],
+    archive_root: Path,
+) -> list[Path]:
+    """把产物列表 mv 到 archive_root 下（委托给 archive 子模块）。"""
+    from workflow_rollback_archive import _move_artifacts as _impl
+    return _impl(artifacts, archive_root)
 
-    判断依据：to_node 之后存在 sub_workflow 类型节点，且子 run 目录存在。
-    """
-    ordered = _get_ordered_node_ids(nodes)
-    to_pos = ordered.index(to_node) if to_node in ordered else -1
-    nodes_after = ordered[to_pos + 1:] if to_pos >= 0 else []
-
-    # 找 sub_workflow 类型节点（在 to_node 之后）
-    node_map = {n["id"]: n for n in nodes if isinstance(n, dict) and "id" in n}
-    sub_run_ids: list[str] = []
-
-    for nid in nodes_after:
-        node_def = node_map.get(nid, {})
-        if "sub_workflow" not in node_def:
-            continue
-        # 找匹配的子 run 目录
-        for candidate_dir in [repo_root / "runs", repo_root / "requirements"]:
-            if not candidate_dir.is_dir():
-                continue
-            for child_dir in candidate_dir.iterdir():
-                if child_dir.is_dir() and child_dir.name not in sub_run_ids:
-                    # 简单启发：子 run 目录内有 run-state.jsonl
-                    child_jsonl = child_dir / "run-state.jsonl"
-                    if child_jsonl.is_file():
-                        # 检查是否引用了父 run（通过 parent_id 字段）
-                        # 此处用目录命名约定：<parent_run_id>-<node_id>-<suffix>
-                        if run_dir.name in child_dir.name or nid in child_dir.name:
-                            sub_run_ids.append(child_dir.name)
-
-    return sub_run_ids
-
-
-# ============================================================================
-# 内部工具：jsonl tail 处理
-# ============================================================================
 
 def _truncate_jsonl_to_tail(
     jsonl_path: Path,
     archive_root: Path,
     to_node: str,
     ordered_nodes: list[str],
+    events: list[dict[str, Any]] | None = None,
 ) -> tuple[Path, list[Any]]:
-    """把 jsonl 中 to_node 完成之后的事件 mv 到 archive_root/run-state.jsonl.tail。
-
-    返回：(tail_path, kept_events)
-    - tail_path：归档的 tail 文件绝对路径
-    - kept_events：保留在原 jsonl 中的事件列表（to_node 完成处及之前）
-    """
-    if not jsonl_path.is_file():
-        # jsonl 不存在时建空 tail
-        tail_path = archive_root / "run-state.jsonl.tail"
-        tail_path.touch()
-        return tail_path, []
-
-    events, _ = read_events(jsonl_path)
-
-    # 找 to_node 的 node_completed 事件位置（最后一次出现）
-    cut_idx = _find_jsonl_cut_index(events, to_node)
-
-    kept = events[:cut_idx]
-    tail = events[cut_idx:]
-
-    # 先写 tail 文件
-    tail_path = archive_root / "run-state.jsonl.tail"
-    tail_path.parent.mkdir(parents=True, exist_ok=True)
-    import json
-    with tail_path.open("w", encoding="utf-8") as fh:
-        for evt in tail:
-            fh.write(json.dumps(evt, ensure_ascii=False) + "\n")
-
-    # 重写原 jsonl（只保留 kept 部分）
-    with jsonl_path.open("w", encoding="utf-8") as fh:
-        for evt in kept:
-            fh.write(json.dumps(evt, ensure_ascii=False) + "\n")
-
-    return tail_path, kept
-
-
-def _find_jsonl_cut_index(events: list[dict[str, Any]], to_node: str) -> int:
-    """找 to_node 的 node_completed 事件之后的第一个位置（即截断点）。
-
-    若找不到 to_node 的 node_completed，则截断点 = 0（全部 mv 为 tail）。
-    """
-    cut_idx = 0
-    for i, evt in enumerate(events):
-        if evt.get("type") == "node_completed" and evt.get("node_id") == to_node:
-            cut_idx = i + 1  # 保留到 node_completed 本身（含）
-    return cut_idx
+    """jsonl 截断 + tail 归档（委托给 archive 子模块）。"""
+    from workflow_rollback_archive import _truncate_jsonl_to_tail as _impl
+    return _impl(jsonl_path, archive_root, to_node, ordered_nodes, events)
 
 
 # ============================================================================
-# 内部工具：双层锁
+# 内部工具：双层锁（委托给 lock 子模块）
 # ============================================================================
+
+def _acquire_flock(lock_path: Path) -> Any:
+    """获取 fcntl.flock（委托给 lock 子模块）。"""
+    from workflow_rollback_lock import _acquire_flock as _impl
+    return _impl(lock_path)
+
 
 def _acquire_dual_lock(
     lock_path: Path,
     in_progress_path: Path,
 ) -> tuple[Any, int]:
-    """获取双层锁：fcntl.flock（LOCK_EX|LOCK_NB） + os.O_EXCL 原子创建 .in_progress。
+    """获取双层锁（委托给 lock 子模块）。"""
+    from workflow_rollback_lock import _acquire_dual_lock as _impl
+    return _impl(lock_path, in_progress_path)
 
-    返回：(lock_fd_obj, in_progress_fd)
-    调用方负责 try/finally 释放。
-
-    层 1：flock 解决并发互斥（失败 → ConcurrentRollbackError）
-    层 2：O_EXCL 原子创建 .in_progress 解决崩溃后中间状态识别
-    """
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    in_progress_path.parent.mkdir(parents=True, exist_ok=True)
-
-    # 层 1：flock（LOCK_EX|LOCK_NB）
-    try:
-        lock_fd = open(str(lock_path), "w")
-        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError as exc:
-        # 锁被占用 → ConcurrentRollbackError
-        raise ConcurrentRollbackError(
-            f"run_id 正在被其他进程 rollback（{lock_path}）：{exc}"
-        ) from exc
-
-    # 层 2：O_EXCL 原子创建 .in_progress
-    try:
-        in_prog_fd = os.open(
-            str(in_progress_path),
-            os.O_WRONLY | os.O_CREAT | os.O_EXCL,
-            0o644,
-        )
-    except OSError as exc:
-        # .in_progress 已存在（进程崩溃残留）→ 释放 flock，由续跑逻辑处理
-        fcntl.flock(lock_fd, fcntl.LOCK_UN)
-        lock_fd.close()
-        raise RollbackInProgressError(
-            f".in_progress 标记已存在（{in_progress_path}），"
-            f"可能是上次崩溃残留；请重新调用 rollback_run 续跑"
-        ) from exc
-
-    return lock_fd, in_prog_fd
-
-
-def _release_dual_lock(lock_fd: Any, in_progress_path: Path) -> None:
-    """释放双层锁：删 .in_progress + 释放 flock。"""
-    try:
-        if in_progress_path.exists():
-            in_progress_path.unlink()
-    finally:
-        try:
-            fcntl.flock(lock_fd, fcntl.LOCK_UN)
-        finally:
-            lock_fd.close()
-
-
-# ============================================================================
-# 内部工具：续跑检测
-# ============================================================================
 
 def _find_in_progress_archive(run_dir: Path) -> Path | None:
-    """扫描 run_dir/.archived/ 找带 .in_progress 标记的目录。
-
-    返回带 .in_progress 的 archive_dir，或 None（无残留）。
-    """
-    archived_root = run_dir / ".archived"
-    if not archived_root.is_dir():
-        return None
-    for ts_dir in sorted(archived_root.iterdir()):
-        if not ts_dir.is_dir():
-            continue
-        if (ts_dir / ".in_progress").exists():
-            return ts_dir
-    return None
+    """扫描续跑残留（委托给 lock 子模块）。"""
+    from workflow_rollback_lock import _find_in_progress_archive as _impl
+    return _impl(run_dir)
 
 
 # ============================================================================
-# 内部工具：子 run 归档（F1 跨父子）
+# 内部工具：子 run 归档（委托给 subrun 子模块）
 # ============================================================================
+
+def _discover_sub_runs(
+    run_dir: Path,
+    nodes_after: list[str],
+    repo_root: Path,
+    node_map: dict[str, dict[str, Any]],
+    target_id: str | None = None,
+) -> list[Path]:
+    """统一子 run 发现策略（委托给 subrun 子模块）。"""
+    from workflow_rollback_subrun import _discover_sub_runs as _impl
+    return _impl(run_dir, nodes_after, repo_root, node_map, target_id)
+
 
 def _archive_sub_run(
     child_run_dir: Path,
     sub_runs_archive_dir: Path,
     run_id: str,
 ) -> SubRunArchive:
-    """把子 run 整目录 mv 到 sub_runs_archive_dir/<child_run_id>/。
+    """子 run 整目录 mv（委托给 subrun 子模块）。"""
+    from workflow_rollback_subrun import _archive_sub_run as _impl
+    return _impl(child_run_dir, sub_runs_archive_dir, run_id)
 
-    在 mv 前往子 jsonl 追加 parent_rolled_back 事件。
+
+# ============================================================================
+# 内部工具：.meta.json 持久化（M-3）
+# ============================================================================
+
+def _write_meta_json(archive_root: Path, run_id: str, to_node: str) -> None:
+    """写 .archived/<ts>/.meta.json，持久化续跑所需的上下文。
+
+    字段：run_id / to_node / started_at（ISO8601 UTC）
     """
-    child_run_id = child_run_dir.name
-    child_jsonl = child_run_dir / "run-state.jsonl"
+    meta = {
+        "run_id": run_id,
+        "to_node": to_node,
+        "started_at": _now_iso8601(),
+    }
+    meta_path = archive_root / ".meta.json"
+    with meta_path.open("w", encoding="utf-8") as fh:
+        json.dump(meta, fh, ensure_ascii=False, indent=2)
 
-    # 追加 parent_rolled_back 事件（F-002 定义的事件类型）
+
+def _read_meta_json(archive_root: Path) -> dict[str, Any] | None:
+    """读取 .archived/<ts>/.meta.json，返回 dict 或 None（文件不存在/损坏时）。"""
+    meta_path = archive_root / ".meta.json"
+    if not meta_path.is_file():
+        return None
     try:
-        append_event(child_jsonl, {
-            "type": "parent_rolled_back",
-            "run_id": child_run_id,
-            "data": {"parent_run_id": run_id},
-        })
-    except (WorkflowError, OSError) as exc:
-        logger.warning(
-            "追加 parent_rolled_back 事件失败（run_id=%s, child=%s）：%s",
-            run_id, child_run_id, exc,
-        )
-
-    # 统计 jsonl 行数（用于完整性断言）
-    jsonl_event_count = _count_jsonl_lines(child_jsonl)
-
-    # mv 子 run 整目录
-    sub_runs_archive_dir.mkdir(parents=True, exist_ok=True)
-    dest = sub_runs_archive_dir / child_run_id
-    shutil.move(str(child_run_dir), str(dest))
-
-    return SubRunArchive(
-        child_run_id=child_run_id,
-        archive_path=dest,
-        jsonl_event_count=jsonl_event_count,
-    )
-
-
-def _count_jsonl_lines(jsonl_path: Path) -> int:
-    """统计 jsonl 有效行数（不含空行）。"""
-    if not jsonl_path.is_file():
-        return 0
-    count = 0
-    with jsonl_path.open("r", encoding="utf-8") as fh:
-        for line in fh:
-            if line.strip():
-                count += 1
-    return count
-
-
-# ============================================================================
-# 内部：产物 mv 执行
-# ============================================================================
-
-def _move_artifacts(
-    artifacts: list[Path],
-    archive_root: Path,
-) -> list[Path]:
-    """把产物列表 mv 到 archive_root 下（保持相对路径结构）。
-
-    返回已成功 mv 的路径列表。
-    """
-    moved: list[Path] = []
-    for src in artifacts:
-        if not src.exists():
-            logger.debug("跳过已不存在的产物路径：%s", src)
-            continue
-        dest = archive_root / src.name
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(src), str(dest))
-        moved.append(src)
-        logger.debug("mv artifact: %s → %s", src, dest)
-    return moved
+        with meta_path.open("r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except (json.JSONDecodeError, OSError):
+        return None
 
 
 # ============================================================================
@@ -561,9 +398,30 @@ def _resume_in_progress(
     """拿锁续跑：完成上次崩溃遗留的 mv 操作，删 .in_progress，返回 partial=True 结果。
 
     策略：重新收集尚未 mv 的产物（原路径还存在的），再完成剩余 mv。
+    续跑时优先从 .meta.json 读 to_node，不一致时抛 RollbackResumeMismatchError。
     """
     start_ms = time.monotonic()
     lock_path = run_dir / ".rollback.lock"
+    in_prog = stale_archive_dir / ".in_progress"
+
+    # 从 .meta.json 验证 to_node 一致性（M-3）
+    meta = _read_meta_json(stale_archive_dir)
+    if meta is not None:
+        meta_to_node = meta.get("to_node")
+        if meta_to_node is not None and meta_to_node != to_node:
+            raise RollbackResumeMismatchError(
+                f"续跑 to_node 不一致：.meta.json 记录 {meta_to_node!r}，"
+                f"调用方传入 {to_node!r}；请使用 {meta_to_node!r} 续跑"
+            )
+        # 若 meta 有 to_node，使用它（保证续跑语义一致）
+        if meta_to_node is not None:
+            to_node = meta_to_node
+    else:
+        # .meta.json 缺失（兼容旧 .archived 目录）→ fallback 到调用方 to_node + 警告
+        logger.warning(
+            "续跑：.meta.json 缺失（run_id=%s, archive=%s），fallback 到调用方 to_node=%s",
+            run_id, stale_archive_dir, to_node,
+        )
 
     # 重新拿 flock（.in_progress 已存在，不走 O_EXCL 路径）
     try:
@@ -593,14 +451,8 @@ def _resume_in_progress(
             run_dir, nodes, to_node, archive_root, run_id, repo_root
         )
 
-        # 删 .in_progress
-        in_prog = archive_root / ".in_progress"
-        if in_prog.exists():
-            in_prog.unlink()
-
         duration_ms = int((time.monotonic() - start_ms) * 1000)
-        # 续跑后的下一个节点 = to_node 的下一个（就是 to_node 本身，后续从 to_node 重启）
-        new_current_node = _determine_new_current_node(nodes, to_node)
+        new_current_node = _determine_new_current_node(to_node)
         archive_ts = archive_root.name
 
         logger.info(
@@ -620,8 +472,17 @@ def _resume_in_progress(
             partial=True,
         )
     finally:
-        fcntl.flock(lock_fd, fcntl.LOCK_UN)
-        lock_fd.close()
+        # M-2：unlink 进 finally 紧贴 flock 释放前；unlink 失败包装为 RollbackError
+        try:
+            if in_prog.exists():
+                in_prog.unlink()
+        except OSError as exc:
+            raise RollbackError(
+                f".in_progress 删除失败（{in_prog}）：{exc}"
+            ) from exc
+        finally:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            lock_fd.close()
 
 
 def _archive_pending_sub_runs(
@@ -633,24 +494,92 @@ def _archive_pending_sub_runs(
     repo_root: Path,
 ) -> list[SubRunArchive]:
     """收集并归档尚未 mv 的子 run（续跑场景）。"""
-    sub_run_ids = _collect_sub_run_ids(run_dir, nodes, to_node, repo_root)
+    ordered = _get_ordered_node_ids(nodes)
+    to_pos = ordered.index(to_node) if to_node in ordered else -1
+    nodes_after = ordered[to_pos + 1:] if to_pos >= 0 else []
+    node_map = {n["id"]: n for n in nodes if isinstance(n, dict) and "id" in n}
+
     sub_runs_archive_dir = archive_root / "sub_runs"
     archived: list[SubRunArchive] = []
-    for child_id in sub_run_ids:
-        for base in [repo_root / "runs", repo_root / "requirements"]:
-            child_dir = base / child_id
-            if child_dir.is_dir():
-                archived.append(
-                    _archive_sub_run(child_dir, sub_runs_archive_dir, run_id)
-                )
-                break
+    child_dirs = _discover_sub_runs(run_dir, nodes_after, repo_root, node_map)
+    for child_dir in child_dirs:
+        # 跳过已归档的（目录已不存在）
+        if child_dir.is_dir():
+            archived.append(
+                _archive_sub_run(child_dir, sub_runs_archive_dir, run_id)
+            )
     return archived
 
 
-def _determine_new_current_node(nodes: list[dict[str, Any]], to_node: str) -> str:
-    """rollback 后续跑起点 = to_node 本身（重新从 to_node 开始执行）。"""
-    # 设计约定：rollback 到 to_node 后，to_node 重新成为待执行节点
+def _determine_new_current_node(to_node: str) -> str:
+    """rollback 后续跑起点 = to_node 本身（重新从 to_node 开始执行）。
+
+    M-14：删 nodes 参数（未使用），与 test_R1_single_layer 断言一致。
+    """
     return to_node
+
+
+# ============================================================================
+# 内部：校验链 + archive 准备（M-10 提取）
+# ============================================================================
+
+def _resolve_and_validate(
+    run_id: str,
+    to_node: str,
+    root: Path,
+) -> tuple[Path, list[dict[str, Any]], RunState, list[dict[str, Any]]]:
+    """步骤 1-5 校验链：解析 run 目录 → 加载节点 → 校验 to_node → 读状态 → 校验上游。
+
+    返回：(run_dir, nodes, run_state, events)
+
+    M-6：对 run_id 做 path-traversal 防护（格式校验）。
+    """
+    # M-6：校验 run_id 格式（仅允许 [A-Za-z0-9_\-]）
+    if not re.fullmatch(r"[A-Za-z0-9_\-]+", run_id):
+        raise RollbackError(
+            f"run_id 包含非法字符（只允许 [A-Za-z0-9_\\-]）：{run_id!r}"
+        )
+
+    # 步骤 1：解析 run 目录
+    try:
+        run_dir = _resolve_run_dir(run_id, root)
+    except WorkflowError as exc:
+        raise RunStateNotFoundError(
+            f"run_id={run_id!r} 不存在：{exc}"
+        ) from exc
+
+    # 步骤 2：加载 workflow 节点
+    nodes = _load_nodes(run_dir)
+    all_ids = _all_node_ids(nodes)
+
+    # 步骤 3：校验 to_node 存在
+    if to_node not in all_ids:
+        raise TargetNodeNotFoundError(
+            f"to_node={to_node!r} 不在 workflow 节点集合 {sorted(all_ids)}"
+        )
+
+    # 步骤 4：读取当前运行状态（M-12：传 events 给后续调用方，避免双读 jsonl）
+    jsonl_path = run_dir / "run-state.jsonl"
+    events, warnings = read_events(jsonl_path)
+    run_state = RunState.rebuild(events, run_id=run_id, warnings=warnings)
+
+    # 步骤 5：校验 to_node 是上游
+    _validate_to_node_is_upstream(nodes, run_state.current_node, to_node, run_state)
+
+    return run_dir, nodes, run_state, events
+
+
+def _setup_archive(run_dir: Path) -> tuple[Path, str]:
+    """步骤 6-7：生成时间戳 + 创建 archive 目录（M-10 提取）。
+
+    注意：lock 在 mkdir 之后获取（§6.4：flock → mkdir → O_EXCL 对外 API 是先 flock，
+    但 mkdir archive_root 在 acquire_dual_lock 之前完成）。
+    实际顺序：generate_ts → mkdir archive_root → acquire flock → O_EXCL in_progress。
+    """
+    archive_ts = _make_archive_ts()
+    archive_root = run_dir / ".archived" / archive_ts
+    archive_root.mkdir(parents=True, exist_ok=True)
+    return archive_root, archive_ts
 
 
 # ============================================================================
@@ -680,41 +609,24 @@ def rollback_run(
         TargetNodeNotUpstreamError     — to_node 不是当前位置的上游
         ConcurrentRollbackError        — 锁被占用
         RollbackInProgressError        — .in_progress 残留（触发续跑）
+        RollbackResumeMismatchError    — 续跑 to_node 与 .meta.json 记录不一致
         IOError                        — 文件系统操作失败
     """
     start_ms = time.monotonic()
-
     root = repo_root or REPO_ROOT
+
+    # M-6：校验 target_id 格式
+    if target_id is not None and not re.fullmatch(r"[A-Za-z0-9_\-]+", target_id):
+        raise RollbackError(
+            f"target_id 包含非法字符（只允许 [A-Za-z0-9_\\-]）：{target_id!r}"
+        )
 
     logger.info("rollback_run 开始（run_id=%s, to_node=%s）", run_id, to_node)
 
-    # 1) 解析 run 目录
-    try:
-        run_dir = _resolve_run_dir(run_id, root)
-    except WorkflowError as exc:
-        raise RunStateNotFoundError(
-            f"run_id={run_id!r} 不存在：{exc}"
-        ) from exc
+    # 步骤 1-5：校验链（M-10）
+    run_dir, nodes, run_state, events = _resolve_and_validate(run_id, to_node, root)
 
-    # 2) 加载 workflow 节点
-    nodes = _load_nodes(run_dir)
-    all_ids = _all_node_ids(nodes)
-
-    # 3) 校验 to_node 存在
-    if to_node not in all_ids:
-        raise TargetNodeNotFoundError(
-            f"to_node={to_node!r} 不在 workflow 节点集合 {sorted(all_ids)}"
-        )
-
-    # 4) 读取当前运行状态
-    jsonl_path = run_dir / "run-state.jsonl"
-    events, warnings = read_events(jsonl_path)
-    run_state = RunState.rebuild(events, run_id=run_id, warnings=warnings)
-
-    # 5) 校验 to_node 是上游
-    _validate_to_node_is_upstream(nodes, run_state.current_node, to_node, run_state)
-
-    # 6) 检测 .in_progress 残留（崩溃续跑）
+    # 步骤 6：检测 .in_progress 残留（崩溃续跑）
     stale_archive = _find_in_progress_archive(run_dir)
     if stale_archive is not None:
         logger.info(
@@ -725,38 +637,71 @@ def rollback_run(
             run_dir, stale_archive, to_node, nodes, run_state, run_id, root
         )
 
-    # 7) 生成时间戳 + 创建 archive 目录
-    archive_ts = _make_archive_ts()
-    archive_root = run_dir / ".archived" / archive_ts
-    archive_root.mkdir(parents=True, exist_ok=True)
+    # 步骤 7-8（M-1 锁顺序 §6.4）：
+    #   1. lock_path = run_dir/.rollback.lock
+    #   2. lock_fd = _acquire_flock(lock_path)   ← 先 flock
+    #   try:
+    #       3. archive_ts = _make_archive_ts()
+    #       4. archive_root = run_dir/.archived/<ts>
+    #       5. archive_root.mkdir
+    #       6. in_progress_path = archive_root/.in_progress
+    #       7. in_prog_fd = O_EXCL(.in_progress)
+    #       try: mv 主流程 ...
+    #       finally: unlink(.in_progress) → flock 释放（M-2）
 
-    # 8) 双层锁
     lock_path = run_dir / ".rollback.lock"
-    in_progress_path = archive_root / ".in_progress"
 
-    lock_fd, in_prog_fd = _acquire_dual_lock(lock_path, in_progress_path)
-    os.close(in_prog_fd)  # 文件已创建，fd 不再需要
-
+    # M-1：先 acquire flock（§6.4 要求 flock → mkdir → O_EXCL）
+    lock_fd = _acquire_flock(lock_path)
     try:
-        result = _execute_rollback(
-            run_dir=run_dir,
-            archive_root=archive_root,
-            archive_ts=archive_ts,
-            nodes=nodes,
-            run_state=run_state,
-            to_node=to_node,
-            run_id=run_id,
-            target_id=target_id,
-            root=root,
-            start_ms=start_ms,
-        )
-        # 9) mv 完成后删 .in_progress
-        in_progress_path.unlink(missing_ok=True)
-    finally:
+        # M-1：flock 之后再 mkdir
+        archive_root, archive_ts = _setup_archive(run_dir)
+        in_progress_path = archive_root / ".in_progress"
+
+        # M-1：O_EXCL 创建 .in_progress
         try:
-            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            in_prog_fd = os.open(
+                str(in_progress_path),
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                0o644,
+            )
+        except OSError as exc:
+            raise RollbackInProgressError(
+                f".in_progress 标记已存在（{in_progress_path}），"
+                f"可能是上次崩溃残留；请重新调用 rollback_run 续跑"
+            ) from exc
+        os.close(in_prog_fd)
+
+        # M-3：写 .meta.json（在 .in_progress 创建后立刻写）
+        _write_meta_json(archive_root, run_id, to_node)
+
+        try:
+            result = _execute_rollback(
+                run_dir=run_dir,
+                archive_root=archive_root,
+                archive_ts=archive_ts,
+                nodes=nodes,
+                run_state=run_state,
+                to_node=to_node,
+                run_id=run_id,
+                target_id=target_id,
+                root=root,
+                start_ms=start_ms,
+                events=events,
+            )
         finally:
-            lock_fd.close()
+            # M-2：unlink 放进 finally 紧贴 flock 释放前；失败包装为 RollbackError
+            try:
+                if in_progress_path.exists():
+                    in_progress_path.unlink()
+            except OSError as exc:
+                raise RollbackError(
+                    f".in_progress 删除失败（{in_progress_path}）：{exc}"
+                ) from exc
+    finally:
+        # flock 一定释放
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        lock_fd.close()
 
     logger.info(
         "rollback_run 完成（run_id=%s, to_node=%s, archive_ts=%s, duration_ms=%d）",
@@ -776,28 +721,26 @@ def _execute_rollback(
     target_id: Optional[str],
     root: Path,
     start_ms: float,
+    events: list[dict[str, Any]] | None = None,
 ) -> RollbackResult:
-    """执行实际的 rollback 操作（持锁期间调用）。
-
-    拆分到独立方法以控制 rollback_run 主函数行数。
-    """
+    """执行实际的 rollback 操作（持锁期间调用）。"""
     ordered = _get_ordered_node_ids(nodes)
 
-    # 10) mv jsonl tail
+    # mv jsonl tail（M-12：传入已解析的 events，避免双读）
     jsonl_path = run_dir / "run-state.jsonl"
-    tail_path, _ = _truncate_jsonl_to_tail(jsonl_path, archive_root, to_node, ordered)
+    tail_path, _ = _truncate_jsonl_to_tail(jsonl_path, archive_root, to_node, ordered, events)
 
-    # 11) 收集 + mv 产物
+    # 收集 + mv 产物
     artifacts = _collect_artifacts_to_archive(run_dir, nodes, run_state, to_node)
     moved = _move_artifacts(artifacts, archive_root)
 
-    # 12) 跨父子 mv 子 run（F1 场景）
+    # 跨父子 mv 子 run（F1 场景）
     moved_sub_runs = _execute_sub_run_archive(
         run_dir, nodes, to_node, archive_root, run_id, target_id, root
     )
 
     duration_ms = int((time.monotonic() - start_ms) * 1000)
-    new_current_node = _determine_new_current_node(nodes, to_node)
+    new_current_node = _determine_new_current_node(to_node)
 
     return RollbackResult(
         run_id=run_id,
@@ -823,64 +766,23 @@ def _execute_sub_run_archive(
 ) -> list[SubRunArchive]:
     """执行子 run 整目录归档（F1 跨父子场景）。
 
-    target_id 指定时只归档该子 run；否则归档所有匹配子 run。
+    使用 _discover_sub_runs 统一发现策略（M-4）。
     """
     sub_runs_archive_dir = archive_root / "sub_runs"
     archived: list[SubRunArchive] = []
 
-    # 找 to_node 之后的 sub_workflow 节点
     ordered = _get_ordered_node_ids(nodes)
     to_pos = ordered.index(to_node) if to_node in ordered else -1
     nodes_after = ordered[to_pos + 1:] if to_pos >= 0 else []
     node_map = {n["id"]: n for n in nodes if isinstance(n, dict) and "id" in n}
 
-    for nid in nodes_after:
-        node_def = node_map.get(nid, {})
-        if "sub_workflow" not in node_def:
-            continue
-
-        # 搜索匹配的子 run 目录
-        child_dirs = _find_matching_child_run_dirs(nid, run_dir, root, target_id)
-        for child_dir in child_dirs:
-            archived.append(
-                _archive_sub_run(child_dir, sub_runs_archive_dir, run_id)
-            )
+    child_dirs = _discover_sub_runs(run_dir, nodes_after, root, node_map, target_id)
+    for child_dir in child_dirs:
+        archived.append(
+            _archive_sub_run(child_dir, sub_runs_archive_dir, run_id)
+        )
 
     return archived
-
-
-def _find_matching_child_run_dirs(
-    node_id: str,
-    run_dir: Path,
-    root: Path,
-    target_id: Optional[str],
-) -> list[Path]:
-    """找到与 node_id 对应的子 run 目录列表。
-
-    匹配规则（按优先级）：
-    1. target_id 指定 → 精确匹配
-    2. 子 run 目录内 sub_runs/<node_id>/ 目录（由 run_dir 维护）
-    3. sub-run 目录命名约定：run_dir.name + "-" + node_id 前缀
-    """
-    if target_id:
-        # 精确匹配
-        for base in [root / "runs", root / "requirements"]:
-            candidate = base / target_id
-            if candidate.is_dir():
-                return [candidate]
-        return []
-
-    # 检查 run_dir/sub_runs/<node_id>/ 目录（子 run 目录直接挂在父下）
-    sub_runs_dir = run_dir / "sub_runs"
-    if sub_runs_dir.is_dir():
-        matches = []
-        for d in sub_runs_dir.iterdir():
-            if d.is_dir():
-                matches.append(d)
-        if matches:
-            return matches
-
-    return []
 
 
 # ============================================================================
@@ -897,6 +799,16 @@ def main(args: list[str] | None = None, repo_root: Path | None = None) -> int:
     parser.add_argument("--target-id", dest="target_id", default=None,
                         help="指定子 run id（跨父子场景）")
     parsed = parser.parse_args(args or sys.argv[1:])
+
+    # M-6：CLI 层格式校验（run_id / target_id path-traversal defense）
+    for name, value in [("run_id", parsed.run_id), ("to_node", parsed.to_node)]:
+        if not re.fullmatch(r"[A-Za-z0-9_\-]+", value):
+            print(f"ERROR: {name} 包含非法字符：{value!r}", file=sys.stderr)
+            return 1
+    if parsed.target_id is not None:
+        if not re.fullmatch(r"[A-Za-z0-9_\-]+", parsed.target_id):
+            print(f"ERROR: target_id 包含非法字符：{parsed.target_id!r}", file=sys.stderr)
+            return 1
 
     try:
         result = rollback_run(
