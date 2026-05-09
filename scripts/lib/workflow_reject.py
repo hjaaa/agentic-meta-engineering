@@ -9,13 +9,14 @@
 from __future__ import annotations
 
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 _LIB_DIR = Path(__file__).resolve().parent
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
-from common import REPO_ROOT, WorkflowError  # noqa: E402
+from common import REPO_ROOT, WorkflowError, infer_run_id_from_branch  # noqa: E402
 from run_state import RunState, _resolve_run_dir, append_event, read_events  # noqa: E402
 from workflow_state_validator import check_tty_for_approval, validate_state_for_cmd  # noqa: E402
 
@@ -52,7 +53,7 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
         return 1
 
     # 推断 run_id
-    run_id = _infer_run_id(root)
+    run_id = infer_run_id_from_branch(root)
     if not run_id:
         print("ERROR: 无法推断 run_id；请切到 feat/req-<id> 分支", file=sys.stderr)
         return 1
@@ -87,27 +88,11 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
         print(f"ERROR: 写 approval_rejected 事件失败：{exc}", file=sys.stderr)
         return 1
 
-    from datetime import datetime, timezone
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     print(f"Rejected {node_id!r} at {ts}: {reason}")
     print(f"  run_id: {run_id}")
     print(f"  on_reject 路径由 main loop（F-006）处理")
     return 0
-
-
-def _infer_run_id(repo_root: Path) -> str | None:
-    import subprocess
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True, text=True, cwd=str(repo_root), timeout=5,
-        )
-        branch = result.stdout.strip()
-        if branch.startswith("feat/req-"):
-            return branch[len("feat/req-"):]
-    except Exception:
-        pass
-    return None
 
 
 if __name__ == "__main__":

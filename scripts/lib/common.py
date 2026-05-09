@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -20,6 +21,32 @@ class WorkflowError(Exception):
     （文件找不到、状态非法、event 校验失败等）都抛此基类，跨模块 except
     时类对象同一性才能成立（避免重复定义导致 except 条件分支失效）。
     """
+
+
+def infer_run_id_from_branch(repo_root: Path) -> str | None:
+    """从当前 git 分支推断 run_id（feat/req-<id> 格式）。
+
+    返回值：
+        str  — 分支格式匹配时返回 <id> 部分（去掉 'feat/req-' 前缀）
+        None — 非 feat/req-<id> 分支，或 git 命令失败
+
+    F-005/F-009 等 9 个命令共用此函数；DRY 抽取于此，
+    避免 7 个文件各自维护 70 行副本（F-017 修复）。
+    """
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            cwd=str(repo_root),
+            timeout=5,
+        )
+        branch = result.stdout.strip()
+        if branch.startswith("feat/req-"):
+            return branch[len("feat/req-"):]
+    except Exception:
+        pass
+    return None
 
 
 class Severity:

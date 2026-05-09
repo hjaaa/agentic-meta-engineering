@@ -15,7 +15,7 @@ _LIB_DIR = Path(__file__).resolve().parent
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
-from common import REPO_ROOT, WorkflowError  # noqa: E402
+from common import REPO_ROOT, WorkflowError, infer_run_id_from_branch  # noqa: E402
 from run_state import RunState, _resolve_run_dir, read_events  # noqa: E402
 
 
@@ -71,7 +71,7 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
 
     run_id = args[0] if args else None
     if not run_id:
-        run_id = _infer_run_id(root)
+        run_id = infer_run_id_from_branch(root)
     if not run_id:
         # 列出候选
         _print_candidates(root)
@@ -91,22 +91,6 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
     # status 对所有已存在 run 有效，无额外 state 限制
     print(_render_status(run_state, run_dir))
     return 0
-
-
-def _infer_run_id(repo_root: Path) -> str | None:
-    """从当前 git 分支推断 run_id。"""
-    import subprocess
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True, text=True, cwd=str(repo_root), timeout=5,
-        )
-        branch = result.stdout.strip()
-        if branch.startswith("feat/req-"):
-            return branch[len("feat/req-"):]
-    except Exception:
-        pass
-    return None
 
 
 def _print_candidates(repo_root: Path) -> None:

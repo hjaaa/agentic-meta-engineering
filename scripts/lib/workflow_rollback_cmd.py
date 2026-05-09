@@ -5,6 +5,10 @@
 状态校验 + 调用 rollback_run（F-010 落地前为占位 ImportError）。
 
 详细设计 §1.2.8。
+
+注：本文件名使用 _cmd 后缀，是为了避免与 F-010 落地的 workflow_rollback.py
+（workflow_rollback 模块本体）同名冲突。F-005 只负责命令入口层，
+实际 rollback 逻辑由 F-010 的 workflow_rollback.py 提供。
 """
 from __future__ import annotations
 
@@ -15,7 +19,7 @@ _LIB_DIR = Path(__file__).resolve().parent
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
-from common import REPO_ROOT, WorkflowError  # noqa: E402
+from common import REPO_ROOT, WorkflowError, infer_run_id_from_branch  # noqa: E402
 from run_state import RunState, _resolve_run_dir, read_events  # noqa: E402
 from workflow_state_validator import validate_state_for_cmd  # noqa: E402
 
@@ -41,7 +45,7 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
     to_node = args[0]
 
     # 推断 run_id
-    run_id = _infer_run_id(root)
+    run_id = infer_run_id_from_branch(root)
     if not run_id:
         print("ERROR: 无法推断 run_id", file=sys.stderr)
         return 1
@@ -78,21 +82,6 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
             file=sys.stderr,
         )
         return 1
-
-
-def _infer_run_id(repo_root: Path) -> str | None:
-    import subprocess
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True, text=True, cwd=str(repo_root), timeout=5,
-        )
-        branch = result.stdout.strip()
-        if branch.startswith("feat/req-"):
-            return branch[len("feat/req-"):]
-    except Exception:
-        pass
-    return None
 
 
 if __name__ == "__main__":
