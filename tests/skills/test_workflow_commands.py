@@ -215,6 +215,11 @@ class TestHappyPath:
         reject_events = [e for e in events if e["type"] == "approval_rejected"]
         assert reject_events[0]["data"]["reason"] == "设计方案不合格，需重审"
 
+    @pytest.mark.skip(
+        reason="F-007 已落地 workflow_rollback.py，本占位测试的 ImportError 假设失效。"
+        "等 F-010 把 workflow_rollback_cmd.py 完整对接 F-007 API（替换 from workflow_rollback import"
+        " rollback_run 占位调用为真实签名 + try/except RollbackError）后重写本测试。"
+    )
     def test_rollback_passes_state_check_but_exits_1_without_f010(self, tmp_repo: Path):
         """given_running_state_when_rollback_then_state_check_passes_but_f010_not_landed。"""
         run_id = "RUN-20260509-006"

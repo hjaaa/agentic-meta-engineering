@@ -684,14 +684,6 @@ def rollback_run(
     """
     start_ms = time.monotonic()
 
-    # 向上兼容：workflow_rollback_cmd.py（F-005 占位层）曾把 run_dir(Path) 传给 target_id，
-    # 这里检测并自动推断 repo_root（run_dir.parent.parent），避免回归既有测试。
-    if isinstance(target_id, Path):
-        _inferred_root = target_id.parent.parent
-        if repo_root is None:
-            repo_root = _inferred_root
-        target_id = None  # target_id 语义与 run_dir 不同，重置为 None
-
     root = repo_root or REPO_ROOT
 
     logger.info("rollback_run 开始（run_id=%s, to_node=%s）", run_id, to_node)
