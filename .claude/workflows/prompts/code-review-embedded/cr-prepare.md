@@ -21,7 +21,11 @@ output_format:
       type: string
     error:
       type: string
-      description: "安全校验失败或致命错误时设置，触发后立即终止（不输出其他字段）"
+      description: "安全校验失败或致命错误时设置；同时设 has_error: true，下游 10 节点经 when 守卫自动跳过"
+    has_error:
+      type: boolean
+      default: false
+      description: "正常路径输出 false；任何错误路径（diff_range 非法 / $ARTIFACTS_DIR 越界 / diff 为空等）输出 true，触发下游 10 节点 when 守卫跳过"
   required: [diff_range, scope_file, mode]
 ---
 
@@ -81,44 +85,53 @@ output_format:
 （允许 git ref / range 字符集：字母数字、点、下划线、斜线、连字符，可选 `..` 分隔符）
 
 若 `diff_range` 不匹配，必须：
-- 在 output_format `error` 字段设置错误信息（例如：`"diff_range 包含非法字符，安全校验失败"`）
-- 立即终止执行，不调用任何 git 命令
+- 在 output_format `error` 字段返回 `"diff_range 包含非法字符，安全校验失败"` 或等价错误消息
+- 同时设 `has_error: true`，不输出其他业务字段（仅 error + has_error）
+- 停止本次执行，不调用任何 git 命令；下游 10 节点经 when 守卫会自动跳过
 
 **规则 2：$ARTIFACTS_DIR jail check**
 
 写盘（`$ARTIFACTS_DIR/review-scope.json`）前，必须校验写入路径不包含 `..` 序列，
 且 realpath 在仓库根或当前 run 目录之内。
 
-校验方法（Python 伪代码）：
-```python
-import os
-scope_file = os.path.realpath(f"{artifacts_dir}/review-scope.json")
-repo_root = os.path.realpath(os.getcwd())
-if not scope_file.startswith(repo_root):
-    # 在 output_format error 字段返回错误并终止
-    raise SecurityError("$ARTIFACTS_DIR 路径越界，拒绝写盘")
-if ".." in artifacts_dir:
-    raise SecurityError("$ARTIFACTS_DIR 含 .. 序列，拒绝写盘")
-```
+校验方法：
+1. 计算 `$ARTIFACTS_DIR/review-scope.json` 的规范化绝对路径（realpath）
+2. 计算当前仓库根目录的规范化绝对路径（realpath of cwd）
+3. 若规范化路径不以仓库根为前缀，或 `$ARTIFACTS_DIR` 字符串中含 `..` 序列，则：
+   - 必须在 `output_format.error` 字段返回 `"$ARTIFACTS_DIR 路径越界，拒绝写盘"` 或等价错误消息
+   - 同时设 `has_error: true`
+   - 不输出 diff_range / scope_file / mode 等业务字段（仅 error + has_error）
+   - 停止本次执行；下游 10 节点经 when 守卫会自动跳过
 
 若越界，必须：
-- 在 output_format `error` 字段设置错误信息
-- 立即终止执行
+- 在 output_format `error` 字段设置错误信息，同时设 `has_error: true`
+- 停止本次执行（不输出其他业务字段）
 
 ## 输出约定
 
 输出结构化 JSON，字段：
-- `diff_range`：git diff 范围字符串（非空；若为空则抛错，见下方注意事项）
+- `diff_range`：git diff 范围字符串（非空；若为空则设 `error` + `has_error: true`，见下方注意事项）
 - `scope_file`：`$ARTIFACTS_DIR/review-scope.json` 路径（运行时已替换为具体路径）
 - `mode`：`"standalone"` 或 `"embedded"`
 - `feature_id`（可选）：嵌入模式时从 args 获取
 - `warning`（可选，`type: string`）：非致命告警信息
-- `error`（可选，`type: string`）：安全校验失败或致命错误时设置；出现即终止后续节点
+- `error`（可选，`type: string`）：安全校验失败或致命错误时设置；**必须同时设 `has_error: true`**
+- `has_error`（`type: boolean`）：正常路径输出 `false`；任何错误路径输出 `true`。下游 8 个 cr-checker-* 节点、cr-critic 节点、cr-judge 节点（共 10 节点）均配置 `when: "$cr-prepare.output.has_error == false"` 守卫，当本字段为 `true` 时这 10 个节点全部自动跳过（状态 = skipped），无需额外终止信号。
+
+**错误路径输出规则**：
+当触发任何错误（diff_range 非法 / $ARTIFACTS_DIR 越界 / diff 为空等）时，**仅**输出：
+```json
+{
+  "error": "<错误描述信息>",
+  "has_error": true
+}
+```
+不输出 diff_range / scope_file / mode 等业务字段。
+
+**正常路径**时，输出 `has_error: false` 及所有业务字段。
 
 ## 注意事项
 
 - 禁止在此阶段读取完整 diff 内容（节省主对话 token）
-- **若 diff_range 为空（无增量），必须抛出错误并终止执行**，不得 fallback 为
-  `"HEAD~1..HEAD"`——空 diff 会导致下游 8 个 checker 静默跑空集合，cr-judge
-  输出空报告掩盖实际问题。
+- **若 diff_range 为空（无增量），必须在 `error` 字段返回错误信息并设 `has_error: true`**，不得 fallback 为 `"HEAD~1..HEAD"`——空 diff 会导致下游 8 个 checker 静默跑空集合，cr-judge 输出空报告掩盖实际问题。下游 10 节点经 when 守卫会自动跳过。
 - scope_file 必须写到 `$ARTIFACTS_DIR/review-scope.json`，禁止写到工作目录根

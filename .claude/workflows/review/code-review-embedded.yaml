@@ -76,7 +76,11 @@ nodes:
           description: "非致命告警信息（可选）"
         error:
           type: string
-          description: "安全校验失败或致命错误时设置（diff_range regex 失败 / $ARTIFACTS_DIR jail 越界）；出现即终止后续节点"
+          description: "安全校验失败或致命错误时设置；必须同时设 has_error: true，下游 10 节点经 when 守卫自动跳过"
+        has_error:
+          type: boolean
+          default: false
+          description: "正常路径输出 false；任何错误路径（diff_range 非法 / $ARTIFACTS_DIR 越界 / diff 为空等）输出 true，下游 10 节点经 when 守卫跳过"
       required: [diff_range, scope_file, mode]
 
   # ════════════════════════════════════════════════════════════════════
@@ -92,6 +96,7 @@ nodes:
     context: fresh
     effort: medium
     depends_on: [cr-prepare]
+    when: "$cr-prepare.output.has_error == false"
     output_format:
       type: object
       properties:
@@ -119,6 +124,7 @@ nodes:
     context: fresh
     effort: medium
     depends_on: [cr-prepare]
+    when: "$cr-prepare.output.has_error == false"
     output_format:
       type: object
       properties:
@@ -146,6 +152,7 @@ nodes:
     context: fresh
     effort: medium
     depends_on: [cr-prepare]
+    when: "$cr-prepare.output.has_error == false"
     output_format:
       type: object
       properties:
@@ -173,6 +180,7 @@ nodes:
     context: fresh
     effort: medium
     depends_on: [cr-prepare]
+    when: "$cr-prepare.output.has_error == false"
     output_format:
       type: object
       properties:
@@ -200,6 +208,7 @@ nodes:
     context: fresh
     effort: medium
     depends_on: [cr-prepare]
+    when: "$cr-prepare.output.has_error == false"
     output_format:
       type: object
       properties:
@@ -227,6 +236,7 @@ nodes:
     context: fresh
     effort: medium
     depends_on: [cr-prepare]
+    when: "$cr-prepare.output.has_error == false"
     output_format:
       type: object
       properties:
@@ -254,6 +264,7 @@ nodes:
     context: fresh
     effort: medium
     depends_on: [cr-prepare]
+    when: "$cr-prepare.output.has_error == false"
     output_format:
       type: object
       properties:
@@ -281,6 +292,7 @@ nodes:
     context: fresh
     effort: medium
     depends_on: [cr-prepare]
+    when: "$cr-prepare.output.has_error == false"
     output_format:
       type: object
       properties:
@@ -325,6 +337,7 @@ nodes:
       - cr-checker-auxiliary-spec
       - cr-checker-history-context
     trigger_rule: all_done
+    when: "$cr-prepare.output.has_error == false"
     output_format:
       type: object
       properties:
@@ -360,6 +373,7 @@ nodes:
     model: opus
     idle_timeout: 900000
     depends_on: [cr-critic]
+    when: "$cr-prepare.output.has_error == false"
     output_format:
       type: object
       properties:
@@ -395,7 +409,11 @@ nodes:
               file: { type: string }
               description: { type: string }
               suggestion: { type: string }
-            required: [finding_id, severity, description]
+              disposition:
+                type: string
+                enum: [drop, keep, downgrade, follow-up]
+              rationale: { type: string }
+            required: [finding_id, severity, description, disposition, rationale]
         cross_dimension_insights:
           type: array
           items: { type: string }
