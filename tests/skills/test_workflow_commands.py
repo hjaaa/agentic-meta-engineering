@@ -705,3 +705,30 @@ class TestContinueRunResumedWriteFailureExits1:
         assert rc == 1, (
             f"run_resumed 写失败时 continue 应返回 1，实际 rc={rc}"
         )
+
+
+class TestOSErrorWrappedAsWorkflowError:
+    """TC-F5-rev4/P-2：append_event 中 os.open 抛 OSError 应被包装为 WorkflowError。"""
+
+    def test_append_event_os_open_oserror_raises_workflow_error(self, tmp_repo: Path):
+        """given_os_open_raises_oserror_when_append_event_then_raises_workflow_error ✗→WorkflowError。
+
+        mock os.open 抛 OSError（模拟磁盘满 / 权限不足），断言 append_event
+        抛出 WorkflowError 而非透出原始 OSError（P-2 H-7+H-14 修复验证）。
+        """
+        import os
+        from common import WorkflowError
+        from run_state import append_event as _append_event
+
+        jsonl_path = tmp_repo / "runs" / "RUN-20260509-999" / "run-state.jsonl"
+        jsonl_path.parent.mkdir(parents=True, exist_ok=True)
+
+        event = {"type": "workflow_started", "run_id": "RUN-20260509-999"}
+
+        with patch("run_state.os.open", side_effect=OSError("[Errno 28] No space left on device")):
+            with pytest.raises(WorkflowError) as exc_info:
+                _append_event(jsonl_path, event)
+
+        assert "写 jsonl 失败" in str(exc_info.value), (
+            f"WorkflowError 消息应含'写 jsonl 失败'，实际：{exc_info.value}"
+        )
