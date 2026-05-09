@@ -134,6 +134,15 @@
 - **来源**：context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md:204；requirements/REQ-2026-009/artifacts/requirement.md:149；requirements/REQ-2026-009/artifacts/tech-feasibility.md:243
 - **Plan 落地点**：Plan 5（`/requirement:next` .md 保留 SOP；其他 8 个别名输出 deprecation warning + 3 月兼容期保留实现）/ Plan 6（自举验证 SOP 写"全程禁用旧命令"）/ Plan 7（删除顺序约束 = Plan 6 verification passed → 1 个迭代周期后真删除）
 
+### D-011 F-008 touches 设计回填 = 扩 `tests/e2e/conftest.py` + 清空 historical violations
+
+- **Context**：F-008 task.md / features.json 原 touches 含 `tests/e2e/fixtures/**` 但**未含** `tests/e2e/conftest.py`。subagent 实现时把 conftest.py 写在 `tests/e2e/` 顶层（pytest 标准约束：conftest.py 必须放测试同级或祖先目录才能被 pytest_collect 自动加载，放 `tests/e2e/fixtures/conftest.py` 不会自动激活）；touches_guard.py 把这 2 条写记成 `touches_violations[]`（实现正确，设计 glob 漏写）。
+- **Decision**：(1) 设计回填——features.json F-008.touches 扩 `tests/e2e/conftest.py`（在 `tests/e2e/test_sub_workflow_lifecycle.py` 后插入）；tasks/F-008.md frontmatter touches 同步扩。(2) 清空 historical violations——`F-008.receipt.json` 的 `touches_violations[]` 清零（rationale：扩 touches 后这些路径不再越界；留着会让 phase-transition / submit 阶段 GATE-TOUCHES-VIOLATION 误挡，按 gate 语义"任何 violation 都 block"）。(3) 审计可追溯——本 ADR + commit message 详述根因；用户在交互式 Auto Mode 拒绝后批准走"清空 + 写 ADR"通道。
+- **Consequences**：好——pytest 标准位置不再被误记越界；GATE-TOUCHES-VIOLATION 在 submit 阶段不会误挡；后续类似 features（含 e2e 测试）的 detailed-design 模板会带 `tests/e2e/conftest.py` glob，避免再犯。差——任何"事后扩 touches + 清 violations"动作都需要 ADR 留痕，流程上比一次设计到位多一步。
+- **时间**：2026-05-09 23:10:00
+- **来源**：requirements/REQ-2026-009/artifacts/tasks/F-008.md:7-12（原 touches）/ requirements/REQ-2026-009/artifacts/tasks/F-008.receipt.json（2 条 violations）/ pytest conftest.py 自动加载约束（https://docs.pytest.org/en/stable/reference/fixtures.html#conftest-py-sharing-fixtures-across-multiple-files）
+- **Plan 落地点**：本轮 F-008 dispatch 闭环（features.json + task.md + receipt.json + plan.md ADR + bookkeeping commit）
+
 ### D-010 rollback 归档语义 = mv 原路径删除 + 子 run 整目录 mv + 每次独立 timestamp 目录
 
 - **Context**：spec §11.3 说"归档 X 及以后产物到 `runs/<id>/.archived/<timestamp>/`"，但未说明三件事：(1) 归档后**原路径**是否清理（保留 / 删除 / stub）；(2) 跨父子 rollback 时子 run 的整个目录 `runs/<child-id>/` 是否清空；(3) 多次 rollback 的归档目录策略（独立并存 vs 追加合并）。OQ-02 来源：requirement.md:134。

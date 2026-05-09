@@ -57,7 +57,9 @@
         "tests/lib/test_node_types.py"
       ],
       "depends_on": [],
-      "depends_on_features": ["F-001"],
+      "depends_on_features": [
+        "F-001"
+      ],
       "complexity": "heavy",
       "touches": [
         ".claude/skills/workflow-engine/**",
@@ -96,7 +98,10 @@
         "tests/workflows/test_prompt_structure.py"
       ],
       "depends_on": [],
-      "depends_on_features": ["F-001", "F-002"],
+      "depends_on_features": [
+        "F-001",
+        "F-002"
+      ],
       "complexity": "medium",
       "touches": [
         ".claude/workflows/requirement/standard-8phase.yaml",
@@ -132,7 +137,10 @@
         "tests/e2e/test_code_review_embedded.py"
       ],
       "depends_on": [],
-      "depends_on_features": ["F-001", "F-002"],
+      "depends_on_features": [
+        "F-001",
+        "F-002"
+      ],
       "complexity": "medium",
       "touches": [
         ".claude/workflows/review/code-review-embedded.yaml",
@@ -173,7 +181,9 @@
         "tests/skills/test_workflow_commands.py"
       ],
       "depends_on": [],
-      "depends_on_features": ["F-001"],
+      "depends_on_features": [
+        "F-001"
+      ],
       "complexity": "medium",
       "touches": [
         ".claude/commands/workflow/**",
@@ -201,7 +211,9 @@
         "tests/skills/fixtures/keyword_matching.yaml"
       ],
       "depends_on": [],
-      "depends_on_features": ["F-005"],
+      "depends_on_features": [
+        "F-005"
+      ],
       "complexity": "medium",
       "touches": [
         ".claude/skills/workflow-launcher/**",
@@ -238,7 +250,10 @@
         "tests/lib/fixtures/rollback/to-root/workflow.yaml"
       ],
       "depends_on": [],
-      "depends_on_features": ["F-001", "F-002"],
+      "depends_on_features": [
+        "F-001",
+        "F-002"
+      ],
       "complexity": "medium",
       "touches": [
         "scripts/lib/workflow_rollback.py",
@@ -271,10 +286,13 @@
         "scripts/lib/run_state.py"
       ],
       "depends_on": [],
-      "depends_on_features": ["F-002"],
+      "depends_on_features": [
+        "F-002"
+      ],
       "complexity": "medium",
       "touches": [
         "tests/e2e/test_sub_workflow_lifecycle.py",
+        "tests/e2e/conftest.py",
         "tests/e2e/fixtures/**",
         "scripts/lib/run_state.py"
       ],
@@ -300,7 +318,9 @@
         "tests/hooks/fixtures/workflow_approval_inputs.yaml"
       ],
       "depends_on": [],
-      "depends_on_features": ["F-005"],
+      "depends_on_features": [
+        "F-005"
+      ],
       "complexity": "light",
       "touches": [
         ".claude/hooks/pre-tool-use-guard.sh",
@@ -337,7 +357,9 @@
         "tests/skills/test_alias_passthrough.py"
       ],
       "depends_on": [],
-      "depends_on_features": ["F-005"],
+      "depends_on_features": [
+        "F-005"
+      ],
       "complexity": "light",
       "touches": [
         ".claude/commands/requirement/**",
@@ -383,7 +405,18 @@
         "scripts/gates/registry.yaml"
       ],
       "depends_on": [],
-      "depends_on_features": ["F-001", "F-002", "F-003", "F-004", "F-005", "F-006", "F-007", "F-008", "F-009", "F-010"],
+      "depends_on_features": [
+        "F-001",
+        "F-002",
+        "F-003",
+        "F-004",
+        "F-005",
+        "F-006",
+        "F-007",
+        "F-008",
+        "F-009",
+        "F-010"
+      ],
       "complexity": "medium",
       "touches": [
         "tests/migration/**",
@@ -416,7 +449,9 @@
         "context/team/ai-collaboration.md"
       ],
       "depends_on": [],
-      "depends_on_features": ["F-013"],
+      "depends_on_features": [
+        "F-013"
+      ],
       "complexity": "light",
       "touches": [
         "scripts/lib/check_reviews.py",
@@ -453,7 +488,9 @@
         "requirements/INDEX.md"
       ],
       "depends_on": [],
-      "depends_on_features": ["F-011"],
+      "depends_on_features": [
+        "F-011"
+      ],
       "complexity": "medium",
       "touches": [
         "scripts/lib/migrate_requirements_to_runs.py",
