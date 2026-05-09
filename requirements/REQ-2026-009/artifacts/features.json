@@ -281,8 +281,10 @@
       "description": "落地 sub_workflow 父子状态联动 e2e 测试（来源：detailed-design §7 全章 / D-005）：父用 Agent({run_in_background: true}) 派子；用户 cancel → 父 jsonl 写 cancel_requested → 子 subagent 在每节点边界 poll 父 jsonl → 检测命中即写 parent_cancelled 到子 jsonl + graceful 退出；父等子 graceful 返回或 30s 超时调 TaskStop({task_id}) forceful 兜底。本 feature 主要交付：MockSubAgent 类（poll_interval_ms 可调）+ §7.4 单测矩阵 6 用例（2 主 + 4 边界）+ 复用 F-007 F1 fixture。子 jsonl 永远由子自身写，无跨 run 文件写权限——绕开 TaskStop graceful 不明确 + 跨 subagent 写权限两个不确定性。",
       "modules": [
         "tests/e2e/test_sub_workflow_lifecycle.py",
+        "tests/e2e/test_sub_workflow_cancel_advanced.py",
         "tests/e2e/fixtures/sub_workflow_mock.py",
-        "tests/e2e/fixtures/conftest.py",
+        "tests/e2e/fixtures/e2e_helpers.py",
+        "tests/e2e/conftest.py",
         "scripts/lib/run_state.py"
       ],
       "depends_on": [],
