@@ -195,6 +195,7 @@
       "description": "落地 workflow-launcher Skill（来源：outline §1.2 ~150 行 / detailed-design §4 全章）：3 步仲裁 = state tiebreaker → 最长匹配 → 等长冲突 ask 兜底（D-008 锁定）。reference/keyword-matching.md 列 6 类 20 关键词清单 + 长度排序表（含 length=11 code review / length=7 4 条等长冲突主层）。匹配语义：ASCII 词边界 / 中文 substring / 混合标点字面量。本 Skill 仅做意图翻译，调底层 /workflow:* 命令；MVP 不支持多步连接词（'再' / '接下来' 留 v2）。",
       "modules": [
         ".claude/skills/workflow-launcher/SKILL.md",
+        ".claude/skills/workflow-launcher/keyword_matcher.py",
         ".claude/skills/workflow-launcher/reference/keyword-matching.md",
         "tests/skills/test_keyword_matching.py",
         "tests/skills/fixtures/keyword_matching.yaml"

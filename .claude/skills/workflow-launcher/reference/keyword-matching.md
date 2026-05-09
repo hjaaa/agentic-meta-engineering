@@ -102,7 +102,7 @@ def match_keyword(
     if has_approval_pending:
         for kw in [k for k in KEYWORDS if k.category in ("approve", "reject")]:
             if kw.matches(user_input):
-                return kw.command, extract_args(user_input, kw), None
+                return kw.command, kw.extract_args(user_input), None
 
     # Step 2：最长匹配（降序扫描所有关键词）
     sorted_kws = sorted(KEYWORDS, key=lambda k: -k.length)
