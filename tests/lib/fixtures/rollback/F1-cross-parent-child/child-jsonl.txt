@@ -1,0 +1,4 @@
+{"type": "workflow_started", "ts": "2026-05-08T10:00:03Z", "run_id": "TEST-F1-CHILD", "data": {"workflow_name": "dummy-child", "arguments": ""}}
+{"type": "node_started", "ts": "2026-05-08T10:00:03Z", "node_id": "child-step"}
+{"type": "node_completed", "ts": "2026-05-08T10:00:04Z", "node_id": "child-step", "data": {"output": "child done"}}
+{"type": "workflow_completed", "ts": "2026-05-08T10:00:04Z", "run_id": "TEST-F1-CHILD"}

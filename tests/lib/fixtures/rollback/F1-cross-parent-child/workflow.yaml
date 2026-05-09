@@ -1,0 +1,12 @@
+name: f1-cross-parent-child
+version: 1
+category: assist
+nodes:
+  - id: node-a
+    bash: echo A
+  - id: node-b
+    sub_workflow: dummy-child
+  - id: node-c
+    bash: echo C
+  - id: node-d
+    bash: echo D

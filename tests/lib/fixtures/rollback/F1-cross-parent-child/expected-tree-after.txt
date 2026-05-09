@@ -1,0 +1,12 @@
+# F1 场景期望：父 rollback 到 node-a，跨 sub_workflow 节点 node-b 级联归档子 run
+# 期望 run_dir（父）内：
+#   run-state.jsonl        — 仅含 A 完成事件
+#   node-b/ node-c/ node-d/ — 已删（mv 到 archived）
+# 期望 .archived/<ts>/ 内：
+#   node-b/ node-c/ node-d/ — 存在
+#   sub_runs/<child_id>/    — 子 run 整目录存在（已 parent_rolled_back 事件）
+#   run-state.jsonl.tail    — 含 B/C/D 事件
+KEPT_EVENTS: node-a
+ARCHIVED_DIRS: node-b node-c node-d
+CHILD_ARCHIVED: yes
+TAIL_EVENTS: node-b node-c node-d

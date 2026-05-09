@@ -1,0 +1,12 @@
+name: r1-single-layer
+version: 1
+category: assist
+nodes:
+  - id: node-a
+    bash: echo A
+  - id: node-b
+    bash: echo B
+  - id: node-c
+    bash: echo C
+  - id: node-d
+    bash: echo D

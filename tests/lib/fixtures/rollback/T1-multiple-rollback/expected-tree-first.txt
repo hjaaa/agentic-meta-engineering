@@ -1,0 +1,3 @@
+# T1 第一次 rollback：到 node-b（归档 C/D）
+KEPT_EVENTS: node-a node-b
+ARCHIVED_DIRS_FIRST: node-c node-d
