@@ -24,6 +24,25 @@ from workflow_state_validator import validate_state_for_cmd  # noqa: E402
 _GRACEFUL_TIMEOUT_SECS = 30
 
 
+def _handle_taskstop_failure(exc: Exception, jsonl_path: Path, run_id: str) -> None:
+    """TaskStop 调用失败的降级处理：WARN + 写 cancel_taskstop_failed 审计事件。
+
+    独立抽取以降低 main 的嵌套深度（G-5）。
+    G-10：cancel_taskstop_failed 写失败时输出 stderr WARN，不再静默吞异常。
+    """
+    print(f"WARN: TaskStop 调用失败：{exc}", file=sys.stderr)
+    # 写降级审计事件（不 exit 1；cancel 主流程已写 cancel_requested，命令整体成功）
+    try:
+        append_event(jsonl_path, {
+            "type": "cancel_taskstop_failed",
+            "run_id": run_id,
+            "data": {"error": str(exc)},
+        })
+    except WorkflowError as exc2:
+        # G-10：写降级事件也失败时，至少输出 WARN 到 stderr，不再静默 pass
+        print(f"WARN: 写 cancel_taskstop_failed 事件也失败：{exc2}", file=sys.stderr)
+
+
 def _task_stop_forceful(run_id: str) -> None:
     """TaskStop forceful 兜底（F-009 落地前为 stub）。
 
@@ -107,18 +126,9 @@ def main(args: list[str], repo_root: Path | None = None, _skip_wait: bool = Fals
         try:
             _task_stop_forceful(run_id)
         except Exception as exc:
-            print(f"WARN: TaskStop 调用失败：{exc}", file=sys.stderr)
-            # TaskStop 失败 → warn + 写事件（不 exit 1）
-            try:
-                # cancel_taskstop_failed 专用事件（不映射 WORKFLOW_EVENT_TO_STATE，
-                # 保持 cancel_requested 语义，state 不变为 failed）
-                append_event(jsonl_path, {
-                    "type": "cancel_taskstop_failed",
-                    "run_id": run_id,
-                    "data": {"error": str(exc)},
-                })
-            except WorkflowError:
-                pass  # 写事件失败也不 exit 1
+            # cancel_taskstop_failed 专用事件（不映射 WORKFLOW_EVENT_TO_STATE，
+            # 保持 cancel_requested 语义，state 不变为 failed）
+            _handle_taskstop_failure(exc, jsonl_path, run_id)
 
     print(f"  run_id: {run_id}，cancel 信号已发送")
     return 0
