@@ -1024,7 +1024,7 @@ class MockSubAgent:
 
 #### 7.3.3 共享 fixture（与 §6 F1 复用）
 
-`tests/e2e/fixtures/sub_workflow/` 复用 `tests/lib/fixtures/rollback/F1-cross-parent-child/` 的 workflow.yaml + 父子 jsonl 模板（symlink 或 conftest.py 共享 loader），避免维护两套同源 fixture。
+`tests/e2e/fixtures/sub_workflow_mock.py`（MockSubAgent）+ `tests/e2e/fixtures/e2e_helpers.py`（共享 loader 函数）+ `tests/e2e/conftest.py`（pytest 加载机制要求 conftest 在测试父目录，详见 plan.md ADR D-011）复用 `tests/lib/fixtures/rollback/F1-cross-parent-child/` 的 workflow.yaml + 父子 jsonl 模板，避免维护两套同源 fixture。
 
 ### 7.4 单测覆盖矩阵
 
@@ -1041,16 +1041,17 @@ class MockSubAgent:
 
 ### 7.5 影响域
 
-新增文件：
+新增/修改文件：
 
 - `tests/e2e/test_sub_workflow_lifecycle.py`（2 主 + 4 边界共 6 用例）
 - `tests/e2e/fixtures/sub_workflow_mock.py`（MockSubAgent 类）
-- `tests/e2e/fixtures/conftest.py`（与 `tests/lib/fixtures/rollback/F1-*` 共享 fixture loader）
+- `tests/e2e/conftest.py`（顶层 conftest，pytest 加载机制约束 / D-011 ADR）
+- `tests/e2e/fixtures/e2e_helpers.py`（共享 loader 函数：make_run_dir / write_*_jsonl_from_template / get_event_types 等）
+- `scripts/lib/run_state.py`（仅扩 VALID_EVENT_TYPES 加 child_graceful_exited / child_force_killed / child_failed 三父侧子结局事件，不改读写逻辑）
 
 不改动文件：
 
 - `scripts/lib/workflow_rollback.py`（§6 实现，本节复用）
-- `scripts/lib/run_state.py`（jsonl 读写不变）
 - workflow yaml schema（不引入新字段，poll 间隔走 spec §6.10）
 
 ---
