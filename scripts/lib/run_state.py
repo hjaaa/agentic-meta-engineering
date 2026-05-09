@@ -279,19 +279,22 @@ def append_event(jsonl_path: Path, event: dict[str, Any]) -> None:
 
     payload = json.dumps(event, ensure_ascii=False) + "\n"
     jsonl_path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(
-        str(jsonl_path),
-        os.O_WRONLY | os.O_APPEND | os.O_CREAT,
-        0o644,
-    )
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX)
+        fd = os.open(
+            str(jsonl_path),
+            os.O_WRONLY | os.O_APPEND | os.O_CREAT,
+            0o644,
+        )
         try:
-            os.write(fd, payload.encode("utf-8"))
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            try:
+                os.write(fd, payload.encode("utf-8"))
+            finally:
+                fcntl.flock(fd, fcntl.LOCK_UN)
         finally:
-            fcntl.flock(fd, fcntl.LOCK_UN)
-    finally:
-        os.close(fd)
+            os.close(fd)
+    except OSError as exc:
+        raise WorkflowError(f"写 jsonl 失败: {exc}") from exc
 
 
 # ============================================================================
