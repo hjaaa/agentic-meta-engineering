@@ -36,6 +36,9 @@ model: sonnet
 thinking: enabled
 effort: medium
 
+# 全局超时默认（节点级 idle_timeout 优先覆盖）
+default_idle_timeout: 600000
+
 # 模板挑选辅助
 applicable_when:
   change_type: [feature, refactor, bugfix, enhancement]
@@ -306,6 +309,7 @@ nodes:
     context: fresh
     effort: high
     model: opus
+    idle_timeout: 900000
     depends_on:
       - cr-checker-security
       - cr-checker-performance
@@ -349,6 +353,7 @@ nodes:
     context: fresh
     effort: high
     model: opus
+    idle_timeout: 900000
     depends_on: [cr-critic]
     output_format:
       type: object
