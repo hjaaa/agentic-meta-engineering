@@ -72,7 +72,7 @@ EXPECTED_REVIEW_PROMPT_FILES = [
 REVIEW_PROMPTS_DIR = PROMPTS_DIR / "code-review-embedded"
 
 
-def test_code_review_embedded_yaml_loadable_with_11_nodes():
+def test_code_review_embedded_yaml_is_loadable_with_11_nodes():
     """TC-F4-1：code-review-embedded.yaml 解析 + 11 节点 + prompt_file 全部存在。
 
     1. yaml 必须通过 loader（无错误）
