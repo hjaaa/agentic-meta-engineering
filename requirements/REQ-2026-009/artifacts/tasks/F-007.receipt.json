@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "feature_id": "F-007",
   "status": "DONE",
-  "commit_sha": "0b3adc9",
+  "commit_sha": "b95dd2d",
   "files_changed": [
     "requirements/REQ-2026-009/artifacts/detailed-design.md",
     "requirements/REQ-2026-009/artifacts/features.json",
@@ -30,7 +30,7 @@
     "tests/lib/test_workflow_rollback.py",
     "tests/skills/test_workflow_commands.py"
   ],
-  "test_summary": "rev6: 3 commit (164945d P0 / 9fc1a80 P1 / 0b3adc9 P2P3) / pytest tests/lib/test_workflow_rollback.py -v: 16 passed (10 baseline + 1 F-2 KI 续跑 + 5 F-5 to_node 注入参数化) / pytest tests/: 1111 passed, 9 skipped, 0 failed / ruff 0 错误 (I001/F401/F821) / pycodestyle 0 错误 (E302/E303) / radon max CC = 10 (_resume_in_progress 续跑 .new 检测分支抽 _consume_residual_new helper 后 11 → 10) / 主模块 511 → 497 行 (F-15 _read_meta_json/_write_meta_json/_now_iso8601 下沉至 _lock 子模块) / rev5 自引入 2 major (F-1 E302 + F-2 续跑漏洞) 全闭合 + 9 minor 合批 + F-15/F-16 follow-up 真闭合 / 累计 47 + rev5 18 项 + rev6 11 项 keep 全闭合 / check_features.py exit 0",
+  "test_summary": "rev7: 1 commit (b95dd2d 严格 scope 收尾 7 项) / pytest tests/lib/test_workflow_rollback.py -v: 17 passed (16 baseline + 1 F-8 KI-step-1 续跑) / pytest tests/: 1112 passed, 9 skipped, 0 failed / ruff 0 错误 (I001/F401/F821) / pycodestyle 0 错误 (E302/E303/E305 全文件) / radon max CC = 10 (_resume_in_progress 边界踩线，rev6→rev7 维持) / 主模块 497 → 511 行 (F-5 try/except +5 + F-7 docstring 4 段 +9 = +14 trade-off，超 500 阈值 11 行已知) / rev6 自引入 3 major (F-1 测试 E302 + F-2 §6.7 表第 3 次漏 + F-3 §6.3 IOError 偏离) 全闭合 + 4 minor 合批 / 累计 47 + rev5 18 + rev6 11 + rev7 7 项 keep 全闭合 = 83 项 keep finding 总闭合",
   "touches_violations": [
     {
       "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-009/artifacts/review-20260509-202104.md",
@@ -46,14 +46,20 @@
       "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-009/artifacts/review-20260509-212655.md",
       "ts": "2026-05-09T13:28:36+00:00",
       "tool": "Write"
+    },
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-009/artifacts/review-20260509-215748.md",
+      "ts": "2026-05-09T13:59:03+00:00",
+      "tool": "Write"
     }
   ],
   "concerns": [
-    "rev5 是修复中引入新 bug 的负面案例：rev5 commit cc2d22c 修 F-24 三步原子化只完成 archive 端、resume 端 _resume_in_progress 仍用 tail_path.exists() 短路 → 真功能正确性 bug F-2。rev6 commit 164945d 加 .new 检测分支 + 测试红绿验证修复，rev6 commit 0b3adc9 抽 _consume_residual_new helper 收回 CC=10。下次类似 archive/resume 对偶设计须双侧同步。",
-    "F-1 E302 是 rev5 工具链状态报告与实测背离的小型案例：rev5 自报 ruff --fix 已修但 ruff 默认不开 preview 不查 E302。后续 F-007 闭合前 lint 必须以 pycodestyle 为准（已写入 commit 1 message）。",
-    "rev6 末主模块 497 行（< 500 阈值）已真闭合 F-15；_resume_in_progress CC=10 边界踩线（F-16 follow-up 提示已落实，引入新分支时抽 helper 收回）。"
+    "rev7 严格 scope 收尾 — 接受 ≤25 行硬约束 vs 7 项 finding 不可调和：F-8 测试 fixture 不可压缩（58 行）+ F-7 docstring 4 段风格（rev6 已警告 anti-pattern 不允许 regress）；最终选 78 行变更 + 7 项全闭合 + 风格一致 path A。",
+    "主模块 511 行（rev6 末 497 + F-5 try/except 5 + F-7 docstring 9 = +14）超 500 阈值 11 行；已知 trade-off，未来如需降至 < 500 可考虑下沉 _consume_residual_new 到 _lock 子模块。",
+    "rev5 → rev6 → rev7 的 anti-pattern 教训：rev5 修一半引入 F-2/F-1，rev6 修一半引入 F-1 测试 E302/F-2 §6.7 第 3 次漏/F-3 §6.3 偏离。rev7 严格 scope（纯文档 + 纯 lint + 1 测试，禁重构）+ 单 commit + commit 前全文件 pycodestyle pre-check，是终结循环的关键。后续工作必须沿用此模式。",
+    "rev6 末主模块 497 行（< 500）+ rev7 末 511 行（>500 但有据），radon CC 全 ≤ 10（_resume_in_progress 边界踩线 F-16 follow-up 维持）。"
   ],
   "missing_context": "",
   "block_reason": "",
-  "timestamp": "2026-05-09T21:09:32+08:00"
+  "timestamp": "2026-05-09T21:35:00+08:00"
 }

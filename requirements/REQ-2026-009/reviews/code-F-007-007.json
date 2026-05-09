@@ -1,0 +1,82 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-009-code-F-007-007",
+  "requirement_id": "REQ-2026-009",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-09 21:55:08",
+  "reviewed_commit": "b95dd2d",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "432cdb280e49ea08029883c319559b6a23077b89556029faa492010b99baee9e"
+    },
+    {
+      "path": "artifacts/tasks/F-007.md",
+      "sha256": "52cb52968b4a35f9f820d99159b46b815faf0780978a71aeef1656ec761316f3"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 86,
+  "dimensions": {
+    "design_consistency": {
+      "score": 96,
+      "issues": []
+    },
+    "security": {
+      "score": 97,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 83,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "tests/lib/test_workflow_rollback.py:677-732 test_resume_recovers_from_archive_ki_at_step1_only_new_written 假闭合：Judge 沙箱实测复现——把 scripts/lib/workflow_rollback.py:257-262 _consume_residual_new 的 try/os.replace/except 整段替换为 pass 后该测试仍 100% PASS。原因：续跑路径 _resume_in_progress (workflow_rollback.py:317-319) 在 _consume_residual_new 之后的 'if not tail_path.exists(): _truncate_jsonl_to_tail(...)' 分支中，第 1 步 `with new_path.open(\"w\") as fh` (workflow_rollback_archive.py:125) 用 'w' 模式直接覆写残留 .new、再走 tail + os.replace，整条 happy path 不依赖 _consume_residual_new 的 os.replace。修复方向：用 caplog 抓 workflow_rollback.py:253 logger.warning 'os.replace 续跑'，或断言 _consume_residual_new 被独立调用一次"
+        }
+      ]
+    },
+    "complexity": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback.py 511 行（rev6 497 → rev7 +14：F-5 try/except +5 + F-7 docstring +9）。rev6 keep+minor 已记账，rev7 trade-off 可接受（CC 平均 A 2.79、最大 C 8、无新热点函数）；建议 F-007 done 后随观察期下降至 ≤ 480 行"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "requirements/REQ-2026-009/artifacts/detailed-design.md:842 §6.3 表 RollbackError（包装 OSError）行的'上下文'列写 'jsonl_path / archive_root'，但 _consume_residual_new (scripts/lib/workflow_rollback.py:260-262) 实际包装的上下文是 new_path / jsonl_path（无 archive_root）。表格列名应改为 'jsonl_path / archive_root（_truncate）/ new_path / jsonl_path（_consume_residual_new）' 以精确反映两条路径的不同上下文"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 95,
+      "issues": []
+    },
+    "performance": {
+      "score": 97,
+      "issues": []
+    },
+    "history_context": {
+      "score": 92,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "rev6→rev7 三项 anti-pattern 终结：(1) design_consistency §6.7 表第 3 次漏函数 → rev7 line 927 真闭合（grep 实证 _now_iso8601/_write_meta_json/_read_meta_json 在 workflow_rollback_lock.py:134/139/162）；(2) auxiliary_spec E302 → rev7 真闭合（pycodestyle --select=E301,E302,E303 在测试文件 + 主模块均 0 错误）；(3) history_context dispatch 滞后 → rev7 单 commit / 3 文件 / commit message 显式列『非目标』段（首次自约束，git log 实证）。三项都是 rev3-rev6 反复出现的同根 anti-pattern，rev7 一次性闭合",
+    "F-1 KI-step-1 测试假闭合是 rev7 新发现，性质与 rev5/rev6 的『修一半夹带』不同——这是测试设计层面的『无效断言』而非实现 anti-pattern 复发。修复极小（≤ 5 行 caplog 断言），不动实现代码。这条单独不构成 anti-pattern 复发判定",
+    "rev7 score 86（rev6 78 → +8）：升幅来自 7 项闭合 + 3 anti-pattern 终结（design 78→96 / aux_spec 70→95 / history 92）；F-1 假闭合扣 8 分（concurrency 91→83）后净升 +8。距 looks_clean 阈值（无 major + ≤8 minor）仅差 1 项 major，推荐 rev8 严格 scope 收尾",
+    "rev8 严格 scope 建议（≤ 15 行 / 单 commit / 含『非目标』段）：(1) 重写 KI-step-1 测试用 caplog 抓 logger.warning 或 mock _consume_residual_new 验证调用次数（≤ 10 行）；(2) §6.3 表上下文列细化为两路径（≤ 3 行）；(3) 不新增任何代码逻辑变更。rev8 预期 score ≥ 92 → looks_clean → trivial sign-off 通道",
+    "Sign-off 推荐：禁止 trivial / standard sign-off。F-1 keep+major 必须 rev8 收尾才能开 sign-off 通道。F-007 done 后该模块进入观察期 ≥ 4 周，detailed-design.md 90 天 26 commit 高频热点应自然回落"
+  ],
+  "scope": {
+    "feature_id": "F-007"
+  },
+  "supersedes": "REV-REQ-2026-009-code-F-007-006"
+}
