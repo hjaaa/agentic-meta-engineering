@@ -67,3 +67,5 @@
 2026-05-09 08:46:29 [development] F-004 rev2 派发（model=sonnet）：修 2 critical (F-12 通配 / F-17 schema) + 5 major (F-1+F-13 / F-3 / F-10 / F-15 / F-16) + 6 minor；输入 review-20260509-083626.md
 2026-05-09 09:06:52 [review:looks_clean] code-quality-reviewer rev2 88/100 looks_clean (REV-REQ-2026-009-code-F-004-002) — rev1 14 项实质 100% 闭合 (12 完全 + 2 半闭合 critic 反证 drop)；本轮 13 候选 finding：2 rejected + 3 not_proven (drop) + 6 follow-up，无 keep+critical/major；待 tty sign-off
 2026-05-09 09:09:38 [development] F-004 rev3 派发（model=sonnet）：清理 6 follow-up（G-3 cr-judge schema 同步 / G-4 default_idle_timeout 删除 dead config / G-5 TC-F4-6 注册 acceptance / G-8 ARTIFACTS_DIR 运行时单测 / G-9 frontmatter 双解析去重 / G-10 测试命名 + G-11 diff_range regex+jail）
+2026-05-09 09:26:36 [review:needs_attention] code-quality-reviewer rev3 82/100 needs_attention (REV-REQ-2026-009-code-F-004-003) — 4 must_fix (H-1 major cr-prepare error 字段终止承诺无 when 守卫 / H-2 SecurityError 伪代码 / H-3 test 命名 _is_ 缺失 / H-4 cr-judge adjudication schema 缺 disposition)；rev4 派 subagent 修
+2026-05-09 09:26:36 [development] F-004 rev4 派发（model=sonnet）：清 4 must_fix（H-1 has_error+when / H-2 自然语言 / H-3 重命名 / H-4 disposition+rationale）
