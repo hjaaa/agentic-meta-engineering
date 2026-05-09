@@ -36,6 +36,7 @@ sys.path.insert(0, str(REPO_ROOT / "scripts" / "lib"))
 
 from workflow_rollback import (  # noqa: E402
     ConcurrentRollbackError,
+    RollbackError,
     RollbackResult,
     RunStateNotFoundError,
     SubRunArchive,
@@ -679,6 +680,23 @@ def test_run_not_found(tmp_path):
     """run_id 不存在时应抛 RunStateNotFoundError。"""
     with pytest.raises(RunStateNotFoundError):
         rollback_run("NON-EXISTENT-RUN-ID-99999", "node-a", repo_root=tmp_path)
+
+
+# ============================================================================
+# F-5 (rev6): to_node 公开 API 正则校验拒绝注入字符（与 run_id 校验对称）
+# ============================================================================
+
+@pytest.mark.parametrize("bad_to_node", [
+    "",                          # 空串
+    "node-c\n[FAKE LOG]",        # 换行注入（堵 logger.info 日志注入路径）
+    "node c",                    # 空格
+    "node@c",                    # 特殊字符
+    "../node-c",                 # 路径穿越
+])
+def test_to_node_rejects_injection_chars(tmp_path, bad_to_node):
+    """F-5: rollback_run 公开 API 必须拒绝 to_node 含非法字符（与 run_id 模式对称）。"""
+    with pytest.raises(RollbackError, match="to_node 包含非法字符"):
+        rollback_run("test-run", bad_to_node, repo_root=tmp_path)
 
 
 # ============================================================================

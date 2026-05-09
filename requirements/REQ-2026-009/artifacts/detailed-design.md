@@ -856,6 +856,8 @@ with open(run_dir / ".rollback.lock", "w") as lock_fd:
     try:
         # mv 产物 + jsonl tail + sub_run 整目录
         os.close(in_progress_fd)
+        # rev5 F-23 修正：unlink 在成功路径，KI/SIGINT 中途异常时跳过 unlink，
+        # .in_progress 保留供下次 _find_in_progress_archive 续跑识别
         in_progress.unlink()                 # mv 完成后删标记
     finally:
         fcntl.flock(lock_fd, fcntl.LOCK_UN)
@@ -921,7 +923,7 @@ tests/lib/fixtures/rollback/
 新增文件：
 
 - `scripts/lib/workflow_rollback.py`（公开 API + RollbackResult dataclass + 异常类 + CLI 入口）
-- `scripts/lib/workflow_rollback_lock.py`（双层锁 _acquire/_release/_find_in_progress）
+- `scripts/lib/workflow_rollback_lock.py`（双层锁 _acquire_flock / _find_in_progress_archive / _validate_resume_meta / _unlink_in_progress / _release_with_unlink）
 - `scripts/lib/workflow_rollback_archive.py`（_collect/_move/_truncate_jsonl）
 - `scripts/lib/workflow_rollback_subrun.py`（_discover_sub_runs + _archive_sub_run）
 - `scripts/lib/workflow_rollback_topology.py`（yaml 加载 / 拓扑工具）
