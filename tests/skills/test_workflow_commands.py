@@ -409,7 +409,7 @@ class TestChainCommands:
         self, tmp_repo: Path, sample_template: str, capsys
     ):
         """given_nothing_when_run_continue_save_status_then_all_succeed。"""
-        # Step 1: run
+        # 步骤 1: run ✓
         rc_run = workflow_run.main([sample_template], repo_root=tmp_repo)
         assert rc_run == 0, f"run 应返回 0，实际 rc={rc_run}"
 
@@ -418,17 +418,17 @@ class TestChainCommands:
         assert len(run_dirs) == 1
         run_id = run_dirs[0].name
 
-        # Step 2: continue（running 状态）
+        # 步骤 2: continue（running 状态）✓
         with _patch_git_branch(run_id):
             rc_continue = workflow_continue.main([], repo_root=tmp_repo)
         assert rc_continue == 0, f"continue 应返回 0，实际 rc={rc_continue}"
 
-        # Step 3: save（running 状态）
+        # 步骤 3: save（running 状态）✓
         with _patch_git_branch(run_id):
             rc_save = workflow_save.main(["链路测试 note"], repo_root=tmp_repo)
         assert rc_save == 0, f"save 应返回 0，实际 rc={rc_save}"
 
-        # Step 4: status（应展示状态）
+        # 步骤 4: status（应展示状态）✓
         rc_status = workflow_status.main([run_id], repo_root=tmp_repo)
         assert rc_status == 0, f"status 应返回 0，实际 rc={rc_status}"
 
@@ -622,4 +622,86 @@ class TestNewEventsDoNotChangeState:
         # save 不应改变 state，应保持 running
         assert state.state == "running", (
             f"save 事件不应改变 state，期望 running，实际：{state.state}"
+        )
+
+
+# ============================================================
+# rev3 新增：G-8 并发 TC + G-11 审计写失败 TC
+# ============================================================
+
+class TestGenerateRunIdConcurrencySafe:
+    """TC-F5-G8：_generate_run_id 并发场景下不产生重复 run_id（G-8 原子化验证）。"""
+
+    def test_concurrent_run_id_no_collision(self, tmp_repo: Path):
+        """given_two_concurrent_calls_when_generate_run_id_then_run_ids_are_unique ✓。
+
+        使用 threading 双发 _generate_run_id，断言两次返回 run_id 不重叠。
+        """
+        import threading
+        import workflow_run as wr
+
+        results: list[str] = []
+        errors: list[Exception] = []
+
+        def worker() -> None:
+            try:
+                run_id = wr._generate_run_id(tmp_repo)
+                results.append(run_id)
+            except Exception as exc:
+                errors.append(exc)
+
+        # 同时启动两个线程竞争创建 run_id
+        t1 = threading.Thread(target=worker)
+        t2 = threading.Thread(target=worker)
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        # 断言：无异常 + 两个 run_id 均不重复
+        assert not errors, f"_generate_run_id 抛出异常：{errors}"
+        assert len(results) == 2, f"期望 2 个 run_id，实际：{results}"
+        assert results[0] != results[1], (
+            f"并发生成的 run_id 重复：{results[0]} == {results[1]}"
+        )
+        # 确认两个目录都已实际创建
+        for rid in results:
+            assert (tmp_repo / "runs" / rid).is_dir(), (
+                f"run_id {rid!r} 对应目录未创建"
+            )
+
+
+class TestContinueRunResumedWriteFailureExits1:
+    """TC-F5-G11：continue run_resumed 写失败时 main 应返回 1（G-11 审计写失败 exit 1 验证）。"""
+
+    def test_run_resumed_write_failure_returns_1(self, tmp_repo: Path):
+        """given_append_event_raises_when_continue_then_main_returns_1 ✗→exit1。
+
+        mock append_event 抛 WorkflowError，验证 main 返回 1（而非忽略后 exit 0）。
+        """
+        from common import WorkflowError
+
+        run_id = "RUN-20260509-950"
+        _make_run_dir(tmp_repo, run_id, "running")
+
+        # 仅让写 run_resumed 事件的 append_event 调用抛异常
+        original_append = None
+        call_count = [0]
+
+        def patched_append(path, event, **kwargs):
+            call_count[0] += 1
+            # 第一次调用是 _make_run_dir 里的 workflow_started，正常；
+            # continue 写 run_resumed 时是第一次通过此 patched_append
+            if event.get("type") == "run_resumed":
+                raise WorkflowError("模拟 run_resumed 写失败")
+            import run_state as rs_mod
+            return rs_mod._append_event_real(path, event, **kwargs) if hasattr(rs_mod, "_append_event_real") else None
+
+        with _patch_git_branch(run_id):
+            with patch("workflow_continue.append_event") as mock_append:
+                mock_append.side_effect = WorkflowError("模拟 run_resumed 写失败")
+                rc = workflow_continue.main([], repo_root=tmp_repo)
+
+        assert rc == 1, (
+            f"run_resumed 写失败时 continue 应返回 1，实际 rc={rc}"
         )
