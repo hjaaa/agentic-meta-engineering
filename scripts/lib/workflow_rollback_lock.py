@@ -27,15 +27,19 @@ def _acquire_flock(lock_path: Path) -> Any:
 
     失败（锁被占用）→ 抛 ConcurrentRollbackError。
     调用方负责 try/finally 释放（fcntl.flock(lock_fd, LOCK_UN) + lock_fd.close()）。
+
+    H-2 修复：lock_fd 在 try 块外 open，flock 失败时在 except 内显式 close，
+    防止 OSError 分支下 fd 泄漏。
     """
     ConcurrentRollbackError, _ = _get_exceptions()
     lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_fd = open(str(lock_path), "w")
     try:
-        lock_fd = open(str(lock_path), "w")
         fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError as exc:
+        lock_fd.close()
         raise ConcurrentRollbackError(
-            f"run_id 正在被其他进程 rollback（{lock_path}）：{exc}"
+            f"run_id 正在被其他进程 rollback（{lock_path}）"
         ) from exc
     return lock_fd
 
