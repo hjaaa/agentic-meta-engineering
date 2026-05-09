@@ -3,7 +3,7 @@ name: cr-prepare
 node_id: cr-prepare
 version: 1.0.0
 context: shared
-allowed_tools: [Read, Grep]
+allowed_tools: [Read, Grep, Bash, Write]
 output_format:
   type: object
   properties:

@@ -329,13 +329,89 @@ _CR_FRESH_CONTEXT_FILES = {
 # cr-prepare 是 shared 上下文
 _CR_SHARED_CONTEXT_FILES = {"cr-prepare.md"}
 
-# 禁止在 allowed_tools 中出现的工具（TC-F4-4 关键约束）
-_DISALLOWED_TOOLS_IN_CHECKER = {"Bash", "Edit", "Write"}
+# fresh context（checker/critic/judge）严格白名单：只允许 Read / Grep
+_FRESH_CONTEXT_ALLOWED_TOOLS_WHITELIST = {"Read", "Grep"}
+# shared context（cr-prepare）允许的工具集合（需要 git + 写盘）
+_SHARED_CONTEXT_ALLOWED_TOOLS = {"Read", "Grep", "Bash", "Write"}
 
 
-def _parse_review_frontmatter(filename: str) -> dict[str, Any]:
-    """解析 code-review-embedded prompt 文件的 frontmatter。"""
-    return _parse_frontmatter(_CR_EMBEDDED_PROMPTS_DIR / filename)
+def _check_existence(filename: str, violations: list[str]) -> bool:
+    """子检查 1：prompt 文件存在且 frontmatter 可解析。返回 False 则跳过后续检查。"""
+    fpath = _CR_EMBEDDED_PROMPTS_DIR / filename
+    if not fpath.exists():
+        violations.append(f"{filename}: 文件不存在")
+        return False
+    fm = _parse_frontmatter(fpath)
+    if not fm:
+        violations.append(f"{filename}: frontmatter 解析失败或为空")
+        return False
+    return True
+
+
+def _check_required_fields(filename: str, fm: dict[str, Any], violations: list[str]) -> None:
+    """子检查 2：三必填字段 name / node_id / version + semver 格式。"""
+    for required_field in ("name", "node_id", "version"):
+        if required_field not in fm:
+            violations.append(f"{filename}: frontmatter 缺少必填字段 {required_field}")
+    version = str(fm.get("version", ""))
+    if version and not SEMVER_RE.match(version):
+        violations.append(f"{filename}: frontmatter.version={version!r} 不是 semver")
+
+
+def _check_context(filename: str, fm: dict[str, Any], violations: list[str]) -> None:
+    """子检查 3：context 值合法且与预期一致（fresh / shared）。"""
+    context = fm.get("context")
+    if context is not None and context not in ("fresh", "shared"):
+        violations.append(
+            f"{filename}: frontmatter.context={context!r} 必须 ∈ {{fresh, shared}}"
+        )
+    if filename in _CR_FRESH_CONTEXT_FILES and context is not None and context != "fresh":
+        violations.append(f"{filename}: 期望 context=fresh，实际 {context!r}")
+    if filename in _CR_SHARED_CONTEXT_FILES and context is not None and context != "shared":
+        violations.append(f"{filename}: 期望 context=shared，实际 {context!r}")
+
+
+def _check_allowed_tools(filename: str, fm: dict[str, Any], violations: list[str]) -> None:
+    """子检查 4：allowed_tools 白名单校验。
+
+    - fresh context（8 checker + cr-critic + cr-judge）：严格白名单 {Read, Grep}
+    - shared context（cr-prepare）：宽松白名单 {Read, Grep, Bash, Write}
+    """
+    allowed_tools = fm.get("allowed_tools")
+    if allowed_tools is None:
+        return
+    if not isinstance(allowed_tools, list):
+        violations.append(f"{filename}: frontmatter.allowed_tools 格式错误（应为 list）")
+        return
+
+    tools_set = {str(t) for t in allowed_tools}
+    if filename in _CR_FRESH_CONTEXT_FILES:
+        # fresh context：严格排他白名单，只允许 Read / Grep
+        extra = tools_set - _FRESH_CONTEXT_ALLOWED_TOOLS_WHITELIST
+        if extra:
+            violations.append(
+                f"{filename}: fresh context allowed_tools 超出白名单 {{Read,Grep}}，多余: {extra}"
+            )
+    elif filename in _CR_SHARED_CONTEXT_FILES:
+        # shared context（cr-prepare）：宽松检查，不能超出 Bash/Write/Read/Grep
+        extra = tools_set - _SHARED_CONTEXT_ALLOWED_TOOLS
+        if extra:
+            violations.append(
+                f"{filename}: shared context allowed_tools 含未知工具 {extra}"
+            )
+
+
+def _check_node_id_in_yaml(
+    filename: str, fm: dict[str, Any], cr_nodes_by_id: dict[str, Any], violations: list[str]
+) -> None:
+    """子检查 5：node_id 必须在 yaml 节点中存在（仅当 yaml 已加载时校验）。"""
+    if not cr_nodes_by_id:
+        return
+    node_id = fm.get("node_id")
+    if node_id and node_id not in cr_nodes_by_id:
+        violations.append(
+            f"{filename}: frontmatter.node_id={node_id!r} 在 yaml 中不存在"
+        )
 
 
 def test_review_prompts_frontmatter() -> None:
@@ -345,7 +421,8 @@ def test_review_prompts_frontmatter() -> None:
     1. 所有 11 个文件存在
     2. 每个文件 frontmatter 含 name / node_id / version 三必填
     3. context ∈ {fresh, shared}（fresh=10 个 checker/critic/judge，shared=cr-prepare）
-    4. allowed_tools 不含 Bash / Edit / Write（TC-F4-4 硬约束）
+    4. fresh context 文件 allowed_tools 严格 ⊆ {Read, Grep}；
+       shared context（cr-prepare）allowed_tools ⊆ {Read, Grep, Bash, Write}
     5. node_id 在 code-review-embedded.yaml 节点中存在
     """
     # 加载 yaml，取节点 id 集合用于校验 node_id
@@ -358,64 +435,13 @@ def test_review_prompts_frontmatter() -> None:
     violations: list[str] = []
 
     for filename in _CR_EMBEDDED_PROMPT_FILES:
-        fpath = _CR_EMBEDDED_PROMPTS_DIR / filename
-        # 1) 文件存在
-        if not fpath.exists():
-            violations.append(f"{filename}: 文件不存在")
+        if not _check_existence(filename, violations):
             continue
-
-        fm = _parse_frontmatter(fpath)
-        if not fm:
-            violations.append(f"{filename}: frontmatter 解析失败或为空")
-            continue
-
-        # 2) 三必填
-        for required_field in ("name", "node_id", "version"):
-            if required_field not in fm:
-                violations.append(f"{filename}: frontmatter 缺少必填字段 {required_field}")
-
-        # version 格式（semver）
-        version = str(fm.get("version", ""))
-        if not SEMVER_RE.match(version):
-            violations.append(f"{filename}: frontmatter.version={version!r} 不是 semver")
-
-        # 3) context ∈ {fresh, shared}
-        context = fm.get("context")
-        if context is not None and context not in ("fresh", "shared"):
-            violations.append(
-                f"{filename}: frontmatter.context={context!r} 必须 ∈ {{fresh, shared}}"
-            )
-        # 检查 context 期望值
-        if filename in _CR_FRESH_CONTEXT_FILES and context is not None and context != "fresh":
-            violations.append(
-                f"{filename}: 期望 context=fresh，实际 {context!r}"
-            )
-        if filename in _CR_SHARED_CONTEXT_FILES and context is not None and context != "shared":
-            violations.append(
-                f"{filename}: 期望 context=shared，实际 {context!r}"
-            )
-
-        # 4) allowed_tools 不含 Bash / Edit / Write
-        allowed_tools = fm.get("allowed_tools")
-        if allowed_tools is not None:
-            if isinstance(allowed_tools, list):
-                disallowed_found = _DISALLOWED_TOOLS_IN_CHECKER & set(str(t) for t in allowed_tools)
-                if disallowed_found:
-                    violations.append(
-                        f"{filename}: allowed_tools 含禁止工具 {disallowed_found}"
-                    )
-            else:
-                violations.append(
-                    f"{filename}: frontmatter.allowed_tools 格式错误（应为 list）"
-                )
-
-        # 5) node_id 在 yaml 节点中存在（仅当 yaml 已加载时校验）
-        if cr_nodes_by_id:
-            node_id = fm.get("node_id")
-            if node_id and node_id not in cr_nodes_by_id:
-                violations.append(
-                    f"{filename}: frontmatter.node_id={node_id!r} 在 yaml 中不存在"
-                )
+        fm = _parse_frontmatter(_CR_EMBEDDED_PROMPTS_DIR / filename)
+        _check_required_fields(filename, fm, violations)
+        _check_context(filename, fm, violations)
+        _check_allowed_tools(filename, fm, violations)
+        _check_node_id_in_yaml(filename, fm, cr_nodes_by_id, violations)
 
     assert not violations, (
         f"TC-F4-4 frontmatter 校验发现 {len(violations)} 个问题:\n"
