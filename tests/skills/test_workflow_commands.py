@@ -730,3 +730,37 @@ class TestOSErrorWrappedAsWorkflowError:
         assert "写 jsonl 失败" in str(exc_info.value), (
             f"WorkflowError 消息应含'写 jsonl 失败'，实际：{exc_info.value}"
         )
+
+    def test_run_meta_write_oserror_returns_1(self, tmp_repo: Path, sample_template: str):
+        """given_meta_open_raises_oserror_when_workflow_run_main_then_returns_1。
+
+        mock _generate_run_id 返回固定 id，mock Path.open 在写 meta.yaml 时抛 OSError
+        （模拟磁盘满）。workflow_run.main 将 OSError 包装为 WorkflowError 向上抛出，
+        dispatcher.dispatch 在第 67-69 行兜底捕获并返回 1（P-2 meta 写入路径兜底
+        链路完整性验证，对应 K-5 覆盖偏窄补全）。
+        """
+        import workflow_command_dispatcher as dispatcher
+        from pathlib import Path as _Path
+
+        fixed_run_id = "RUN-20260509-001"
+        # 预先创建 run 目录，让 _generate_run_id mock 返回后 run_dir 实际存在
+        run_dir = tmp_repo / "runs" / fixed_run_id
+        run_dir.mkdir(parents=True, exist_ok=True)
+
+        original_path_open = _Path.open
+
+        def _path_open_raises_on_meta(self_path, mode="r", **kwargs):
+            """仅在写 meta.yaml 时抛 OSError，其他 Path.open 正常透传。"""
+            if self_path.name == "meta.yaml" and "w" in mode:
+                raise OSError("[Errno 28] No space left on device")
+            return original_path_open(self_path, mode, **kwargs)
+
+        # patch workflow_run 模块中的 _generate_run_id 和 REPO_ROOT
+        with patch("workflow_run._generate_run_id", return_value=fixed_run_id):
+            with patch("workflow_run.REPO_ROOT", tmp_repo):
+                with patch.object(_Path, "open", _path_open_raises_on_meta):
+                    rc = dispatcher.dispatch("run", [sample_template])
+
+        assert rc == 1, (
+            f"meta.yaml 写入 OSError 经 WorkflowError 包装后 dispatcher 应返回 1，实际 rc={rc}"
+        )
