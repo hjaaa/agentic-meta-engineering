@@ -30,7 +30,7 @@ if str(_SKILL_DIR) not in sys.path:
 
 # ---------- 被测模块 ----------
 
-from keyword_matcher import ConflictReason, match_keyword  # noqa: E402
+from keyword_matcher import ConflictReason, MatchResult, match_keyword  # noqa: E402
 
 # ---------- Fixture 加载 ----------
 
@@ -54,7 +54,7 @@ def _make_runs(states: list[str]) -> list[Any]:
     return [types.SimpleNamespace(state=s) for s in states]
 
 
-def _run_case(case: dict[str, Any]) -> tuple[Optional[str], Optional[str], Optional[ConflictReason]]:
+def _run_case(case: dict[str, Any]) -> MatchResult:
     """根据 fixture 用例调用 match_keyword，返回 (command, args, conflict)。"""
     active_runs = _make_runs(case.get("active_run_states") or [])
     return match_keyword(case["input"], active_runs)

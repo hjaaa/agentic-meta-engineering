@@ -7,13 +7,13 @@ workflow-launcher 核心匹配模块。
   - 提取命令附加参数（reject reason / new title）
 
 本模块仅做意图翻译，不执行命令，不修改 RunState。
-外部调用者只需导入 `match_keyword` 与 `ConflictReason`。
+外部调用者只需导入 `match_keyword`、`ConflictReason` 与 `MatchResult`。
 """
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Tuple
 
 
 # ============================================================================
@@ -42,6 +42,20 @@ class Keyword:
         """判断用户输入是否命中本关键词。"""
         return _keyword_matches(user_input, self)
 
+    def extract_args(self, user_input: str) -> Optional[str]:
+        """根据关键词类别从用户输入中提取附加参数。
+
+        返回：
+        - reject 类：冒号后的 reason 字符串（无则 None）
+        - new 类：标题文本（无则 None）
+        - 其余类：None
+        """
+        if self.category == "reject":
+            return _extract_reject_reason(user_input)
+        elif self.category == "new":
+            return _extract_new_title(user_input, self)
+        return None
+
 
 @dataclass
 class ConflictReason:
@@ -54,6 +68,10 @@ class ConflictReason:
 
     reason: str
     candidates: list[Keyword] = field(default_factory=list)
+
+
+# match_keyword 的返回类型别名，简化调用站点及测试中的类型标注
+MatchResult = Tuple[Optional[str], Optional[str], Optional["ConflictReason"]]
 
 
 # ============================================================================
@@ -292,32 +310,13 @@ def _extract_new_title(user_input: str, kw: Keyword) -> Optional[str]:
 
 
 # ============================================================================
-# 公开 API：参数提取
-# ============================================================================
-
-def extract_args(user_input: str, kw: Keyword) -> Optional[str]:
-    """根据关键词类别从用户输入中提取附加参数。
-
-    返回：
-    - reject 类：冒号后的 reason 字符串（无则 None）
-    - new 类：标题文本（无则 None）
-    - 其余类：None
-    """
-    if kw.category == "reject":
-        return _extract_reject_reason(user_input)
-    elif kw.category == "new":
-        return _extract_new_title(user_input, kw)
-    return None
-
-
-# ============================================================================
 # 公开 API：三步仲裁
 # ============================================================================
 
 def match_keyword(
     user_input: str,
     active_runs: list,
-) -> tuple[Optional[str], Optional[str], Optional[ConflictReason]]:
+) -> MatchResult:
     """三步仲裁：将用户自然语言输入翻译为 /workflow:* 命令。
 
     参数：
@@ -338,7 +337,7 @@ def match_keyword(
     if has_approval_pending:
         for kw in KEYWORDS:
             if kw.category in ("approve", "reject") and kw.matches(user_input):
-                return kw.command, extract_args(user_input, kw), None
+                return kw.command, kw.extract_args(user_input), None
 
     # Step 2：最长匹配（降序扫描，取所有命中）
     hits = [kw for kw in _KEYWORDS_DESC if kw.matches(user_input)]
@@ -350,7 +349,7 @@ def match_keyword(
 
     # Step 4：有命中或无命中
     if hits:
-        return hits[0].command, extract_args(user_input, hits[0]), None
+        return hits[0].command, hits[0].extract_args(user_input), None
 
     # 无命中：launcher 不接管
     return None, None, None
