@@ -19,6 +19,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sys
 import threading
 import time
@@ -26,6 +27,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
+logger = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "scripts" / "lib"))
@@ -177,16 +180,18 @@ def test_cancel_graceful_full_chain(tmp_path):
     # 子有 3 个节点：N1, N2, N3
     # cancel_requested 在子启动后写入，子在 N2 之前的 poll 命中
     agent_result: list[str] = []
+    agent_started = threading.Event()
 
     def run_agent():
+        agent_started.set()
         result = agent.run(parent_jsonl, ["node-n1", "node-n2", "node-n3"])
         agent_result.append(result)
 
     agent_thread = threading.Thread(target=run_agent, daemon=True)
     agent_thread.start()
+    assert agent_started.wait(timeout=2.0), "TC-F8-1 子线程 2s 内未启动"
 
-    # 稍等子启动后，父请求 cancel
-    time.sleep(0.02)
+    # 子已启动，父请求 cancel
     outcome = coordinator.request_cancel_and_wait(child_run_id)
 
     agent_thread.join(timeout=5.0)
@@ -340,7 +345,11 @@ def test_child_crash_on_subworkflow_failure(
                 parent_jsonl,
                 ["__raise_node-n1-error"],
             )
-        except RuntimeError as exc:
+        except Exception as exc:
+            logger.exception(
+                "TC-F8-3 子 agent 抛异常（type=%s, child_run_id=%s）",
+                type(exc).__name__, agent.child_run_id,
+            )
             child_exception.append(exc)
 
     agent_thread = threading.Thread(target=run_agent, daemon=True)

@@ -41,9 +41,8 @@ class MockSubAgent:
         self.child_run_id = child_run_id
         self.jsonl_path = jsonl_path
         self.poll_interval_ms = poll_interval_ms
-        # 注入点：测试可替换 _sleep 和 _now 实现快进
+        # 注入点：测试可替换 _sleep 实现快进
         self._sleep = time.sleep
-        self._now = time.monotonic
 
     # ----------------------------------------------------------------
     # 公开入口
@@ -52,11 +51,11 @@ class MockSubAgent:
     def run(self, parent_jsonl: Path, scripted_nodes: list[str]) -> str:
         """按 scripted_nodes 顺序执行；每节点开始前 poll parent_jsonl。
 
-        Args:
+        参数：
             parent_jsonl: 父 run-state.jsonl 路径（只读，用于 poll cancel_requested）
             scripted_nodes: 节点 id 列表（按序执行）
 
-        Returns:
+        返回：
             "graceful_exit" / "completed" / "failed:<msg>"
         """
         logger.info(
@@ -155,8 +154,8 @@ class MockSubAgent:
                         continue
         except OSError as exc:
             logger.warning(
-                "MockSubAgent poll 父 jsonl 失败（child_run_id=%s）：%s",
-                self.child_run_id, exc,
+                "MockSubAgent poll 父 jsonl 失败（child_run_id=%s, parent_jsonl=%s）：%s",
+                self.child_run_id, parent_jsonl, exc,
             )
         return False
 

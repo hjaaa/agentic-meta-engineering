@@ -7,10 +7,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 import sys
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # 把 scripts/lib 放入路径，让 helpers 能 import run_state 等
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -52,8 +55,11 @@ def write_parent_jsonl_from_template(
             if evt.get("run_id") == "TEST-F1-PARENT":
                 evt["run_id"] = run_id
             rewritten.append(json.dumps(evt, ensure_ascii=False) + "\n")
-        except json.JSONDecodeError:
-            rewritten.append(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"fixture 模板含损坏 JSON 行（src={src}, line={stripped!r}）："
+                f"{exc.msg}"
+            ) from exc
 
     dst.write_text("".join(rewritten), encoding="utf-8")
 
@@ -84,8 +90,11 @@ def write_child_jsonl_from_template(
             if evt.get("run_id") == "TEST-F1-CHILD":
                 evt["run_id"] = child_run_id
             rewritten.append(json.dumps(evt, ensure_ascii=False) + "\n")
-        except json.JSONDecodeError:
-            rewritten.append(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"fixture 模板含损坏 JSON 行（src={src}, line={stripped!r}）："
+                f"{exc.msg}"
+            ) from exc
 
     dst.write_text("".join(rewritten), encoding="utf-8")
 
@@ -122,8 +131,11 @@ def read_jsonl_events(jsonl_path: Path) -> list[dict[str, Any]]:
             if stripped:
                 try:
                     events.append(json.loads(stripped))
-                except json.JSONDecodeError:
-                    pass
+                except json.JSONDecodeError as exc:
+                    logger.warning(
+                        "read_jsonl_events 跳过损坏行（path=%s, line=%r）：%s",
+                        jsonl_path, stripped, exc.msg,
+                    )
     return events
 
 
