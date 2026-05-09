@@ -2,15 +2,18 @@
   "schema_version": "1.0",
   "feature_id": "F-008",
   "status": "DONE",
-  "commit_sha": "0917b94",
+  "commit_sha": "1b5f860",
   "files_changed": [
     "tests/e2e/conftest.py",
     "tests/e2e/fixtures/e2e_helpers.py",
     "tests/e2e/fixtures/sub_workflow_mock.py",
     "tests/e2e/test_sub_workflow_lifecycle.py",
-    "requirements/REQ-2026-009/artifacts/detailed-design.md"
+    "tests/e2e/test_sub_workflow_cancel_advanced.py",
+    "requirements/REQ-2026-009/artifacts/detailed-design.md",
+    "requirements/REQ-2026-009/artifacts/features.json",
+    "requirements/REQ-2026-009/notes.md"
   ],
-  "test_summary": "rev2 9-item fix / pytest tests/e2e/test_sub_workflow_lifecycle.py -v: 8 passed 总耗时 0.44s / 关联回归 tests/lib/test_workflow_rollback.py + tests/lib/test_run_state.py: 35 passed 0 fail / pycodestyle --max-line-length=120 tests/e2e/ 0 violation / ruff check tests/e2e/ All checks passed / 2 commits: 7a728af (F-8/F-9/F-11/F-12/F-14/F-19/F-31/F-34) + 0917b94 (F-3 docs)",
+  "test_summary": "rev3 严格 scope 修 4 keep + G-9 known-skip / 主文件 wc=473 ≤510 + 新文件 wc=244 ≤250 / grep time.sleep 0 anti-pattern / features.json modules 三方对齐 / pytest test_sub_workflow_lifecycle.py + test_sub_workflow_cancel_advanced.py: 8 passed (含 TC-F8-3 三参数化) / 关联回归 35 passed 0 fail / pycodestyle 0 violation / ruff All checks passed / 3 commits: c6d798f (G-1+G-2 features.json) + de93b85 (G-3 拆分 + G-5 threading.Event) + 1b5f860 (notes.md follow-up)",
   "touches_violations": [
     {
       "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-009/artifacts/review-20260509-234834.md",
@@ -26,5 +29,5 @@
   "concerns": [],
   "missing_context": "",
   "block_reason": "",
-  "timestamp": "2026-05-10T00:17:00+08:00"
+  "timestamp": "2026-05-10T00:42:00+08:00"
 }
