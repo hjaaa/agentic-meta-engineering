@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "feature_id": "F-007",
   "status": "DONE",
-  "commit_sha": "cc4df03",
+  "commit_sha": "cc2d22c",
   "files_changed": [
     "requirements/REQ-2026-009/artifacts/detailed-design.md",
     "requirements/REQ-2026-009/artifacts/features.json",
@@ -30,10 +30,18 @@
     "tests/lib/test_workflow_rollback.py",
     "tests/skills/test_workflow_commands.py"
   ],
-  "test_summary": "rev4: pytest tests/lib/test_workflow_rollback.py -v: 10 passed / pytest tests/: 1105 passed, 9 skipped, 0 failed / _resume_in_progress CC 14→4 / 15 finding 全闭合 (3 major + 12 minor) / check_features.py exit 0 / 累计 32+15=47 项 keep finding 全闭合",
-  "touches_violations": [],
-  "concerns": [],
+  "test_summary": "rev5: 3 commit (340df30 + 54ac4da + cc2d22c) / pytest tests/lib/test_workflow_rollback.py -v: 10 passed / pytest tests/: 1105 passed, 9 skipped, 0 failed / ruff 0 错误 / radon max CC = 10 (_resume_in_progress F-23 双分支后 9→10 仍 ≤ 10) / 主模块 520 → 511 行 / 17 项 keep + follow-up 全闭合 (F-4/F-5/F-6/F-7/F-8/F-9/F-10/F-11/F-13/F-15/F-16/F-17/F-20/F-21/F-23/F-24/F-25/F-27 共 18 项) / 累计 47 + rev5 闭合 = 全部 keep 闭合 / check_features.py exit 0",
+  "touches_violations": [
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-009/artifacts/review-20260509-202104.md",
+      "ts": "2026-05-09T12:22:58+00:00",
+      "tool": "Write"
+    }
+  ],
+  "concerns": [
+    "主模块行数 511（任务清单预期 ~480）：rev5 P0 commit 后已降至 486；P3 commit 中 F-13 to_node 校验 +3 行 + F-23 except BaseException 双分支 +7 行 + 相关 docstring +2 行带回 +25 行；net 仍较 rev4 的 520 行降 9 行；可接受范围内（仍 ≈ 500 行阈值）。"
+  ],
   "missing_context": "",
   "block_reason": "",
-  "timestamp": "2026-05-09T17:55:00+08:00"
+  "timestamp": "2026-05-09T18:50:00+08:00"
 }
