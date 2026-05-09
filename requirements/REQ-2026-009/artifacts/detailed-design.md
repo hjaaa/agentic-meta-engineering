@@ -25,7 +25,7 @@
 | 3 | `/workflow:save` | `[note]` | 用户主动 | jsonl 追加 `[save]` 事件 |
 | 4 | `/workflow:status` | `[<run-id>]` | 用户主动 | 只读输出（含父子树） |
 | 5 | `/workflow:list` | `[--filter=...]` | 用户主动 | 只读输出 |
-| 6 | `/workflow:approve` | 无 | approval_pending 状态 | 状态机 → approved（hook 拦 AI） |
+| 6 | `/workflow:approve` | 无 | approval_pending 状态 | 状态机 approval_pending → running（hook 拦 AI；main loop 推进下一节点） |
 | 7 | `/workflow:reject` | `<reason>` | approval_pending 状态 | 状态机 → rejected + on_reject 路径 |
 | 8 | `/workflow:cancel` | 无 | 用户主动 | 父 jsonl 写 `cancel_requested` |
 | 9 | `/workflow:rollback` | `<to-node>` | 用户主动 | mv 产物到 `.archived/<ts>/` + jsonl 截断 |
@@ -103,7 +103,7 @@
 | ARGUMENTS 解析 | 无 |
 | 入参约束 | — |
 | 前置条件 | 当前 run state = approval_pending；调用方 = tty 终端（hook + isatty 双层校验，§5） |
-| 副作用 | jsonl 事件 `approval_approved` + 状态机 approval_pending → completed + 触发 next |
+| 副作用 | jsonl 事件 `approval_approved` + 状态机 approval_pending → running + 触发下一节点（注：approve 后 state 进 running，main loop 推进下一节点；最终 completed/failed 由 workflow_completed/workflow_failed 事件标记，而非 approve 直接设置） |
 | 返回输出 | "Approved <node-id> at <ts> by <signer>"；进入下一节点提示 |
 | 失败模式 | state 不匹配 → exit 1；hook 拦截（AI 调用）→ exit 2 BLOCKED |
 | 决策回引 | D-006（hook + isatty 双层），spec §15 |
