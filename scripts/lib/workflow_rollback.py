@@ -356,9 +356,10 @@ def _archive_sub_run(
 # ============================================================================
 
 def _write_meta_json(archive_root: Path, run_id: str, to_node: str) -> None:
-    """写 .archived/<ts>/.meta.json，持久化续跑所需的上下文。
+    """写 .archived/<ts>/.meta.json，持久化续跑所需的上下文（atomic write-then-rename）。
 
     字段：run_id / to_node / started_at（ISO8601 UTC）
+    atomic：先写 .meta.json.tmp，fsync 后 os.replace 原子 rename，防止崩溃写坏。
     """
     meta = {
         "run_id": run_id,
@@ -366,8 +367,12 @@ def _write_meta_json(archive_root: Path, run_id: str, to_node: str) -> None:
         "started_at": _now_iso8601(),
     }
     meta_path = archive_root / ".meta.json"
-    with meta_path.open("w", encoding="utf-8") as fh:
+    tmp_path = archive_root / ".meta.json.tmp"
+    with tmp_path.open("w", encoding="utf-8") as fh:
         json.dump(meta, fh, ensure_ascii=False, indent=2)
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(tmp_path, meta_path)  # POSIX 原子 rename
 
 
 def _read_meta_json(archive_root: Path) -> dict[str, Any] | None:
@@ -404,35 +409,30 @@ def _resume_in_progress(
     lock_path = run_dir / ".rollback.lock"
     in_prog = stale_archive_dir / ".in_progress"
 
-    # 从 .meta.json 验证 to_node 一致性（M-3）
-    meta = _read_meta_json(stale_archive_dir)
-    if meta is not None:
-        meta_to_node = meta.get("to_node")
-        if meta_to_node is not None and meta_to_node != to_node:
-            raise RollbackResumeMismatchError(
-                f"续跑 to_node 不一致：.meta.json 记录 {meta_to_node!r}，"
-                f"调用方传入 {to_node!r}；请使用 {meta_to_node!r} 续跑"
-            )
-        # 若 meta 有 to_node，使用它（保证续跑语义一致）
-        if meta_to_node is not None:
-            to_node = meta_to_node
-    else:
-        # .meta.json 缺失（兼容旧 .archived 目录）→ fallback 到调用方 to_node + 警告
-        logger.warning(
-            "续跑：.meta.json 缺失（run_id=%s, archive=%s），fallback 到调用方 to_node=%s",
-            run_id, stale_archive_dir, to_node,
-        )
-
     # 重新拿 flock（.in_progress 已存在，不走 O_EXCL 路径）
-    try:
-        lock_fd = open(str(lock_path), "w")
-        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError as exc:
-        raise ConcurrentRollbackError(
-            f"续跑时锁已被占用（{lock_path}）：{exc}"
-        ) from exc
+    # G-1 修复：先 acquire flock，再读 _read_meta_json（防止读到被并发覆盖的 meta）
+    lock_fd = _acquire_flock(lock_path)
 
     try:
+        # 持锁后再从 .meta.json 验证 to_node 一致性（M-3）
+        meta = _read_meta_json(stale_archive_dir)
+        if meta is not None:
+            meta_to_node = meta.get("to_node")
+            if meta_to_node is not None and meta_to_node != to_node:
+                raise RollbackResumeMismatchError(
+                    f"续跑 to_node 不一致：.meta.json 记录 {meta_to_node!r}，"
+                    f"调用方传入 {to_node!r}；请使用 {meta_to_node!r} 续跑"
+                )
+            # 若 meta 有 to_node，使用它（保证续跑语义一致）
+            if meta_to_node is not None:
+                to_node = meta_to_node
+        else:
+            # .meta.json 缺失（兼容旧 .archived 目录）→ fallback 到调用方 to_node + 警告
+            logger.warning(
+                "续跑：.meta.json 缺失（run_id=%s, archive=%s），fallback 到调用方 to_node=%s",
+                run_id, stale_archive_dir, to_node,
+            )
+
         archive_root = stale_archive_dir
         # 收集尚未 mv 的产物（原路径还存在的）
         artifacts = _collect_artifacts_to_archive(run_dir, nodes, run_state, to_node)
@@ -672,10 +672,10 @@ def rollback_run(
             ) from exc
         os.close(in_prog_fd)
 
-        # M-3：写 .meta.json（在 .in_progress 创建后立刻写）
-        _write_meta_json(archive_root, run_id, to_node)
-
+        # G-1：_write_meta_json 纳入内层 try，失败时 .in_progress 由 finally 清理
         try:
+            # M-3：写 .meta.json（在 .in_progress 创建后立刻写，atomic rename）
+            _write_meta_json(archive_root, run_id, to_node)
             result = _execute_rollback(
                 run_dir=run_dir,
                 archive_root=archive_root,
