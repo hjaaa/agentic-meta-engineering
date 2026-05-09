@@ -595,3 +595,64 @@ class TestArtifactsDirSubstitution:
         assert parent_artifacts not in child_text, (
             f"子 run 文本不应含父 run artifacts 路径 '{parent_artifacts}'（路径泄露）"
         )
+
+
+# ============================================================================
+# TC-F4-7（F-004 rev4 新增）：has_error when 守卫——cr-prepare 有错时 10 节点全跳过
+#
+# H-1 修复验证：8 cr-checker-* + cr-critic + cr-judge 共 10 个节点必须全部含
+# when: "$cr-prepare.output.has_error == false" 字段，确保引擎层强制跳过。
+# ============================================================================
+
+
+# 10 个应含 when 守卫的节点 id
+GUARDED_NODE_IDS = [
+    "cr-checker-security",
+    "cr-checker-performance",
+    "cr-checker-complexity",
+    "cr-checker-concurrency",
+    "cr-checker-error-handling",
+    "cr-checker-design-consistency",
+    "cr-checker-auxiliary-spec",
+    "cr-checker-history-context",
+    "cr-critic",
+    "cr-judge",
+]
+
+# spec §6.6 when 表达式期望值
+EXPECTED_WHEN_EXPR = "$cr-prepare.output.has_error == false"
+
+
+def test_has_error_when_guard_skips_downstream(
+    nodes_by_id: dict[str, dict],
+) -> None:
+    """TC-F4-7：10 个下游节点全部含 when 守卫且表达式正确（H-1 引擎层强制终止）。
+
+    H-1 修复方案：cr-prepare 错误路径输出 has_error: true，
+    下游 8 cr-checker-* + cr-critic + cr-judge 共 10 节点各配置
+    when: "$cr-prepare.output.has_error == false"，
+    当 has_error 为 true 时这 10 节点状态 = skipped，无需额外终止信号。
+
+    本测试读 yaml 节点列表，断言：
+    1. 10 个节点全部存在
+    2. 每节点含 when 字段
+    3. when 表达式 == "$cr-prepare.output.has_error == false"（spec §6.6 语法）
+    """
+    # 1) 10 个节点必须全部存在
+    missing_nodes = [nid for nid in GUARDED_NODE_IDS if nid not in nodes_by_id]
+    assert not missing_nodes, f"缺失应含 when 守卫的节点: {missing_nodes}"
+
+    # 2) & 3) 每节点含 when 字段且表达式正确
+    wrong_when: list[str] = []
+    for nid in GUARDED_NODE_IDS:
+        node = nodes_by_id[nid]
+        actual_when = node.get("when")
+        if actual_when != EXPECTED_WHEN_EXPR:
+            wrong_when.append(
+                f"  {nid}: 期望 when={EXPECTED_WHEN_EXPR!r}，实际={actual_when!r}"
+            )
+
+    assert not wrong_when, (
+        "以下节点 when 守卫缺失或表达式不正确（H-1 要求）:\n"
+        + "\n".join(wrong_when)
+    )
