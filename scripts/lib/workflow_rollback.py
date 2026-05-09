@@ -320,6 +320,40 @@ def _resume_in_progress(
             lock_fd.close()
 
 
+def _execute_with_in_progress(
+    in_progress_path: Path,
+    run_dir: Path,
+    archive_root: Path,
+    archive_ts: str,
+    nodes: list[dict[str, Any]],
+    run_state: RunState,
+    to_node: str,
+    run_id: str,
+    target_id: Optional[str],
+    root: Path,
+    start_ms: float,
+    events: list[dict[str, Any]] | None,
+) -> RollbackResult:
+    """合并 .in_progress 文件管理 + _execute_rollback 调用（G-12 提取）。
+
+    G-1：_write_meta_json 在 try 内，失败时 .in_progress 由 finally 清理。
+    """
+    try:
+        _write_meta_json(archive_root, run_id, to_node)
+        return _execute_rollback(
+            run_dir=run_dir, archive_root=archive_root, archive_ts=archive_ts,
+            nodes=nodes, run_state=run_state, to_node=to_node,
+            run_id=run_id, target_id=target_id, root=root,
+            start_ms=start_ms, events=events,
+        )
+    finally:
+        try:
+            if in_progress_path.exists():
+                in_progress_path.unlink()
+        except OSError as exc:
+            raise RollbackError(f".in_progress 删除失败（{in_progress_path}）：{exc}") from exc
+
+
 # 公开 API
 
 def rollback_run(
@@ -343,10 +377,8 @@ def rollback_run(
         raise RollbackError(f"target_id 包含非法字符（只允许 [A-Za-z0-9_\\-]）：{target_id!r}")
 
     logger.info("rollback_run 开始（run_id=%s, to_node=%s）", run_id, to_node)
-
     run_dir, nodes, run_state, events = _resolve_and_validate(run_id, to_node, root)
 
-    # 检测 .in_progress 残留（崩溃续跑）
     stale_archive = _find_in_progress_archive(run_dir)
     if stale_archive is not None:
         logger.info("检测到 .in_progress 残留（run_id=%s, archive=%s），执行续跑", run_id, stale_archive)
@@ -357,7 +389,6 @@ def rollback_run(
     try:
         archive_root, archive_ts = _setup_archive(run_dir)
         in_progress_path = archive_root / ".in_progress"
-
         try:
             in_prog_fd = os.open(str(in_progress_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
         except OSError as exc:
@@ -366,29 +397,13 @@ def rollback_run(
                 f"可能是上次崩溃残留；请重新调用 rollback_run 续跑"
             ) from exc
         os.close(in_prog_fd)
-
-        # G-1：_write_meta_json 纳入内层 try，失败时 .in_progress 由 finally 清理
-        try:
-            _write_meta_json(archive_root, run_id, to_node)
-            result = _execute_rollback(
-                run_dir=run_dir,
-                archive_root=archive_root,
-                archive_ts=archive_ts,
-                nodes=nodes,
-                run_state=run_state,
-                to_node=to_node,
-                run_id=run_id,
-                target_id=target_id,
-                root=root,
-                start_ms=start_ms,
-                events=events,
-            )
-        finally:
-            try:
-                if in_progress_path.exists():
-                    in_progress_path.unlink()
-            except OSError as exc:
-                raise RollbackError(f".in_progress 删除失败（{in_progress_path}）：{exc}") from exc
+        result = _execute_with_in_progress(
+            in_progress_path=in_progress_path, run_dir=run_dir,
+            archive_root=archive_root, archive_ts=archive_ts,
+            nodes=nodes, run_state=run_state, to_node=to_node,
+            run_id=run_id, target_id=target_id, root=root,
+            start_ms=start_ms, events=events,
+        )
     finally:
         fcntl.flock(lock_fd, fcntl.LOCK_UN)
         lock_fd.close()
