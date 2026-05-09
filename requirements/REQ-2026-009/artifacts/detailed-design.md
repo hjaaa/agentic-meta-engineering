@@ -784,13 +784,19 @@ hook 层（.claude/hooks/pre-tool-use-guard.sh）已加 D-006 拦截；CLI 层 i
 来源：requirements/REQ-2026-009/plan.md:138 D-010 锁定的 mv 语义。
 
 ```python
-def rollback_run(run_id: str, to_node: str, target_id: Optional[str] = None) -> RollbackResult:
+def rollback_run(
+    run_id: str,
+    to_node: str,
+    target_id: Optional[str] = None,
+    repo_root: Optional[Path] = None,
+) -> RollbackResult:
     """
     把 run_id 从当前节点回滚到 to_node：
     - 拓扑序找产物路径集合 → shutil.move 到 .archived/<ts>/
     - 父 run 跨 sub_workflow 节点时，递归 mv 子 run 整目录
     - 写 .in_progress atomic 标记保护中断
     - 截断 jsonl 尾部 mv 为 <archived>/run-state.jsonl.tail
+    repo_root: testability hatch；生产为 None 时用 REPO_ROOT
     """
 ```
 
@@ -811,7 +817,7 @@ class RollbackResult:
     moved_artifacts: list[Path]              # 被 mv 的产物文件相对路径
     moved_sub_runs: list[SubRunArchive]      # 跨父子 mv 的子 run（F1 场景）
     truncated_jsonl_tail: Path               # <archived>/run-state.jsonl.tail
-    new_current_node: str                    # rollback 后续跑起点（= to_node 的最近上游）
+    new_current_node: str                    # rollback 后续跑起点（= to_node，rollback 后从此节点重新执行）
     duration_ms: int                         # 操作耗时
     partial: bool = False                    # True = 续跑收尾路径（不是首次 rollback）
 
@@ -832,6 +838,7 @@ class SubRunArchive:
 | `TargetNodeNotUpstreamError` | `to_node` 不是当前节点的拓扑上游（或就是当前节点本身） | 1 |
 | `ConcurrentRollbackError` | `runs/<id>/.rollback.lock` 已被持有（fcntl.flock 失败） | 1 |
 | `RollbackInProgressError` | `.archived/<ts>/.in_progress` 残留且 ts ≠ 本次（中断未续跑前禁止新 rollback） | 1 |
+| `RollbackResumeMismatchError` | `.meta.json` 中 `to_node` 与调用方传入不一致（续跑验证失败） | 1 |
 | `IOError` | mv 文件失败（磁盘满 / 权限） | 1（重抛标准异常） |
 
 ### 6.4 并发互斥与中断保护选型
@@ -913,7 +920,11 @@ tests/lib/fixtures/rollback/
 
 新增文件：
 
-- `scripts/lib/workflow_rollback.py`（公开 API + RollbackResult dataclass + 异常类）
+- `scripts/lib/workflow_rollback.py`（公开 API + RollbackResult dataclass + 异常类 + CLI 入口）
+- `scripts/lib/workflow_rollback_lock.py`（双层锁 _acquire/_release/_find_in_progress）
+- `scripts/lib/workflow_rollback_archive.py`（_collect/_move/_truncate_jsonl）
+- `scripts/lib/workflow_rollback_subrun.py`（_discover_sub_runs + _archive_sub_run）
+- `scripts/lib/workflow_rollback_topology.py`（yaml 加载 / 拓扑工具）
 - `tests/lib/test_workflow_rollback.py`（4 主场景 + 2 中断保护场景）
 - `tests/lib/fixtures/rollback/*`（4 套 fixture）
 
@@ -1403,7 +1414,7 @@ Plan 7+1 删 8 个别名（兼容期到期人工触发）
 
 - ~~**OQ-DD-A8（hook patch + 单测矩阵）**~~：**已闭合**——展开为 §5.2 ~ §5.7：拦截语义认知 / 完整 shell 片段（正则常量 + case 分支挂钩 + check 函数）/ 已知绕过通道 + 双层兜底（CLI isatty + BYPASS reason ≥ 8 + PR review）/ CLI 层 workflow_approve.py 雏形 / 24 条单测矩阵 / ai-collaboration 规则三 patch。
 
-- ~~**OQ-DD-A9（rollback API + RollbackResult + 中断保护）**~~：**已闭合**——§6 全章扩展：§6.1 API 签名 + 参数 / §6.2 RollbackResult dataclass（含 SubRunArchive）/ §6.3 异常契约 7 类 / §6.4 双层锁选型（fcntl.flock + O_EXCL，决策对比单选方案）/ §6.5 4 场景 fixture（含期望文件树 / jsonl tail）/ §6.6 中断保护单测追加（crash-recovery + concurrent-block）/ §6.7 影响域（新增 workflow_rollback.py + 4 fixture 套件）。
+- ~~**OQ-DD-A9（rollback API + RollbackResult + 中断保护）**~~：**已闭合**——§6 全章扩展：§6.1 API 签名 + 参数 / §6.2 RollbackResult dataclass（含 SubRunArchive）/ §6.3 异常契约 8 类 / §6.4 双层锁选型（fcntl.flock + O_EXCL，决策对比单选方案）/ §6.5 4 场景 fixture（含期望文件树 / jsonl tail）/ §6.6 中断保护单测追加（crash-recovery + concurrent-block）/ §6.7 影响域（新增 workflow_rollback.py + 4 fixture 套件）。
 
 - ~~**OQ-DD-A10（sub_workflow e2e 测试运行环境）**~~：**已闭合**——§7 全章扩展：§7.1 cancel graceful Mermaid 时序图（父子 jsonl 跨进程协作明示）/ §7.2 rollback 跨父子复用 §6 F1 实现 / §7.3 决策 mock 优先 + 真派 Agent 仅 smoke / MockSubAgent 雏形 / §7.3.3 共享 §6 F1 fixture / §7.4 单测矩阵（2 主 + 4 边界 = 6 用例）/ §7.5 影响域。
 
