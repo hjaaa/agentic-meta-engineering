@@ -15,7 +15,7 @@ argument-hint: "[note]"
 
 ## 允许状态
 
-`running` / `paused` / `approval_pending` / `failed`
+`running` / `paused` / `approval_pending` / `failed` / `completed`
 
 （其他状态拒绝：exit 1）
 
