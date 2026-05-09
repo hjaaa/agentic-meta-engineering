@@ -122,11 +122,11 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
     meta_path = run_dir / "meta.yaml"
     try:
         try:
-            import yaml  # type: ignore
+            import yaml  # type: ignore  # yaml 是可选第三方依赖，用 fallback 写 json
             with meta_path.open("w", encoding="utf-8") as fh:
                 yaml.safe_dump(meta, fh, allow_unicode=True, sort_keys=False)
         except ImportError:
-            # fallback: 写 json（无 yaml 依赖场景）
+            # 无 yaml 依赖时降级写 json
             with meta_path.open("w", encoding="utf-8") as fh:
                 json.dump(meta, fh, ensure_ascii=False, indent=2)
     except OSError as exc:
