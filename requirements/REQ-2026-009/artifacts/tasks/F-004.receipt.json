@@ -1,0 +1,11 @@
+{
+  "feature_id": "F-004",
+  "schema_version": "1.0",
+  "status": "DONE",
+  "completed_at": "2026-05-09T08:17:22+08:00",
+  "commit_shas": [
+    "40cd72b"
+  ],
+  "touches_violations": [],
+  "notes": "F-004 subagent 在 tests/workflows/test_yaml_schema.py / tests/workflows/test_prompt_structure.py 末尾追加 TC-F4-1 / TC-F4-4 测试函数；这两处属 acceptance 强制要求的测试位置，初版 task.md touches 漏列被 touches_guard 软记 2 条 violation。已同步扩展 task.md.touches 纳入两文件并清空 touches_violations[]（无实质越界）。pytest tests/workflows/ tests/e2e/ → 151 passed；commit 40cd72b 含 15 文件 1677 行。"
+}
