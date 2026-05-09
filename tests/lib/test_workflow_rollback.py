@@ -674,13 +674,18 @@ def test_resume_recovers_from_archive_ki_after_tail_write(tmp_path, monkeypatch)
     assert not (archive_dir / ".in_progress").exists(), "续跑后 .in_progress 应已删"
 
 
-def test_resume_recovers_from_archive_ki_at_step1_only_new_written(tmp_path, monkeypatch):
+def test_resume_recovers_from_archive_ki_at_step1_only_new_written(tmp_path, monkeypatch, caplog):
     """F-8 KI-step-1 续跑：archive 端 KI 落第 1 步（仅 .new 已写、tail 未写）→ 续跑触发完整截断流程。
 
     场景：第 1 次 rollback 在 _truncate_jsonl_to_tail 步骤 2 之前抛错（仅 .new 已写）；
     第 2 次续跑应：_consume_residual_new os.replace 收尾 .new + 因 tail 不存在再走完整 _truncate
     → 最终 jsonl 一致截断、tail 已生成、.new 已消费。
+
+    rev8 F-1 修复：加 caplog 断言 _consume_residual_new os.replace 路径被命中
+    （pin 上游 helper warning，防止 _truncate 'w' 模式覆写 .new 旁路假闭合）。
     """
+    import logging
+    caplog.set_level(logging.WARNING)
     run_id = "TEST-F8-RESUME-STEP1"
     run_dir = tmp_path / "runs" / run_id
     run_dir.mkdir(parents=True)
@@ -724,6 +729,7 @@ def test_resume_recovers_from_archive_ki_at_step1_only_new_written(tmp_path, mon
 
     # 续跑断言：F-8 完整路径——_consume_residual_new os.replace + _truncate_jsonl_to_tail 走完
     assert result.partial is True, "续跑路径应返回 partial=True"
+    assert "检测到残留 .new" in caplog.text, "F-1: _consume_residual_new os.replace 路径必须被命中（caplog 应含 logger.warning，防止 _truncate 'w' 模式旁路覆盖 .new）"
     assert not new_path.exists(), "续跑后 .new 应被消费（_consume_residual_new os.replace）"
     assert tail_path.exists(), "续跑后 tail 应已生成（走完整 _truncate_jsonl_to_tail）"
     post_kept = _get_completed_node_ids(jsonl_path)

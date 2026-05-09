@@ -839,7 +839,7 @@ class SubRunArchive:
 | `ConcurrentRollbackError` | `runs/<id>/.rollback.lock` 已被持有（fcntl.flock 失败） | 1 |
 | `RollbackInProgressError` | O_EXCL 原子创建 .in_progress 失败（同 archive_ts 已被持有或残留） | 1 |
 | `RollbackResumeMismatchError` | `.meta.json` 中 `to_node` 与调用方传入不一致（续跑验证失败） | 1 |
-| `RollbackError`（包装 OSError） | jsonl 截断步骤（_truncate_jsonl_to_tail / _consume_residual_new os.replace）失败 | 1（含 jsonl_path / archive_root 上下文） |
+| `RollbackError`（包装 OSError） | jsonl 截断步骤（_truncate_jsonl_to_tail / _consume_residual_new os.replace）失败 | 1（_truncate_jsonl_to_tail: jsonl_path / archive_root；_consume_residual_new: new_path / jsonl_path） |
 
 ### 6.4 并发互斥与中断保护选型
 
