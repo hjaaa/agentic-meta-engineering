@@ -60,6 +60,10 @@ def dispatch(cmd: str, args: list[str]) -> int:
         import importlib
         mod = importlib.import_module(module_name)
         return mod.main(args)
+    except ModuleNotFoundError as exc:
+        # 命令模块缺失（_CMD_MAP 配置错误 / 模块文件未落地）→ 友好错误，不暴露 traceback
+        print(f"ERROR: 命令模块未实现 ({module_name}): {exc}", file=sys.stderr)
+        return 1
     except WorkflowError as exc:
         print(f"WorkflowError: {exc}", file=sys.stderr)
         return 1

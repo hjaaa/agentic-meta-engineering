@@ -21,6 +21,7 @@ from run_state import RunState, _resolve_run_dir, append_event, read_events  # n
 from workflow_state_validator import check_tty_for_approval, validate_state_for_cmd  # noqa: E402
 
 _REASON_MIN_LEN = 8
+_REASON_MAX_LEN = 200  # 与 workflow_save.py _NOTE_MAX_LEN=200 对称
 
 
 def main(args: list[str], repo_root: Path | None = None) -> int:
@@ -44,7 +45,7 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
         )
         return 1
 
-    reason = " ".join(args).strip()
+    reason = (" ".join(args).strip())[:_REASON_MAX_LEN]
     if len(reason) < _REASON_MIN_LEN:
         print(
             f"ERROR: reason 太短（{len(reason)} 字符），最短 {_REASON_MIN_LEN} 字符",

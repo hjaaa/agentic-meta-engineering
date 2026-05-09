@@ -69,16 +69,18 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
 
     # 调 rollback_run（F-010 落地前为占位）
     try:
-        from workflow_rollback import rollback_run  # type: ignore  # noqa: F401
+        from workflow_rollback import rollback_run  # type: ignore
         rc = rollback_run(run_id, to_node, run_dir)
         return rc if isinstance(rc, int) else 0
     except ImportError:
+        # 功能未实现（F-010 待落地）：exit 1 与状态拒绝同档，
+        # 但语义不同——这里是"功能未实现"而非"状态不满足"
         print(
-            f"ERROR: rollback_run 未落地（待 F-010 实现 workflow_rollback.py）",
+            f"ERROR: rollback 功能未实现（待 F-010 实现 workflow_rollback.py）",
             file=sys.stderr,
         )
         print(
-            f"状态校验已通过：run_id={run_id!r} state={run_state.state!r} to_node={to_node!r}",
+            f"状态校验已通过，功能占位中：run_id={run_id!r} state={run_state.state!r} to_node={to_node!r}",
             file=sys.stderr,
         )
         return 1
