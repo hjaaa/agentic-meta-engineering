@@ -66,7 +66,7 @@
 |---|---|
 | ARGUMENTS 解析 | `$1..$N` = 自由 note（可选；多 token 拼空格） |
 | 入参约束 | note ≤ 200 字符；多行不写入（换行替换为空格，与 process.txt 同语义） |
-| 前置条件 | 当前 run state ∈ {running, paused, approval_pending, failed} |
+| 前置条件 | 当前 run state ∈ {running, paused, approval_pending, failed, completed} |
 | 副作用 | jsonl 追加 `[save]` 事件 + 触发主对话回报 status 摘要 |
 | 返回输出 | "已保存 <ts> + 当前节点 + note 摘要" |
 | 失败模式 | 无 run → exit 1 + 提示先 new/continue |
