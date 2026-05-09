@@ -85,8 +85,10 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
             "run_id": run_id,
         })
     except WorkflowError as exc:
-        print(f"WARN: 写 run_resumed 事件失败：{exc}", file=sys.stderr)
-        # 不阻断续跑流程，仅 warn
+        # G-11：审计事件写失败与 cancel_requested 同级处理，exit 1 让调用方感知
+        # 对照 cancel.py:93 写 cancel_requested 失败 exit 1 的统一处理策略
+        print(f"ERROR: 写 run_resumed 审计事件失败：{exc}", file=sys.stderr)
+        return 1
 
     print(f"恢复 workflow run {run_id!r}（state={run_state.state}）")
     _main_loop_stub(run_state)
