@@ -103,34 +103,40 @@ def _archive_sub_run(
 ) -> "SubRunArchive":
     """把子 run 整目录 mv 到 sub_runs_archive_dir/<child_run_id>/。
 
-    在 mv 前往子 jsonl 追加 parent_rolled_back 事件。
-    append_event 失败时抛 RollbackError（M-8 修复：不再只是 warning）。
+    G-4 修复：先 mv 整目录，再往归档后的 jsonl 追加 parent_rolled_back 事件。
+    这样崩溃中点重跑时不会产生重复事件（mv 是幂等的，但 append 不是）。
+    append_event 失败时抛 RollbackError。
     """
     from workflow_rollback import RollbackError, SubRunArchive
     from run_state import append_event
 
     child_run_id = child_run_dir.name
-    child_jsonl = child_run_dir / "run-state.jsonl"
 
-    # 追加 parent_rolled_back 事件（M-8：失败时抛 RollbackError，不再只 warning）
+    # 先 mv 整目录（G-4：mv 先于 append，防止续跑产生双 parent_rolled_back 事件）
+    sub_runs_archive_dir.mkdir(parents=True, exist_ok=True)
+    dest = sub_runs_archive_dir / child_run_id
     try:
-        append_event(child_jsonl, {
+        shutil.move(str(child_run_dir), str(dest))
+    except (OSError, shutil.Error) as exc:
+        raise RollbackError(
+            f"shutil.move {child_run_dir} → {dest} 失败：{exc}"
+        ) from exc
+
+    # mv 后写事件到归档后的子 jsonl（G-4：写归档后的路径）
+    archived_jsonl = dest / "run-state.jsonl"
+    try:
+        append_event(archived_jsonl, {
             "type": "parent_rolled_back",
             "run_id": child_run_id,
             "data": {"parent_run_id": run_id},
         })
     except Exception as exc:
         raise RollbackError(
-            f"append parent_rolled_back to {child_jsonl} 失败：{exc}"
+            f"append parent_rolled_back to {archived_jsonl} 失败：{exc}"
         ) from exc
 
-    # 统计 jsonl 行数（用于完整性断言）
-    jsonl_event_count = _count_jsonl_lines(child_jsonl)
-
-    # mv 子 run 整目录
-    sub_runs_archive_dir.mkdir(parents=True, exist_ok=True)
-    dest = sub_runs_archive_dir / child_run_id
-    shutil.move(str(child_run_dir), str(dest))
+    # 统计归档后 jsonl 行数（用于完整性断言）
+    jsonl_event_count = _count_jsonl_lines(archived_jsonl)
 
     return SubRunArchive(
         child_run_id=child_run_id,
