@@ -20,10 +20,26 @@ output_format:
       type: array
       items:
         type: object
+        properties:
+          finding_id: { type: string }
+          severity: { type: string, enum: [critical, major, minor] }
+          tags: { type: array, items: { type: string } }
+          file: { type: string }
+          description: { type: string }
+          suggestion: { type: string }
+        required: [finding_id, severity, description]
     adjudication:
       type: array
       items:
         type: object
+        properties:
+          finding_id: { type: string }
+          severity: { type: string, enum: [critical, major, minor] }
+          tags: { type: array, items: { type: string } }
+          file: { type: string }
+          description: { type: string }
+          suggestion: { type: string }
+        required: [finding_id, severity, description]
     cross_dimension_insights:
       type: array
       items: { type: string }
