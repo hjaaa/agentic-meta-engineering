@@ -39,7 +39,11 @@ output_format:
           file: { type: string }
           description: { type: string }
           suggestion: { type: string }
-        required: [finding_id, severity, description]
+          disposition:
+            type: string
+            enum: [drop, keep, downgrade, follow-up]
+          rationale: { type: string }
+        required: [finding_id, severity, description, disposition, rationale]
     cross_dimension_insights:
       type: array
       items: { type: string }
