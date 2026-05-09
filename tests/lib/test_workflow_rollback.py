@@ -585,6 +585,93 @@ def test_target_not_upstream_rejected(tmp_path):
 
 
 # ============================================================================
+# F-2 (rev6): _resume_in_progress 续跑 .new 兜底（archive 端三步原子化中间态）
+# ============================================================================
+
+def test_resume_recovers_from_archive_ki_after_tail_write(tmp_path, monkeypatch):
+    """F-2 KI 续跑：archive 端 KI 落第 2 步（tail 已写、os.replace 未执行）→ 续跑触发 .new replace。
+
+    场景构造：
+    1. R1 fixture：A→B→C→D 4 节点完成，rollback 到 node-c
+    2. monkeypatch os.replace 第一次调用时抛 OSError（模拟 archive 端 KI 落第 2 步：
+       .new 写完 + tail 写完，但 os.replace 未执行）
+    3. 首次 rollback_run 抛 OSError；此时残留 .in_progress + .meta.json + .new + tail，
+       原 jsonl 仍含完整尾部事件
+    4. 取消 monkeypatch，恢复 os.replace
+    5. 第二次 rollback_run → 续跑路径 → 期望 .new 已被消费（os.replace 成功）+
+       jsonl 已截断（不含 node-d 完成事件）+ partial=True
+    """
+    run_id = "TEST-F2-RESUME-NEW"
+    run_dir = tmp_path / "runs" / run_id
+    run_dir.mkdir(parents=True)
+
+    # R1 fixture
+    shutil.copy(FIXTURES_DIR / "R1-single-layer" / "workflow.yaml", run_dir / "workflow.yaml")
+    shutil.copy(FIXTURES_DIR / "R1-single-layer" / "initial-jsonl.txt", run_dir / "run-state.jsonl")
+
+    for nid in ["node-a", "node-b", "node-c", "node-d"]:
+        _create_artifact_dir(run_dir, nid)
+
+    jsonl_path = run_dir / "run-state.jsonl"
+    new_path = jsonl_path.with_suffix(jsonl_path.suffix + ".new")
+
+    # 劫持 os.replace：仅第一次调用抛 OSError（模拟 archive 端 KI 落第 2 步、第 3 步前）
+    # _write_meta_json (.meta.json.tmp → .meta.json) 也用 os.replace；让 .meta.json
+    # 路径调用通过；只在 jsonl_path.suffix + ".new" → jsonl_path 这一步抛错。
+    import os as _os
+    original_replace = _os.replace
+    raised_count = [0]
+
+    def selective_raising_replace(src, dst):
+        # 仅当目标是 jsonl_path（即第 3 步原子覆盖）时抛错
+        if str(dst) == str(jsonl_path):
+            raised_count[0] += 1
+            raise OSError("模拟 archive 端 KI：os.replace(.new, jsonl) 中途崩溃")
+        return original_replace(src, dst)
+
+    monkeypatch.setattr(_os, "replace", selective_raising_replace)
+
+    # 首次 rollback：应在 _truncate_jsonl_to_tail 第 3 步抛错
+    with pytest.raises(OSError, match="模拟 archive 端 KI"):
+        rollback_run(run_id, "node-c", repo_root=tmp_path)
+
+    # 验证前提：archive 端 KI 中间态
+    assert raised_count[0] == 1, "应仅触发一次 os.replace 抛错"
+    archived_dirs = [d for d in (run_dir / ".archived").iterdir() if d.is_dir()]
+    assert len(archived_dirs) == 1, "应有一个 archive_dir 残留"
+    archive_dir = archived_dirs[0]
+    assert (archive_dir / ".in_progress").exists(), "前提：.in_progress 应残留"
+    assert new_path.exists(), "前提：.new 应残留（archive 端 KI 落第 2 步证据）"
+    tail_path = archive_dir / "run-state.jsonl.tail"
+    assert tail_path.exists(), "前提：tail 应已写完"
+    # 原 jsonl 仍含完整尾部事件（os.replace 未执行 → 未截断）
+    pre_resume_kept = _get_completed_node_ids(jsonl_path)
+    assert "node-d" in pre_resume_kept, "前提：原 jsonl 应未截断（仍含 node-d completed）"
+
+    # 取消 monkeypatch，恢复 os.replace
+    monkeypatch.undo()
+
+    # 续跑：检测 .in_progress → 走续跑路径；F-2 修复后应优先消费 .new（os.replace）
+    result = rollback_run(run_id, "node-c", repo_root=tmp_path)
+
+    # 验证续跑结果
+    assert result.partial is True, "续跑路径应返回 partial=True"
+
+    # F-2 关键断言：.new 已被消费（os.replace 完成）
+    assert not new_path.exists(), "续跑后 .new 应被消费（F-2 修复核心）"
+
+    # F-2 关键断言：jsonl 已截断，不含 node-d 完成事件
+    post_resume_kept = _get_completed_node_ids(jsonl_path)
+    assert "node-d" not in post_resume_kept, (
+        "续跑后 jsonl 不应含 node-d completed（os.replace 已收尾）"
+    )
+    assert "node-c" in post_resume_kept, "续跑后 jsonl 应保留 node-c completed"
+
+    # .in_progress 已删（成功路径调 _release_with_unlink）
+    assert not (archive_dir / ".in_progress").exists(), "续跑后 .in_progress 应已删"
+
+
+# ============================================================================
 # 额外覆盖：run_id 不存在 → RunStateNotFoundError
 # ============================================================================
 

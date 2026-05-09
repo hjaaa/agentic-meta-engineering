@@ -45,6 +45,7 @@ logger = logging.getLogger(__name__)
 
 # 数据结构
 
+
 @dataclass(frozen=True)
 class SubRunArchive:
     """跨父子 mv 时的子 run 归档信息。"""
@@ -317,6 +318,18 @@ def _resume_in_progress(
         jsonl_path = run_dir / "run-state.jsonl"
         tail_path = archive_root / "run-state.jsonl.tail"
         ordered = _get_ordered_node_ids(nodes)
+        # F-2 修复（rev6）：续跑兜底 archive 端三步原子化的中间态。
+        # archive 端顺序 = .new 写完 → tail 写完 → os.replace(.new, jsonl)。
+        # KI 落第 2 步完成后第 3 步前：tail 已存在 + .new 仍在 + jsonl 未截断。
+        # 此时若仅判 tail_path.exists() 会跳过整个 truncate → .new 永不消费、
+        # jsonl 永不截断、下游误认节点完成。先做 .new 检测优先 os.replace 收尾。
+        new_path = jsonl_path.with_suffix(jsonl_path.suffix + ".new")
+        if new_path.exists():
+            logger.warning(
+                "检测到残留 .new（archive 端 KI 落第 2 步），os.replace 续跑：%s → %s",
+                new_path, jsonl_path,
+            )
+            os.replace(str(new_path), str(jsonl_path))
         if not tail_path.exists():
             tail_path, _ = _truncate_jsonl_to_tail(jsonl_path, archive_root, to_node, ordered)
 
