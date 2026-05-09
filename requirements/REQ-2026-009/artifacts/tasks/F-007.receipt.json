@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "feature_id": "F-007",
   "status": "DONE",
-  "commit_sha": "cc2d22c",
+  "commit_sha": "0b3adc9",
   "files_changed": [
     "requirements/REQ-2026-009/artifacts/detailed-design.md",
     "requirements/REQ-2026-009/artifacts/features.json",
@@ -30,18 +30,25 @@
     "tests/lib/test_workflow_rollback.py",
     "tests/skills/test_workflow_commands.py"
   ],
-  "test_summary": "rev5: 3 commit (340df30 + 54ac4da + cc2d22c) / pytest tests/lib/test_workflow_rollback.py -v: 10 passed / pytest tests/: 1105 passed, 9 skipped, 0 failed / ruff 0 错误 / radon max CC = 10 (_resume_in_progress F-23 双分支后 9→10 仍 ≤ 10) / 主模块 520 → 511 行 / 17 项 keep + follow-up 全闭合 (F-4/F-5/F-6/F-7/F-8/F-9/F-10/F-11/F-13/F-15/F-16/F-17/F-20/F-21/F-23/F-24/F-25/F-27 共 18 项) / 累计 47 + rev5 闭合 = 全部 keep 闭合 / check_features.py exit 0",
+  "test_summary": "rev6: 3 commit (164945d P0 / 9fc1a80 P1 / 0b3adc9 P2P3) / pytest tests/lib/test_workflow_rollback.py -v: 16 passed (10 baseline + 1 F-2 KI 续跑 + 5 F-5 to_node 注入参数化) / pytest tests/: 1111 passed, 9 skipped, 0 failed / ruff 0 错误 (I001/F401/F821) / pycodestyle 0 错误 (E302/E303) / radon max CC = 10 (_resume_in_progress 续跑 .new 检测分支抽 _consume_residual_new helper 后 11 → 10) / 主模块 511 → 497 行 (F-15 _read_meta_json/_write_meta_json/_now_iso8601 下沉至 _lock 子模块) / rev5 自引入 2 major (F-1 E302 + F-2 续跑漏洞) 全闭合 + 9 minor 合批 + F-15/F-16 follow-up 真闭合 / 累计 47 + rev5 18 项 + rev6 11 项 keep 全闭合 / check_features.py exit 0",
   "touches_violations": [
     {
       "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-009/artifacts/review-20260509-202104.md",
       "ts": "2026-05-09T12:22:58+00:00",
       "tool": "Write"
+    },
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-009/artifacts/review-20260509-205624.md",
+      "ts": "2026-05-09T12:58:14+00:00",
+      "tool": "Write"
     }
   ],
   "concerns": [
-    "主模块行数 511（任务清单预期 ~480）：rev5 P0 commit 后已降至 486；P3 commit 中 F-13 to_node 校验 +3 行 + F-23 except BaseException 双分支 +7 行 + 相关 docstring +2 行带回 +25 行；net 仍较 rev4 的 520 行降 9 行；可接受范围内（仍 ≈ 500 行阈值）。"
+    "rev5 是修复中引入新 bug 的负面案例：rev5 commit cc2d22c 修 F-24 三步原子化只完成 archive 端、resume 端 _resume_in_progress 仍用 tail_path.exists() 短路 → 真功能正确性 bug F-2。rev6 commit 164945d 加 .new 检测分支 + 测试红绿验证修复，rev6 commit 0b3adc9 抽 _consume_residual_new helper 收回 CC=10。下次类似 archive/resume 对偶设计须双侧同步。",
+    "F-1 E302 是 rev5 工具链状态报告与实测背离的小型案例：rev5 自报 ruff --fix 已修但 ruff 默认不开 preview 不查 E302。后续 F-007 闭合前 lint 必须以 pycodestyle 为准（已写入 commit 1 message）。",
+    "rev6 末主模块 497 行（< 500 阈值）已真闭合 F-15；_resume_in_progress CC=10 边界踩线（F-16 follow-up 提示已落实，引入新分支时抽 helper 收回）。"
   ],
   "missing_context": "",
   "block_reason": "",
-  "timestamp": "2026-05-09T18:50:00+08:00"
+  "timestamp": "2026-05-09T21:09:32+08:00"
 }
