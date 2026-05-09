@@ -10,11 +10,16 @@
 
 事件枚举（spec §5.4 + D-005 v2.1）：
 - workflow_started / workflow_paused / workflow_completed / workflow_failed / workflow_cancelled
-- cancel_requested
+- cancel_requested / cancel_taskstop_failed
+- run_resumed
+- save
 - node_started / node_completed / node_failed / node_skipped / node_retried
 - approval_pending / approval_approved / approval_rejected
 - loop_iteration_started / loop_iteration_completed / loop_completed / loop_max_iterations_exceeded
 - parent_cancelled / parent_rolled_back
+
+注：cancel_taskstop_failed / run_resumed / save 三个事件**不**映射 WORKFLOW_EVENT_TO_STATE，
+    不改变 RunState.state（保持调用前的 state 语义不变）。
 
 兜底规则（spec §13 + plan.md 风险 6）：
 - 文件不存在 → 视为初始空（events=[]，warnings=[]）
@@ -50,6 +55,12 @@ VALID_EVENT_TYPES: set[str] = {
     "workflow_started", "workflow_paused", "workflow_completed",
     "workflow_failed", "workflow_cancelled",
     "cancel_requested",
+    # cancel 路径专用（不映射 WORKFLOW_EVENT_TO_STATE，保持 cancel_requested 语义）
+    "cancel_taskstop_failed",
+    # continue 命令恢复标记（不映射 WORKFLOW_EVENT_TO_STATE，保持 running/paused/failed 语义不变）
+    "run_resumed",
+    # save 命令检查点（不映射 WORKFLOW_EVENT_TO_STATE，不改 state，允许 5 态）
+    "save",
     # 节点级
     "node_started", "node_completed", "node_failed", "node_skipped", "node_retried",
     # approval
