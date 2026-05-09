@@ -52,12 +52,24 @@ def _load_run_entry(run_dir: Path) -> dict[str, Any] | None:
             import yaml  # type: ignore
             with meta_path.open("r", encoding="utf-8") as fh:
                 meta = yaml.safe_load(fh) or {}
-        except Exception:
+        except yaml.YAMLError as exc:
+            # yaml 解析失败 → 尝试 json fallback，并输出 WARN
+            print(f"WARN: meta 解析失败（yaml） {run_dir.name}: {exc}", file=sys.stderr)
             try:
                 import json
                 with meta_path.open("r", encoding="utf-8") as fh:
                     meta = json.load(fh)
-            except Exception:
+            except (json.JSONDecodeError, Exception) as exc2:
+                print(f"WARN: meta 解析失败（json） {run_dir.name}: {exc2}", file=sys.stderr)
+                meta = {}
+        except Exception as exc:
+            # 非 yaml 解析错误（IO 等）→ 尝试 json fallback
+            try:
+                import json
+                with meta_path.open("r", encoding="utf-8") as fh:
+                    meta = json.load(fh)
+            except (json.JSONDecodeError, Exception) as exc2:
+                print(f"WARN: meta 解析失败 {run_dir.name}: yaml={exc} json={exc2}", file=sys.stderr)
                 meta = {}
         entry["template"] = meta.get("template", "")
         entry["phase"] = meta.get("phase", "")
@@ -140,7 +152,8 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
                 f"示例：--filter=state=paused",
                 file=sys.stderr,
             )
-            return 2
+            # exit 1：业务参数错；exit 2 保留为 fail-closed 专属（非 tty）
+            return 1
         entries = filtered
 
     if not entries:
