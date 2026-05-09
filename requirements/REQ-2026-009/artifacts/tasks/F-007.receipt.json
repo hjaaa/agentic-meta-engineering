@@ -1,0 +1,32 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-007",
+  "status": "DONE",
+  "commit_sha": "a4625e0",
+  "files_changed": [
+    "scripts/lib/workflow_rollback.py",
+    "tests/lib/fixtures/rollback/F1-cross-parent-child/child-jsonl.txt",
+    "tests/lib/fixtures/rollback/F1-cross-parent-child/dummy-child.yaml",
+    "tests/lib/fixtures/rollback/F1-cross-parent-child/expected-tree-after.txt",
+    "tests/lib/fixtures/rollback/F1-cross-parent-child/parent-jsonl.txt",
+    "tests/lib/fixtures/rollback/F1-cross-parent-child/workflow.yaml",
+    "tests/lib/fixtures/rollback/R1-single-layer/expected-tree-after.txt",
+    "tests/lib/fixtures/rollback/R1-single-layer/initial-jsonl.txt",
+    "tests/lib/fixtures/rollback/R1-single-layer/workflow.yaml",
+    "tests/lib/fixtures/rollback/T1-multiple-rollback/expected-tree-first.txt",
+    "tests/lib/fixtures/rollback/T1-multiple-rollback/expected-tree-second.txt",
+    "tests/lib/fixtures/rollback/T1-multiple-rollback/initial-jsonl.txt",
+    "tests/lib/fixtures/rollback/T1-multiple-rollback/workflow.yaml",
+    "tests/lib/fixtures/rollback/to-root/expected-tree-after.txt",
+    "tests/lib/fixtures/rollback/to-root/initial-jsonl.txt",
+    "tests/lib/fixtures/rollback/to-root/workflow.yaml",
+    "tests/lib/test_workflow_rollback.py",
+    "tests/skills/test_workflow_commands.py"
+  ],
+  "test_summary": "pytest tests/lib/test_workflow_rollback.py -v: 9 passed (TC-F7-1~7 + 2 额外覆盖) / pytest tests/: 1104 passed, 9 skipped, 0 failed",
+  "touches_violations": [],
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-09T15:38:00+08:00"
+}
