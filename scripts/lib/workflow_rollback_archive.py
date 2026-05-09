@@ -117,16 +117,27 @@ def _truncate_jsonl_to_tail(
     # 3) os.replace(<jsonl>.new, jsonl) 原子覆盖
     # KI 落 1 → 仅 .new 残留，续跑可清理；落 2 → tail 与 .new 共存，续跑用 .new；
     # 落 3 → 原子完成。任意中间态都不会出现"两个文件同时含尾部事件"。
+    # F-8 (rev6)：三步加 logger.debug + 包 RollbackError，运维可观察 jsonl_path / archive_root 上下文。
+    from workflow_rollback import RollbackError  # 惰性 import 避免循环依赖
+
     new_path = jsonl_path.with_suffix(jsonl_path.suffix + ".new")
-    with new_path.open("w", encoding="utf-8") as fh:
-        for evt in kept:
-            fh.write(json.dumps(evt, ensure_ascii=False) + "\n")
+    try:
+        with new_path.open("w", encoding="utf-8") as fh:
+            for evt in kept:
+                fh.write(json.dumps(evt, ensure_ascii=False) + "\n")
+        logger.debug("truncate 步骤 1 完成（new_path=%s）", new_path)
 
-    with tail_path.open("w", encoding="utf-8") as fh:
-        for evt in tail:
-            fh.write(json.dumps(evt, ensure_ascii=False) + "\n")
+        with tail_path.open("w", encoding="utf-8") as fh:
+            for evt in tail:
+                fh.write(json.dumps(evt, ensure_ascii=False) + "\n")
+        logger.debug("truncate 步骤 2 完成（tail_path=%s）", tail_path)
 
-    os.replace(str(new_path), str(jsonl_path))
+        os.replace(str(new_path), str(jsonl_path))
+        logger.debug("truncate 步骤 3 完成（jsonl=%s）", jsonl_path)
+    except OSError as exc:
+        raise RollbackError(
+            f"truncate jsonl 失败（jsonl_path={jsonl_path}，archive_root={archive_root}）：{exc}"
+        ) from exc
     return tail_path, kept
 
 

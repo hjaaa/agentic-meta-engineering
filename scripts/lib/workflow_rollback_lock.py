@@ -1,18 +1,23 @@
 """workflow_rollback 锁工具模块（F-007）。
 
-提供双层锁实现 + 续跑助手：
+提供双层锁实现 + 续跑助手 + 续跑元数据读写：
 - _acquire_flock: 仅获取 fcntl.flock（LOCK_EX|LOCK_NB），返回 fd
 - _find_in_progress_archive: 扫描残留 .in_progress 目录（续跑检测）
 - _validate_resume_meta: 续跑时校验 .meta.json 中 to_node 与传入一致
 - _unlink_in_progress: 删除 .in_progress 标记（失败仅 logger.error）
 - _release_with_unlink: flock 释放 + .in_progress 清理统一封装
+- _write_meta_json / _read_meta_json: .archived/<ts>/.meta.json 持久化（M-3）
+- _now_iso8601: UTC ISO8601 时间戳（_write_meta_json 辅助）
 
 详细设计：requirements/REQ-2026-009/artifacts/detailed-design.md §6.4
 """
 from __future__ import annotations
 
 import fcntl
+import json
 import logging
+import os
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 # 延迟导入以避免循环：异常类从主模块导入
 def _get_exceptions():
+    """惰性获取循环依赖异常类，避免 lock 子模块 import workflow_rollback 主模块时的循环。"""
     from workflow_rollback import ConcurrentRollbackError, RollbackInProgressError
     return ConcurrentRollbackError, RollbackInProgressError
 
@@ -119,3 +125,47 @@ def _release_with_unlink(lock_fd: Any, in_progress_path: Path) -> None:
     _unlink_in_progress(in_progress_path)
     fcntl.flock(lock_fd, fcntl.LOCK_UN)
     lock_fd.close()
+
+
+# F-15 重构（rev6）：续跑元数据读写从主模块下沉
+# 与锁/标记同一职责域；主模块通过 from workflow_rollback_lock import 调用
+
+
+def _now_iso8601() -> str:
+    """返回当前 UTC ISO8601 时间戳。"""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _write_meta_json(archive_root: Path, run_id: str, to_node: str) -> None:
+    """写 .archived/<ts>/.meta.json（atomic: tmp fsync → os.replace），持久化续跑上下文。
+
+    H-7 修复：os.replace 失败时清理孤儿 .meta.json.tmp，防止残留临时文件。
+    """
+    meta = {"run_id": run_id, "to_node": to_node, "started_at": _now_iso8601()}
+    meta_path = archive_root / ".meta.json"
+    tmp_path = archive_root / ".meta.json.tmp"
+    with tmp_path.open("w", encoding="utf-8") as fh:
+        json.dump(meta, fh, ensure_ascii=False, indent=2)
+        fh.flush()
+        os.fsync(fh.fileno())
+    try:
+        os.replace(tmp_path, meta_path)  # POSIX 原子 rename
+    except OSError:
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError as ue:
+            # F-16：tmp 清理失败（仅 logger.warning，让原 OSError 继续传播）
+            logger.warning(".meta.json.tmp 清理失败（path=%s）：%s", tmp_path, ue)
+        raise
+
+
+def _read_meta_json(archive_root: Path) -> dict[str, Any] | None:
+    """读取 .archived/<ts>/.meta.json，返回 dict 或 None（文件不存在/损坏时）。"""
+    meta_path = archive_root / ".meta.json"
+    if not meta_path.is_file():
+        return None
+    try:
+        with meta_path.open("r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except (json.JSONDecodeError, OSError):
+        return None

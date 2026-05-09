@@ -25,7 +25,18 @@ def _discover_by_target_id(
     target_id: str,
     repo_root: Path,
 ) -> list[Path]:
-    """策略 1：target_id 显式指定时的精确匹配。"""
+    """策略 1：target_id 显式指定时的精确匹配。
+
+    Args:
+        target_id: 子 run 完整 id（已经 [A-Za-z0-9_\\-]+ 白名单校验）
+        repo_root: repo 根路径，扫描 runs/ + requirements/ 两个候选 base
+
+    Returns:
+        匹配到的子 run 目录列表（0 或 1 个）；不存在时返回 []
+
+    Raises:
+        RollbackError: 当 candidate 经 _check_path_traversal 检测发现路径穿越时
+    """
     for base in [repo_root / "runs", repo_root / "requirements"]:
         candidate = base / target_id
         if candidate.is_dir():

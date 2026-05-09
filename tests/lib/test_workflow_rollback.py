@@ -633,7 +633,8 @@ def test_resume_recovers_from_archive_ki_after_tail_write(tmp_path, monkeypatch)
     monkeypatch.setattr(_os, "replace", selective_raising_replace)
 
     # 首次 rollback：应在 _truncate_jsonl_to_tail 第 3 步抛错
-    with pytest.raises(OSError, match="模拟 archive 端 KI"):
+    # F-8 (rev6) 之后 OSError 被 _truncate_jsonl_to_tail 包成 RollbackError
+    with pytest.raises(RollbackError, match="truncate jsonl 失败"):
         rollback_run(run_id, "node-c", repo_root=tmp_path)
 
     # 验证前提：archive 端 KI 中间态

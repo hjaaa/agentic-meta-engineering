@@ -23,7 +23,6 @@
 from __future__ import annotations
 
 import fcntl
-import json
 import logging
 import os
 import re
@@ -112,46 +111,9 @@ def _make_archive_ts() -> str:
     return datetime.now(east8).strftime("%Y-%m-%dT%H:%M:%S+0800")
 
 
-def _now_iso8601() -> str:
-    """返回当前 UTC ISO8601 时间戳。"""
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-# 内部工具：.meta.json 持久化（M-3）
-
-def _write_meta_json(archive_root: Path, run_id: str, to_node: str) -> None:
-    """写 .archived/<ts>/.meta.json（atomic: tmp fsync → os.replace），持久化续跑上下文。
-
-    H-7 修复：os.replace 失败时清理孤儿 .meta.json.tmp，防止残留临时文件。
-    """
-    meta = {"run_id": run_id, "to_node": to_node, "started_at": _now_iso8601()}
-    meta_path = archive_root / ".meta.json"
-    tmp_path = archive_root / ".meta.json.tmp"
-    with tmp_path.open("w", encoding="utf-8") as fh:
-        json.dump(meta, fh, ensure_ascii=False, indent=2)
-        fh.flush()
-        os.fsync(fh.fileno())
-    try:
-        os.replace(tmp_path, meta_path)  # POSIX 原子 rename
-    except OSError:
-        try:
-            tmp_path.unlink(missing_ok=True)
-        except OSError as ue:
-            # F-16：tmp 清理失败（仅 logger.warning，让原 OSError 继续传播）
-            logger.warning(".meta.json.tmp 清理失败（path=%s）：%s", tmp_path, ue)
-        raise
-
-
-def _read_meta_json(archive_root: Path) -> dict[str, Any] | None:
-    """读取 .archived/<ts>/.meta.json，返回 dict 或 None（文件不存在/损坏时）。"""
-    meta_path = archive_root / ".meta.json"
-    if not meta_path.is_file():
-        return None
-    try:
-        with meta_path.open("r", encoding="utf-8") as fh:
-            return json.load(fh)
-    except (json.JSONDecodeError, OSError):
-        return None
+# F-15 重构（rev6）：_read_meta_json + _write_meta_json + _now_iso8601
+# 下沉至 workflow_rollback_lock.py（语义相符——续跑元数据读写与锁/标记同一职责域）；
+# 主模块 import 它们以保持公开函数签名不变。
 
 
 # 内部：校验链 + archive 准备
@@ -167,6 +129,7 @@ def _resolve_and_validate(
         _load_nodes,
         _validate_to_node_is_upstream,
     )
+
     if not re.fullmatch(r"[A-Za-z0-9_\-]+", run_id):
         raise RollbackError(f"run_id 包含非法字符（只允许 [A-Za-z0-9_\\-]）：{run_id!r}")
 
@@ -267,6 +230,24 @@ def _build_node_map(nodes: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     return {n["id"]: n for n in nodes if isinstance(n, dict) and "id" in n}
 
 
+def _consume_residual_new(jsonl_path: Path) -> None:
+    """续跑兜底 archive 端三步原子化的中间态：检测残留 .new 并 os.replace 收尾。
+
+    F-2 修复（rev6）：archive 端顺序 = .new 写完 → tail 写完 → os.replace(.new, jsonl)。
+    KI 落第 2 步完成后第 3 步前：tail 已存在 + .new 仍在 + jsonl 未截断。
+    此时若 _resume_in_progress 仅判 tail_path.exists() 会跳过整个 truncate
+    → .new 永不消费、jsonl 永不截断、下游误认节点完成。
+    抽出独立 helper 既隔离 F-2 修复语义，也降 _resume_in_progress 主体 CC。
+    """
+    new_path = jsonl_path.with_suffix(jsonl_path.suffix + ".new")
+    if new_path.exists():
+        logger.warning(
+            "检测到残留 .new（archive 端 KI 落第 2 步），os.replace 续跑：%s → %s",
+            new_path, jsonl_path,
+        )
+        os.replace(str(new_path), str(jsonl_path))
+
+
 def _resume_in_progress(
     run_dir: Path,
     stale_archive_dir: Path,
@@ -291,6 +272,7 @@ def _resume_in_progress(
     )
     from workflow_rollback_lock import (
         _acquire_flock,
+        _read_meta_json,
         _release_with_unlink,
         _validate_resume_meta,
     )
@@ -318,18 +300,7 @@ def _resume_in_progress(
         jsonl_path = run_dir / "run-state.jsonl"
         tail_path = archive_root / "run-state.jsonl.tail"
         ordered = _get_ordered_node_ids(nodes)
-        # F-2 修复（rev6）：续跑兜底 archive 端三步原子化的中间态。
-        # archive 端顺序 = .new 写完 → tail 写完 → os.replace(.new, jsonl)。
-        # KI 落第 2 步完成后第 3 步前：tail 已存在 + .new 仍在 + jsonl 未截断。
-        # 此时若仅判 tail_path.exists() 会跳过整个 truncate → .new 永不消费、
-        # jsonl 永不截断、下游误认节点完成。先做 .new 检测优先 os.replace 收尾。
-        new_path = jsonl_path.with_suffix(jsonl_path.suffix + ".new")
-        if new_path.exists():
-            logger.warning(
-                "检测到残留 .new（archive 端 KI 落第 2 步），os.replace 续跑：%s → %s",
-                new_path, jsonl_path,
-            )
-            os.replace(str(new_path), str(jsonl_path))
+        _consume_residual_new(jsonl_path)
         if not tail_path.exists():
             tail_path, _ = _truncate_jsonl_to_tail(jsonl_path, archive_root, to_node, ordered)
 
@@ -390,12 +361,14 @@ def _execute_with_in_progress(
 ) -> RollbackResult:
     """合并 .in_progress 文件管理 + _execute_rollback 调用（G-12 提取）。
 
-    G-1：_write_meta_json 在 try 内，失败时由调用栈保留 .in_progress 供续跑兜底。
+    G-1：_write_meta_json 在成功路径调用；异常时由外层 rollback_run finally 释放 flock，
+    .in_progress 保留供续跑兜底（F-23 修正：unlink 仅在 mv 完成后调用，
+    KI/SIGINT 异常时跳过）。
     F-15 重构：unlink 内联 6 行替换为 _unlink_in_progress helper（与 _release_with_unlink 共用）。
     F-23 重构：unlink 从 finally 挪到 try 块成功路径（KI/SIGINT 中途异常 → .in_progress
     保留，对齐 detailed-design §6.4 line 859 伪码"mv 完成后删标记"的语义）。
     """
-    from workflow_rollback_lock import _unlink_in_progress
+    from workflow_rollback_lock import _unlink_in_progress, _write_meta_json
 
     _write_meta_json(archive_root, run_id, to_node)
     result = _execute_rollback(
