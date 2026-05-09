@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -55,6 +56,7 @@ def _generate_run_id(repo_root: Path) -> str:
             return candidate_id
         except FileExistsError:
             # 并发冲突：另一进程已抢占该编号，取下一个编号重试
+            logging.debug("run_id %s 冲突，递增重试 attempt=%d", candidate_id, attempt)
             next_num += 1
 
     # 超过最大重试次数（极低概率，≥3 个进程几乎同时竞争）
@@ -119,13 +121,16 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
     }
     meta_path = run_dir / "meta.yaml"
     try:
-        import yaml  # type: ignore
-        with meta_path.open("w", encoding="utf-8") as fh:
-            yaml.safe_dump(meta, fh, allow_unicode=True, sort_keys=False)
-    except ImportError:
-        # fallback: 写 json（无 yaml 依赖场景）
-        with meta_path.open("w", encoding="utf-8") as fh:
-            json.dump(meta, fh, ensure_ascii=False, indent=2)
+        try:
+            import yaml  # type: ignore
+            with meta_path.open("w", encoding="utf-8") as fh:
+                yaml.safe_dump(meta, fh, allow_unicode=True, sort_keys=False)
+        except ImportError:
+            # fallback: 写 json（无 yaml 依赖场景）
+            with meta_path.open("w", encoding="utf-8") as fh:
+                json.dump(meta, fh, ensure_ascii=False, indent=2)
+    except OSError as exc:
+        raise WorkflowError(f"写 meta.yaml 失败: {exc}") from exc
 
     # 写 workflow_started jsonl 事件
     jsonl_path = run_dir / "run-state.jsonl"

@@ -52,8 +52,8 @@ def _render_status(run_state: RunState, run_dir: Path, indent: int = 0) -> str:
                     sub_state = RunState.rebuild(sub_events, run_id=sub_run_id, warnings=sub_warnings)
                     lines.append(f"{prefix}  └─ 子 run:")
                     lines.append(_render_status(sub_state, sub_dir, indent + 2))
-                except WorkflowError:
-                    lines.append(f"{prefix}  └─ 子 run {sub_run_id!r} 目录不存在")
+                except WorkflowError as exc:
+                    lines.append(f"{prefix}  └─ 子 run {sub_run_id!r} 解析失败: {exc}")
 
     return "\n".join(lines)
 

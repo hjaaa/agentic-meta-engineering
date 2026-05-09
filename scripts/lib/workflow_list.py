@@ -59,7 +59,7 @@ def _load_run_entry(run_dir: Path) -> dict[str, Any] | None:
                 import json
                 with meta_path.open("r", encoding="utf-8") as fh:
                     meta = json.load(fh)
-            except (json.JSONDecodeError, Exception) as exc2:
+            except (json.JSONDecodeError, OSError) as exc2:
                 print(f"WARN: meta 解析失败（json） {run_dir.name}: {exc2}", file=sys.stderr)
                 meta = {}
         except Exception as exc:
@@ -68,7 +68,7 @@ def _load_run_entry(run_dir: Path) -> dict[str, Any] | None:
                 import json
                 with meta_path.open("r", encoding="utf-8") as fh:
                     meta = json.load(fh)
-            except (json.JSONDecodeError, Exception) as exc2:
+            except (json.JSONDecodeError, OSError) as exc2:
                 print(f"WARN: meta 解析失败 {run_dir.name}: yaml={exc} json={exc2}", file=sys.stderr)
                 meta = {}
         entry["template"] = meta.get("template", "")
