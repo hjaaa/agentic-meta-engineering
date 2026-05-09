@@ -10,6 +10,11 @@
 - TC-F7-6: test_concurrent_block      — 同 run_id 并发 → 第二个抛 ConcurrentRollbackError
 - TC-F7-7: test_target_not_upstream_rejected — to_node 不是上游 → TargetNodeNotUpstreamError
 
+命名约定（F-11 follow-up）：
+    测试函数名以 R1/F1/T1 等大写片段映射到 detailed-design §6.5 fixture 矩阵
+    （TC-F7-1 → R1 single layer 等），偏离 CLAUDE.md §7 should_xxx_when_yyy 规范
+    属设计决定（design 锁定 fixture 标签优先，便于人工对照设计 spec）。
+
 测试运行：
     python3 -m pytest tests/lib/test_workflow_rollback.py -v
 """
@@ -38,7 +43,6 @@ from workflow_rollback import (  # noqa: E402
     TargetNodeNotUpstreamError,
     rollback_run,
 )
-
 
 # ============================================================================
 # 测试辅助工具

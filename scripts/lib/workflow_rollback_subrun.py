@@ -12,7 +12,11 @@ from __future__ import annotations
 import logging
 import shutil
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    # F-7：避免循环导入 / 仅类型注解使用（运行期延迟从 workflow_rollback 导入）
+    from workflow_rollback import SubRunArchive
 
 logger = logging.getLogger(__name__)
 
@@ -143,8 +147,8 @@ def _archive_sub_run(
     H-8 修复：append 前先做幂等检查，续跑路径不重复追加 parent_rolled_back 事件。
     mv 是幂等的（dest 已存在时 shutil.move 报错，由调用方处理）；append 不幂等，故需检查。
     """
-    from workflow_rollback import RollbackError, SubRunArchive
     from run_state import append_event
+    from workflow_rollback import RollbackError, SubRunArchive
 
     child_run_id = child_run_dir.name
 

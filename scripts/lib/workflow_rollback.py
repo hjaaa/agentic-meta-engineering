@@ -30,7 +30,7 @@ import re
 import sys
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -39,7 +39,7 @@ if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
 from common import REPO_ROOT, WorkflowError  # noqa: E402
-from run_state import _resolve_run_dir, read_events, RunState  # noqa: E402
+from run_state import RunState, _resolve_run_dir, read_events  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +162,9 @@ def _resolve_and_validate(
 ) -> tuple[Path, list[dict[str, Any]], RunState, list[dict[str, Any]]]:
     """步骤 1-5：校验 run_id/to_node，读 jsonl 状态，校验拓扑上游。返回 (run_dir, nodes, run_state, events)。"""
     from workflow_rollback_topology import (
-        _load_nodes, _all_node_ids, _validate_to_node_is_upstream,
+        _all_node_ids,
+        _load_nodes,
+        _validate_to_node_is_upstream,
     )
     if not re.fullmatch(r"[A-Za-z0-9_\-]+", run_id):
         raise RollbackError(f"run_id 包含非法字符（只允许 [A-Za-z0-9_\\-]）：{run_id!r}")
@@ -212,11 +214,13 @@ def _execute_rollback(
     events: list[dict[str, Any]] | None = None,
 ) -> RollbackResult:
     """执行实际的 rollback 操作（持锁期间调用）。"""
-    from workflow_rollback_topology import _get_ordered_node_ids
     from workflow_rollback_archive import (
-        _collect_artifacts_to_archive, _move_artifacts, _truncate_jsonl_to_tail,
+        _collect_artifacts_to_archive,
+        _move_artifacts,
+        _truncate_jsonl_to_tail,
     )
-    from workflow_rollback_subrun import _discover_sub_runs, _archive_sub_run
+    from workflow_rollback_subrun import _archive_sub_run, _discover_sub_runs
+    from workflow_rollback_topology import _get_ordered_node_ids
 
     ordered = _get_ordered_node_ids(nodes)
 
@@ -276,15 +280,21 @@ def _resume_in_progress(
     H-6 重构：CC 从 14 降至 ≤ 10，抽出 _validate_resume_meta + _release_with_unlink helpers。
     F-20 重构：_build_node_map 抽 helper，CC 从 12 → 9。
     F-21 重构：_validate_resume_meta + _release_with_unlink 下沉至 _lock 子模块。
+    F-23 重构：成功路径调 _release_with_unlink（含 unlink + flock 释放）；
+    异常路径只释放 flock 不删 .in_progress（保留供下次启动续跑兜底）。
     """
-    from workflow_rollback_lock import (
-        _acquire_flock, _release_with_unlink, _validate_resume_meta,
-    )
-    from workflow_rollback_topology import _get_ordered_node_ids
     from workflow_rollback_archive import (
-        _collect_artifacts_to_archive, _move_artifacts, _truncate_jsonl_to_tail,
+        _collect_artifacts_to_archive,
+        _move_artifacts,
+        _truncate_jsonl_to_tail,
     )
-    from workflow_rollback_subrun import _discover_sub_runs, _archive_sub_run
+    from workflow_rollback_lock import (
+        _acquire_flock,
+        _release_with_unlink,
+        _validate_resume_meta,
+    )
+    from workflow_rollback_subrun import _archive_sub_run, _discover_sub_runs
+    from workflow_rollback_topology import _get_ordered_node_ids
 
     start_ms = time.monotonic()
     in_prog = stale_archive_dir / ".in_progress"
@@ -327,7 +337,7 @@ def _resume_in_progress(
             "rollback 续跑完成（run_id=%s, to_node=%s, archive_ts=%s, duration_ms=%d）",
             run_id, to_node, archive_ts, duration_ms,
         )
-        return RollbackResult(
+        result = RollbackResult(
             run_id=run_id,
             archive_ts=archive_ts,
             archive_root=archive_root,
@@ -338,8 +348,17 @@ def _resume_in_progress(
             duration_ms=duration_ms,
             partial=True,
         )
-    finally:
+        # F-23：成功路径删 .in_progress + 释放 flock（KI/SIGINT 中途异常会跳过此处，
+        # .in_progress 保留供下次启动 _find_in_progress_archive 续跑兜底）
         _release_with_unlink(lock_fd, in_prog)
+        return result
+    except BaseException:
+        # 异常路径：仅释放 flock，不删 .in_progress
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        finally:
+            lock_fd.close()
+        raise
 
 
 def _execute_with_in_progress(
@@ -358,22 +377,24 @@ def _execute_with_in_progress(
 ) -> RollbackResult:
     """合并 .in_progress 文件管理 + _execute_rollback 调用（G-12 提取）。
 
-    G-1：_write_meta_json 在 try 内，失败时 .in_progress 由 finally 清理。
+    G-1：_write_meta_json 在 try 内，失败时由调用栈保留 .in_progress 供续跑兜底。
     F-15 重构：unlink 内联 6 行替换为 _unlink_in_progress helper（与 _release_with_unlink 共用）。
+    F-23 重构：unlink 从 finally 挪到 try 块成功路径（KI/SIGINT 中途异常 → .in_progress
+    保留，对齐 detailed-design §6.4 line 859 伪码"mv 完成后删标记"的语义）。
     """
     from workflow_rollback_lock import _unlink_in_progress
 
-    try:
-        _write_meta_json(archive_root, run_id, to_node)
-        return _execute_rollback(
-            run_dir=run_dir, archive_root=archive_root, archive_ts=archive_ts,
-            nodes=nodes, run_state=run_state, to_node=to_node,
-            run_id=run_id, target_id=target_id, root=root,
-            start_ms=start_ms, events=events,
-        )
-    finally:
-        # H-1b 修复：unlink 失败改 logger.error 不抛，让原始异常（mv 失败等）继续传播
-        _unlink_in_progress(in_progress_path)
+    _write_meta_json(archive_root, run_id, to_node)
+    result = _execute_rollback(
+        run_dir=run_dir, archive_root=archive_root, archive_ts=archive_ts,
+        nodes=nodes, run_state=run_state, to_node=to_node,
+        run_id=run_id, target_id=target_id, root=root,
+        start_ms=start_ms, events=events,
+    )
+    # 仅成功路径走到这里删 .in_progress；任何中途异常（mv 失败 / KI / SIGINT）
+    # 跳过 unlink，下次 rollback_run 启动时由 _find_in_progress_archive 检测并续跑
+    _unlink_in_progress(in_progress_path)
+    return result
 
 
 # 公开 API
@@ -397,6 +418,9 @@ def rollback_run(
 
     if target_id is not None and not re.fullmatch(r"[A-Za-z0-9_\-]+", target_id):
         raise RollbackError(f"target_id 包含非法字符（只允许 [A-Za-z0-9_\\-]）：{target_id!r}")
+    # F-13：to_node 公开 API 入口校验（与 run_id / target_id 对称，堵日志注入路径）
+    if not re.fullmatch(r"[A-Za-z0-9_\-]+", to_node):
+        raise RollbackError(f"to_node 包含非法字符（只允许 [A-Za-z0-9_\\-]）：{to_node!r}")
 
     logger.info("rollback_run 开始（run_id=%s, to_node=%s）", run_id, to_node)
     run_dir, nodes, run_state, events = _resolve_and_validate(run_id, to_node, root)

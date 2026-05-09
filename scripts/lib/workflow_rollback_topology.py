@@ -23,7 +23,6 @@ if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
 import yaml  # noqa: E402
-
 from common import REPO_ROOT  # noqa: E402
 from topological_sort import topological_layers  # noqa: E402
 

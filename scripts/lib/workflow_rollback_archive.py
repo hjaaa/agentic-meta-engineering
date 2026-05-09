@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 from pathlib import Path
 from typing import Any
@@ -107,18 +108,25 @@ def _truncate_jsonl_to_tail(
     kept = events[:cut_idx]
     tail = events[cut_idx:]
 
-    # 先写 tail 文件
     tail_path = archive_root / "run-state.jsonl.tail"
     tail_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # F-24 三步原子化（消"两个文件同时含尾部事件"中间态）：
+    # 1) 先写 <jsonl>.new（截短后内容）
+    # 2) 写 tail_path（归档尾部事件）
+    # 3) os.replace(<jsonl>.new, jsonl) 原子覆盖
+    # KI 落 1 → 仅 .new 残留，续跑可清理；落 2 → tail 与 .new 共存，续跑用 .new；
+    # 落 3 → 原子完成。任意中间态都不会出现"两个文件同时含尾部事件"。
+    new_path = jsonl_path.with_suffix(jsonl_path.suffix + ".new")
+    with new_path.open("w", encoding="utf-8") as fh:
+        for evt in kept:
+            fh.write(json.dumps(evt, ensure_ascii=False) + "\n")
+
     with tail_path.open("w", encoding="utf-8") as fh:
         for evt in tail:
             fh.write(json.dumps(evt, ensure_ascii=False) + "\n")
 
-    # 重写原 jsonl（只保留 kept 部分）
-    with jsonl_path.open("w", encoding="utf-8") as fh:
-        for evt in kept:
-            fh.write(json.dumps(evt, ensure_ascii=False) + "\n")
-
+    os.replace(str(new_path), str(jsonl_path))
     return tail_path, kept
 
 
