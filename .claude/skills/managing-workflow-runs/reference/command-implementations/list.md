@@ -26,5 +26,5 @@ RUN-20260509-001   code-review-emb    completed -              final-report     
 
 ## 失败模式
 
-- filter 语法错 → exit 2 + 用法示例（不 exit 1，区分"无结果"和"语法错"）
+- filter 语法错 → exit 1 + 用法示例
 - meta.yaml 解析错 → warn + 跳过该 run，不影响整体

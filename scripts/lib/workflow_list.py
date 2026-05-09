@@ -117,7 +117,7 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
         args      — [--filter=expr?]（可选）
         repo_root — 注入 repo 根路径（测试用）
 
-    返回：exit code（0 成功，2 filter 语法错）
+    返回：exit code（0 成功，1 filter 语法错）
     """
     root = repo_root or REPO_ROOT
 

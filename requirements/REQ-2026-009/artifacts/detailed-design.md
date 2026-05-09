@@ -93,7 +93,7 @@
 | 前置条件 | — |
 | 副作用 | 只读；扫 `requirements/*/meta.yaml` + `runs/*/meta.yaml` |
 | 返回输出 | 表格：REQ-ID / 模板 / 状态 / 阶段 / 当前节点 / 父子标识 |
-| 失败模式 | filter 语法错 → exit 2 + 示例 |
+| 失败模式 | filter 语法错 → exit 1 + 示例 |
 | 决策回引 | D-002 双轨期扫描 |
 
 #### 1.2.6 `/workflow:approve`
