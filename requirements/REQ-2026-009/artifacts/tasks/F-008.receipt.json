@@ -2,19 +2,24 @@
   "schema_version": "1.0",
   "feature_id": "F-008",
   "status": "DONE",
-  "commit_sha": "8830997",
+  "commit_sha": "0917b94",
   "files_changed": [
-    "scripts/lib/run_state.py",
     "tests/e2e/conftest.py",
-    "tests/e2e/fixtures/__init__.py",
     "tests/e2e/fixtures/e2e_helpers.py",
     "tests/e2e/fixtures/sub_workflow_mock.py",
-    "tests/e2e/test_sub_workflow_lifecycle.py"
+    "tests/e2e/test_sub_workflow_lifecycle.py",
+    "requirements/REQ-2026-009/artifacts/detailed-design.md"
   ],
-  "test_summary": "F-008 sub_workflow 父子状态联动 e2e: 3 commit (609bea7 + e22675b + 8830997) / pytest tests/e2e/test_sub_workflow_lifecycle.py -v: 8 passed (TC-F8-1~6 含 TC-F8-3 parametrize fail/continue/skip 三子用例) 总耗时 0.41s / 关联回归 tests/lib/test_workflow_rollback.py + tests/lib/test_run_state.py 35 passed 0 fail / pycodestyle 0 violation / ruff All checks passed / 单方法 ≤ 80 行 / mock 优先无真派 Agent / monkeypatch 快进 30s/60s 阻塞 — 实测耗时 < 1s",
-  "touches_violations": [],
+  "test_summary": "rev2 9-item fix / pytest tests/e2e/test_sub_workflow_lifecycle.py -v: 8 passed 总耗时 0.44s / 关联回归 tests/lib/test_workflow_rollback.py + tests/lib/test_run_state.py: 35 passed 0 fail / pycodestyle --max-line-length=120 tests/e2e/ 0 violation / ruff check tests/e2e/ All checks passed / 2 commits: 7a728af (F-8/F-9/F-11/F-12/F-14/F-19/F-31/F-34) + 0917b94 (F-3 docs)",
+  "touches_violations": [
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-009/artifacts/review-20260509-234834.md",
+      "ts": "2026-05-09T15:50:19+00:00",
+      "tool": "Write"
+    }
+  ],
   "concerns": [],
   "missing_context": "",
   "block_reason": "",
-  "timestamp": "2026-05-09T23:10:30+08:00"
+  "timestamp": "2026-05-10T00:17:00+08:00"
 }
