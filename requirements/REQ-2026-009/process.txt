@@ -99,3 +99,5 @@
 2026-05-09 15:23:43 [save] F-006 闭环（rev1 86→rev2 94 真零残留 / 9 commits / 4 finding 全 closed + 5 drop / 锁释放）；6/13 progress；待派 F-007/F-008/F-009
 2026-05-09 15:27:17 [development] F-007 派发（model=sonnet）：workflow_rollback.py + 跨父子归档 + 双层锁中断保护（rollback API / RollbackResult / 7 类异常 / fcntl.flock+O_EXCL / 4 fixture + crash-recovery + concurrent-block / TC-F7-1~7）
 2026-05-09 15:48:57 [development] F-007 实现完成（subagent DONE_WITH_CONCERNS → rev1.5 清理 shim+skip 占位 → DONE）：4 commit / 9 TC + 2 额外 / 1104 passed 0 fail / touches 扩 tests/skills/test_workflow_commands.py 1 行 skip 装饰器
+2026-05-09 16:17:01 [review:needs_attention] code-quality-reviewer rev1 74/100 needs_attention (REV-REQ-2026-009-code-F-007-001) — 46 候选 → critic 2 rejected/8 not_proven/36 not_rebutted → judge 5 keep+major (F-1 锁顺序 / F-11 unlink+flock / F-19 续跑 to_node / F-20 sub_run 双路径 / F-25 929 行) + 9 keep+minor + 9 drop + 23 follow-up；rev2 派 subagent 修
+2026-05-09 16:34:42 [development] F-007 rev2 修复完成（subagent DONE）：14 项全闭合（5 keep+major + 9 keep+minor）/ 拆 4 模块 + 锁顺序 + .meta.json + sub_run 单一发现 / 2 commit (90a5b7a + 4e33854) / pytest 10 + 1105 passed 0 fail
