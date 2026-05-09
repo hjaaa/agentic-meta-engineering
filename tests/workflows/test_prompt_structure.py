@@ -335,17 +335,21 @@ _FRESH_CONTEXT_ALLOWED_TOOLS_WHITELIST = {"Read", "Grep"}
 _SHARED_CONTEXT_ALLOWED_TOOLS = {"Read", "Grep", "Bash", "Write"}
 
 
-def _check_existence(filename: str, violations: list[str]) -> bool:
-    """子检查 1：prompt 文件存在且 frontmatter 可解析。返回 False 则跳过后续检查。"""
+def _check_existence(filename: str, violations: list[str]) -> dict[str, Any] | None:
+    """子检查 1：prompt 文件存在且 frontmatter 可解析。
+
+    返回解析后的 frontmatter dict（成功），或 None（文件不存在/解析失败）。
+    调用方用返回值代替再次 _parse_frontmatter 调用，避免双解析。
+    """
     fpath = _CR_EMBEDDED_PROMPTS_DIR / filename
     if not fpath.exists():
         violations.append(f"{filename}: 文件不存在")
-        return False
+        return None
     fm = _parse_frontmatter(fpath)
     if not fm:
         violations.append(f"{filename}: frontmatter 解析失败或为空")
-        return False
-    return True
+        return None
+    return fm
 
 
 def _check_required_fields(filename: str, fm: dict[str, Any], violations: list[str]) -> None:
@@ -435,9 +439,9 @@ def test_review_prompts_frontmatter() -> None:
     violations: list[str] = []
 
     for filename in _CR_EMBEDDED_PROMPT_FILES:
-        if not _check_existence(filename, violations):
+        fm = _check_existence(filename, violations)
+        if fm is None:
             continue
-        fm = _parse_frontmatter(_CR_EMBEDDED_PROMPTS_DIR / filename)
         _check_required_fields(filename, fm, violations)
         _check_context(filename, fm, violations)
         _check_allowed_tools(filename, fm, violations)
