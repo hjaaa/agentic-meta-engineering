@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import logging
 import subprocess
 import sys
 from pathlib import Path
@@ -44,8 +45,10 @@ def infer_run_id_from_branch(repo_root: Path) -> str | None:
         branch = result.stdout.strip()
         if branch.startswith("feat/req-"):
             return branch[len("feat/req-"):]
-    except Exception:
-        pass
+    except Exception as exc:
+        # best-effort fallback：git 命令失败（无 git / 非 git repo）是预期行为，
+        # 保留 debug 日志供诊断，不阻断调用方
+        logging.debug("git rev-parse failed: %s", exc)
     return None
 
 
