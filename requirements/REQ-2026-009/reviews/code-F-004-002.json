@@ -1,0 +1,81 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-009-code-F-004-002",
+  "requirement_id": "REQ-2026-009",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-09 09:04:08",
+  "reviewed_commit": "428953f",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "19e3c9c4bc303500791112817c6a4efe6096c105d9fdb1c31d553fb35634a7c5"
+    },
+    {
+      "path": "artifacts/tasks/F-004.md",
+      "sha256": "4d9253b417e88af11f84e3f415ae78e1898f7b1aa86aaf7adf545a9ac7fd6766"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 88,
+  "dimensions": {
+    "design_consistency": {
+      "score": 90,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "code-review-embedded.yaml:40 default_idle_timeout 不在 spec §6.1 顶层字段表，loader 不引用 → 静默忽略（follow-up）"
+        }
+      ]
+    },
+    "security": {
+      "score": 92,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 90,
+      "issues": []
+    },
+    "complexity": {
+      "score": 88,
+      "issues": []
+    },
+    "error_handling": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "code-review-embedded.yaml cr-critic verdicts.items 缺 additionalProperties:false（critic 已确认 META 路径 schema 不阻断，但严格化是优化项 follow-up）"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "tasks/F-004.md:67 acceptance 仅到 TC-F4-5，TC-F4-6 未注册到 features.json/F-004.md（follow-up，文档追溯）"
+        }
+      ]
+    },
+    "performance": {
+      "score": 90,
+      "issues": []
+    },
+    "history_context": {
+      "score": 88,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "F-15 半闭合本质：spec 无 on_node_failure，trigger_rule=all_done 已是唯一保障——若希望强化错误治理，可在 spec §6 新增可选 on_failure_callback 字段（独立需求级别）",
+    "TC-F4-6 应回填 features.json + tasks/F-004.md acceptance 列表，与 rev1 F-12 闭合证据形成回溯链",
+    "yaml default_idle_timeout 要么在 loader 实现并写入 spec，要么从 yaml 删除——避免读者误以为它生效",
+    "follow-up 闭环：F-26（测试函数命名）、F-2（diff_range 白名单 regex / $ARTIFACTS_DIR jail check）建议下个迭代收敛"
+  ],
+  "scope": {
+    "feature_id": "F-004"
+  },
+  "supersedes": "REV-REQ-2026-009-code-F-004-001"
+}
