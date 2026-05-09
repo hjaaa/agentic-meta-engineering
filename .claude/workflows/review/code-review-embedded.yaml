@@ -65,13 +65,18 @@ nodes:
       properties:
         diff_range:
           type: string
+          minLength: 1
         scope_file:
           type: string
+          description: "$ARTIFACTS_DIR/review-scope.json（每次 run 独立，防并发覆盖）"
         mode:
           type: string
           enum: [standalone, embedded]
         feature_id:
           type: string
+        warning:
+          type: string
+          description: "非致命告警信息（可选）"
       required: [diff_range, scope_file, mode]
 
   # ════════════════════════════════════════════════════════════════════

@@ -9,12 +9,15 @@ output_format:
   properties:
     diff_range:
       type: string
+      minLength: 1
     scope_file:
       type: string
     mode:
       type: string
       enum: [standalone, embedded]
     feature_id:
+      type: string
+    warning:
       type: string
   required: [diff_range, scope_file, mode]
 ---
@@ -46,7 +49,7 @@ output_format:
 
 ## scope_file 生成
 
-将增量文件清单写到临时文件 `.review-scope.json`，格式：
+将增量文件清单写到隔离路径 `$ARTIFACTS_DIR/review-scope.json`，格式：
 
 ```json
 {
@@ -57,16 +60,22 @@ output_format:
 }
 ```
 
+`$ARTIFACTS_DIR` 由引擎注入，每个 workflow run 独立，父子 run 路径互不重叠，
+不会因并发 review 互相覆盖（spec §2.4 父子隔离）。
+
 ## 输出约定
 
 输出结构化 JSON，字段：
-- `diff_range`：git diff 范围字符串
-- `scope_file`：`.review-scope.json` 路径（固定）
+- `diff_range`：git diff 范围字符串（非空；若为空则抛错，见下方注意事项）
+- `scope_file`：`$ARTIFACTS_DIR/review-scope.json` 路径（运行时已替换为具体路径）
 - `mode`：`"standalone"` 或 `"embedded"`
 - `feature_id`（可选）：嵌入模式时从 args 获取
+- `warning`（可选，`type: string`）：非致命告警信息
 
 ## 注意事项
 
 - 禁止在此阶段读取完整 diff 内容（节省主对话 token）
-- 若 diff_range 为空（无增量），输出 diff_range = "HEAD~1..HEAD" 并记录警告
-- scope_file 路径始终是 `.review-scope.json`（工作目录根）
+- **若 diff_range 为空（无增量），必须抛出错误并终止执行**，不得 fallback 为
+  `"HEAD~1..HEAD"`——空 diff 会导致下游 8 个 checker 静默跑空集合，cr-judge
+  输出空报告掩盖实际问题。
+- scope_file 必须写到 `$ARTIFACTS_DIR/review-scope.json`，禁止写到工作目录根
