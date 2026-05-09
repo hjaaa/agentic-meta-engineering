@@ -73,3 +73,4 @@
 2026-05-09 09:47:55 [signoff] REV-REQ-2026-009-code-F-004-004 approved by hj19961223@gmail.com
 2026-05-09 09:48:44 [signoff] REV-REQ-2026-009-code-F-004-004 approved by hj19961223@gmail.com
 2026-05-09 09:48:44 [development] F-004 完成（review approved sign-off / status=done / review_report=artifacts/review-20260509-094500.md / 释放派发锁 / 18 commit / 螺旋 rev1→rev4）
+2026-05-09 09:49:54 [save] F-004 done（rev1 62→rev2 88→rev3 82→rev4 92 / 18 commit / 锁释放）；4/13；待派 F-005/F-007/F-008
