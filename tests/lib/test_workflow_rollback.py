@@ -113,7 +113,7 @@ def test_R1_single_layer(tmp_path):
     for nid in ["node-a", "node-b", "node-c", "node-d"]:
         _create_artifact_dir(run_dir, nid)
 
-    # monkeypatch _resolve_run_dir 使用 tmp_path 作为 repo_root
+    # 通过 repo_root=tmp_path 参数让测试使用 tmp 目录（无需 monkeypatch）
     result = rollback_run(run_id, "node-c", repo_root=tmp_path)
 
     # 断言返回值
@@ -353,7 +353,7 @@ def test_crash_recovery(tmp_path):
 
 
 # ============================================================================
-# TC-F7-5b: crash recovery via monkeypatch（§6.6 TC-F7-5b）
+# TC-F7-5b: 崩溃恢复——monkeypatch shutil.move 中途抛错 → 续跑（§6.6 TC-F7-5b）
 # ============================================================================
 
 def test_crash_recovery_via_monkeypatch_mv(tmp_path, monkeypatch):

@@ -837,7 +837,7 @@ class SubRunArchive:
 | `TargetNodeNotFoundError` | `to_node` 不在 run 对应 yaml 节点 ID 集合 | 1 |
 | `TargetNodeNotUpstreamError` | `to_node` 不是当前节点的拓扑上游（或就是当前节点本身） | 1 |
 | `ConcurrentRollbackError` | `runs/<id>/.rollback.lock` 已被持有（fcntl.flock 失败） | 1 |
-| `RollbackInProgressError` | `.archived/<ts>/.in_progress` 残留且 ts ≠ 本次（中断未续跑前禁止新 rollback） | 1 |
+| `RollbackInProgressError` | O_EXCL 原子创建 .in_progress 失败（同 archive_ts 已被持有或残留） | 1 |
 | `RollbackResumeMismatchError` | `.meta.json` 中 `to_node` 与调用方传入不一致（续跑验证失败） | 1 |
 | `IOError` | mv 文件失败（磁盘满 / 权限） | 1（重抛标准异常） |
 

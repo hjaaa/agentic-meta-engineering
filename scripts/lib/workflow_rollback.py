@@ -78,20 +78,26 @@ class RollbackError(WorkflowError):
     RollbackInProgressError / RollbackResumeMismatchError。
     """
 
+
 class RunStateNotFoundError(RollbackError):
     """run_id 在两条路径都查不到 run 目录。"""
+
 
 class TargetNodeNotFoundError(RollbackError):
     """to_node 不在 run 对应 yaml 节点 ID 集合。"""
 
+
 class TargetNodeNotUpstreamError(RollbackError):
     """to_node 不是当前节点的拓扑上游（或就是当前节点本身）。"""
+
 
 class ConcurrentRollbackError(RollbackError):
     """runs/<id>/.rollback.lock 已被持有（fcntl.flock 失败）。"""
 
+
 class RollbackInProgressError(RollbackError):
     """.archived/<ts>/.in_progress 残留（中断未续跑前禁止新 rollback）。"""
+
 
 class RollbackResumeMismatchError(RollbackError):
     """.meta.json 中记录的 to_node 与调用方传入的 to_node 不一致。"""

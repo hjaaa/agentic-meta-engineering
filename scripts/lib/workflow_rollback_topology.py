@@ -146,7 +146,7 @@ def _validate_to_node_is_upstream(
     to_pos = ordered.index(to_node) if to_node in ordered else -1
 
     if to_pos < 0:
-        # 已在 _validate_to_node_exists 中处理；这里兜底
+        # to_node 不在节点集合时由 _resolve_and_validate 调用方已校验；这里兜底
         raise TargetNodeNotFoundError(f"to_node={to_node!r} 不在 workflow 节点列表")
 
     if to_pos >= current_pos:
