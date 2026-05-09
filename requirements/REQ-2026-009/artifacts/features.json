@@ -146,7 +146,8 @@
         "TC-F4-3: pytest tests/e2e/test_code_review_embedded.py::test_cr_critic_rebuttal 绿——cr-critic 对每条 finding 给 verdict ∈ {rejected, not_proven, not_rebutted} + cr-judge 取 not_rebutted 进最终报告",
         "TC-F4-4: pytest tests/workflows/test_prompt_structure.py::test_review_prompts_frontmatter 绿——11 prompt frontmatter context 字段值 ∈ {fresh, shared} + allowed_tools 不含 Bash/Edit/Write（仅 Read/Grep）",
         "TC-F4-5: pytest tests/e2e/test_code_review_embedded.py::test_sub_workflow_args_passthrough 绿——standard-8phase 调本模板时 args:{diff_range: $upstream.output} 经 shellQuote 注入子 $ARGUMENTS",
-        "TC-F4-6: pytest tests/e2e/test_code_review_embedded.py::TestNoCriticWildcardRefs::test_critic_judge_no_wildcard_in_input_refs 绿——cr-critic.md / cr-judge.md 不含通配引用 $cr-checker-*.output.findings + 8 个具体 checker 引用全在（覆盖 F-12 critical 修复）"
+        "TC-F4-6: pytest tests/e2e/test_code_review_embedded.py::TestNoCriticWildcardRefs::test_critic_judge_no_wildcard_in_input_refs 绿——cr-critic.md / cr-judge.md 不含通配引用 $cr-checker-*.output.findings + 8 个具体 checker 引用全在（覆盖 F-12 critical 修复）",
+        "TC-F4-7: pytest tests/e2e/test_code_review_embedded.py::test_has_error_when_guard_skips_downstream 绿——10 个下游节点（8 cr-checker + cr-critic + cr-judge）全部含 when: '$cr-prepare.output.has_error == false' 守卫，cr-prepare 错误路径下 has_error=true 经引擎层 spec §6.6 when 强制终止下游（覆盖 rev3 H-1 修复）"
       ]
     },
     {
