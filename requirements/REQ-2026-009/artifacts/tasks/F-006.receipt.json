@@ -1,5 +1,19 @@
 {
   "feature_id": "F-006",
   "schema_version": "1.0",
-  "touches_violations": []
+  "status": "DONE",
+  "completed_at": "2026-05-09T15:22:00+08:00",
+  "commit_shas": [
+    "717c4e6",
+    "884909e",
+    "e379952",
+    "e19390c",
+    "f317a81",
+    "eb613a9",
+    "1c86350",
+    "182b483",
+    "6f3150d"
+  ],
+  "touches_violations": [],
+  "notes": "rev1 86/100 looks_clean (3 minor + 1 follow-up keep) → rev2 looks_clean 94/100 真零残留（3 closed + 1 partial → inline rev3 1 行修补 closed）；rev1 9 候选 finding 经 critic + judge 三方对比 → 3 keep minor + 1 follow-up + 5 drop；rev2 仅 design-consistency-checker 路由命中；累计 9 commits / 测试 32 + 1096 passed 0 回归 / sign-off approved 标准通道 hj19961223@gmail.com"
 }
