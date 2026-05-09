@@ -238,6 +238,15 @@ def _consume_residual_new(jsonl_path: Path) -> None:
     此时若 _resume_in_progress 仅判 tail_path.exists() 会跳过整个 truncate
     → .new 永不消费、jsonl 永不截断、下游误认节点完成。
     抽出独立 helper 既隔离 F-2 修复语义，也降 _resume_in_progress 主体 CC。
+
+    Args:
+        jsonl_path: 主 jsonl 路径（archive_root/run-state.jsonl 或 sub run 同名）
+
+    Returns:
+        None。无 .new 残留时直接返回；否则 os.replace(.new, jsonl) 收尾。
+
+    Raises:
+        RollbackError: os.replace 失败时包装抛出（含 new_path / jsonl_path 上下文）
     """
     new_path = jsonl_path.with_suffix(jsonl_path.suffix + ".new")
     if new_path.exists():
@@ -245,7 +254,12 @@ def _consume_residual_new(jsonl_path: Path) -> None:
             "检测到残留 .new（archive 端 KI 落第 2 步），os.replace 续跑：%s → %s",
             new_path, jsonl_path,
         )
-        os.replace(str(new_path), str(jsonl_path))
+        try:
+            os.replace(str(new_path), str(jsonl_path))
+        except OSError as exc:
+            raise RollbackError(
+                f"residual .new 收尾失败（new_path={new_path}, jsonl_path={jsonl_path}）：{exc}"
+            ) from exc
 
 
 def _resume_in_progress(

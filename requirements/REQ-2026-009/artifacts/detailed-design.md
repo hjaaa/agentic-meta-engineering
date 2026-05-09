@@ -839,7 +839,7 @@ class SubRunArchive:
 | `ConcurrentRollbackError` | `runs/<id>/.rollback.lock` 已被持有（fcntl.flock 失败） | 1 |
 | `RollbackInProgressError` | O_EXCL 原子创建 .in_progress 失败（同 archive_ts 已被持有或残留） | 1 |
 | `RollbackResumeMismatchError` | `.meta.json` 中 `to_node` 与调用方传入不一致（续跑验证失败） | 1 |
-| `IOError` | mv 文件失败（磁盘满 / 权限） | 1（重抛标准异常） |
+| `RollbackError`（包装 OSError） | jsonl 截断步骤（_truncate_jsonl_to_tail / _consume_residual_new os.replace）失败 | 1（含 jsonl_path / archive_root 上下文） |
 
 ### 6.4 并发互斥与中断保护选型
 
@@ -917,13 +917,14 @@ tests/lib/fixtures/rollback/
 |---|---|---|
 | crash-recovery | 用 monkeypatch 在 mv 中途 raise → 模拟进程崩溃 → 重新调 `rollback_run` 续跑 | RollbackResult.partial=True；最终文件树等于无中断版本；`.in_progress` 已删 |
 | concurrent-block | 同 run_id 并发 2 个 rollback（线程或子进程）| 第二个抛 `ConcurrentRollbackError` |
+| KI-step-1 / KI-step-2 续跑 | archive 端三步原子化中途崩溃（仅 .new 已写、tail 或 replace 未走完）→ 重新调 `rollback_run` | `_consume_residual_new` 检测 .new 残留 → os.replace 收尾后再判 tail；jsonl 最终一致截断 |
 
 ### 6.7 影响域
 
 新增文件：
 
 - `scripts/lib/workflow_rollback.py`（公开 API + RollbackResult dataclass + 异常类 + CLI 入口）
-- `scripts/lib/workflow_rollback_lock.py`（双层锁 _acquire_flock / _find_in_progress_archive / _validate_resume_meta / _unlink_in_progress / _release_with_unlink）
+- `scripts/lib/workflow_rollback_lock.py`（双层锁 _acquire_flock / _find_in_progress_archive / _validate_resume_meta / _unlink_in_progress / _release_with_unlink + 续跑元数据 _write_meta_json / _read_meta_json / _now_iso8601）
 - `scripts/lib/workflow_rollback_archive.py`（_collect/_move/_truncate_jsonl）
 - `scripts/lib/workflow_rollback_subrun.py`（_discover_sub_runs + _archive_sub_run）
 - `scripts/lib/workflow_rollback_topology.py`（yaml 加载 / 拓扑工具）

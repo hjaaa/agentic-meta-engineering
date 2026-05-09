@@ -49,6 +49,7 @@ from workflow_rollback import (  # noqa: E402
 # 测试辅助工具
 # ============================================================================
 
+
 def _setup_run_dir(tmp_path: Path, fixture_name: str, run_id: str) -> Path:
     """在 tmp_path 下建 runs/<run_id>/ 目录，从 fixture 复制 workflow.yaml + jsonl。
 
@@ -670,6 +671,64 @@ def test_resume_recovers_from_archive_ki_after_tail_write(tmp_path, monkeypatch)
     assert "node-c" in post_resume_kept, "续跑后 jsonl 应保留 node-c completed"
 
     # .in_progress 已删（成功路径调 _release_with_unlink）
+    assert not (archive_dir / ".in_progress").exists(), "续跑后 .in_progress 应已删"
+
+
+def test_resume_recovers_from_archive_ki_at_step1_only_new_written(tmp_path, monkeypatch):
+    """F-8 KI-step-1 续跑：archive 端 KI 落第 1 步（仅 .new 已写、tail 未写）→ 续跑触发完整截断流程。
+
+    场景：第 1 次 rollback 在 _truncate_jsonl_to_tail 步骤 2 之前抛错（仅 .new 已写）；
+    第 2 次续跑应：_consume_residual_new os.replace 收尾 .new + 因 tail 不存在再走完整 _truncate
+    → 最终 jsonl 一致截断、tail 已生成、.new 已消费。
+    """
+    run_id = "TEST-F8-RESUME-STEP1"
+    run_dir = tmp_path / "runs" / run_id
+    run_dir.mkdir(parents=True)
+    shutil.copy(FIXTURES_DIR / "R1-single-layer" / "workflow.yaml", run_dir / "workflow.yaml")
+    shutil.copy(FIXTURES_DIR / "R1-single-layer" / "initial-jsonl.txt", run_dir / "run-state.jsonl")
+    for nid in ["node-a", "node-b", "node-c", "node-d"]:
+        _create_artifact_dir(run_dir, nid)
+
+    jsonl_path = run_dir / "run-state.jsonl"
+    new_path = jsonl_path.with_suffix(jsonl_path.suffix + ".new")
+
+    # 劫持 archive 模块 logger.debug：第一次调用（"步骤 1 完成"）后抛 OSError，
+    # 模拟 archive 端 KI 落第 1 步：仅 .new 已写、tail 未写、jsonl 未截断
+    import workflow_rollback_archive as _arch
+    original_debug = _arch.logger.debug
+    debug_calls = [0]
+
+    def raising_debug(*args, **kwargs):
+        debug_calls[0] += 1
+        original_debug(*args, **kwargs)
+        if debug_calls[0] == 1:
+            raise OSError("模拟 archive 端 KI 落第 1 步：tail 写入前崩溃")
+
+    monkeypatch.setattr(_arch.logger, "debug", raising_debug)
+
+    # 首次 rollback：应在步骤 2 前抛错（被包成 RollbackError）
+    with pytest.raises(RollbackError, match="truncate jsonl 失败"):
+        rollback_run(run_id, "node-c", repo_root=tmp_path)
+
+    archived_dirs = [d for d in (run_dir / ".archived").iterdir() if d.is_dir()]
+    archive_dir = archived_dirs[0]
+    tail_path = archive_dir / "run-state.jsonl.tail"
+    assert (archive_dir / ".in_progress").exists(), "前提：.in_progress 应残留"
+    assert new_path.exists(), "前提：.new 应残留（KI-step-1 证据）"
+    assert not tail_path.exists(), "前提：tail 应未写（KI-step-1 关键）"
+
+    # 恢复 logger.debug，开始续跑
+    monkeypatch.undo()
+
+    result = rollback_run(run_id, "node-c", repo_root=tmp_path)
+
+    # 续跑断言：F-8 完整路径——_consume_residual_new os.replace + _truncate_jsonl_to_tail 走完
+    assert result.partial is True, "续跑路径应返回 partial=True"
+    assert not new_path.exists(), "续跑后 .new 应被消费（_consume_residual_new os.replace）"
+    assert tail_path.exists(), "续跑后 tail 应已生成（走完整 _truncate_jsonl_to_tail）"
+    post_kept = _get_completed_node_ids(jsonl_path)
+    assert "node-d" not in post_kept, "续跑后 jsonl 不应含 node-d completed"
+    assert "node-c" in post_kept, "续跑后 jsonl 应保留 node-c completed"
     assert not (archive_dir / ".in_progress").exists(), "续跑后 .in_progress 应已删"
 
 
