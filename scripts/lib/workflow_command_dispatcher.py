@@ -64,6 +64,10 @@ def dispatch(cmd: str, args: list[str]) -> int:
         # 命令模块缺失（_CMD_MAP 配置错误 / 模块文件未落地）→ 友好错误，不暴露 traceback
         print(f"ERROR: 命令模块未实现 ({module_name}): {exc}", file=sys.stderr)
         return 1
+    except KeyboardInterrupt:
+        # 用户 Ctrl+C 中断 → 友好提示，不暴露 traceback，返回 130（Unix Ctrl+C 惯例）
+        print("已中断", file=sys.stderr)
+        return 130
     except WorkflowError as exc:
         print(f"WorkflowError: {exc}", file=sys.stderr)
         return 1
