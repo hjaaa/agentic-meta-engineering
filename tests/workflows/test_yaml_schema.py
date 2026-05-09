@@ -48,6 +48,67 @@ def test_code_review_embedded_yaml_is_loadable_if_present():
 
 
 # ============================================================================
+# TC-F4-1（F-004 新增）：code-review-embedded.yaml 解析 + 11 节点 + prompt_file 存在
+# ============================================================================
+
+REVIEW_YAML_PATH = WORKFLOWS_DIR / "review" / "code-review-embedded.yaml"
+
+# 11 个配套 prompt 文件（10 个占位 + 1 个 prompt_file 节点引用）
+EXPECTED_REVIEW_PROMPT_FILES = [
+    "cr-prepare.md",
+    "cr-checker-security.md",
+    "cr-checker-performance.md",
+    "cr-checker-complexity.md",
+    "cr-checker-concurrency.md",
+    "cr-checker-error-handling.md",
+    "cr-checker-design-consistency.md",
+    "cr-checker-auxiliary-spec.md",
+    "cr-checker-history-context.md",
+    "cr-critic.md",
+    "cr-judge.md",
+]
+
+REVIEW_PROMPTS_DIR = PROMPTS_DIR / "code-review-embedded"
+
+
+def test_code_review_embedded_loadable():
+    """TC-F4-1：code-review-embedded.yaml 解析 + 11 节点 + prompt_file 全部存在。
+
+    1. yaml 必须通过 loader（无错误）
+    2. 节点数 = 11（按 detailed-design §2.1）
+    3. 11 个配套 prompt 文件在 prompts/code-review-embedded/ 下全部存在
+    """
+    if not REVIEW_YAML_PATH.exists():
+        pytest.fail(f"code-review-embedded.yaml 不存在: {REVIEW_YAML_PATH}")
+
+    result = load_workflow(REVIEW_YAML_PATH)
+
+    # 1) loader 无错（含 DAG + prompt_file 路径校验）
+    assert result.report.errors == 0, (
+        f"code-review-embedded.yaml loader 报错:\n{result.report.render()}"
+    )
+    assert result.workflow is not None
+
+    # 2) 节点数精确 = 11
+    nodes = result.workflow["nodes"]
+    assert len(nodes) == 11, (
+        f"code-review-embedded.yaml 节点数应为 11，实际为 {len(nodes)}"
+    )
+
+    # 3) 11 个配套 prompt 文件在文件系统上全部存在
+    missing_files: list[str] = []
+    for filename in EXPECTED_REVIEW_PROMPT_FILES:
+        fpath = REVIEW_PROMPTS_DIR / filename
+        if not fpath.exists():
+            missing_files.append(filename)
+
+    assert not missing_files, (
+        f"以下 prompt 文件不存在于 {REVIEW_PROMPTS_DIR}:\n"
+        + "\n".join(f"  {f}" for f in missing_files)
+    )
+
+
+# ============================================================================
 # TC-F3-1（F-003 新增）：38 节点解析 + 拓扑序合法 + prompt_file 文件真实存在
 # ============================================================================
 
