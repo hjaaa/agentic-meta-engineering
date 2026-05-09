@@ -63,7 +63,7 @@ def _load_run_entry(run_dir: Path) -> dict[str, Any] | None:
             except (json.JSONDecodeError, OSError) as exc2:
                 print(f"WARN: meta 解析失败（json） {run_dir.name}: {exc2}", file=sys.stderr)
                 meta = {}
-        except (yaml.YAMLError, OSError) as exc:
+        except OSError as exc:
             # 非 yaml 解析错误（OSError 类 IO/权限）→ 尝试 json fallback
             try:
                 import json  # noqa: PLC0415 — 与 yaml fallback 路径合并
