@@ -115,7 +115,7 @@ def match_keyword(
 
     # Step 4：有命中或无命中
     if hits:
-        return hits[0].command, extract_args(user_input, hits[0]), None
+        return hits[0].command, hits[0].extract_args(user_input), None
     return None, None, None  # 无命中，launcher 不接管
 ```
 
