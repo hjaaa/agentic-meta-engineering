@@ -24,6 +24,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "scripts" / "lib"))
 
 from workflow_loader import load_workflow  # noqa: E402
+from substitute_vars import substitute_vars  # noqa: E402
 
 YAML_PATH = REPO_ROOT / ".claude" / "workflows" / "review" / "code-review-embedded.yaml"
 PROMPTS_DIR = REPO_ROOT / ".claude" / "workflows" / "prompts" / "code-review-embedded"
@@ -501,3 +502,96 @@ class TestNoCriticWildcardRefs:
                 f"{filename} 缺少以下显式 checker 引用:\n"
                 + "\n".join(f"  {r}" for r in missing_refs)
             )
+
+
+# ============================================================================
+# TC-G8（F-004 rev3 新增）：$ARTIFACTS_DIR 注入运行时隔离验证
+#
+# G-8 修复：验证 cr-prepare.md 中 $ARTIFACTS_DIR/review-scope.json 字面量存在，
+# 且 substitute_vars 在不同 ARTIFACTS_DIR 注入下产生互不重叠的路径（父子 run 隔离）。
+# ============================================================================
+
+
+class TestArtifactsDirSubstitution:
+    """TC-G8：$ARTIFACTS_DIR 注入运行时隔离——父子 run scope_file 路径不重叠。"""
+
+    def test_cr_prepare_contains_artifacts_dir_placeholder(self) -> None:
+        """cr-prepare.md 中必须含 $ARTIFACTS_DIR/review-scope.json 字面量。
+
+        这是 G-8 静态覆盖：确保 cr-prepare 引用了 $ARTIFACTS_DIR 隔离路径，
+        而非裸 review-scope.json（防并发覆盖 / F-10 修复的静态回归拦截）。
+        """
+        cr_prepare_path = PROMPTS_DIR / "cr-prepare.md"
+        assert cr_prepare_path.exists(), f"cr-prepare.md 不存在: {cr_prepare_path}"
+        content = cr_prepare_path.read_text(encoding="utf-8")
+        assert "$ARTIFACTS_DIR/review-scope.json" in content, (
+            "cr-prepare.md 必须含 '$ARTIFACTS_DIR/review-scope.json' 字面量，"
+            "确保 scope_file 写入隔离路径而非工作目录根（F-10 修复 / G-8）"
+        )
+
+    def test_cr_prepare_yaml_output_format_scope_file_references_artifacts_dir(
+        self, nodes_by_id: dict[str, dict]
+    ) -> None:
+        """yaml cr-prepare 节点 output_format.scope_file.description 必须引用 $ARTIFACTS_DIR。
+
+        这是 G-8 的 yaml 层静态覆盖：确保 yaml schema 描述与 prompt 实现保持一致。
+        """
+        node = nodes_by_id["cr-prepare"]
+        scope_file_prop = (
+            node.get("output_format", {})
+            .get("properties", {})
+            .get("scope_file", {})
+        )
+        description = scope_file_prop.get("description", "")
+        assert "$ARTIFACTS_DIR" in description, (
+            f"yaml cr-prepare.output_format.scope_file.description 必须含 '$ARTIFACTS_DIR'，"
+            f"实际: {description!r}"
+        )
+
+    def test_artifacts_dir_substitution_isolated_per_run(self) -> None:
+        """mock 引擎注入不同 ARTIFACTS_DIR，断言父子 run 的 scope_file 路径互不重叠。
+
+        模拟两个并发 run：
+        - 父 run：ARTIFACTS_DIR = requirements/REQ-X/artifacts
+        - 子 run：ARTIFACTS_DIR = runs/child-abc123/artifacts
+        使用 substitute_vars 替换 cr-prepare 中的 $ARTIFACTS_DIR 占位符，
+        断言两者产生的 scope_file 路径含各自隔离段且互不重叠。
+        """
+        cr_prepare_path = PROMPTS_DIR / "cr-prepare.md"
+        template_text = cr_prepare_path.read_text(encoding="utf-8")
+
+        # 验证模板中含 $ARTIFACTS_DIR 占位
+        assert "$ARTIFACTS_DIR" in template_text, (
+            "cr-prepare.md 必须含 $ARTIFACTS_DIR 占位，无法测试注入隔离性"
+        )
+
+        # 使用 substitute_vars 的 ENV_VAR 替换能力注入不同 ARTIFACTS_DIR
+        parent_artifacts = "requirements/REQ-X/artifacts"
+        child_artifacts = "runs/child-abc123/artifacts"
+
+        parent_text = substitute_vars(
+            template_text,
+            node_outputs=None,
+            env={"ARTIFACTS_DIR": parent_artifacts},
+        )
+        child_text = substitute_vars(
+            template_text,
+            node_outputs=None,
+            env={"ARTIFACTS_DIR": child_artifacts},
+        )
+
+        # 断言父 run 文本中含父 artifacts 路径
+        assert parent_artifacts in parent_text, (
+            f"父 run 文本应含 '{parent_artifacts}'，实际替换后未命中"
+        )
+        # 断言子 run 文本中含子 artifacts 路径
+        assert child_artifacts in child_text, (
+            f"子 run 文本应含 '{child_artifacts}'，实际替换后未命中"
+        )
+        # 断言父子 scope_file 路径不重叠（互不出现对方的 artifacts 隔离段）
+        assert child_artifacts not in parent_text, (
+            f"父 run 文本不应含子 run artifacts 路径 '{child_artifacts}'（路径泄露）"
+        )
+        assert parent_artifacts not in child_text, (
+            f"子 run 文本不应含父 run artifacts 路径 '{parent_artifacts}'（路径泄露）"
+        )
