@@ -68,8 +68,12 @@ VALID_EVENT_TYPES: set[str] = {
     # loop
     "loop_iteration_started", "loop_iteration_completed",
     "loop_completed", "loop_max_iterations_exceeded",
-    # 父子联动
+    # 父子联动（子侧事件，子 subagent 自身写入）
     "parent_cancelled", "parent_rolled_back",
+    # 父侧子结局事件（父 run 观测子 subagent 结果后写入，不映射 WORKFLOW_EVENT_TO_STATE）
+    "child_graceful_exited",  # 子 graceful 退出（≤ 30s 内完成 cancel）
+    "child_force_killed",     # TaskStop forceful 兜底（30s 超时）
+    "child_failed",           # 子 subagent 执行节点时抛异常（映射 spec §6.4 on_subworkflow_failure）
 }
 
 # 终态 workflow 事件
