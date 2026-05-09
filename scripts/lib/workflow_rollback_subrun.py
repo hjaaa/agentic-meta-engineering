@@ -96,6 +96,22 @@ def _check_path_traversal(candidate: Path, base: Path) -> None:
         ) from exc
 
 
+def _has_parent_rolled_back(jsonl_path: Path) -> bool:
+    """检查 jsonl 是否已含 parent_rolled_back 事件（续跑幂等检查）。
+
+    H-8 修复：mv 后 append 前先检查，避免续跑重复追加 parent_rolled_back 事件。
+    """
+    if not jsonl_path.exists():
+        return False
+    try:
+        for line in jsonl_path.read_text(encoding="utf-8").splitlines():
+            if '"type": "parent_rolled_back"' in line or '"type":"parent_rolled_back"' in line:
+                return True
+    except OSError:
+        pass
+    return False
+
+
 def _archive_sub_run(
     child_run_dir: Path,
     sub_runs_archive_dir: Path,
@@ -104,8 +120,8 @@ def _archive_sub_run(
     """把子 run 整目录 mv 到 sub_runs_archive_dir/<child_run_id>/。
 
     G-4 修复：先 mv 整目录，再往归档后的 jsonl 追加 parent_rolled_back 事件。
-    这样崩溃中点重跑时不会产生重复事件（mv 是幂等的，但 append 不是）。
-    append_event 失败时抛 RollbackError。
+    H-8 修复：append 前先做幂等检查，续跑路径不重复追加 parent_rolled_back 事件。
+    mv 是幂等的（dest 已存在时 shutil.move 报错，由调用方处理）；append 不幂等，故需检查。
     """
     from workflow_rollback import RollbackError, SubRunArchive
     from run_state import append_event
@@ -123,17 +139,20 @@ def _archive_sub_run(
         ) from exc
 
     # mv 后写事件到归档后的子 jsonl（G-4：写归档后的路径）
+    # H-8：append 前幂等检查——续跑时 parent_rolled_back 已存在则跳过
     archived_jsonl = dest / "run-state.jsonl"
-    try:
-        append_event(archived_jsonl, {
-            "type": "parent_rolled_back",
-            "run_id": child_run_id,
-            "data": {"parent_run_id": run_id},
-        })
-    except Exception as exc:
-        raise RollbackError(
-            f"append parent_rolled_back to {archived_jsonl} 失败：{exc}"
-        ) from exc
+    if not _has_parent_rolled_back(archived_jsonl):
+        try:
+            append_event(archived_jsonl, {
+                "type": "parent_rolled_back",
+                "run_id": child_run_id,
+                "data": {"parent_run_id": run_id},
+            })
+        except Exception as exc:
+            logger.error(
+                "append parent_rolled_back to %s 失败：%s", archived_jsonl, exc,
+            )
+            # 不抛 RollbackError；mv 已成功，审计事件缺失走告警
 
     # 统计归档后 jsonl 行数（用于完整性断言）
     jsonl_event_count = _count_jsonl_lines(archived_jsonl)

@@ -107,7 +107,10 @@ def _now_iso8601() -> str:
 # 内部工具：.meta.json 持久化（M-3）
 
 def _write_meta_json(archive_root: Path, run_id: str, to_node: str) -> None:
-    """写 .archived/<ts>/.meta.json（atomic: tmp fsync → os.replace），持久化续跑上下文。"""
+    """写 .archived/<ts>/.meta.json（atomic: tmp fsync → os.replace），持久化续跑上下文。
+
+    H-7 修复：os.replace 失败时清理孤儿 .meta.json.tmp，防止残留临时文件。
+    """
     meta = {"run_id": run_id, "to_node": to_node, "started_at": _now_iso8601()}
     meta_path = archive_root / ".meta.json"
     tmp_path = archive_root / ".meta.json.tmp"
@@ -115,7 +118,14 @@ def _write_meta_json(archive_root: Path, run_id: str, to_node: str) -> None:
         json.dump(meta, fh, ensure_ascii=False, indent=2)
         fh.flush()
         os.fsync(fh.fileno())
-    os.replace(tmp_path, meta_path)  # POSIX 原子 rename
+    try:
+        os.replace(tmp_path, meta_path)  # POSIX 原子 rename
+    except OSError:
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
 
 
 def _read_meta_json(archive_root: Path) -> dict[str, Any] | None:
