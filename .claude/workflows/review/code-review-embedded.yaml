@@ -74,6 +74,9 @@ nodes:
         warning:
           type: string
           description: "非致命告警信息（可选）"
+        error:
+          type: string
+          description: "安全校验失败或致命错误时设置（diff_range regex 失败 / $ARTIFACTS_DIR jail 越界）；出现即终止后续节点"
       required: [diff_range, scope_file, mode]
 
   # ════════════════════════════════════════════════════════════════════

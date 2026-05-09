@@ -19,6 +19,9 @@ output_format:
       type: string
     warning:
       type: string
+    error:
+      type: string
+      description: "安全校验失败或致命错误时设置，触发后立即终止（不输出其他字段）"
   required: [diff_range, scope_file, mode]
 ---
 
@@ -63,6 +66,45 @@ output_format:
 `$ARTIFACTS_DIR` 由引擎注入，每个 workflow run 独立，父子 run 路径互不重叠，
 不会因并发 review 互相覆盖（spec §2.4 父子隔离）。
 
+## 工作流程
+
+### F-2 安全防护（执行前强制校验）
+
+**规则 1：diff_range 白名单 regex 校验**
+
+执行 `git diff --name-only $diff_range` 之前，必须断言 `diff_range` 匹配以下正则：
+
+```
+^[A-Za-z0-9._/-]+(\.\.[A-Za-z0-9._/-]+)?$
+```
+
+（允许 git ref / range 字符集：字母数字、点、下划线、斜线、连字符，可选 `..` 分隔符）
+
+若 `diff_range` 不匹配，必须：
+- 在 output_format `error` 字段设置错误信息（例如：`"diff_range 包含非法字符，安全校验失败"`）
+- 立即终止执行，不调用任何 git 命令
+
+**规则 2：$ARTIFACTS_DIR jail check**
+
+写盘（`$ARTIFACTS_DIR/review-scope.json`）前，必须校验写入路径不包含 `..` 序列，
+且 realpath 在仓库根或当前 run 目录之内。
+
+校验方法（Python 伪代码）：
+```python
+import os
+scope_file = os.path.realpath(f"{artifacts_dir}/review-scope.json")
+repo_root = os.path.realpath(os.getcwd())
+if not scope_file.startswith(repo_root):
+    # 在 output_format error 字段返回错误并终止
+    raise SecurityError("$ARTIFACTS_DIR 路径越界，拒绝写盘")
+if ".." in artifacts_dir:
+    raise SecurityError("$ARTIFACTS_DIR 含 .. 序列，拒绝写盘")
+```
+
+若越界，必须：
+- 在 output_format `error` 字段设置错误信息
+- 立即终止执行
+
 ## 输出约定
 
 输出结构化 JSON，字段：
@@ -71,6 +113,7 @@ output_format:
 - `mode`：`"standalone"` 或 `"embedded"`
 - `feature_id`（可选）：嵌入模式时从 args 获取
 - `warning`（可选，`type: string`）：非致命告警信息
+- `error`（可选，`type: string`）：安全校验失败或致命错误时设置；出现即终止后续节点
 
 ## 注意事项
 
