@@ -189,12 +189,13 @@ reviews:
       F-007:
         history:
           - REV-REQ-2026-009-code-F-007-001
-        latest: REV-REQ-2026-009-code-F-007-001
+          - REV-REQ-2026-009-code-F-007-002
+        latest: REV-REQ-2026-009-code-F-007-002
         conclusion: needs_attention
-        reviewed_commit: 36902d0
+        reviewed_commit: 05aa11e
         artifact_hashes:
           artifacts/features.json: 
-            c9d3ac66899da2c4c52d5c618cd44fbcf3f9f5b9634059d215b24577a8d8d403
+            1296f4736e0e905be806502a9f7b95acaea978b8e3a99da98fbd66103baec7f0
           artifacts/tasks/F-007.md: 
-            c44f963d6fc059ad5044dfa52c45c492a6c9adbeec6dfd4c727f5743ae476c20
+            386d0f91db271791bdf755542d398e4bce421e1fccf7fb0af22178e45dbbfc22
         stale: false
