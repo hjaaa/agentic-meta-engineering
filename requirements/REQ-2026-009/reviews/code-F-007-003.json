@@ -1,0 +1,145 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-009-code-F-007-003",
+  "requirement_id": "REQ-2026-009",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-09 17:42:35",
+  "reviewed_commit": "3f815f0",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "1296f4736e0e905be806502a9f7b95acaea978b8e3a99da98fbd66103baec7f0"
+    },
+    {
+      "path": "artifacts/tasks/F-007.md",
+      "sha256": "963fafbf0fa34973889d2184b7f92181f90ffba28f98d62bb233c716836f70b0"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 82,
+  "dimensions": {
+    "design_consistency": {
+      "score": 75,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "requirements/REQ-2026-009/artifacts/features.json:223-249 F-007 description/modules/touches 三处全漏 workflow_rollback_topology.py（rev3 实际新增 171 行模块）"
+        },
+        {
+          "severity": "minor",
+          "description": "requirements/REQ-2026-009/artifacts/tasks/F-007.md:44 body 写'7 类异常契约'与 detailed-design §6.3 表 8 类不一致（含 IOError）"
+        },
+        {
+          "severity": "minor",
+          "description": "requirements/REQ-2026-009/artifacts/detailed-design.md:840 RollbackInProgressError 触发条件描述'残留且 ts ≠ 本次'与代码 O_EXCL 创建失败语义不匹配"
+        }
+      ]
+    },
+    "security": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback_topology.py:57 _load_nodes 缺 nid 字符集白名单（defense-in-depth follow-up）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback_topology.py:46-51 _find_workflow_yaml 向上 3 层无 root 边界（follow-up）"
+        }
+      ]
+    },
+    "concurrency": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/workflow_rollback_lock.py:33-39 _acquire_flock 内 open + flock 同 try，flock OSError 后 lock_fd 未 close — rev1 F-3 / rev2 G-5 修复方向迁移到 _acquire_flock 但本函数未做 fd 清理"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback.py:312-320 _resume_in_progress finally unlink 失败 raise 会覆盖原异常（Python __context__ 仍保留 traceback 但调用方 except 拿不到原异常类型）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback.py:349-354 _execute_with_in_progress finally 同上 — 同 root cause"
+        }
+      ]
+    },
+    "complexity": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/workflow_rollback.py:233 _resume_in_progress mccabe CC=14（AST 实测）超阈值 10 — rev3 提取 _execute_with_in_progress 后此函数反而新增了 finally 嵌套 + meta 验证分支"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback.py:72 RollbackError docstring 注'不直接抛出'但 workflow_rollback.py:145/317/354/377 + workflow_rollback_subrun.py:94/121/134 共 7 处直抛"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback.py:118 _write_meta_json os.replace 失败时 .meta.json.tmp 残留孤儿（极少触发，建议加 try/except 清理）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback_subrun.py:118-136 _archive_sub_run mv 成功后 append 失败子 jsonl 永久缺 parent_rolled_back 事件（G-4 修复后的边缘新窗口）"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback.py:72-91 异常类间空行 PEP8 E302 应 2 个实际 1 个"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback_topology.py:136 注释引用不存在的 _validate_to_node_exists 函数"
+        },
+        {
+          "severity": "minor",
+          "description": "tests/lib/test_workflow_rollback.py:116 注释提及旧 monkeypatch 机制（已迁移）"
+        },
+        {
+          "severity": "minor",
+          "description": "tests/lib/test_workflow_rollback.py:356 英文分区标题与全文中文风格不一致"
+        }
+      ]
+    },
+    "performance": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback_archive.py:32 _collect_artifacts_to_archive 内重新调 _get_ordered_node_ids（上层已算过 ordered 未传入）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback_topology.py:159-164 _find_current_position O(K×N) — N 节点通常 < 50，实际成本可忽略，标记 follow-up"
+        }
+      ]
+    },
+    "history_context": {
+      "score": 92,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "Cluster A+B 联动：_acquire_flock fd 泄漏（H-2）+ finally 异常链覆盖（H-1）同处于锁/异常路径，并发 + 错误处理叠加加剧 traceback 误导，建议 rev4 一次性收敛",
+    "Cluster C+H+I 文档漂移：features.json 漏 _topology.py（H-3）+ task.md 7/8 类异常计数（H-10）+ detailed-design 表描述（H-9）同属 rev3 模块拆分后未同步，建议一次 PR 通刷",
+    "Cluster D 复用 rev2 决策：_discover_sub_runs CC=14（AST 实测）/ tests 607 行属 rev2 已 drop 的 follow-up 范畴，本轮不重复阻塞",
+    "Cluster E 复杂度回弹警示：_resume_in_progress 在 rev3 拆分后 CC 反升，提示后续重构需对所有受影响函数同步度量，避免局部优化、整体退化"
+  ],
+  "scope": {
+    "feature_id": "F-007"
+  },
+  "supersedes": "REV-REQ-2026-009-code-F-007-002"
+}
