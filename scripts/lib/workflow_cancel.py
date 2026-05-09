@@ -10,13 +10,14 @@ from __future__ import annotations
 
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 _LIB_DIR = Path(__file__).resolve().parent
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
-from common import REPO_ROOT, WorkflowError  # noqa: E402
+from common import REPO_ROOT, WorkflowError, infer_run_id_from_branch  # noqa: E402
 from run_state import RunState, _resolve_run_dir, append_event, read_events  # noqa: E402
 from workflow_state_validator import validate_state_for_cmd  # noqa: E402
 
@@ -61,7 +62,7 @@ def main(args: list[str], repo_root: Path | None = None, _skip_wait: bool = Fals
     root = repo_root or REPO_ROOT
 
     # 推断 run_id
-    run_id = _infer_run_id(root)
+    run_id = infer_run_id_from_branch(root)
     if not run_id:
         print("ERROR: 无法推断 run_id", file=sys.stderr)
         return 1
@@ -93,7 +94,6 @@ def main(args: list[str], repo_root: Path | None = None, _skip_wait: bool = Fals
         print(f"ERROR: 写 cancel_requested 事件失败：{exc}", file=sys.stderr)
         return 1
 
-    from datetime import datetime, timezone
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     print(f"Cancel requested at {ts}; awaiting graceful exit (≤ {_GRACEFUL_TIMEOUT_SECS}s)")
 
@@ -110,32 +110,18 @@ def main(args: list[str], repo_root: Path | None = None, _skip_wait: bool = Fals
             print(f"WARN: TaskStop 调用失败：{exc}", file=sys.stderr)
             # TaskStop 失败 → warn + 写事件（不 exit 1）
             try:
-                # cancel_taskstop_failed 不在白名单，用 workflow_failed 代理
+                # cancel_taskstop_failed 专用事件（不映射 WORKFLOW_EVENT_TO_STATE，
+                # 保持 cancel_requested 语义，state 不变为 failed）
                 append_event(jsonl_path, {
-                    "type": "workflow_failed",
+                    "type": "cancel_taskstop_failed",
                     "run_id": run_id,
-                    "data": {"reason": "cancel_taskstop_failed", "error": str(exc)},
+                    "data": {"error": str(exc)},
                 })
             except WorkflowError:
                 pass  # 写事件失败也不 exit 1
 
     print(f"  run_id: {run_id}，cancel 信号已发送")
     return 0
-
-
-def _infer_run_id(repo_root: Path) -> str | None:
-    import subprocess
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True, text=True, cwd=str(repo_root), timeout=5,
-        )
-        branch = result.stdout.strip()
-        if branch.startswith("feat/req-"):
-            return branch[len("feat/req-"):]
-    except Exception:
-        pass
-    return None
 
 
 if __name__ == "__main__":
