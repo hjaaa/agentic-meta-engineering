@@ -13,6 +13,9 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+# _generate_run_id 最大 EEXIST 重试次数（并发冲突时递增编号）
+_RUN_ID_MAX_RETRIES = 3
+
 _LIB_DIR = Path(__file__).resolve().parent
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
@@ -22,22 +25,42 @@ from run_state import append_event  # noqa: E402
 
 
 def _generate_run_id(repo_root: Path) -> str:
-    """生成唯一 run_id（RUN-YYYYMMDD-NNN 格式）。"""
+    """生成唯一 run_id（RUN-YYYYMMDD-NNN 格式）并原子化创建目录。
+
+    并发安全策略：先扫描已有编号取 max+1，再用 mkdir(exist_ok=False) 尝试
+    原子创建；若遇 FileExistsError（EEXIST，并发进程已抢占同编号）则递增
+    编号重试，最多 _RUN_ID_MAX_RETRIES 次。
+
+    返回：已成功创建目录的 run_id（str）。
+    """
     ts_prefix = datetime.now(timezone.utc).strftime("%Y%m%d")
     base = repo_root / "runs"
     base.mkdir(parents=True, exist_ok=True)
-    # 找已用编号，取最大值 +1
+
+    # 扫描已有编号，取 max+1 作为起始候选
     existing = [d.name for d in base.iterdir() if d.is_dir() and d.name.startswith(f"RUN-{ts_prefix}-")]
-    if existing:
-        nums = []
-        for name in existing:
-            parts = name.split("-")
-            if len(parts) == 3 and parts[2].isdigit():
-                nums.append(int(parts[2]))
-        next_num = max(nums) + 1 if nums else 1
-    else:
-        next_num = 1
-    return f"RUN-{ts_prefix}-{next_num:03d}"
+    nums = []
+    for name in existing:
+        parts = name.split("-")
+        if len(parts) == 3 and parts[2].isdigit():
+            nums.append(int(parts[2]))
+    next_num = max(nums) + 1 if nums else 1
+
+    # 原子化创建：exist_ok=False 确保只有一个进程成功；冲突时递增重试
+    for attempt in range(_RUN_ID_MAX_RETRIES):
+        candidate_id = f"RUN-{ts_prefix}-{next_num:03d}"
+        candidate_dir = base / candidate_id
+        try:
+            candidate_dir.mkdir(parents=False, exist_ok=False)
+            return candidate_id
+        except FileExistsError:
+            # 并发冲突：另一进程已抢占该编号，取下一个编号重试
+            next_num += 1
+
+    # 超过最大重试次数（极低概率，≥3 个进程几乎同时竞争）
+    raise WorkflowError(
+        f"生成 run_id 失败：并发冲突超过 {_RUN_ID_MAX_RETRIES} 次重试"
+    )
 
 
 def main(args: list[str], repo_root: Path | None = None) -> int:
@@ -76,10 +99,13 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
 
     template_path = candidates[0]
 
-    # 生成 run_id + 创建目录
-    run_id = _generate_run_id(root)
+    # 生成 run_id + 原子创建目录（_generate_run_id 已完成 mkdir）
+    try:
+        run_id = _generate_run_id(root)
+    except WorkflowError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
     run_dir = root / "runs" / run_id
-    run_dir.mkdir(parents=True, exist_ok=True)
 
     # 写 meta.yaml
     ts_now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
