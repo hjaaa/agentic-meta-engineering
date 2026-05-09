@@ -49,6 +49,7 @@ def _load_run_entry(run_dir: Path) -> dict[str, Any] | None:
     # 读 meta.yaml 补充模板名等
     if meta_path.exists():
         try:
+            # yaml 是可选第三方依赖，用 fallback；json 是 stdlib，但放此与 yaml fallback 路径合并便于读
             import yaml  # type: ignore
             with meta_path.open("r", encoding="utf-8") as fh:
                 meta = yaml.safe_load(fh) or {}
@@ -56,7 +57,7 @@ def _load_run_entry(run_dir: Path) -> dict[str, Any] | None:
             # yaml 解析失败 → 尝试 json fallback，并输出 WARN
             print(f"WARN: meta 解析失败（yaml） {run_dir.name}: {exc}", file=sys.stderr)
             try:
-                import json
+                import json  # noqa: PLC0415 — 与 yaml fallback 路径合并
                 with meta_path.open("r", encoding="utf-8") as fh:
                     meta = json.load(fh)
             except (json.JSONDecodeError, OSError) as exc2:
@@ -65,7 +66,7 @@ def _load_run_entry(run_dir: Path) -> dict[str, Any] | None:
         except Exception as exc:
             # 非 yaml 解析错误（IO 等）→ 尝试 json fallback
             try:
-                import json
+                import json  # noqa: PLC0415 — 与 yaml fallback 路径合并
                 with meta_path.open("r", encoding="utf-8") as fh:
                     meta = json.load(fh)
             except (json.JSONDecodeError, OSError) as exc2:

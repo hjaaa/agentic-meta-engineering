@@ -59,7 +59,7 @@ def _generate_run_id(repo_root: Path) -> str:
             logging.debug("run_id %s 冲突，递增重试 attempt=%d", candidate_id, attempt)
             next_num += 1
 
-    # 超过最大重试次数（极低概率，≥3 个进程几乎同时竞争）
+    # 超过最大重试次数（极低概率；最多支持 3 路并发冲突重试，≥4 进程同时竞争才会失败）
     raise WorkflowError(
         f"生成 run_id 失败：并发冲突超过 {_RUN_ID_MAX_RETRIES} 次重试"
     )
