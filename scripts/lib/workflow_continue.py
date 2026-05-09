@@ -15,29 +15,9 @@ _LIB_DIR = Path(__file__).resolve().parent
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
-from common import REPO_ROOT, WorkflowError  # noqa: E402
-from run_state import RunState, _resolve_run_dir, read_events  # noqa: E402
+from common import REPO_ROOT, WorkflowError, infer_run_id_from_branch  # noqa: E402
+from run_state import RunState, _resolve_run_dir, append_event, read_events  # noqa: E402
 from workflow_state_validator import validate_state_for_cmd  # noqa: E402
-
-
-def _infer_run_id_from_branch(repo_root: Path) -> str | None:
-    """从当前 git 分支推断 run_id（feat/req-<id> 格式）。"""
-    import subprocess
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True,
-            text=True,
-            cwd=str(repo_root),
-            timeout=5,
-        )
-        branch = result.stdout.strip()
-        # 格式：feat/req-REQ-2026-009
-        if branch.startswith("feat/req-"):
-            return branch[len("feat/req-"):]
-    except Exception:
-        pass
-    return None
 
 
 def _main_loop_stub(run_state: RunState) -> None:
@@ -70,7 +50,7 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
 
     run_id = args[0] if args else None
     if not run_id:
-        run_id = _infer_run_id_from_branch(root)
+        run_id = infer_run_id_from_branch(root)
     if not run_id:
         print(
             "ERROR: 无法推断 run_id\n"
@@ -96,6 +76,17 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
     except WorkflowError as exc:
         print(str(exc), file=sys.stderr)
         return 1
+
+    # 写 run_resumed 事件（详细设计 §1.2.2 + skill continue.md 步骤 5）
+    # run_resumed 不映射 WORKFLOW_EVENT_TO_STATE，保持原 state 语义不变
+    try:
+        append_event(jsonl_path, {
+            "type": "run_resumed",
+            "run_id": run_id,
+        })
+    except WorkflowError as exc:
+        print(f"WARN: 写 run_resumed 事件失败：{exc}", file=sys.stderr)
+        # 不阻断续跑流程，仅 warn
 
     print(f"恢复 workflow run {run_id!r}（state={run_state.state}）")
     _main_loop_stub(run_state)
