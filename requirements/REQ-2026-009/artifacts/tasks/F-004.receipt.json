@@ -4,8 +4,14 @@
   "status": "DONE",
   "completed_at": "2026-05-09T08:17:22+08:00",
   "commit_shas": [
-    "40cd72b"
+    "40cd72b",
+    "8d0cb4d",
+    "7f69d7f",
+    "d9375dc",
+    "2192f83",
+    "3215429",
+    "9fb80a6"
   ],
   "touches_violations": [],
-  "notes": "F-004 rev1 review = blocked / score=62（2 critical: F-12 substitute_vars 通配 break + F-17 schema 与示例矛盾；5 major：F-1+F-13 / F-3 / F-10 / F-15 / F-16）。touches 历程：(1) subagent 在 tests/workflows/test_yaml_schema.py / test_prompt_structure.py 末尾追加 TC-F4-1/F4-4 acceptance 强制位置，初版 touches 漏列 → 已扩；(2) review-20260509-083626.md 主 Agent 写入触发软记 → review-*.md 加入 touches 后清空 violations[]。无实质越界。pytest 151 passed；commit 40cd72b 含 15 文件 1677 行。待 subagent rev2 修 must_fix 后重审。"
+  "notes": "F-004 rev2 修复完成。rev1 review = blocked/62（2 critical + 5 major + 6 minor）。rev2 修复清单：\n\nCritical（2条）：\n- F-12（8d0cb4d）：cr-critic/cr-judge 通配引用 $cr-checker-*.output.findings 展开为 8 个显式节点引用；新增 TC-F4-6 e2e 测试 test_critic_judge_no_wildcard_in_input_refs；cr-critic 加 META-checker-missing 防护规则，cr-judge 同步识别并在 final_verdict 注记。\n- F-17（7f69d7f）：cr-checker-design-consistency.md:53 输出示例 {\"findings\": {...}} 改为 {\"findings\": [...]}，与 frontmatter findings.type=array 一致。\n\nMajor（5条）：\n- F-1+F-13（d9375dc）：cr-prepare.md frontmatter allowed_tools 从 [Read,Grep] 改为 [Read,Grep,Bash,Write]；test_prompt_structure.py TC-F4-4 拆 5 个子函数，fresh context 加严格白名单断言，shared context 豁免。\n- F-3（2192f83）：cr-critic/cr-judge 各加 idle_timeout: 900000（15 min）；yaml 顶层加 default_idle_timeout: 600000。\n- F-10（3215429）：scope_file 路径从 .review-scope.json 改为 $ARTIFACTS_DIR/review-scope.json，防并发覆盖。\n- F-15（2192f83）：yaml 顶层 default_idle_timeout + cr-critic/judge META-checker-missing 规则（含于 F-3 commit）。\n- F-16（3215429）：cr-prepare diff_range 空时抛错（不降级），output_format 加 minLength:1 + warning 可选字段（含于 F-10 commit）。\n\nMinor（6条，含 F-20 已在 F-10 commit）：\n- F-5/F-7/F-19/F-24/F-28（9fb80a6）：test_yaml_schema short-circuit、test_prompt_structure 子函数拆分、cr-judge schema properties 补全、typo 修复、自引用断言替换。\n- TC-F4-6 新增（9fb80a6）：test_critic_judge_no_wildcard_in_input_refs 断言通配字面量不出现 + 8 显式引用全在。\n\npytest 152 passed（原 151 + 1 新增）。待 rev2 code-review 后 sign-off。"
 }
