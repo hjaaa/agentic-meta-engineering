@@ -27,7 +27,7 @@ def _collect_artifacts_to_archive(
 
     策略：to_node 之后（不含 to_node）所有已完成节点的产物目录/文件。
     """
-    from workflow_rollback import _get_ordered_node_ids
+    from workflow_rollback_topology import _get_ordered_node_ids
     ordered = _get_ordered_node_ids(nodes)
     to_pos = ordered.index(to_node) if to_node in ordered else -1
 
