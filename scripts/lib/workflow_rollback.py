@@ -135,8 +135,9 @@ def _write_meta_json(archive_root: Path, run_id: str, to_node: str) -> None:
     except OSError:
         try:
             tmp_path.unlink(missing_ok=True)
-        except OSError:
-            pass
+        except OSError as ue:
+            # F-16：tmp 清理失败（仅 logger.warning，让原 OSError 继续传播）
+            logger.warning(".meta.json.tmp 清理失败（path=%s）：%s", tmp_path, ue)
         raise
 
 

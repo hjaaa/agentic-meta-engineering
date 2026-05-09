@@ -832,7 +832,7 @@ class SubRunArchive:
 
 | 异常类 | 触发条件 | exit 码（CLI 透传）|
 |---|---|---|
-| `RollbackError` | 基类，不直接抛出 | — |
+| `RollbackError` | 基类；参数校验失败 / 路径穿越 / IO 失败等无独立子类语义时直接抛出 | 1 |
 | `RunStateNotFoundError` | `run_id` 在两条路径都查不到 run 目录 | 1 |
 | `TargetNodeNotFoundError` | `to_node` 不在 run 对应 yaml 节点 ID 集合 | 1 |
 | `TargetNodeNotUpstreamError` | `to_node` 不是当前节点的拓扑上游（或就是当前节点本身） | 1 |
