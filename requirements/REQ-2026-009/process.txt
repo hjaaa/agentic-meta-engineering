@@ -91,3 +91,5 @@
 2026-05-09 14:31:55 [development] F-005 完成（review approved sign-off / status=done / review_report=artifacts/review-20260509-142926.md / 释放派发锁 / 31 commits / 螺旋 rev1→rev6 真零残留 / 32 finding 全 closed / 测试 57 passed）
 2026-05-09 14:33:49 [save] F-005 闭环（rev1 78 → rev6 94 真零残留 / 31 commits / 32 finding 全 closed / 测试 57 passed / 锁释放）；5/13 progress；待派 F-006~F-013
 2026-05-09 14:37:14 [development] F-006 派发（model=sonnet）：workflow-launcher 关键词触发 Skill — 6 类 20 关键词清单 + 3 步仲裁（state tiebreaker → 最长匹配 → 等长冲突 ask）+ tests/skills/test_keyword_matching.py 6 用例（TC-F6-1~6），按 detailed-design §4 全章落地
+2026-05-09 15:05:36 [review:looks_clean] code-quality-reviewer rev1 86/100 looks_clean (REV-REQ-2026-009-code-F-006-001) — 9 候选 → critic+judge → 3 keep minor (F-1 major→minor / F-2 modules 缺 keyword_matcher.py / F-3 §4.3 伪码分叉) + 1 follow-up (F-7) + 5 drop；测试 32+1096 passed 0 回归；推荐 approved-trivial
+2026-05-09 15:09:32 [development] F-006 rev2 派发（model=sonnet）：清 3 keep minor + F-7 follow-up 实现真零残留 — F-1 Keyword.extract_args 实例方法化 + 调用站点改 / F-2 features.json modules 补 keyword_matcher.py / F-3 reference §4.3 + detailed-design §4.3 伪码统一为 OO 形 / F-7 TypeAlias MatchResult
