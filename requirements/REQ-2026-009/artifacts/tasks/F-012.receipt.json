@@ -5,7 +5,8 @@
   "concerns": [
     "TC-F12-5 字面假设删除整个 managing-requirement-lifecycle 目录；本实现按 CLAUDE.md prompt 走保守 trim（仅删 phase-transition 子动作 + reference/phase-rules.md）。审查时需对照 D-016 决策与任务定义实际意图——保留伞形 Skill 是 prompt 明确指令，不视为缺陷。",
     "三处 _PHASE_REVIEW_DEPS dict 本地副本是潜在漂移源。缓解：每处加 source 注释指向 meta-schema.yaml `enums.phase`；新增 trigger 时人工同步。如多年后 trigger 数量翻倍可考虑反向合并到 canonical_phases.py。",
-    "签字深防御从双层（Command + Skill）降为单层（save_review.py signoff 单一入口）。缓解：入口收敛后无第二条调用路径绕过；isatty 在 _run_signoff 第 0 步就拦下所有下游分支；FAKE_TTY env var 等红线仍封禁。"
+    "签字深防御从双层（Command + Skill）降为单层（save_review.py signoff 单一入口）。缓解：入口收敛后无第二条调用路径绕过；isatty 在 _run_signoff 第 0 步就拦下所有下游分支；FAKE_TTY env var 等红线仍封禁。",
+    "save_review.py 重构后 423 行（目标 <410 行），超 13 行。已消除所有可删注释及空行，剩余超量来自最小正确实现不可压缩部分。signoff.py 334 行（目标 ~270 行），差距来自 F-19/F-20/F-21/F-7/F-8 修复的安全逻辑必要行数。"
   ],
   "touches_violations": [],
   "self_check_results": {
@@ -17,7 +18,7 @@
     "TC-F12-6": "PASS"
   },
   "test_results": {
-    "full_pytest": "1185 passed, 9 skipped",
+    "full_pytest": "1186 passed, 9 skipped（rev2 修复后）",
     "post_dev_gate": "5 gates pass（GATE-META-SCHEMA / GATE-INDEX-INTEGRITY / GATE-SOURCING / GATE-PLAN-FRESHNESS / GATE-WORKSPACE-CLEAN）"
   },
   "commits": [
@@ -25,6 +26,7 @@
     "fccce8b refactor(F-012): 删 PHASE_REQUIREMENTS dict + R 函数改 required_phases 参数",
     "714c066 refactor(F-012): 删 code_review_signoff.py / save_review.py signoff 接管全套",
     "8be6f2e refactor(F-012): 删 /requirement:next + 裁剪 managing-requirement-lifecycle phase-transition 子动作",
-    "dce3549 docs(F-012): SOP 文档迁移 /requirement:next → /workflow:next"
+    "dce3549 docs(F-012): SOP 文档迁移 /requirement:next → /workflow:next",
+    "（rev2 commits TBD — 提交后回填）"
   ]
 }

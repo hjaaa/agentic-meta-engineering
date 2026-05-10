@@ -21,10 +21,6 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from unittest import mock
-
-import pytest
-
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SCRIPTS_LIB = _REPO_ROOT / "scripts" / "lib"
 
