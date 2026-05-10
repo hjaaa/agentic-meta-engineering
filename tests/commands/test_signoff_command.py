@@ -31,7 +31,7 @@ _SCRIPT = _SCRIPTS_LIB / "save_review.py"
 if str(_SCRIPTS_LIB) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_LIB))
 
-import save_review as sig  # noqa: E402
+import signoff as sig  # noqa: E402  # F-012 rev2 拆模块后，signoff 函数迁入 signoff.py
 
 
 def _make_args(

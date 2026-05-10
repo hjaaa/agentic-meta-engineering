@@ -32,6 +32,7 @@ if str(_SCRIPTS_LIB) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_LIB))
 
 import save_review as sr  # noqa: E402
+import signoff as _signoff  # noqa: E402  # F-012 rev2 拆模块：REQUIREMENTS_DIR 需同步 patch
 
 
 class _FakeTTY:
@@ -176,8 +177,9 @@ def test_signoff_subcommand_writes_human_signoff_and_appends_process_txt(tmp_pat
     verdict_path = reviews_dir / "definition-001.json"
     verdict_path.write_text(json.dumps(verdict, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    # mock REQUIREMENTS_DIR 指向 tmp_path
+    # mock REQUIREMENTS_DIR 指向 tmp_path（同步 patch save_review + signoff，F-012 rev2 拆模块后 signoff 有自己的 REQUIREMENTS_DIR）
     monkeypatch.setattr(sr, "REQUIREMENTS_DIR", tmp_path / "requirements")
+    monkeypatch.setattr(_signoff, "REQUIREMENTS_DIR", tmp_path / "requirements")
     # D-003 第三层 tty 校验：函数级单测模拟 tty，使测试聚焦签字业务逻辑
     monkeypatch.setattr(sys, "stdin", _FakeTTY())
 
@@ -231,6 +233,7 @@ def test_signoff_subcommand_rejects_already_signed(tmp_path, monkeypatch):
     verdict_path.write_text(json.dumps(verdict), encoding="utf-8")
 
     monkeypatch.setattr(sr, "REQUIREMENTS_DIR", tmp_path / "requirements")
+    monkeypatch.setattr(_signoff, "REQUIREMENTS_DIR", tmp_path / "requirements")
     # D-003 第三层 tty 校验：函数级单测模拟 tty
     monkeypatch.setattr(sys, "stdin", _FakeTTY())
 
@@ -282,6 +285,7 @@ def test_signoff_subcommand_rejects_verdict_with_cr_violation(tmp_path, monkeypa
     verdict_path.write_text(json.dumps(verdict), encoding="utf-8")
 
     monkeypatch.setattr(sr, "REQUIREMENTS_DIR", tmp_path / "requirements")
+    monkeypatch.setattr(_signoff, "REQUIREMENTS_DIR", tmp_path / "requirements")
     # D-003 第三层 tty 校验：函数级单测模拟 tty，使测试聚焦 CR 校验业务逻辑
     monkeypatch.setattr(sys, "stdin", _FakeTTY())
 
