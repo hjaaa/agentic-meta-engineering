@@ -215,10 +215,34 @@ reviews:
         conclusion: looks_clean
         reviewed_commit: 2aea3b0
         artifact_hashes:
-          artifacts/features.json: 
+          artifacts/features.json:
             f7f0386a07f1e7facb09d3ed077135acdcf10dd08f305e67fb8a9cf68757b831
-          artifacts/tasks/F-008.md: 
+          artifacts/tasks/F-008.md:
             c9c10db3cb1511e3175b192e8784b5250779aafd0fc87b5869ba47446b251fe9
-          artifacts/detailed-design.md: 
+          artifacts/detailed-design.md:
             d821e5a34bd458c6070ee0f3e2cecc9076e9b39c15f99bd555ac63e245bb1507
+        stale: false
+      F-009:
+        history:
+          - REV-REQ-2026-009-code-F-009-001
+        latest: REV-REQ-2026-009-code-F-009-001
+        conclusion: looks_clean
+        reviewed_commit: a3d40cb
+        artifact_hashes:
+          artifacts/features.json:
+            9057caca361533de2979f48a9b74a5169e6e5f1181c83050699e36cbf4d1d047
+          artifacts/tasks/F-009.md:
+            c2d87746cecf7f7ff69c1ccc7f591b1ee51df6e15b4837c3ebb316ba31d63e6a
+        stale: false
+      F-009:
+        history:
+          - REV-REQ-2026-009-code-F-009-001
+        latest: REV-REQ-2026-009-code-F-009-001
+        conclusion: looks_clean
+        reviewed_commit: a3d40cb
+        artifact_hashes:
+          artifacts/features.json: 
+            9057caca361533de2979f48a9b74a5169e6e5f1181c83050699e36cbf4d1d047
+          artifacts/tasks/F-009.md: 
+            c2d87746cecf7f7ff69c1ccc7f591b1ee51df6e15b4837c3ebb316ba31d63e6a
         stale: false
