@@ -11,7 +11,8 @@
   - risky_unmapped：f-string / concat 不自动改，供人工 review
   - whitelist：内置白名单 + 调用方可追加
 
-⚠️ 禁止在本 feature 中以 dry_run=False 跑真实仓库（顺序约束 §9.8：留待 F-012 Plan 7）。
+⚠️ 禁止在本 feature 中以 dry_run=False 跑真实仓库
+   （顺序约束 §9.8：留待 F-012 Plan 7）。
 """
 from __future__ import annotations
 
@@ -20,7 +21,7 @@ import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Literal
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +37,7 @@ class Reference:
     line: int
     old_text: str
     new_text: str
-    # literal | f_string | concat | comment | docstring | yaml_glob
-    kind: str
+    kind: Literal["literal", "f_string", "concat", "comment", "docstring", "yaml_glob"]
 
 
 @dataclass(frozen=True)
@@ -214,7 +214,11 @@ def _scan_file(
 
         # 判断是否为注释 / docstring（仅 include_history_comments=True 时自动改）
         stripped = line.strip()
-        is_comment_line = stripped.startswith("#") or stripped.startswith('"""') or stripped.startswith("'''")
+        is_comment_line = (
+            stripped.startswith("#")
+            or stripped.startswith('"""')
+            or stripped.startswith("'''")
+        )
         kind = "comment" if is_comment_line else "literal"
 
         if is_comment_line and not include_history_comments:
@@ -317,9 +321,9 @@ def _apply_changes(
 def migrate_requirements_to_runs(
     dry_run: bool = True,
     include_history_comments: bool = False,
-    whitelist: Optional[list[Path]] = None,
-    repo_root: Optional[Path] = None,
-    extra_files: Optional[list[Path]] = None,
+    whitelist: list[Path] | None = None,
+    repo_root: Path | None = None,
+    extra_files: list[Path] | None = None,
 ) -> MigrationReport:
     """扫描并（可选）批量替换 requirements/REQ- → runs/REQ- 引用。
 
@@ -356,13 +360,15 @@ def migrate_requirements_to_runs(
         rel_path = str(fp.relative_to(repo_root))
         if _is_whitelisted(rel_path, whitelist, abs_path=fp):
             # 整文件白名单：先扫描，统一放入 skipped_whitelist
-            refs, risky, _ = _scan_file(fp, repo_root, include_history_comments)
-            for ref in refs:
-                all_skipped.append(ref)
+            refs, risky, inner_skipped = _scan_file(fp, repo_root, include_history_comments)
+            all_skipped.extend(refs)
+            all_skipped.extend(inner_skipped)
             # risky 也跳过（白名单文件不报 risky）
             continue
 
-        refs, risky, skipped = _scan_file(fp, repo_root, include_history_comments, extra_whitelist=whitelist)
+        refs, risky, skipped = _scan_file(
+            fp, repo_root, include_history_comments, extra_whitelist=whitelist
+        )
         all_refs.extend(refs)
         all_risky.extend(risky)
         all_skipped.extend(skipped)
@@ -402,7 +408,8 @@ def migrate_requirements_to_runs(
     )
 
     logger.info(
-        "migration 扫描完成 scanned=%d refs=%d risky=%d skipped=%d files_changed=%d dry_run=%s duration_ms=%d",
+        "migration 扫描完成 scanned=%d refs=%d risky=%d skipped=%d"
+        " files_changed=%d dry_run=%s duration_ms=%d",
         report.scanned_files,
         len(report.references_found),
         len(report.risky_unmapped),
@@ -425,15 +432,19 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
     parser = argparse.ArgumentParser(description="requirements/ → runs/ 批量 rename 工具")
-    parser.add_argument("--wet-run", action="store_true", help="真正执行替换（默认 dry_run）")
-    parser.add_argument("--include-comments", action="store_true", help="同时改写注释中的引用")
+    parser.add_argument(
+        "--wet-run", action="store_true", help="真正执行替换（默认 dry_run）"
+    )
+    parser.add_argument(
+        "--include-comments", action="store_true", help="同时改写注释中的引用"
+    )
     args = parser.parse_args()
 
     report = migrate_requirements_to_runs(
         dry_run=not args.wet_run,
         include_history_comments=args.include_comments,
     )
-    print(f"\n=== Migration Report ({'DRY RUN' if report.dry_run else 'WET RUN'}) ===")
+    print(f"\n=== 迁移报告（{'预演模式' if report.dry_run else '执行模式'}）===")
     print(f"  扫描文件数: {report.scanned_files}")
     print(f"  字面量引用数: {len(report.references_found)}")
     print(f"  risky_unmapped 数: {len(report.risky_unmapped)}")

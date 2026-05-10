@@ -24,7 +24,7 @@ REQ-2026-009 决定将需求存放目录从 `requirements/REQ-*/` 迁移到 `run
 
 ⚠️ **严格遵守以下 4 步顺序**，禁止跳过 dry_run 或直接 wet_run：
 
-```
+```text
 1. dry_run（本工具）       → 查看报告，确认引用数量与 risky_unmapped 清单
 2. 人工 review            → 逐条处理 risky_unmapped（f-string / concat 引用）
 3. wet_run（本工具）       → 执行真正替换

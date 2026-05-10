@@ -11,8 +11,10 @@
 """
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 from textwrap import dedent
 
@@ -81,13 +83,10 @@ def _run_hook(
     策略：用 bash -c 包裹 hook，把 diff_text 通过环境变量注入，
     在 hook 内 stub git diff --cached 输出。
     """
-    import os
-    import tempfile
-
     # 将 diff_text 写入临时文件，通过 wrapper 注入
     with tempfile.NamedTemporaryFile(mode="w", suffix=".diff", delete=False, encoding="utf-8") as f:
         f.write(diff_text)
-        diff_file = f.name
+        diff_tmp = f.name
 
     # wrapper: 替换 git 命令，让 hook 看到 mock diff
     wrapper_script = dedent(f"""
@@ -95,7 +94,7 @@ def _run_hook(
         # stub git diff --cached → 读取 mock diff 文件
         git() {{
             if [[ "$1 $2 $3" == "diff --cached --unified=0" ]]; then
-                cat "{diff_file}"
+                cat "{diff_tmp}"
             else
                 command git "$@"
             fi
@@ -105,12 +104,11 @@ def _run_hook(
         main "$@"
     """).strip()
 
-    import tempfile as tf2
-    with tf2.NamedTemporaryFile(mode="w", suffix=".sh", delete=False, encoding="utf-8") as wf:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".sh", delete=False, encoding="utf-8") as wf:
         wf.write(wrapper_script)
-        wrapper_file = wf.name
+        wrapper_tmp = wf.name
 
-    os.chmod(wrapper_file, 0o755)
+    os.chmod(wrapper_tmp, 0o755)
 
     run_env = os.environ.copy()
     if env:
@@ -119,7 +117,7 @@ def _run_hook(
         run_env["CLAUDE_GATES_GLOBAL_BYPASS"] = bypass
 
     result = subprocess.run(
-        ["bash", wrapper_file],
+        ["bash", wrapper_tmp],
         capture_output=True,
         text=True,
         env=run_env,
@@ -127,8 +125,8 @@ def _run_hook(
 
     # 清理临时文件
     try:
-        os.unlink(diff_file)
-        os.unlink(wrapper_file)
+        os.unlink(diff_tmp)
+        os.unlink(wrapper_tmp)
     except OSError:
         pass
 
@@ -289,7 +287,7 @@ def test_whitelist_skipped(tmp_path):
     """given_plan_md_whitelist_when_scan_then_skipped_whitelist_not_references_found。
 
     TC-F13-4: §9.7 #4 / §9.4
-    whitelist_plan.md 命中 plan.md 白名单 pattern，
+    whitelist_plan.md 通过 extra_whitelist 精确路径命中（非内置正则命中），
     验证：其引用进入 skipped_whitelist[]，不进 references_found[]。
     """
     mini_repo = _make_mini_repo(tmp_path)
@@ -322,6 +320,50 @@ def test_whitelist_skipped(tmp_path):
     ]
     assert len(whitelist_skipped) >= 1, (
         f"whitelist_plan.md 的引用应进入 skipped_whitelist，实际: {report.skipped_whitelist}"
+    )
+
+
+def test_whitelist_skipped_internal_pattern(tmp_path):
+    """given_plan_md_internal_pattern_when_scan_without_extra_whitelist_then_skipped_whitelist。
+
+    验证内置正则 plan.md pattern（_BUILTIN_WHITELIST_PATTERNS）：
+    requirements/REQ-2026-001/plan.md 中含跨需求引用（非自指向），
+    不传 extra_whitelist，断言其进入 skipped_whitelist[]。
+    """
+    # 构造 mini repo：plan.md 内含跨需求引用（REQ-2026-008，非自指向）
+    plan_dir = tmp_path / "requirements" / "REQ-2026-001"
+    plan_dir.mkdir(parents=True)
+    plan_file = plan_dir / "plan.md"
+    plan_file.write_text(
+        "# ADR\n"
+        "详见 requirements/REQ-2026-008/artifacts/detailed-design.md §9\n",
+        encoding="utf-8",
+    )
+
+    report = mig.migrate_requirements_to_runs(
+        dry_run=True,
+        include_history_comments=False,
+        whitelist=None,
+        repo_root=tmp_path,
+        extra_files=[plan_file],
+    )
+
+    # plan.md 内的引用应进入 skipped_whitelist（内置 pattern 命中），不进 references_found
+    skipped = [r for r in report.skipped_whitelist if "plan.md" in str(r.file_path)]
+    assert len(skipped) >= 1, (
+        f"内置 plan.md pattern 应命中 skipped_whitelist，实际: {report.skipped_whitelist}"
+    )
+    found = [r for r in report.references_found if "plan.md" in str(r.file_path)]
+    assert found == [], (
+        f"plan.md 引用不应进入 references_found，实际: {found}"
+    )
+    # 验证 kind 和 file_path 字段格式正确
+    ref = skipped[0]
+    assert ref.kind in {"literal", "comment", "docstring", "yaml_glob", "f_string", "concat"}, (
+        f"kind 应为合法枚举值，实际: {ref.kind}"
+    )
+    assert ref.file_path == plan_file, (
+        f"file_path 应为绝对路径 plan_file，实际: {ref.file_path}"
     )
 
 

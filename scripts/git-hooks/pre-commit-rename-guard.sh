@@ -19,6 +19,7 @@
 #   - 本脚本是 git pre-commit hook，拦截 git commit 操作
 #   - pre-tool-use-guard.sh 是 Claude Code tool hook，拦截 AI Edit/Write/Bash
 #   - BYPASS 口径相同（reason ≥ 8 字符），但各自独立触发
+# - 消息格式：本 hook 用 [HOOK_NAME] 前缀 + >&2；pre-tool-use-guard 用裸 BLOCKED + >&3（fd 重定向）
 
 set -uo pipefail
 
@@ -28,7 +29,7 @@ set -uo pipefail
 
 readonly HOOK_NAME="pre-commit-rename-guard"
 
-# 内置白名单路径前缀或 pattern（bash extglob 格式）
+# 内置白名单路径前缀或字符串匹配（前缀 glob："$pattern"*）
 # 命中时放行，不阻止 commit
 readonly -a WHITELIST_PATTERNS=(
     "requirements/INDEX.md"
