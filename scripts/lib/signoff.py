@@ -1,14 +1,15 @@
 """sign-off 子模块（F-012 rev2 从 save_review.py 拆出）
 
 ⚠️ 本模块**不能作为独立 CLI 入口**——必须通过 save_review.py 的 main() 委托。
-原因：save_review.py 顶层 import signoff（L235），signoff.run_signoff 内 lazy import save_review（L359 之后）；
+原因：save_review.py 顶层 import signoff，run_signoff 调用的 _run_cr_checks 函数体内延迟加载 save_review（避免循环 import）；
 若直接 python3 signoff.py 启动，lazy import 时会触发 save_review 模块级双向加载（~62ms 冷启动 + 反模式风险）。
 未来若需独立入口，建议先抽公共 helper 到 save_review_validation.py 解开双向依赖。
 
 来源：requirements/REQ-2026-009/artifacts/detailed-design.md §10.3 + F-012 rev2 ADR（D-016）+ F-012 rev3 ADR（D-017）
 
-⚠️ __all__ 仅暴露 build_signoff_parser 与 run_signoff 供 save_review.py main() 委托用——
-  禁止直接 `python3 -m signoff` 启动，禁止其他模块通过 from signoff import * 引入这两个符号。
+⚠️ __all__ 将公开 API 限定为 build_signoff_parser 与 run_signoff；
+  from signoff import * 仅引入这两个符号（不含私有 helper）。
+  禁止直接 `python3 -m signoff` 启动。
 """
 from __future__ import annotations
 
@@ -361,6 +362,9 @@ def _run_cr_checks(verdict: dict, verdict_path: Path) -> int | None:
     except FileNotFoundError as exc:
         print(paint(f"❌ schema 文件缺失: {exc}", "red"), file=sys.stderr)
         return 1
+    except _sr.yaml.YAMLError as exc:
+        print(paint(f"❌ schema 文件格式错误: {exc}", "red"), file=sys.stderr)
+        return 1
 
     report = Report()
     label = f"{verdict_path.name}:{verdict.get('requirement_id', '?')}"
@@ -375,6 +379,30 @@ def _run_cr_checks(verdict: dict, verdict_path: Path) -> int | None:
         return 1
 
     return None
+
+
+def _commit_signoff(
+    verdict: dict, verdict_path: Path, rev_id: str, decision: str, signed_by: str
+) -> int:
+    """步骤 6：原子写盘 + 追加 process.txt；成功返回 0，写盘失败返回 1。
+
+    吸收写盘 OSError 分支，风格对齐 _append_signoff_process_log（D-014）。
+    把写盘 + 日志两步合并，使 run_signoff CC 保持 ≤10（F-012 rev5 F-15）。
+    """
+    tmp_path = verdict_path.with_suffix(".json.tmp")
+    try:
+        with tmp_path.open("w", encoding="utf-8") as f:
+            json.dump(verdict, f, ensure_ascii=False, indent=2)
+            f.write("\n")
+        tmp_path.replace(verdict_path)
+    except OSError as exc:
+        tmp_path.unlink(missing_ok=True)
+        print(paint(f"❌ verdict 写盘失败（{exc}），已清理 tmp 文件", "red"), file=sys.stderr)
+        return 1
+    print(paint(f"✓ human_signoff 已写入 {rel(verdict_path)}", "green"))
+    req_id_str = verdict.get("requirement_id", "")
+    _append_signoff_process_log(req_id_str, rev_id, decision, signed_by)
+    return 0
 
 
 def run_signoff(args: argparse.Namespace) -> int:
@@ -450,19 +478,8 @@ def run_signoff(args: argparse.Namespace) -> int:
     if rc is not None:
         return rc
 
-    # 写盘（原子替换）
-    tmp_path = verdict_path.with_suffix(".json.tmp")
-    with tmp_path.open("w", encoding="utf-8") as f:
-        json.dump(verdict, f, ensure_ascii=False, indent=2)
-        f.write("\n")
-    tmp_path.replace(verdict_path)
-    print(paint(f"✓ human_signoff 已写入 {rel(verdict_path)}", "green"))
-
-    # append process.txt 评审事件（req_id 缺失时静默跳过，不阻断主流程）
-    req_id_str = verdict.get("requirement_id", "")  # type: ignore[union-attr]
-    _append_signoff_process_log(req_id_str, rev_id, decision, signed_by)
-
-    return 0
+    # 步骤 6：写盘（原子替换）+ append process.txt
+    return _commit_signoff(verdict, verdict_path, rev_id, decision, signed_by)  # type: ignore[arg-type]
 
 
 def build_signoff_parser(sub: argparse._SubParsersAction) -> None:
