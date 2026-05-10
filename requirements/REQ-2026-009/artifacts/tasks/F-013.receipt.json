@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-013",
+  "status": "DONE",
+  "rev": "rev1",
+  "commits": [
+    {
+      "rev": "rev1",
+      "commit_sha": "3283f3f",
+      "summary": "feat(F-013): 落地 migrate_requirements_to_runs 工具与 pre-commit hook"
+    },
+    {
+      "rev": "rev1",
+      "commit_sha": "2121c69",
+      "summary": "test(F-013): tests/tools/test_migrate_requirements.py 6 用例 TC-F13-1~6"
+    }
+  ],
+  "files_changed": [
+    "scripts/lib/migrate_requirements_to_runs.py",
+    "scripts/git-hooks/pre-commit-rename-guard.sh",
+    "context/team/engineering-spec/migration/2026-05-runs-rename.md",
+    "context/team/engineering-spec/INDEX.md",
+    "tests/tools/__init__.py",
+    "tests/tools/conftest.py",
+    "tests/tools/test_migrate_requirements.py",
+    "tests/tools/fixtures/migrate_requirements/sample_script.py",
+    "tests/tools/fixtures/migrate_requirements/sample_doc.md",
+    "tests/tools/fixtures/migrate_requirements/sample_config.yaml",
+    "tests/tools/fixtures/migrate_requirements/whitelist_plan.md"
+  ],
+  "test_summary": "F-013 工具 + 6 用例 + fixture + 迁移文档落地。migrate_requirements_to_runs(dry_run, include_history_comments, whitelist, repo_root, extra_files) → MigrationReport（frozen dataclass: Reference / DirectoryMove / MigrationReport）；6 层扫描矩阵 + literal/yaml_glob 自动改 + f_string/concat 进 risky_unmapped + 内置白名单（INDEX.md / 历史 ADR / .archived/ / 工具自身）；pre-commit-rename-guard.sh 拦截新增 'requirements/REQ-' 字面量（exit 2 + 提示）/ md 引用块/代码块叙述性引用放行 / CLAUDE_GATES_GLOBAL_BYPASS reason >= 8 字符同口径；6 PASSED 0 fail；ruff All checks passed；TC-F13-7 手工验证留待 F-012 Plan 7 真迁移时执行（顺序约束 §9.8）。",
+  "touches_violations": [],
+  "test_results": {
+    "TC-F13-1": "PASS (test_dry_run_report_accurate: dry_run 后 references_found.len == fixture 引用数 + files_changed == [] + dry_run=True 不写文件)",
+    "TC-F13-2": "PASS (test_wet_run_full_change: dry_run + wet_run 双跑后 grep 全 fixture 'requirements/REQ-' 字面量数 <= 白名单数，覆盖 AC-CLEAN)",
+    "TC-F13-3": "PASS (test_risky_unmapped_recognized: f-string + concat 进 risky_unmapped[] 不进 files_changed[])",
+    "TC-F13-4": "PASS (test_whitelist_skipped: requirements/REQ-2026-001/plan.md 历史引用进 skipped_whitelist[])",
+    "TC-F13-5": "PASS (test_pre_commit_hook_blocks: 模拟 git diff --cached 含新增 'requirements/REQ-' → hook exit 2 + stderr 提示改用 runs/REQ-)",
+    "TC-F13-6": "PASS (test_pre_commit_hook_passthrough_md_quote: markdown 引用块 / 代码块内字面量 → hook 放行)",
+    "TC-F13-7": "MANUAL (手工验证，文档 §9.8 4 步顺序约束已写入 2026-05-runs-rename.md，留待 F-012 Plan 7 清理时执行 dry_run + 人工 review + wet_run + 自检)"
+  },
+  "concerns": [
+    "D-015 触及范围设计回填（已落地）：subagent 写入的 3 处 violations（tests/tools/__init__.py + tests/tools/conftest.py + context/team/engineering-spec/INDEX.md）由 pytest 测试包标准件 + 工程规范 INDEX 挂载需要引起，已扩 touches glob 到 tests/tools/** + context/team/engineering-spec/INDEX.md 并清零 violations。",
+    "D-013 流程性副作用（已落地）：features.json 自身由主 Agent 在 D-015 设计回填时编辑（流程性 bookkeeping），按 D-013 同款豁免清零；后续 hook 层 follow-up 把 features.json / task.md 等 dispatch bookkeeping 文件加入 touches_guard.py 豁免列表（仍挂 F-012）。",
+    "TC-F13-7 手工验证由 F-012 Plan 7 真迁移时执行，本 feature 不真跑 wet_run / 不改全仓 requirements/ 字面量。"
+  ]
+}

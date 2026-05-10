@@ -170,6 +170,15 @@
 - **来源**：requirements/REQ-2026-009/artifacts/review-20260510-154609.md（rev3 报告 trend-G-meta 终结判定段）/ requirements/REQ-2026-009/reviews/code-F-011-003.json（rev3 verdict 95 looks_clean）/ requirements/REQ-2026-009/plan.md:137,146,155（D-011/D-012/D-013 同款 ADR 模板）
 - **Plan 落地点**：本轮 F-011 done 闭环之后单独 commit（subagent-dispatch.md 末尾新段「Rev N 修复派发的特殊要求」+ 本 ADR + bookkeeping）；F-012 派发时主 Agent 应先 Read subagent-dispatch.md 验证规则已加载
 
+### D-015 F-013 touches 设计回填 = 扩 `tests/tools/**` + `context/team/engineering-spec/INDEX.md` + 清空 historical violations（同 D-011 / D-012 模板）
+
+- **Context**：F-013 task.md / features.json 原 touches 含 `tests/tools/test_migrate_requirements.py` + `tests/tools/fixtures/migrate_requirements/**` 但**未含** (1) `tests/tools/__init__.py` + `tests/tools/conftest.py`（pytest 测试包标准必需件，与 `tests/lib/__init__.py` / `tests/e2e/conftest.py` 项目惯例一致）；(2) `context/team/engineering-spec/INDEX.md`（新增 `migration/` 子目录后必须挂索引，否则 CI `check_index --strict` orphan warning 升 error）。subagent 实现时按工程必要性写入这 3 处；touches_guard.py 把这 3 条软记成 `touches_violations[]`（实现正确，设计 glob 漏写）。
+- **Decision**：(1) 设计回填——features.json F-013.touches `tests/tools/test_migrate_requirements.py` + `tests/tools/fixtures/migrate_requirements/**` 合并为 `tests/tools/**`（一锅端覆盖测试包标准件 + 测试用例 + fixture 子目录）；新增 `context/team/engineering-spec/INDEX.md`（与 `context/team/engineering-spec/migration/**` 配套）；tasks/F-013.md frontmatter touches 同步扩。(2) 清空 historical violations——`F-013.receipt.json` 的 `touches_violations[]` 清零（rationale 同 D-011 / D-012 / D-013：扩 touches 后路径不再越界；留着会让 phase-transition / submit 阶段 GATE-TOUCHES-VIOLATION 误挡）。(3) 审计可追溯——本 ADR + commit message 详述根因；与 D-011 / D-012 完全同构通道。
+- **Consequences**：好——pytest 测试包标准位置（`__init__.py` + `conftest.py`）+ 工程规范要求的 INDEX.md 挂载不再被误记越界；GATE-TOUCHES-VIOLATION 在 submit 阶段不会误挡；后续含新文档子目录的 feature detailed-design 模板可借鉴本 ADR 在 features.json 模板里默认带 `<parent>/INDEX.md` glob。差——同 D-011 / D-012，事后扩 touches + 清 violations 流程上比一次设计到位多一步；用 `tests/tools/**` 通配符比逐文件枚举宽松一档（接受：`tests/tools/` 目录下任何文件都属本 feature 测试范围，不会误覆盖其他 feature）。
+- **时间**：2026-05-10 16:22:10
+- **来源**：requirements/REQ-2026-009/artifacts/tasks/F-013.md（原 touches）/ requirements/REQ-2026-009/artifacts/tasks/F-013.receipt.json（3 条 violations：tests/tools/__init__.py + tests/tools/conftest.py + context/team/engineering-spec/INDEX.md）/ tests/lib/__init__.py + tests/e2e/conftest.py 项目惯例 / requirements/REQ-2026-009/plan.md:137,146,155（D-011 / D-012 / D-013 同款 ADR 模板）
+- **Plan 落地点**：本轮 F-013 dispatch 闭环（features.json + task.md + receipt.json + plan.md ADR + bookkeeping commit）
+
 ### D-010 rollback 归档语义 = mv 原路径删除 + 子 run 整目录 mv + 每次独立 timestamp 目录
 
 - **Context**：spec §11.3 说"归档 X 及以后产物到 `runs/<id>/.archived/<timestamp>/`"，但未说明三件事：(1) 归档后**原路径**是否清理（保留 / 删除 / stub）；(2) 跨父子 rollback 时子 run 的整个目录 `runs/<child-id>/` 是否清空；(3) 多次 rollback 的归档目录策略（独立并存 vs 追加合并）。OQ-02 来源：requirement.md:134。

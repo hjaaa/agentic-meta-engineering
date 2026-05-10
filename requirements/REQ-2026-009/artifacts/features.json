@@ -499,9 +499,9 @@
       "touches": [
         "scripts/lib/migrate_requirements_to_runs.py",
         "scripts/git-hooks/pre-commit-rename-guard.sh",
-        "tests/tools/test_migrate_requirements.py",
-        "tests/tools/fixtures/migrate_requirements/**",
+        "tests/tools/**",
         "context/team/engineering-spec/migration/**",
+        "context/team/engineering-spec/INDEX.md",
         "requirements/INDEX.md"
       ],
       "acceptance": [
