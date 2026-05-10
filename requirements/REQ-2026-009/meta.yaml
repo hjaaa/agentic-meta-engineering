@@ -251,12 +251,13 @@ reviews:
         history:
           - REV-REQ-2026-009-code-F-011-001
           - REV-REQ-2026-009-code-F-011-002
-        latest: REV-REQ-2026-009-code-F-011-002
+          - REV-REQ-2026-009-code-F-011-003
+        latest: REV-REQ-2026-009-code-F-011-003
         conclusion: looks_clean
-        reviewed_commit: 2b22d17
+        reviewed_commit: 6d1e8ec
         artifact_hashes:
           artifacts/features.json: 
             9057caca361533de2979f48a9b74a5169e6e5f1181c83050699e36cbf4d1d047
           artifacts/tasks/F-011.md: 
-            69d658b22f45b6182ef2e4cf096c561a07f1e1afb8722745a276567b40f9d1f6
+            3da0a3911621509ca4728bc88eb10aa3d345b6edffc6a4da28781107a111a617
         stale: false
