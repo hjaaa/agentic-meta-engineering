@@ -363,6 +363,31 @@ def test_should_use_cached_value_on_repeat_call():
     _signoff._reset_default_base_cache()
 
 
+def test_should_return_rc6_when_verdict_json_corrupt_given_invalid_json(tmp_path, monkeypatch):
+    """rc=6 路径：verdict 文件内容损坏 → JSONDecodeError → return 6。
+
+    F-012 rev4 新增 M-5'：rc=6 测试覆盖（rev1 F-25 → rev2 N-6 → rev3 横切修复债 3 轮终结）。
+    """
+    req_dir = tmp_path / "REQ-2099-001"
+    (req_dir / "reviews").mkdir(parents=True)
+    verdict_path = req_dir / "reviews" / "definition-001.json"
+    verdict_path.write_text("{not valid json", encoding="utf-8")
+
+    monkeypatch.setattr(_signoff, "REQUIREMENTS_DIR", tmp_path)
+    monkeypatch.setattr(sys, "stdin", _FakeTTY())
+
+    args = argparse.Namespace(
+        rev_id="REV-REQ-2099-001-definition-001",
+        decision="approved",
+        trivial=False,
+        signed_by="dev@example.com",
+        signed_at="2026-04-30T10:30:00+08:00",
+        source="cli-tty",
+    )
+    rc = _signoff.run_signoff(args)
+    assert rc == 6, f"期望 returncode=6（verdict JSON 损坏），实际={rc}"
+
+
 def test_signoff_subcommand_non_tty_stdin_returns_rc2():
     """given_non_tty_stdin_when_signoff_then_returncode_2_e2e。
 
