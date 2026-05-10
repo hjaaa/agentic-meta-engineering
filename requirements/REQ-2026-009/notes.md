@@ -39,3 +39,7 @@ detailed-design 描述里"REQ-2026-005"视为示例引用，实际由 fixture �
 fallback 到 /requirement:* 命令视为自举失败 → 阻塞 Plan 7 删 PHASE_REQUIREMENTS 字典 / 老 Skill 旧 SOP。
 
 本 feature 仅落地 SOP 文档；AC-SELF 实际由后续阶段执行验证。
+
+### F-011 rev2 R005 boundary 文案修订（D-014 候选）
+
+review F-8（rev1 design-consistency major）：R005 boundary fixture 实测 hash drift 语义，与原 §8.3 文案"黑名单兜底"语义不符。决策：改 design §8.3 文案对齐 fixture（hash drift），不补真黑名单测试——黑名单兜底已由 save_review.py:_check_artifact_blacklist 写入侧 + tests/lib/ 中专项测试覆盖。

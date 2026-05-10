@@ -23,7 +23,7 @@ reviews:
     with_signoff: true
 
 # 严格模式：WARNING 升为 ERROR → exit_code=1 / Decision.FAIL
-# 但双跑对照断言结论枚举一致（双跑均输出 warn 级别的 findings）
+# 双跑对照断言结论枚举一致（strict=True 时 warn 升 fail，两链路均判 fail）
 strict: true
-expected_conclusion: "warn"
+expected_conclusion: "fail"
 expected_codes: ["R004"]

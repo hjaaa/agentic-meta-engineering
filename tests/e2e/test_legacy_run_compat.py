@@ -123,7 +123,12 @@ def test_legacy_run_meta_fixture_valid() -> None:
     assert meta_path.exists(), f"legacy_run fixture meta.yaml 不存在：{meta_path}"
 
     with meta_path.open("r", encoding="utf-8") as f:
-        meta = yaml.safe_load(f)
+        try:
+            meta = yaml.safe_load(f)
+        except yaml.YAMLError as exc:
+            raise ValueError(
+                f"legacy_run fixture meta.yaml YAML 解析失败（path={meta_path}）：{exc}"
+            ) from exc
 
     assert isinstance(meta, dict), f"meta.yaml 应为 YAML mapping，实际 {type(meta)}"
     required_fields = ["id", "title", "phase", "created_at", "branch", "base_branch"]
@@ -176,4 +181,21 @@ def test_legacy_run_continue_path_no_error(tmp_path: Path) -> None:
     )
     assert len(state_after_resume.warnings) == 0, (
         f"continue 路径不应产生 warnings，实际 {state_after_resume.warnings}"
+    )
+
+    # ── 真调 workflow_continue.main() 验证 _resolve_run_dir / validate_state_for_cmd 路径 ──
+    from workflow_continue import main as wf_continue_main
+
+    # 在 tmp_path 下建 runs/<run_id>/run-state.jsonl（_resolve_run_dir D-007 新路径）
+    run_dir = tmp_path / "runs" / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    run_state_jsonl = run_dir / "run-state.jsonl"
+    # 把 fixture events 写入 run-state.jsonl（workflow_continue 读此文件）
+    with run_state_jsonl.open("w", encoding="utf-8") as f:
+        for evt in events:
+            f.write(json.dumps(evt, ensure_ascii=False) + "\n")
+
+    rc = wf_continue_main([run_id], repo_root=tmp_path)
+    assert rc == 0, (
+        f"workflow_continue.main([{run_id!r}], repo_root=tmp_path) 应返回 0，实际 rc={rc}"
     )

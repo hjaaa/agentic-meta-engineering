@@ -43,7 +43,12 @@ def _load_fixture(rule: str, kind: str) -> dict[str, Any]:
             f"请确认 tests/migration/fixtures/{rule}/{kind}.yaml 已创建。"
         )
     with fixture_path.open("r", encoding="utf-8") as f:
-        data = yaml.safe_load(f)
+        try:
+            data = yaml.safe_load(f)
+        except yaml.YAMLError as exc:
+            raise ValueError(
+                f"Fixture YAML 解析失败（path={fixture_path}）：{exc}"
+            ) from exc
     if not isinstance(data, dict):
         raise ValueError(
             f"Fixture 格式错误（path={fixture_path}）：期望 YAML mapping，实际为 {type(data)}"
@@ -166,14 +171,19 @@ def _setup_req_dir(
     return req_dir, req_id, target_phase
 
 
-def _classify_report(report: LegacyReport) -> str:
+def _classify_report(report: LegacyReport, strict: bool = False) -> str:
     """把 LegacyReport 分类为 pass / fail / warn。
 
+    - strict=True 时 warnings 也升为 fail（与 report.exit_code(strict=True) 对齐）
     - errors > 0       → "fail"
+    - errors == 0 且 warnings > 0 且 strict → "fail"
     - errors == 0 且 warnings > 0 → "warn"
     - errors == 0 且 warnings == 0 → "pass"
     """
-    if report.errors > 0:
+    if report.exit_code(strict=strict) != 0:
+        if report.errors > 0:
+            return "fail"
+        # strict=True 且只有 warnings → exit_code=1，升为 fail
         return "fail"
     if report.warnings > 0:
         return "warn"
@@ -197,11 +207,15 @@ def _extract_violation_rule_codes(report: LegacyReport) -> set[str]:
 # 旧链路：直接调用 check_reviews._rXXX 函数
 # ============================================================================
 
-def _run_old_chain(req_dir: Path, req_id: str, target_phase: str) -> LegacyReport:
+def _run_old_chain(
+    req_dir: Path, req_id: str, target_phase: str, strict: bool = False
+) -> LegacyReport:
     """旧链路：monkeypatch REQUIREMENTS_DIR + 直接调用 R001~R007 函数。
 
     使用 review_verdict_ci.check_reviews 的内部引用做 patch，与新链路保持同一模块实例，
     避免 test_signoff_no_circular_import._purge_modules 导致模块漂移。
+
+    strict=True 时 R004 的 WARNING 通过 report.exit_code(strict=True) 升为 ERROR 语义。
     """
     # 与 _run_new_chain 保持一致：从 review_verdict_ci 取内部 check_reviews 引用
     cr = review_verdict_ci.check_reviews
@@ -227,13 +241,18 @@ def _run_old_chain(req_dir: Path, req_id: str, target_phase: str) -> LegacyRepor
 # 新链路：调用 review_verdict_ci.run_r_rules
 # ============================================================================
 
-def _run_new_chain(req_dir: Path, req_id: str, target_phase: str) -> LegacyReport:
+def _run_new_chain(
+    req_dir: Path, req_id: str, target_phase: str, strict: bool = False
+) -> LegacyReport:
     """新链路：monkeypatch REQUIREMENTS_DIR + 调用 run_r_rules（plugin 内部 helper）。
 
     注意：使用 review_verdict_ci.check_reviews 的内部引用做 patch，而不是重新 import，
     避免 test_signoff_no_circular_import 的 _purge_modules() 导致模块实例漂移——
     purge 后 `import check_reviews` 会拿到新实例，但 review_verdict_ci 内部还持有旧引用，
     导致两条链路各自看到不同的 REQUIREMENTS_DIR 值（F-011 isolation bug）。
+
+    strict=True 时 R004 的 WARNING 通过 report.exit_code(strict=True) 升为 ERROR 语义，
+    由调用方在 _classify_report(report, strict=strict) 阶段消费。
     """
     # 从 review_verdict_ci 内部取 check_reviews 引用，保证与 run_r_rules 看到同一实例
     cr = review_verdict_ci.check_reviews
@@ -289,14 +308,17 @@ def test_dual_run_equivalence(tmp_path: Path, rule: str, kind: str) -> None:
     fixture = _load_fixture(rule, kind)
     req_dir, req_id, target_phase = _setup_req_dir(tmp_path, fixture)
 
+    # 从 fixture 读取 strict 标志（R004 boundary 等场景用）
+    strict: bool = bool(fixture.get("strict", False))
+
     # 跑旧链路
-    old_report = _run_old_chain(req_dir, req_id, target_phase)
-    old_conclusion = _classify_report(old_report)
+    old_report = _run_old_chain(req_dir, req_id, target_phase, strict=strict)
+    old_conclusion = _classify_report(old_report, strict=strict)
     old_codes = _extract_violation_rule_codes(old_report)
 
     # 跑新链路
-    new_report = _run_new_chain(req_dir, req_id, target_phase)
-    new_conclusion = _classify_report(new_report)
+    new_report = _run_new_chain(req_dir, req_id, target_phase, strict=strict)
+    new_conclusion = _classify_report(new_report, strict=strict)
     new_codes = _extract_violation_rule_codes(new_report)
 
     assert old_conclusion == new_conclusion, (
@@ -377,7 +399,12 @@ def test_three_triggers() -> None:
     assert registry_path.exists(), f"registry.yaml 不存在：{registry_path}"
 
     with registry_path.open("r", encoding="utf-8") as f:
-        reg = yaml.safe_load(f)
+        try:
+            reg = yaml.safe_load(f)
+        except yaml.YAMLError as exc:
+            raise ValueError(
+                f"registry.yaml YAML 解析失败（path={registry_path}）：{exc}"
+            ) from exc
 
     gates = reg.get("gates", [])
     gate = next(

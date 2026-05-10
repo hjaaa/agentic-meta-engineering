@@ -1096,7 +1096,7 @@ R001-R007 的 Python 函数本身**保留**；migration 测试要保证的是"ya
 | R002 | review JSON schema 合规 | 缺 schema_version / required 字段 | dimensions issues 数组类型错 |
 | R003 | conclusion=looks_clean + signoff 完整 | conclusion=blocked / 缺 human_signoff | rejected（旧枚举）等价 blocked（新枚举）|
 | R004 | conclusion=looks_clean | conclusion=needs_attention（非 strict 走 WARNING）| --strict 升 ERROR |
-| R005 | hash 全匹配 | reviewed_artifacts 中某文件 sha256 偏移 | meta.yaml 自引用（黑名单兜底）|
+| R005 | hash 全匹配 | reviewed_artifacts 中某文件 sha256 偏移 | meta.yaml 出现在 reviewed_artifacts 时的 hash drift（黑名单兜底已由 save_review.py:_check_artifact_blacklist 写入侧覆盖，此处验 R005 读取侧 drift 防御）|
 | R006 | supersedes 链直链 | 链含环 | 悬挂引用（指向不存在 review_id） |
 | R007 | by_feature 覆盖全 done features | 缺 by_feature 项 / latest 为空 | conclusion=rejected（旧枚举）等价 blocked + 缺 human_signoff |
 
