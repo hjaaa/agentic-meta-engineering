@@ -2,6 +2,14 @@
 description: 前进到下一阶段（含强制门禁检查）
 ---
 
+> [DEPRECATION-NEXT] /requirement:next 是 D-009 例外项，保留实际实现至 Plan 6 自举验证通过。
+> 新链路对应：/workflow:next（语义等价但走 yaml workflow phase-transition 节点）。
+> 建议在自举验证 SOP 中评估切换时机。
+>
+> 兼容期：截至 2026-08-08
+>
+> **例外保留说明（不转发到 /workflow:next）**：调用 Skill `managing-requirement-lifecycle` 的 phase-transition 子动作，含 PHASE_REQUIREMENTS 校验。
+
 ## 用途
 
 当前阶段工作完成，要切到下一阶段。会触发该阶段切换的门禁检查。

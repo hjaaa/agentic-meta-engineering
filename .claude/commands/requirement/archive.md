@@ -2,6 +2,13 @@
 description: PR 合并后做收尾闭环——phase=completed + archived_at + 经验沉淀 + 删本地+远程分支（提示）
 ---
 
+> [DEPRECATION] /requirement:archive 已纳入 3 月兼容期（截至 2026-08-08）。
+> 请改用：新引擎语义由 archive-finalize 节点承载。
+> 本次仍执行旧实现以保证兼容；Plan 6 自举验证通过 + 兼容期到期后将物理删除。
+> 详见：context/team/engineering-spec/migration/2026-XX-runs-rename.md
+>
+> **例外保留说明（不转发到 /workflow:archive）**：保留旧实现；新引擎语义由 archive-finalize 节点承载。
+
 ## 用途
 
 PR 合并后做收尾闭环：phase=completed + archived_at + 经验沉淀 + 删本地+远程分支（提示）。

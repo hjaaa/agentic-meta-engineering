@@ -3,6 +3,13 @@ description: 创建新需求——自动建分支、目录、meta.yaml 骨架
 argument-hint: <需求标题>
 ---
 
+> [DEPRECATION] /requirement:new 已纳入 3 月兼容期（截至 2026-08-08）。
+> 请改用：/workflow:run standard-8phase "<title>"
+> 本次仍执行旧实现以保证兼容；Plan 6 自举验证通过 + 兼容期到期后将物理删除。
+> 详见：context/team/engineering-spec/migration/2026-XX-runs-rename.md
+>
+> **ARGUMENTS 透传规则**：`$@` 拼空格作 title，如 `/workflow:run standard-8phase "用户注册优化"`
+
 ## 用途
 
 开始一个新需求开发周期。会创建：

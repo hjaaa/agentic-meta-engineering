@@ -3,6 +3,13 @@ description: 回退到早期阶段，归档当前产出物
 argument-hint: <目标阶段英文标识>
 ---
 
+> [DEPRECATION] /requirement:rollback 已纳入 3 月兼容期（截至 2026-08-08）。
+> 请改用：/workflow:rollback <to-node>
+> 本次仍执行旧实现以保证兼容；Plan 6 自举验证通过 + 兼容期到期后将物理删除。
+> 详见：context/team/engineering-spec/migration/2026-XX-runs-rename.md
+>
+> **ARGUMENTS 透传规则**：`$1` 直传，如 `/workflow:rollback definition`
+
 ## 用途
 
 发现前序阶段设计有问题，需要回到更早阶段重新做。

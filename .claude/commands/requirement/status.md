@@ -2,6 +2,13 @@
 description: 查看当前需求的阶段、进度、待办概览
 ---
 
+> [DEPRECATION] /requirement:status 已纳入 3 月兼容期（截至 2026-08-08）。
+> 请改用：/workflow:status [<id>]
+> 本次仍执行旧实现以保证兼容；Plan 6 自举验证通过 + 兼容期到期后将物理删除。
+> 详见：context/team/engineering-spec/migration/2026-XX-runs-rename.md
+>
+> **ARGUMENTS 透传规则**：`$1` 直传，如 `/workflow:status REQ-2026-001`
+
 ## 用途
 
 快速了解当前需求状态，不深入细节。典型 < 5 秒读完的摘要。

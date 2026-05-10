@@ -37,6 +37,18 @@ REQ-2026-008 新增以下 4 个 gate，已注册在 `scripts/gates/registry.yaml
 
 **豁免约束**：4 个 gate 均**不**带 `legacy-bypass` tag，meta.yaml `legacy: true` 无法豁免它们。历史 completed REQ 通过 trigger / changed_files 路径自然隔离，不依赖 legacy 短路（D-005 #2 / D-006 V-07 修订）。
 
+## D-009 例外保留说明（next / submit / archive 不转发）
+
+以下 3 个命令是 D-009 的例外项，**不转发到 /workflow:***，保留实际旧实现：
+
+| 命令 | 处理方式 | 原因 |
+|---|---|---|
+| `/requirement:next` | 调用本 Skill 的 **phase-transition** 子动作 + PHASE_REQUIREMENTS 校验 | D-009 例外：保留至 Plan 6 自举验证通过；新链路为 `/workflow:next` |
+| `/requirement:submit` | 保留旧实现 + flag 直传到旧 submit Skill | 新引擎语义由 standard-8phase yaml 末端 **pr-submit** 节点承载（F-003） |
+| `/requirement:archive` | 保留旧实现 | 新引擎语义由 **archive-finalize** 节点承载 |
+
+兼容期截至 2026-08-08，届时随 Plan 6 自举验证同步评估物理删除时机。
+
 ## 硬约束
 
 - ❌ 禁止跳过门禁（例：从 `definition` 直接跳 `detail-design`）
