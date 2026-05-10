@@ -27,6 +27,13 @@
     "714c066 refactor(F-012): 删 code_review_signoff.py / save_review.py signoff 接管全套",
     "8be6f2e refactor(F-012): 删 /requirement:next + 裁剪 managing-requirement-lifecycle phase-transition 子动作",
     "dce3549 docs(F-012): SOP 文档迁移 /requirement:next → /workflow:next",
-    "（rev2 commits TBD — 提交后回填）"
+    "4abecbd chore(F-012): rev2 status 翻转 in-progress + process.txt 开始事件",
+    "731e293 fix(F-012): rev2 修 sign-off 输入校验 4 件套（F-19/F-20/F-21/F-7/F-8）+ rc=6",
+    "4417ded fix(F-012): rev2 修 F-9 ci 路径 R005 副作用（staged_writes=[] 显式只读）+ F-26 注释",
+    "34df1e7 refactor(F-012): rev2 拆 scripts/lib/signoff.py 子模块（save_review.py 678→423 行）",
+    "b455244 test(F-012): rev2 加 _PHASE_REVIEW_DEPS 三副本一致性测试 + R001-R005 None 守卫",
+    "7bf98a2 chore(F-012): rev2 features.json + tasks/F-012.md TC-F12-5 同步 D-016 ADR 决策",
+    "d06e74b style(F-012): rev2 trivial 5 minor（PEP 8 / stale 注释 / 测试命名 / EOL）",
+    "c91f182 chore(F-012): rev2 trivial 5-minor fix + 自检收尾 + bookkeeping"
   ]
 }
