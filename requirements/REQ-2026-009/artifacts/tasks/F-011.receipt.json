@@ -2,38 +2,17 @@
   "schema_version": "1.0",
   "feature_id": "F-011",
   "status": "DONE",
-  "commit_sha": "7af5cdb",
+  "commit_sha": "fd60521",
+  "rev": "rev2",
   "files_changed": [
-    "tests/migration/__init__.py",
-    "tests/migration/conftest.py",
     "tests/migration/test_phase_requirements_equivalence.py",
-    "tests/migration/fixtures/R001/happy.yaml",
-    "tests/migration/fixtures/R001/failure.yaml",
-    "tests/migration/fixtures/R001/boundary.yaml",
-    "tests/migration/fixtures/R002/happy.yaml",
-    "tests/migration/fixtures/R002/failure.yaml",
-    "tests/migration/fixtures/R002/boundary.yaml",
-    "tests/migration/fixtures/R003/happy.yaml",
-    "tests/migration/fixtures/R003/failure.yaml",
-    "tests/migration/fixtures/R003/boundary.yaml",
-    "tests/migration/fixtures/R004/happy.yaml",
-    "tests/migration/fixtures/R004/failure.yaml",
     "tests/migration/fixtures/R004/boundary.yaml",
-    "tests/migration/fixtures/R005/happy.yaml",
-    "tests/migration/fixtures/R005/failure.yaml",
-    "tests/migration/fixtures/R005/boundary.yaml",
-    "tests/migration/fixtures/R006/happy.yaml",
-    "tests/migration/fixtures/R006/failure.yaml",
-    "tests/migration/fixtures/R006/boundary.yaml",
-    "tests/migration/fixtures/R007/happy.yaml",
-    "tests/migration/fixtures/R007/failure.yaml",
-    "tests/migration/fixtures/R007/boundary.yaml",
     "tests/e2e/test_legacy_run_compat.py",
-    "tests/e2e/fixtures/legacy_run/meta.yaml",
-    "tests/e2e/fixtures/legacy_run/.workflow/runs/RUN-LEGACY-001/events.jsonl",
-    "requirements/REQ-2026-009/notes.md"
+    "requirements/REQ-2026-009/artifacts/detailed-design.md",
+    "requirements/REQ-2026-009/notes.md",
+    "requirements/REQ-2026-009/artifacts/tasks/F-011.receipt.json"
   ],
-  "test_summary": "F-011 落地 D-009 自举验证 SOP + migration 21 双跑对照测试：TC-F11-1（21 parametrize 全 PASS / 0 false-pass / 0 false-fail）+ TC-F11-2（test_three_triggers registry.yaml 三 trigger 断言）+ TC-F11-3（test_legacy_run_compat 4 个 e2e 测试 PASS / RunState.rebuild paused + node_outputs）+ TC-F11-4（test_r003_signoff_through_hook + APPROVAL_SLASH_PATTERN hook 落地断言）+ TC-F11-5（test_plan6_sop_doc_present SOP 段保护断言）；全套 1176 passed / 9 skipped 无回归；ruff All checks passed；关键隔离修复：使用 review_verdict_ci.check_reviews 内部引用避免 test_signoff_no_circular_import._purge_modules 导致的模块实例漂移。",
+  "test_summary": "F-011 rev2 修 6 项 review finding（3 major + 3 minor）：F-7[major] R004 boundary strict=True 真验证（expected_conclusion=fail），_classify_report 加 strict 参数委托 report.exit_code；F-8[major] detailed-design §8.3 R005 文案对齐 hash drift + notes.md 决策追加；F-10[major] test_legacy_run_continue_path_no_error 末尾真调 workflow_continue.main([run_id], repo_root=tmp_path) 覆盖 _resolve_run_dir / validate_state_for_cmd 路径；F-4/F-5/F-6[minor] yaml.safe_load 异常包 path。全套 1179 passed / 9 skipped（较 rev1 +3），ruff All checks passed。",
   "touches_violations": [
     {
       "path": "tests/e2e/fixtures/legacy_run/meta.yaml",
@@ -42,12 +21,21 @@
     {
       "path": "tests/e2e/fixtures/legacy_run/.workflow/runs/RUN-LEGACY-001/events.jsonl",
       "note": "同上，fixture 子目录，可接受"
+    },
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-009/artifacts/review-20260510-132838.md",
+      "ts": "2026-05-10T05:30:26+00:00",
+      "tool": "Write"
+    },
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-009/artifacts/detailed-design.md",
+      "note": "F-8 豁免：F-011 rev2 scope 明确允许改 detailed-design.md §8.3 R005 文案"
     }
   ],
   "test_results": {
-    "TC-F11-1": "PASS (21/21 parametrize, test_zero_mismatch_across_all_fixtures PASS)",
-    "TC-F11-2": "PASS (test_three_triggers: triggers >= {phase-transition, submit, ci})",
-    "TC-F11-3": "PASS (4 e2e subtests: rebuild_state / node_outputs / meta_valid / continue_path)",
+    "TC-F11-1": "PASS (21/21 parametrize, test_zero_mismatch_across_all_fixtures PASS, R004-boundary strict=True → fail 验证通过)",
+    "TC-F11-2": "PASS (test_three_triggers: triggers >= {phase-transition, submit, ci}, yaml异常包裹通过)",
+    "TC-F11-3": "PASS (4 e2e subtests + workflow_continue.main([RUN-LEGACY-001], repo_root=tmp_path) rc=0)",
     "TC-F11-4": "PASS (test_r003_signoff_through_hook: sign-off PASS + no signoff FAIL + hook assert)",
     "TC-F11-5": "PASS (test_plan6_sop_doc_present: notes.md contains SOP markers)"
   }
