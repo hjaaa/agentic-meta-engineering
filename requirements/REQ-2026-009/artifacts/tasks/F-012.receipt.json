@@ -7,9 +7,21 @@
     "三处 _PHASE_REVIEW_DEPS dict 本地副本是潜在漂移源。缓解：每处加双行 source+CI 注释（rev3 M-6 统一格式）；新增 trigger 时人工同步。如多年后 trigger 数量翻倍可考虑反向合并到 canonical_phases.py。",
     "签字深防御从双层（Command + Skill）降为单层（save_review.py signoff 单一入口）。缓解：入口收敛后无第二条调用路径绕过；isatty 在 _run_signoff 第 0 步就拦下所有下游分支；FAKE_TTY env var 等红线仍封禁。",
     "双向 import 拓扑（signoff.py ↔ save_review.py lazy 解环）仍存在脆弱性——若 signoff.py 模块级代码引用 save_review 中函数，将触发循环 ImportError。rev3 M-4 已加注释明示风险；建议下次拆 helper 时进一步抽 save_review_validation.py 解开双向依赖（D-017 记录）。",
-    "save_review.py 重构后 423 行（目标 <410 行），超 13 行。已消除所有可删注释及空行，剩余超量来自最小正确实现不可压缩部分。signoff.py rev3 约 345 行（含 _detect_default_base + 3 helper + __all__ + 注释增补）。"
+    "governance gate 仅覆盖 REQ-2026-009 F-012（保守起步版）；其他 REQ 的 features.json/frontmatter touches 一致性未纳入 CI 强制检查，未来推广时在 _GATE_SCOPE 追加。",
+    "本轮 rev4 新引入 minor：run_signoff CC 降至 10（radon B 级，目标 ≤10 达成，但边界较紧）；_append_signoff_process_log 加入 req_id 空值守卫（行为变化：原代码空 req_id 时会尝试打开 REQUIREMENTS_DIR/process.txt 路径，新代码直接 return——语义等价，无 regression）。"
   ],
-  "touches_violations": [],
+  "touches_violations": [
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-009/artifacts/review-20260510-212235.md",
+      "ts": "2026-05-10T13:23:50+00:00",
+      "tool": "Write"
+    },
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-009/artifacts/features.json",
+      "ts": "2026-05-10T13:26:37+00:00",
+      "tool": "Edit"
+    }
+  ],
   "self_check_results": {
     "TC-F12-1": "PASS",
     "TC-F12-2": "PASS",
@@ -19,9 +31,10 @@
     "TC-F12-6": "PASS"
   },
   "test_results": {
-    "full_pytest": "1187 passed, 9 skipped（rev3 修复后；rev2 1186 + 1 新增 _detect_default_base 测试）",
-    "ruff_check": "0 新引入错误（rev3 改动文件全部通过；原有 74 个仓库级预存问题不计入本轮）",
-    "post_dev_gate": "5 gates pass（GATE-META-SCHEMA / GATE-INDEX-INTEGRITY / GATE-SOURCING / GATE-PLAN-FRESHNESS / GATE-WORKSPACE-CLEAN）"
+    "full_pytest": "1190 passed, 9 skipped（rev4 修复后；rev3 1187 + 3 新增：cache / rc=6 / governance gate）",
+    "ruff_check": "0 新引入错误（rev4 改动文件全部通过；原有 73 个仓库级预存问题不计入本轮）",
+    "post_dev_gate": "5 gates pass（GATE-META-SCHEMA / GATE-INDEX-INTEGRITY / GATE-SOURCING / GATE-PLAN-FRESHNESS / GATE-WORKSPACE-CLEAN）",
+    "run_signoff_cc": "10（radon B 级，目标 ≤10 达成）"
   },
   "commits": [
     "525bf87 refactor(F-012): mv phase_enum.py → canonical_phases.py（保 single source of truth）",
@@ -41,6 +54,13 @@
     "5089b02 refactor(F-012): rev3 修 M-3 run_signoff 拆 3 helper",
     "1a24281 chore(F-012): rev3 修 M-1 features.json + plan.md D-017 ADR",
     "eada280 fix(F-012): rev3 修 M-4 注释 + M-5 路径校验诊断信息统一",
-    "2fcb06a style(F-012): rev3 修 M-6/M-7/M-8/M-9/M-10 trivial"
+    "2fcb06a style(F-012): rev3 修 M-6/M-7/M-8/M-9/M-10 trivial",
+    "19cbf7b chore(F-012): rev4 status 翻转 in-progress + process.txt 开始事件",
+    "01b3088 fix(F-012): rev4 修 M-4'/N-3/N-2 _detect_default_base 模块级缓存 + 0.5s timeout + logger.warning",
+    "d4c1e2a refactor(F-012): rev4 修 M-3' run_signoff 进一步拆 _load_and_validate_verdict / _run_cr_checks（CC 14→10）",
+    "e4a9505 test(F-012): rev4 修 M-5' rc=6 verdict JSON 损坏路径补测试覆盖",
+    "76cc64a style(F-012): rev4 修 N-6 r003_r007 测试命名 given_xxx 改 fixture 状态描述 + N-8 stderr verdict_path 改 rel()",
+    "8b69813 test(F-012): rev4 加 governance gate test_features_json_touches_consistency.py",
+    "658d2cd fix(F-012): rev4 governance gate ruff 修复"
   ]
 }
