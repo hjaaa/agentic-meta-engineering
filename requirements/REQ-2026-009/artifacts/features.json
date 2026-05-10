@@ -472,7 +472,7 @@
         "TC-F12-2: pytest tests/ 全绿——code_review_signoff.py / phase_enum.py / next.md 删除后既有 review verdict 流程 + R 函数（保留供 plugin 复用）单测全部通过",
         "TC-F12-3: bash -c 'grep -n requirements/ scripts/lib/workflow_loader.py' 命中 0 行——loader 仅识别 runs/ 路径（D-007 1 行删完成）",
         "TC-F12-4: bash -c 'grep -rln \"/requirement:next\" .claude/' 命中 0 个文件——next.md 删除 + 别名兼容期内本命令例外保留期已过（覆盖 AC-CLEAN 子项）",
-        "TC-F12-5: bash -c 'grep -rln managing-requirement-lifecycle .claude/skills/' 命中 0 个 SKILL.md 或 reference/——伞形 Skill 旧 SOP 逻辑物理删除",
+        "TC-F12-5: managing-requirement-lifecycle 仅 phase-transition 子动作 + reference/phase-rules.md 删除，伞形 Skill 保留 8 子动作（archive/submit/new/continue/save/status/list/rollback）；详见 plan.md D-016 ADR",
         "TC-F12-6: CLAUDE.md / agentic-engineer-guide.md / ai-collaboration.md 引用更新——grep '/requirement:next' 命中 0 行 + grep '/workflow:' 命中 ≥ 1 行（SOP 改写完成）"
       ]
     },
