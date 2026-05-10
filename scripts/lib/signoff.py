@@ -176,11 +176,15 @@ def _append_signoff_process_log(
 ) -> None:
     """追加 signoff 事件到 requirements/<req>/process.txt。
 
+    req_id 为空时静默跳过（verdict 缺 requirement_id 字段时的兜底）。
     格式（模仿 requirement-progress-logger 单行格式）：
       <ts> [signoff] <REV-ID> <decision> by <email>
 
     F-012 rev2 迁入 signoff.py。
+    F-012 rev4：移入 req_id 空值守卫，调用方免 if 分支（CC 优化）。
     """
+    if not req_id:
+        return
     process_path = REQUIREMENTS_DIR / req_id / "process.txt"
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     line = f"{ts} [signoff] {_sanitize_log_field(rev_id)} {decision} by {_sanitize_log_field(signed_by)}\n"
@@ -310,11 +314,75 @@ def _validate_signed_by(args: argparse.Namespace) -> tuple[str | None, int | Non
         return signed_by, None
 
 
+def _load_and_validate_verdict(
+    verdict_path: Path,
+) -> tuple[dict | None, int | None]:
+    """步骤 4-c：读取并预检 verdict 文件。
+
+    吸收 JSON 解析异常（→ rc=6）和已签字检查（→ rc=5）两个分支。
+
+    返回 (verdict, rc)：
+      - verdict: dict 时放行（调用方继续写字段）
+      - rc: int 时调用方直接 return rc
+
+    F-012 rev4 M-3' 从 run_signoff 拆出。
+    """
+    try:
+        with verdict_path.open("r", encoding="utf-8") as f:
+            verdict = json.load(f)
+    except (json.JSONDecodeError, OSError) as exc:
+        print(paint(f"❌ verdict file corrupted: {rel(verdict_path)}: {exc}", "red"), file=sys.stderr)
+        return None, 6
+
+    # 检查是否已签字（防重复签名）
+    existing_sig = verdict.get("human_signoff") or {}
+    if existing_sig.get("decision"):
+        existing_by = existing_sig.get("signed_by", "unknown")
+        existing_at = existing_sig.get("signed_at", "unknown")
+        print(f"signoff: already signed by {existing_by} at {existing_at}", file=sys.stderr)
+        return None, 5
+
+    return verdict, None
+
+
+def _run_cr_checks(verdict: dict, verdict_path: Path) -> int | None:
+    """步骤 5 后半：加载 schema + 全量重跑 CR-1~CR-8。
+
+    吸收 schema 文件缺失（→ rc=1）和 CR 校验失败（→ rc=1）两个分支。
+
+    返回 None 表示校验通过；int 表示调用方应直接 return 该 rc。
+
+    F-012 rev4 M-3' 从 run_signoff 拆出。
+    """
+    import save_review as _sr  # noqa: PLC0415
+
+    try:
+        schema = _sr._load_schema()
+    except FileNotFoundError as exc:
+        print(paint(f"❌ schema 文件缺失: {exc}", "red"), file=sys.stderr)
+        return 1
+
+    report = Report()
+    label = f"{verdict_path.name}:{verdict.get('requirement_id', '?')}"
+    _sr._check_required_fields(verdict, schema, report, label)
+    _sr._check_enums(verdict, schema, report, label)
+    _sr._check_format(verdict, schema, report, label)
+    _sr._check_cr_rules(verdict, report, label)
+    _sr._check_scope_rules(verdict, schema, report, label)
+
+    if report.errors > 0:
+        print(report.render(), file=sys.stderr)
+        return 1
+
+    return None
+
+
 def run_signoff(args: argparse.Namespace) -> int:
     """signoff 子命令公开入口：把 human_signoff 字段写入已有 verdict 文件。
 
     F-012 rev2 从 save_review._run_signoff 迁入并公开（改名 run_signoff）。
     F-012 rev3 M-3：拆 3 helper（_check_args_mutex / _resolve_signoff_decision / _validate_signed_by）。
+    F-012 rev4 M-3'：再拆 2 helper（_load_and_validate_verdict / _run_cr_checks），CC 14→≤10。
 
     流程（F-012 重构后单一入口）：
       0. D-003 深防御：校验 stdin 必须为 tty（防 AI 代签；不允许 env var 旁路）
@@ -322,8 +390,8 @@ def run_signoff(args: argparse.Namespace) -> int:
       2. --trivial 模式：跑路径白名单 → 通过则强制 decision=approved-trivial
       3. 自动填充 signed_by（git config user.email）/ signed_at（ISO8601 now）
          若未通过 CLI 显式提供；--signed-by 显式传入时校验 email 格式
-      4. 从 REV-ID 定位 verdict 文件 + 已签字预检
-      5. 写 human_signoff 字段 + 全量重跑 CR-1~CR-8
+      4. 从 REV-ID 定位 verdict 文件 → _load_and_validate_verdict（JSON/已签字检查）
+      5. 写 human_signoff 字段 → _run_cr_checks（全量重跑 CR-1~CR-8）
       6. 通过 → 写盘 + append process.txt；失败 → 退出码 1 + stderr CR 详情
 
     退出码：
@@ -363,53 +431,24 @@ def run_signoff(args: argparse.Namespace) -> int:
         print(f"signoff: {reason}: {rev_id}", file=sys.stderr)
         return 4
     if not verdict_path.exists():
-        print(f"signoff: verdict file missing: {verdict_path}", file=sys.stderr)
+        print(f"signoff: verdict file missing: {rel(verdict_path)}", file=sys.stderr)
         return 4
 
-    # 读取 verdict 文件
-    try:
-        with verdict_path.open("r", encoding="utf-8") as f:
-            verdict = json.load(f)
-    except (json.JSONDecodeError, OSError) as exc:
-        print(paint(f"❌ verdict file corrupted: {verdict_path}: {exc}", "red"), file=sys.stderr)
-        return 6
-
-    # 检查是否已签字（防重复签名）
-    existing_sig = verdict.get("human_signoff") or {}
-    if existing_sig.get("decision"):
-        existing_by = existing_sig.get("signed_by", "unknown")
-        existing_at = existing_sig.get("signed_at", "unknown")
-        print(f"signoff: already signed by {existing_by} at {existing_at}", file=sys.stderr)
-        return 5
+    verdict, rc = _load_and_validate_verdict(verdict_path)
+    if rc is not None:
+        return rc
 
     # 步骤 5：写入 human_signoff 字段
-    verdict["human_signoff"] = {
+    verdict["human_signoff"] = {  # type: ignore[index]
         "decision": decision,
         "signed_at": signed_at,
         "signed_by": signed_by,
         "source": args.source,
     }
 
-    # 全量重跑 CR-1~CR-8 + 格式校验（延迟导入避免循环）
-    import save_review as _sr  # noqa: PLC0415
-
-    try:
-        schema = _sr._load_schema()
-    except FileNotFoundError as exc:
-        print(paint(f"❌ schema 文件缺失: {exc}", "red"), file=sys.stderr)
-        return 1
-
-    report = Report()
-    label = f"{verdict_path.name}:{verdict.get('requirement_id', '?')}"
-    _sr._check_required_fields(verdict, schema, report, label)
-    _sr._check_enums(verdict, schema, report, label)
-    _sr._check_format(verdict, schema, report, label)
-    _sr._check_cr_rules(verdict, report, label)
-    _sr._check_scope_rules(verdict, schema, report, label)
-
-    if report.errors > 0:
-        print(report.render(), file=sys.stderr)
-        return 1
+    rc = _run_cr_checks(verdict, verdict_path)  # type: ignore[arg-type]
+    if rc is not None:
+        return rc
 
     # 写盘（原子替换）
     tmp_path = verdict_path.with_suffix(".json.tmp")
@@ -419,10 +458,9 @@ def run_signoff(args: argparse.Namespace) -> int:
     tmp_path.replace(verdict_path)
     print(paint(f"✓ human_signoff 已写入 {rel(verdict_path)}", "green"))
 
-    # append process.txt 评审事件
-    req_id_str = verdict.get("requirement_id", "")
-    if req_id_str:
-        _append_signoff_process_log(req_id_str, rev_id, decision, signed_by)
+    # append process.txt 评审事件（req_id 缺失时静默跳过，不阻断主流程）
+    req_id_str = verdict.get("requirement_id", "")  # type: ignore[union-attr]
+    _append_signoff_process_log(req_id_str, rev_id, decision, signed_by)
 
     return 0
 
