@@ -151,3 +151,5 @@
 2026-05-10 13:00:08 [development] F-011 实现完成（subagent DONE）：21 fixture + 4 测试 / 2 commits 7af5cdb+3808471 / pytest 29+1176 全 PASS / ruff All passed / receipt.json status=DONE
 2026-05-10 13:30:50 [review:needs_attention] code-quality-reviewer rev1 87 (REV-REQ-2026-009-code-F-011-001) — 17 候选 5/6/6 → 3 major (F-7/F-8/F-10) + 3 minor (F-4/5/6) + 11 drop；93→87；派 rev2
 2026-05-10 13:40:06 [development] F-011 rev2 修复完成（subagent DONE）：6 项全闭合（3 major F-7/F-8/F-10 + 3 minor F-4/F-5/F-6）/ 2 commits fd60521+0437a1b / pytest 1179 + 29 全 PASS / ruff 0 / R004 boundary strict→fail 验证 / workflow_continue.main 真调路径覆盖
+2026-05-10 13:58:40 [review:looks_clean] code-quality-reviewer rev2 92 looks_clean (REV-REQ-2026-009-code-F-011-002 supersedes 001) — rev1 6 keep 全闭合；rev2 9 候选 0/3/6 → 0 critical / 0 major / 3 keep+minor (F-1/F-5/F-8) + 1 follow-up + 5 drop；趋势 87→92 +5；trend-G-meta 自引入 3 minor；允许 trivial sign-off
+2026-05-10 15:33:05 [development] F-011 rev3 修复完成（subagent DONE）：3 项 minor 全闭合（F-1 docstring / F-5 try/except / F-8 ValueError 模板）/ 2 commits 8fac307+a933b78 / 16+/12- ≤25 预算 / pytest 29+1179 全 PASS / ruff 0
