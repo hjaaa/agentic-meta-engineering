@@ -33,8 +33,8 @@ from .base import Decision, Report
 # phase-transition 的目标 phase → 必须存在的 review phase 映射（plugin 本地副本，
 # F-012 取代跨模块共享 dict 的旧设计；详见 scripts/lib/check_reviews.py:_PHASE_REVIEW_DEPS
 # 顶部的设计动机注释）。
-# 来源：context/team/engineering-spec/meta-schema.yaml `enums.phase` +
-#       .claude/skills/managing-requirement-lifecycle/reference/phase-rules.md
+# 来源：context/team/engineering-spec/meta-schema.yaml `enums.phase`
+# （phase-rules.md F-012 后已删；meta-schema.yaml 为唯一事实源）
 _PHASE_REVIEW_DEPS: dict[str, list[str]] = {
     "tech-research":  ["definition"],
     "outline-design": ["definition"],
@@ -107,12 +107,16 @@ def collect_findings(
 ) -> None:
     """对单个需求跑 R001~R007，结果分类追加到 all_errors / all_warnings。
 
-    ci trigger 路径，不接 staged_writes（ci 是只读全量扫描；R005 命中 stale 走旧 CLI 行为）。
+    ci trigger 路径是只读全量扫描：staged_writes=[] 显式传入空列表，
+    R005 命中 drift 时只向此列表 append（不写盘 meta.yaml.stale=true），
+    列表在本函数退出后即丢弃——保证 ci 路径无副作用。
+    （F-012 rev2 修复 F-9：旧行为 None 会让 R005 走旧 CLI 直写路径。）
     """
     target_phase = meta.get("phase", "")
     required_phases = _PHASE_REVIEW_DEPS.get(target_phase, [])
     legacy_report = LegacyReport()
-    run_r_rules(legacy_report, meta, target_phase, required_phases, req_id, req_id, None)
+    staged_writes: list = []  # ci 只读路径：R005 drift 结果暂存此列表，不写盘
+    run_r_rules(legacy_report, meta, target_phase, required_phases, req_id, req_id, staged_writes)
     for finding in legacy_report.findings():
         if finding[1] == LegacySeverity.ERROR:
             all_errors.append(finding)
