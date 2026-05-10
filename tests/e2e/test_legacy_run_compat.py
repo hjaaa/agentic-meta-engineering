@@ -127,7 +127,7 @@ def test_legacy_run_meta_fixture_valid() -> None:
             meta = yaml.safe_load(f)
         except yaml.YAMLError as exc:
             raise ValueError(
-                f"legacy_run fixture meta.yaml YAML 解析失败（path={meta_path}）：{exc}"
+                f"meta.yaml 解析失败（path={meta_path}）：{exc}"
             ) from exc
 
     assert isinstance(meta, dict), f"meta.yaml 应为 YAML mapping，实际 {type(meta)}"
@@ -170,7 +170,16 @@ def test_legacy_run_continue_path_no_error(tmp_path: Path) -> None:
 
     # 读取后追加到原 events 重建（模拟 continue 后读取完整 jsonl）
     with jsonl_path.open("r", encoding="utf-8") as f:
-        resumed_events_raw = [json.loads(l.strip()) for l in f if l.strip()]
+        resumed_events_raw = []
+        for line in f:
+            if not line.strip():
+                continue
+            try:
+                resumed_events_raw.append(json.loads(line.strip()))
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    f"test-continue.jsonl 解析失败（path={jsonl_path}）：{exc}"
+                ) from exc
 
     all_events = events + resumed_events_raw
     state_after_resume = RunState.rebuild(events=all_events, run_id=run_id)

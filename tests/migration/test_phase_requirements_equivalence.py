@@ -47,7 +47,7 @@ def _load_fixture(rule: str, kind: str) -> dict[str, Any]:
             data = yaml.safe_load(f)
         except yaml.YAMLError as exc:
             raise ValueError(
-                f"Fixture YAML 解析失败（path={fixture_path}）：{exc}"
+                f"fixture 解析失败（path={fixture_path}）：{exc}"
             ) from exc
     if not isinstance(data, dict):
         raise ValueError(
@@ -174,16 +174,11 @@ def _setup_req_dir(
 def _classify_report(report: LegacyReport, strict: bool = False) -> str:
     """把 LegacyReport 分类为 pass / fail / warn。
 
-    - strict=True 时 warnings 也升为 fail（与 report.exit_code(strict=True) 对齐）
-    - errors > 0       → "fail"
-    - errors == 0 且 warnings > 0 且 strict → "fail"
-    - errors == 0 且 warnings > 0 → "warn"
-    - errors == 0 且 warnings == 0 → "pass"
+    - exit_code(strict) != 0 → "fail"（含 errors > 0 及 strict=True 时 warnings 升 error）
+    - warnings > 0            → "warn"
+    - 其余                    → "pass"
     """
     if report.exit_code(strict=strict) != 0:
-        if report.errors > 0:
-            return "fail"
-        # strict=True 且只有 warnings → exit_code=1，升为 fail
         return "fail"
     if report.warnings > 0:
         return "warn"
@@ -403,7 +398,7 @@ def test_three_triggers() -> None:
             reg = yaml.safe_load(f)
         except yaml.YAMLError as exc:
             raise ValueError(
-                f"registry.yaml YAML 解析失败（path={registry_path}）：{exc}"
+                f"registry.yaml 解析失败（path={registry_path}）：{exc}"
             ) from exc
 
     gates = reg.get("gates", [])
