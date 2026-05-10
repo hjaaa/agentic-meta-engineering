@@ -97,7 +97,10 @@ def _r001_review_exists(
     直接报 R001 错误。避免历史 bug：non-canonical phase 名（如 'technical-research'）
     会让前置 dict 取空 list → 静默 vacuous pass。
     F-012：required_phases 改为显式入参；调用方负责传入正确的 phase 列表。
+    F-012 rev2 F-24：required_phases None 守卫（防调用方传 None 导致 for-loop TypeError）。
     """
+    if required_phases is None:
+        required_phases = []
     valid_phases = canonical_phases.load_canonical_phases()
     if target_phase and target_phase not in valid_phases:
         report.add(
@@ -126,12 +129,16 @@ def _r003_blocked_or_unsigned(
 ) -> None:
     """R003: latest.conclusion != blocked（D-008 旧 rejected 等价）且必须有 human_signoff。
 
+    F-012 rev2 F-24：required_phases None 守卫。
+
     升级口径（REQ-2026-003 D-008）：
     - 旧 schema 里 conclusion=rejected → 新 schema 里 conclusion=blocked；两者都阻断
     - 新要求：所有非 code phase 的 latest verdict 必须经过人类 sign-off 才允许切阶段
     F-012：required_phases 改为显式入参（旧 target_phase 参数已删——R003 不在错误消息里
     引用 target_phase）。
     """
+    if required_phases is None:
+        required_phases = []
     reviews = meta.get("reviews") or {}
     for phase in required_phases:
         if phase == "code":
@@ -177,7 +184,10 @@ def _r002_schema_recheck(
     """R002: review JSON schema 合法（复用 save_review 的校验函数）
 
     F-012：required_phases 改为显式入参。
+    F-012 rev2 F-24：required_phases None 守卫。
     """
+    if required_phases is None:
+        required_phases = []
     schema = save_review._load_schema()
     reviews = meta.get("reviews") or {}
     for phase in required_phases:
@@ -226,7 +236,10 @@ def _r004_needs_revision(
     F-001/F-003 schema 升级后，旧 conclusion 值 needs_revision 已替换为
     needs_attention（AI 三档机器评估）。R004 同步级联到新枚举值。
     F-012：required_phases 改为显式入参。
+    F-012 rev2 F-24：required_phases None 守卫。
     """
+    if required_phases is None:
+        required_phases = []
     reviews = meta.get("reviews") or {}
     for phase in required_phases:
         if phase == "code":
@@ -254,7 +267,10 @@ def _r005_hash_drift(
         由 review_verdict plugin 的 commit_staged_writes 在所有 gate pass 后落盘。
       - staged_writes 为 None ⇒ 维持旧行为，CLI 入口（scripts/lib/check_reviews.py main）走此路径。
     F-012：required_phases 改为显式入参。
+    F-012 rev2 F-24：required_phases None 守卫。
     """
+    if required_phases is None:
+        required_phases = []
     req_dir = REQUIREMENTS_DIR / req
     reviews = meta.get("reviews") or {}
     for phase in required_phases:

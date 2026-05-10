@@ -29,7 +29,7 @@ from common import Report  # noqa: E402
 _LABEL = "REQ-2099-TEST"
 
 
-def test_r001_fails_on_typo_target_phase():
+def test_should_error_when_typo_target_phase_given_invalid_phase():
     """given_invalid_target_phase_when_r001_then_error。
 
     历史 bug：'technical-research'（应为 'tech-research'）会因旧 PHASE_REQUIREMENTS.get
@@ -51,7 +51,7 @@ def test_r001_fails_on_typo_target_phase():
     assert "canonical phase 枚举" in message
 
 
-def test_r001_fails_on_random_typo():
+def test_should_error_when_random_typo_given_non_canonical_phase():
     """given_random_invalid_phase_when_r001_then_error（防御任何非 canonical 值）。"""
     report = Report()
     meta = {"reviews": {"definition": {"latest": "REV-001"}}}
@@ -61,7 +61,7 @@ def test_r001_fails_on_random_typo():
     assert any(code == "R001" and "DEV" in message for _, _, code, message in findings)
 
 
-def test_r001_passes_for_canonical_phase_with_review():
+def test_should_pass_when_canonical_phase_with_review_given_valid_data():
     """given_canonical_phase_with_review_when_r001_then_no_error。
 
     canonical phase 名 + reviews.definition.latest 非空 → R001 不报错。
@@ -72,7 +72,7 @@ def test_r001_passes_for_canonical_phase_with_review():
     assert report.findings() == []
 
 
-def test_r001_passes_for_phase_without_review_requirement():
+def test_should_pass_when_phase_without_review_requirement_given_empty_required():
     """given_canonical_phase_without_review_requirement_when_r001_then_no_error。
 
     'bootstrap' / 'definition' 调用方传空 required_phases（无前置 review 要求）但
@@ -85,7 +85,7 @@ def test_r001_passes_for_phase_without_review_requirement():
     assert report.findings() == []
 
 
-def test_r001_fails_when_canonical_phase_missing_required_review():
+def test_should_error_when_canonical_phase_missing_required_review_given_no_review():
     """given_canonical_phase_without_required_review_when_r001_then_error（原行为不变）。"""
     report = Report()
     meta = {"reviews": {}}  # 缺 definition review
