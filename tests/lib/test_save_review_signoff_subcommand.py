@@ -313,6 +313,9 @@ def test_should_detect_develop_when_origin_head_points_develop():
 
     F-012 rev3 新增：验证 _detect_default_base 能正确从 git symbolic-ref 推导 develop。
     """
+    # 重置缓存，防 fixture 间污染（F-012 rev4 N-3）
+    _signoff._reset_default_base_cache()
+
     # mock subprocess.run：git symbolic-ref 返回 "origin/develop"
     fake_symbolic_ref_result = subprocess.CompletedProcess(
         args=["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
@@ -329,6 +332,35 @@ def test_should_detect_develop_when_origin_head_points_develop():
     assert mock_run.call_count == 1
     call_args = mock_run.call_args
     assert "symbolic-ref" in call_args[0][0]
+
+
+def test_should_use_cached_value_on_repeat_call():
+    """given_cached_detect_default_base_when_called_twice_then_subprocess_called_once。
+
+    F-012 rev4 新增：验证模块级缓存生效，第二次调用不重新 fork 进程（N-3）。
+    """
+    # 重置缓存，确保干净起点
+    _signoff._reset_default_base_cache()
+
+    fake_result = subprocess.CompletedProcess(
+        args=["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+        returncode=0,
+        stdout="origin/develop\n",
+        stderr="",
+    )
+
+    with patch("signoff.subprocess.run", return_value=fake_result) as mock_run:
+        first = _signoff._detect_default_base()
+        second = _signoff._detect_default_base()
+
+    assert first == "develop"
+    assert second == "develop"
+    # 第二次调用命中缓存，subprocess.run 只应被调用 1 次
+    assert mock_run.call_count == 1, (
+        f"期望 subprocess.run 只调用 1 次（缓存命中），实际={mock_run.call_count}"
+    )
+    # 收尾：重置缓存避免污染后续 fixture
+    _signoff._reset_default_base_cache()
 
 
 def test_signoff_subcommand_non_tty_stdin_returns_rc2():

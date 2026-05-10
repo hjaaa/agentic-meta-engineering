@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import re
 import subprocess
 import sys
@@ -21,6 +22,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from common import REPO_ROOT, Report, paint, rel
+
+_log = logging.getLogger(__name__)
 
 __all__ = ["run_signoff", "build_signoff_parser"]
 
@@ -48,7 +51,8 @@ def _get_git_email() -> str | None:
             text=True,
             cwd=REPO_ROOT,
         ).strip()
-    except subprocess.CalledProcessError:
+    except (subprocess.SubprocessError, OSError) as exc:
+        _log.warning("_get_git_email: git config failed: %s", exc)
         email = ""
     if not email or not _EMAIL_RE.match(email):
         return None
@@ -79,27 +83,39 @@ def _check_trivial_paths(diff_paths: list[str]) -> tuple[bool, list[str]]:
     return len(non_doc) == 0, non_doc
 
 
+_DEFAULT_BASE_CACHE: str | None = None  # 模块级单进程缓存（N-3）
+
+
 def _detect_default_base() -> str:
-    """推导仓库默认 base 分支：优先 git symbolic-ref refs/remotes/origin/HEAD，
-    fallback 顺序 main → develop → master。
+    """推导仓库默认 base 分支（带模块级缓存 + 0.5s timeout）。
+    优先 git symbolic-ref refs/remotes/origin/HEAD；fallback main → develop → master。
 
     F-012 rev3 新增：解决旧版硬编码 base="main" 的 M-2 问题。
     本仓库默认分支为 develop，硬编码 main 会导致 --trivial 通道跑错 diff 范围。
+    F-012 rev4 修 M-4'/N-3：加模块级缓存避免重复 fork；timeout 缩到 0.5s
+    （CI shallow clone fallback 最坏 4 fork × 0.5s = 2s，而非旧版 8s）。
     """
+    global _DEFAULT_BASE_CACHE
+    if _DEFAULT_BASE_CACHE is not None:
+        return _DEFAULT_BASE_CACHE
+
+    result: str
     try:
         cp = subprocess.run(
             ["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
             capture_output=True,
             text=True,
-            timeout=2.0,
+            timeout=0.5,
             cwd=REPO_ROOT,
         )
         if cp.returncode == 0:
             ref = cp.stdout.strip()  # e.g. "origin/develop"
             if "/" in ref:
-                return ref.split("/", 1)[1]  # "develop"
-    except (subprocess.SubprocessError, OSError):
-        pass
+                result = ref.split("/", 1)[1]  # "develop"
+                _DEFAULT_BASE_CACHE = result
+                return result
+    except (subprocess.SubprocessError, OSError) as exc:
+        _log.warning("_detect_default_base: symbolic-ref failed: %s", exc)
     # fallback：检查 main / develop / master 是否存在 ref
     for candidate in ("main", "develop", "master"):
         try:
@@ -107,14 +123,23 @@ def _detect_default_base() -> str:
                 ["git", "rev-parse", "--verify", f"refs/heads/{candidate}"],
                 capture_output=True,
                 text=True,
-                timeout=2.0,
+                timeout=0.5,
                 cwd=REPO_ROOT,
             )
             if cp.returncode == 0:
+                _DEFAULT_BASE_CACHE = candidate
                 return candidate
-        except (subprocess.SubprocessError, OSError):
+        except (subprocess.SubprocessError, OSError) as exc:
+            _log.warning("_detect_default_base: rev-parse %s failed: %s", candidate, exc)
             continue
+    _DEFAULT_BASE_CACHE = "main"
     return "main"  # 最后兜底
+
+
+def _reset_default_base_cache() -> None:
+    """测试用：重置模块级缓存，防 fixture 间污染。"""
+    global _DEFAULT_BASE_CACHE
+    _DEFAULT_BASE_CACHE = None
 
 
 def _get_trivial_diff_paths(base: str | None = None) -> list[str]:
@@ -132,7 +157,8 @@ def _get_trivial_diff_paths(base: str | None = None) -> list[str]:
             cwd=REPO_ROOT,
         )
         return [p for p in out.strip().splitlines() if p]
-    except subprocess.CalledProcessError:
+    except (subprocess.SubprocessError, OSError) as exc:
+        _log.warning("_get_trivial_diff_paths: git diff failed: %s", exc)
         # git diff 失败视为有非文档文件（保守策略）
         return ["<git-diff-failed>"]
 
