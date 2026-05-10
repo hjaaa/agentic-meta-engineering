@@ -25,8 +25,8 @@ from pathlib import Path
 from typing import Any
 
 # ruamel.yaml 用于 meta.yaml round-trip（保留注释）；PyYAML 仅用于 schema 读取
-from ruamel.yaml import YAML
 import yaml
+from ruamel.yaml import YAML
 
 from common import REPO_ROOT, Report, Severity, paint, rel
 
@@ -258,7 +258,16 @@ def _resolve_verdict_path(rev_id: str) -> Path | None:
     if not filename_stem:
         return None
 
+    if ".." in filename_stem or "/" in filename_stem:
+        return None
     verdict_path = REQUIREMENTS_DIR / req_id / "reviews" / f"{filename_stem}.json"
+    try:
+        resolved = verdict_path.resolve()
+        reviews_root = (REQUIREMENTS_DIR / req_id / "reviews").resolve()
+        if not str(resolved).startswith(str(reviews_root) + "/"):
+            return None
+    except (OSError, ValueError):
+        return None
     return verdict_path
 
 
@@ -465,11 +474,12 @@ def _run_signoff(args: argparse.Namespace) -> int:
 
     退出码：
       0 — 签字成功
-      1 — 参数非法（互斥冲突 / 缺 git email / CR 校验失败）
+      1 — 参数非法（互斥冲突 / --signed-by 格式非法 / 缺 git email / schema 文件缺失 / CR 校验失败）
       2 — 非 tty stdin
       3 — --trivial 通道：diff 含非文档文件
       4 — verdict 文件不存在
       5 — 已签字
+      6 — verdict 文件解析失败（JSON 损坏 / IO 错误）
     """
     # 步骤 0：tty 校验（D-003 深防御；FAKE_TTY 等 env var 红线封禁）
     if not sys.stdin.isatty():
@@ -504,10 +514,16 @@ def _run_signoff(args: argparse.Namespace) -> int:
         decision = args.decision
 
     # 步骤 3：自动填充 signed_by / signed_at（CLI 未提供时从 git / now 取）
-    signed_by = args.signed_by or _get_git_email()
-    if signed_by is None:
-        print("signoff: 无法获取 git config user.email，请先配置", file=sys.stderr)
-        return 1
+    if args.signed_by is not None:
+        if not _EMAIL_RE.match(args.signed_by):
+            print(paint("❌ --signed-by 格式非法，应为 email", "red"), file=sys.stderr)
+            return 1
+        signed_by = args.signed_by
+    else:
+        signed_by = _get_git_email()
+        if signed_by is None:
+            print("signoff: 无法获取 git config user.email，请先配置", file=sys.stderr)
+            return 1
     signed_at = args.signed_at or _get_iso8601_now()
 
     # 步骤 4：定位 verdict 文件 + 已签字预检
@@ -526,7 +542,7 @@ def _run_signoff(args: argparse.Namespace) -> int:
             verdict = json.load(f)
     except (json.JSONDecodeError, OSError) as exc:
         print(paint(f"❌ verdict 文件解析失败: {exc}", "red"), file=sys.stderr)
-        return 2
+        return 6
 
     # 检查是否已签字（防重复签名）
     existing_sig = verdict.get("human_signoff") or {}
@@ -545,7 +561,11 @@ def _run_signoff(args: argparse.Namespace) -> int:
     }
 
     # 全量重跑 CR-1~CR-8 + 格式校验
-    schema = _load_schema()
+    try:
+        schema = _load_schema()
+    except FileNotFoundError as exc:
+        print(paint(f"❌ schema 文件缺失: {exc}", "red"), file=sys.stderr)
+        return 1
     report = Report()
     label = f"{verdict_path.name}:{verdict.get('requirement_id', '?')}"
     _check_required_fields(verdict, schema, report, label)
@@ -574,6 +594,11 @@ def _run_signoff(args: argparse.Namespace) -> int:
     return 0
 
 
+def _sanitize_log_field(v: str) -> str:
+    """strip \\r\\n 防 process.txt 日志注入"""
+    return v.replace("\n", " ").replace("\r", " ")
+
+
 def _append_signoff_process_log(
     req_id: str, rev_id: str, decision: str, signed_by: str
 ) -> None:
@@ -584,7 +609,7 @@ def _append_signoff_process_log(
     """
     process_path = REQUIREMENTS_DIR / req_id / "process.txt"
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    line = f"{ts} [signoff] {rev_id} {decision} by {signed_by}\n"
+    line = f"{ts} [signoff] {_sanitize_log_field(rev_id)} {decision} by {_sanitize_log_field(signed_by)}\n"
     try:
         with process_path.open("a", encoding="utf-8") as f:
             f.write(line)

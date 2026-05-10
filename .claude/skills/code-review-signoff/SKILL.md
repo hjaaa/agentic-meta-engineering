@@ -81,11 +81,12 @@ git email 无效 / 缺失 → 退出码 1，stderr：`signoff: 无法获取 git 
 | 退出码 | 触发场景 | stderr 子串 |
 |---|---|---|
 | 0 | 签字成功 | — |
-| 1 | 参数非法 / 缺 git email / CR-1~CR-8 校验失败 | `signoff: 必须指定 --decision ...` / `signoff: --trivial 与 --decision 不能同时...` / `signoff: 无法获取 git config user.email` / CR 详情 |
+| 1 | 参数非法 / --signed-by 格式非法 / 缺 git email / schema 文件缺失 / CR-1~CR-8 校验失败 | `signoff: 必须指定 --decision ...` / `signoff: --trivial 与 --decision 不能同时...` / `signoff: 无法获取 git config user.email` / `--signed-by 格式非法` / CR 详情 |
 | 2 | stdin 非 tty | `signoff: stdin not a tty, refuse to sign for AI` |
 | 3 | --trivial 含非文档文件 | `trivial: non-doc files detected: <paths>` |
 | 4 | verdict 文件不存在 | `signoff: verdict <REV-ID> not found` |
 | 5 | 已签字，禁止重复 | `signoff: already signed by <email> at <time>` |
+| 6 | verdict 文件解析失败（JSON 损坏 / IO 错误） | `❌ verdict 文件解析失败: <exc>` |
 
 ## 硬约束
 

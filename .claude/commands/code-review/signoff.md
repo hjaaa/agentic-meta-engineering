@@ -60,11 +60,12 @@ Claude Code 在调用本 Command 时，必须运行上述脚本，不得自行�
 | 退出码 | 含义 |
 |---|---|
 | 0 | 签字成功 |
-| 1 | 参数非法（--decision / --trivial 互斥冲突 / 缺 git email / CR 校验失败） |
+| 1 | 参数非法（--decision / --trivial 互斥冲突 / --signed-by 格式非法 / 缺 git email / schema 文件缺失 / CR 校验失败） |
 | 2 | 非 tty stdin，拒绝 AI 代签 |
 | 3 | --trivial 通道检测到非文档文件 |
 | 4 | verdict 文件不存在 |
 | 5 | 已签字，禁止重复签名 |
+| 6 | verdict 文件解析失败（JSON 损坏 / IO 错误） |
 
 ## 示例
 
