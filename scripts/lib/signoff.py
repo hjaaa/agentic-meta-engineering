@@ -72,11 +72,52 @@ def _check_trivial_paths(diff_paths: list[str]) -> tuple[bool, list[str]]:
     return len(non_doc) == 0, non_doc
 
 
-def _get_trivial_diff_paths(base: str = "main") -> list[str]:
+def _detect_default_base() -> str:
+    """推导仓库默认 base 分支：优先 git symbolic-ref refs/remotes/origin/HEAD，
+    fallback 顺序 main → develop → master。
+
+    F-012 rev3 新增：解决旧版硬编码 base="main" 的 M-2 问题。
+    本仓库默认分支为 develop，硬编码 main 会导致 --trivial 通道跑错 diff 范围。
+    """
+    try:
+        cp = subprocess.run(
+            ["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=2.0,
+            cwd=REPO_ROOT,
+        )
+        if cp.returncode == 0:
+            ref = cp.stdout.strip()  # e.g. "origin/develop"
+            if "/" in ref:
+                return ref.split("/", 1)[1]  # "develop"
+    except (subprocess.SubprocessError, OSError):
+        pass
+    # fallback：检查 main / develop / master 是否存在 ref
+    for candidate in ("main", "develop", "master"):
+        try:
+            cp = subprocess.run(
+                ["git", "rev-parse", "--verify", f"refs/heads/{candidate}"],
+                capture_output=True,
+                text=True,
+                timeout=2.0,
+                cwd=REPO_ROOT,
+            )
+            if cp.returncode == 0:
+                return candidate
+        except (subprocess.SubprocessError, OSError):
+            continue
+    return "main"  # 最后兜底
+
+
+def _get_trivial_diff_paths(base: str | None = None) -> list[str]:
     """获取 --trivial 模式下的 diff 文件列表（ACMR 变更）。
 
     F-012 从 code_review_signoff.py 迁入；F-012 rev2 迁入 signoff.py。
+    F-012 rev3 修 M-2：base 由调用方传入或自动推导（_detect_default_base）。
     """
+    if base is None:
+        base = _detect_default_base()
     try:
         out = subprocess.check_output(
             ["git", "diff", "--name-only", "--diff-filter=ACMR", f"{base}..HEAD"],

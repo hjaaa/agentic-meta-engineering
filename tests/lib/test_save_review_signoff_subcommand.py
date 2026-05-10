@@ -29,6 +29,7 @@ if str(_SCRIPTS_LIB) not in sys.path:
 
 import save_review as sr  # noqa: E402
 import signoff as _signoff  # noqa: E402  # F-012 rev2 拆模块：REQUIREMENTS_DIR 需同步 patch
+from unittest.mock import patch
 
 
 class _FakeTTY:
@@ -297,6 +298,29 @@ def test_signoff_subcommand_rejects_verdict_with_cr_violation(tmp_path, monkeypa
     rc = sr._run_signoff(args)
     # score=50 + conclusion=looks_clean 触发 CR-4，签字被拒
     assert rc == 1, f"期望 returncode=1（CR 校验失败），实际={rc}"
+
+
+def test_should_detect_develop_when_origin_head_points_develop():
+    """given_origin_head_points_develop_when_detect_default_base_then_returns_develop。
+
+    F-012 rev3 新增：验证 _detect_default_base 能正确从 git symbolic-ref 推导 develop。
+    """
+    # mock subprocess.run：git symbolic-ref 返回 "origin/develop"
+    fake_symbolic_ref_result = subprocess.CompletedProcess(
+        args=["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+        returncode=0,
+        stdout="origin/develop\n",
+        stderr="",
+    )
+
+    with patch("signoff.subprocess.run", return_value=fake_symbolic_ref_result) as mock_run:
+        result = _signoff._detect_default_base()
+
+    assert result == "develop", f"期望 'develop'，实际={result!r}"
+    # 验证只调用了一次 git symbolic-ref（无需走 fallback）
+    assert mock_run.call_count == 1
+    call_args = mock_run.call_args
+    assert "symbolic-ref" in call_args[0][0]
 
 
 def test_signoff_subcommand_non_tty_stdin_returns_rc2():
