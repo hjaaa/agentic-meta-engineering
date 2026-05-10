@@ -2,32 +2,21 @@
   "schema_version": "1.0",
   "feature_id": "F-008",
   "status": "DONE",
-  "commit_sha": "1b5f860",
+  "commit_sha": "90f36b8",
   "files_changed": [
-    "tests/e2e/conftest.py",
-    "tests/e2e/fixtures/e2e_helpers.py",
-    "tests/e2e/fixtures/sub_workflow_mock.py",
     "tests/e2e/test_sub_workflow_lifecycle.py",
     "tests/e2e/test_sub_workflow_cancel_advanced.py",
-    "requirements/REQ-2026-009/artifacts/detailed-design.md",
+    "tests/e2e/fixtures/e2e_helpers.py",
+    "tests/e2e/fixtures/sub_workflow_mock.py",
     "requirements/REQ-2026-009/artifacts/features.json",
+    "requirements/REQ-2026-009/artifacts/tasks/F-008.md",
+    "requirements/REQ-2026-009/artifacts/detailed-design.md",
     "requirements/REQ-2026-009/notes.md"
   ],
-  "test_summary": "rev3 严格 scope 修 4 keep + G-9 known-skip / 主文件 wc=473 ≤510 + 新文件 wc=244 ≤250 / grep time.sleep 0 anti-pattern / features.json modules 三方对齐 / pytest test_sub_workflow_lifecycle.py + test_sub_workflow_cancel_advanced.py: 8 passed (含 TC-F8-3 三参数化) / 关联回归 35 passed 0 fail / pycodestyle 0 violation / ruff All checks passed / 3 commits: c6d798f (G-1+G-2 features.json) + de93b85 (G-3 拆分 + G-5 threading.Event) + 1b5f860 (notes.md follow-up)",
-  "touches_violations": [
-    {
-      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-009/artifacts/review-20260509-234834.md",
-      "ts": "2026-05-09T15:50:19+00:00",
-      "tool": "Write"
-    },
-    {
-      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-009/artifacts/review-20260510-003334.md",
-      "ts": "2026-05-09T16:34:51+00:00",
-      "tool": "Write"
-    }
-  ],
+  "test_summary": "rev4 严格 scope 修 4 major + 9 minor（F-12 已标 follow-up，不影响 DONE 判定） / pytest test_sub_workflow_lifecycle.py + test_sub_workflow_cancel_advanced.py: 8 passed（含 TC-F8-3 三参数化）/ 关联回归 1120 passed 9 skipped 0 fail / pycodestyle 0 violation（--max-line-length=120）/ ruff F-008 文件 All checks passed / time.sleep grep 0（test_sub_workflow_*.py 本身 0 行；协调器 poll 已迁入 e2e_helpers.py）/ 4 commits: 5623366（三方文档 6 处）+ 8f3b900（controlled_sleep 拆分 + F-9/F-10/F-14）+ 150a7c2（F-7/F-11/F-16/F-23）+ 90f36b8（F541 lint fix）",
+  "touches_violations": [],
   "concerns": [],
   "missing_context": "",
   "block_reason": "",
-  "timestamp": "2026-05-10T00:42:00+08:00"
+  "timestamp": "2026-05-10T10:30:00+08:00"
 }
