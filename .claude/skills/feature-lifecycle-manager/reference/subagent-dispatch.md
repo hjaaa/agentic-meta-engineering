@@ -120,3 +120,38 @@ feature_id: F-xxx
 - ❌ 非法：首行是任何其他内容，`feature_id: F-007` 出现在第 2 行以后（parse_feature_id 只扫前 5 行，但首行约束是硬规范）
 
 **根本原因**：`dispatch_precheck.py` 用正则 `^feature_id:\s*(F-\d{3})\s*$`（MULTILINE）解析；任何前缀都会导致 regex 失败 → `parse_feature_id` 返回 None → fail-open 放行，派发链三校验（B-1/B-2/B-3）形同虚设。（来源：D-005 #3 + D-007，详见 requirements/REQ-2026-008/plan.md）
+
+### Rev N 修复派发的特殊要求（D-014 / trend-G-meta 终结经验）
+
+**触发场景**：仅适用于 `/code-review` 评审给出 `needs_attention` / `blocked` 后派 **rev2 / rev3 修复 subagent** 的场景。首次派发（rev1）不适用；`NEEDS_CONTEXT` / `BLOCKED` 重派走原回执处理流程不适用。
+
+**硬规则**：rev N 修复派发的 prompt **必须**显式包含一条指令：
+
+> **rev N-1 keep finding 修复后必须全文搜同模式 + 同 helper 风格不一致**——不许"只改 reviewer 报告点出的具体行"。
+
+**展开为可执行动作（subagent 必须做）**：
+
+1. **同模式扫描**：修一处 `yaml.safe_load` 缺 try/except → grep 全文件 `yaml.safe_load` + `json.loads`，看是否还有同模式遗漏
+2. **同 helper 风格扫描**：修一处 ValueError 消息缺 path → grep 该函数 / 同模块的所有 `raise ValueError`，看是否模板一致
+3. **同语义类别区分**：明确区分"任务定义边界内的同模式"（必修）和"任务定义边界外的相邻代码"（不修但 notes 备注）——避免 scope 蔓延但消除一致性盲区
+
+**违反后果**：人检查发现违规 → rev N+1 review 把"修复反引入新问题 / 风格双标"当 keep finding 计入下轮 → 触发 `trend-G-meta` 反模式（rev1 修复反引入 → rev2 修一项又引入新一项的恶性循环）。
+
+**历史教训（trend-G-meta 演进）**：
+
+| 范围 | rev1 → rev2 行为 | trend-G-meta 状态 |
+|---|---|---|
+| F-009 rev1 → rev2 | 修复反引入（修一项又引入新一项） | 起点 |
+| F-010 rev1 → rev2 | 同模式复发 | 加剧 |
+| F-011 rev1 → rev2 | 3 minor 自引入（docstring + 风格双标 + 模板三分） | 三连 |
+| **F-011 rev2 → rev3** | **3 项 minor 全闭合 + 0 自引入新 minor**（dispatch prompt 加本规则后） | **首次终结** |
+
+**根本原因**：reviewer 报告通常是"指出具体行"，subagent 默认按字面理解"修这几行"——但 rev1 引入的"风格不一致"是横向蔓延的（同函数 / 同模块 / 同 helper），仅修被指出的具体行后剩余蔓延实例会在 rev N+1 被新 reviewer 检出。预防成本（一句 dispatch prompt 指令）远低于事后修复成本（数小时三方裁决）。
+
+**关联工程动作**：
+
+- 主 Agent 派发 rev2/rev3 时，prompt 模板末尾追加该指令
+- review-critic 判定 finding 时，把"既有 vs rev N 引入"的区分基于 `git blame` 而非 reviewer 措辞
+- Judge 处置既有问题时，drop 而非 follow-up——避免 trend monitor 信号被既有问题污染
+
+（来源：D-014 + F-011 rev3 经验总结，详见 requirements/REQ-2026-009/plan.md）

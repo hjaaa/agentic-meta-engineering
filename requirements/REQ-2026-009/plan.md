@@ -161,6 +161,15 @@
 - **来源**：.claude/hooks/touches_guard.py:365-394 (_is_process_artifact 豁免列表) / requirements/REQ-2026-009/artifacts/tasks/F-010.receipt.json (3 条 historical violations) / requirements/REQ-2026-009/plan.md:137,146 (D-011/D-012 清零模板)
 - **Plan 落地点**：本轮 F-010 done 闭环（receipt.json 清零 + 本 ADR + bookkeeping commit）；hook 层修复挂 F-011/F-012 范围（lifecycle / hook 治理 feature）
 
+### D-014 review-loop rev N 修复派发的 dispatch prompt 必含"全文搜同模式 + 同 helper 风格不一致"硬规则（trend-G-meta 终结）
+
+- **Context**：F-009 → F-010 → F-011 三连续 feature 出现 `trend-G-meta` 反模式——`/code-review` rev1 给 `needs_attention` 后派 rev2 修复 subagent，subagent 默认按字面理解"修这几行"，**只改 reviewer 报告点出的具体行**；rev1 引入的"风格不一致"是横向蔓延的（同函数 / 同模块 / 同 helper），仅修被指出的具体行后剩余蔓延实例会在 rev2 review 被新检出，形成 "rev1 修复反引入 → rev2 修一项又引入新一项" 的恶性循环。F-011 rev2 自引入 3 minor（F-1 docstring + F-5 风格双标 + F-8 模板三分）就是该模式三连。F-011 rev3 派发时 dispatch prompt 加了一条预防指令"rev1 keep finding 修复后必须全文搜同模式 + 同 helper 风格不一致"，rev3 实测**3 项 minor 全闭合 + 0 自引入新 minor**，trend-G-meta 首次终结。预防成本（一句 dispatch prompt 指令）远低于事后修复成本（数小时三方裁决）。
+- **Decision**：(1) **写入位置**——`.claude/skills/feature-lifecycle-manager/reference/subagent-dispatch.md` 末尾追加新段「Rev N 修复派发的特殊要求」，与既有 D-005/D-007 派发 prompt 红线段同级。(2) **强度=硬规则**——主 Agent 派发 rev2/rev3 修复 subagent 时，prompt **必须**显式包含"rev N-1 keep finding 修复后必须全文搜同模式 + 同 helper 风格不一致"指令；不遵守 = 违反规范（人检查出可拒，类比 D-005 #3 / D-007 派发 prompt 首行格式硬约束）。(3) **触发范围**——仅 `/code-review` 评审给出 `needs_attention` / `blocked` 后派 rev2/rev3 修复 subagent 的场景；首次派发（rev1）不适用；`NEEDS_CONTEXT` / `BLOCKED` 重派走原回执处理流程不适用（避免过度限制）。(4) **可执行动作（subagent 必须做）**——同模式扫描（grep 全文件同 API）+ 同 helper 风格扫描（grep 该函数/同模块的 ValueError/log/return 等）+ 同语义类别区分（任务定义边界内同模式必修 / 边界外相邻代码不修但 notes 备注）。(5) **关联工程动作**——review-critic 判定 finding 时，"既有 vs rev N 引入"的区分必须基于 `git blame` 而非 reviewer 措辞；Judge 处置既有问题时 drop 而非 follow-up（避免 trend monitor 信号被既有问题污染）。
+- **Consequences**：好——F-012/F-013 及后续需求直接受益（feature-lifecycle-manager 主 Agent 读 subagent-dispatch.md 时拿到该规则）；trend-G-meta 反模式从"事后修复"切换到"事前预防"，rev2/rev3 修复轮次预期从平均 2-3 轮压到 1-2 轮；review-critic + Judge 的 git blame 判定基线统一。差——dispatch prompt 长度增加 ~300 字符（影响主对话上下文占用，但单次 < 1% 预算可接受）；硬规则约束反而可能让 subagent 在简单修复时"过度搜模式"扩大 scope（已通过"同语义类别区分"条款规避：边界外不修只 notes）；本 ADR 修改 .claude/ 文件超出 F-011 task.md touches 范围，按 D-013 同款"流程性副作用"通道豁免（commit message 详述）。
+- **时间**：2026-05-10 15:55:00
+- **来源**：requirements/REQ-2026-009/artifacts/review-20260510-154609.md（rev3 报告 trend-G-meta 终结判定段）/ requirements/REQ-2026-009/reviews/code-F-011-003.json（rev3 verdict 95 looks_clean）/ requirements/REQ-2026-009/plan.md:137,146,155（D-011/D-012/D-013 同款 ADR 模板）
+- **Plan 落地点**：本轮 F-011 done 闭环之后单独 commit（subagent-dispatch.md 末尾新段「Rev N 修复派发的特殊要求」+ 本 ADR + bookkeeping）；F-012 派发时主 Agent 应先 Read subagent-dispatch.md 验证规则已加载
+
 ### D-010 rollback 归档语义 = mv 原路径删除 + 子 run 整目录 mv + 每次独立 timestamp 目录
 
 - **Context**：spec §11.3 说"归档 X 及以后产物到 `runs/<id>/.archived/<timestamp>/`"，但未说明三件事：(1) 归档后**原路径**是否清理（保留 / 删除 / stub）；(2) 跨父子 rollback 时子 run 的整个目录 `runs/<child-id>/` 是否清空；(3) 多次 rollback 的归档目录策略（独立并存 vs 追加合并）。OQ-02 来源：requirement.md:134。
