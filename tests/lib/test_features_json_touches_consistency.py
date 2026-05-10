@@ -32,6 +32,9 @@ def test_should_match_when_features_json_touches_compared_with_frontmatter():
     防止 trend-G-meta 元信息债务复发（M-1 三轮未真闭合历史教训）。
     gate 起步版：仅验证 REQ-2026-009 F-012，未来扩展时在 _GATE_SCOPE 字典追加即可。
     """
+    # TODO(F-024 follow-up): 推广多 REQ × 多 feature 时拆 _check_one_feature(req, fid) helper +
+    # pytest.mark.parametrize 拆每个 (req, fid) 独立 case，避免 CI 失败定位较弱。
+    # 当前 CC=15 是单 feature 起步版可接受边界。
     mismatches = []
 
     for req_name, feature_ids in _GATE_SCOPE.items():
