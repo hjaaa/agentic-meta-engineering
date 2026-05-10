@@ -55,18 +55,16 @@ REQUIREMENTS_DIR = REPO_ROOT / "requirements"
 
 # ─── target-phase → 必须存在的 review phase 列表（CLI 入口本地副本）──────────
 # 设计动机（REQ-2026-009 F-012）：
-#   旧实现暴露一个共享 PHASE_REQUIREMENTS 字典并被 plugins 跨模块 import；这种
-#   "定义一处、消费多处"的拓扑会让 R 函数调用方与字典定义模块产生隐式耦合，且 R
-#   函数内部 `PHASE_REQUIREMENTS.get(target_phase, [])` 的兜底空 list 是 vacuous
-#   pass 的根源。
+#   旧实现暴露一个共享字典并被 plugins 跨模块 import；这种"定义一处、消费多处"的
+#   拓扑会让 R 函数调用方与字典定义模块产生隐式耦合，且 R 函数内部
+#   `dict.get(target_phase, [])` 的兜底空 list 是 vacuous pass 的根源。
 #   新方案——每个调用方各持本地副本（dict literal）+ R 函数改 required_phases 显式入参：
 #     1. dict literal 极小（7 行）+ 跨模块复制不会显著维护成本
 #     2. R 函数只消费 list，不依赖具体 dict；新增 trigger 时不改 R 函数
-#     3. 与 phase-rules.md 单一事实源对齐（人工同步 + ci 校验）；
+#     3. 与 meta-schema.yaml `enums.phase` 单一事实源对齐
 #   消费方当前 3 处：本文件 main() / scripts/gates/plugins/review_verdict.py
 #   / scripts/gates/plugins/review_verdict_ci.py。
-# 来源：context/team/engineering-spec/meta-schema.yaml `enums.phase` +
-#       .claude/skills/managing-requirement-lifecycle/reference/phase-rules.md
+# 来源：context/team/engineering-spec/meta-schema.yaml `enums.phase`
 _PHASE_REVIEW_DEPS: dict[str, list[str]] = {
     "tech-research":  ["definition"],
     "outline-design": ["definition"],

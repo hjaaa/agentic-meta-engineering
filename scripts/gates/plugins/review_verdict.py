@@ -53,11 +53,10 @@ from .base import Decision, Gate, GateContext, Report, Severity, Skip
 from . import review_verdict_ci  # F-015 round-3：ci 路径委托
 from . import meta_writer  # F-015 round-3：meta.yaml 原子写入委托
 
-# target-phase → 必须存在的 review phase 列表（plugin 本地副本，F-012 取代旧
-# `_PHASE_REQUIREMENTS = check_reviews.PHASE_REQUIREMENTS` 跨模块导入；详见
-# scripts/lib/check_reviews.py:_PHASE_REVIEW_DEPS 顶部的设计动机注释）。
-# 来源：context/team/engineering-spec/meta-schema.yaml `enums.phase` +
-#       .claude/skills/managing-requirement-lifecycle/reference/phase-rules.md
+# target-phase → 必须存在的 review phase 列表（plugin 本地副本，F-012 取代跨模块
+# 共享 dict 的旧设计；详见 scripts/lib/check_reviews.py:_PHASE_REVIEW_DEPS 顶部的
+# 设计动机注释）。
+# 来源：context/team/engineering-spec/meta-schema.yaml `enums.phase`
 _PHASE_REVIEW_DEPS: dict[str, list[str]] = {
     "tech-research":  ["definition"],
     "outline-design": ["definition"],

@@ -23,9 +23,6 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from unittest import mock
-
-import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SCRIPTS_LIB = _REPO_ROOT / "scripts" / "lib"
@@ -146,8 +143,7 @@ def test_tc_b5_trivial_with_non_doc_files_returns_rc3(monkeypatch):
     # 用假 verdict 路径避免文件查找失败（trivial 路径失败前就 return 3）
     monkeypatch.setattr(sig, "_resolve_verdict_path", lambda _: Path("/nonexistent/verdict.json"))
 
-    with mock.patch("sys.stderr") as mock_stderr:
-        rc = sig._run_signoff(_make_args("REV-XXX", trivial=True))
+    rc = sig._run_signoff(_make_args("REV-XXX", trivial=True))
 
     assert rc == 3, f"期望 returncode=3，实际={rc}"
 

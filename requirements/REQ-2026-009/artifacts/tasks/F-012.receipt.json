@@ -1,0 +1,30 @@
+{
+  "feature_id": "F-012",
+  "schema_version": "1.0",
+  "status": "DONE_WITH_CONCERNS",
+  "concerns": [
+    "TC-F12-5 字面假设删除整个 managing-requirement-lifecycle 目录；本实现按 CLAUDE.md prompt 走保守 trim（仅删 phase-transition 子动作 + reference/phase-rules.md）。审查时需对照 D-016 决策与任务定义实际意图——保留伞形 Skill 是 prompt 明确指令，不视为缺陷。",
+    "三处 _PHASE_REVIEW_DEPS dict 本地副本是潜在漂移源。缓解：每处加 source 注释指向 meta-schema.yaml `enums.phase`；新增 trigger 时人工同步。如多年后 trigger 数量翻倍可考虑反向合并到 canonical_phases.py。",
+    "签字深防御从双层（Command + Skill）降为单层（save_review.py signoff 单一入口）。缓解：入口收敛后无第二条调用路径绕过；isatty 在 _run_signoff 第 0 步就拦下所有下游分支；FAKE_TTY env var 等红线仍封禁。"
+  ],
+  "touches_violations": [],
+  "self_check_results": {
+    "TC-F12-1": "PASS",
+    "TC-F12-2": "PASS",
+    "TC-F12-3": "PASS",
+    "TC-F12-4": "PASS",
+    "TC-F12-5": "NOT_PASS_BY_DESIGN（保守 trim 决策）",
+    "TC-F12-6": "PASS"
+  },
+  "test_results": {
+    "full_pytest": "1185 passed, 9 skipped",
+    "post_dev_gate": "5 gates pass（GATE-META-SCHEMA / GATE-INDEX-INTEGRITY / GATE-SOURCING / GATE-PLAN-FRESHNESS / GATE-WORKSPACE-CLEAN）"
+  },
+  "commits": [
+    "525bf87 refactor(F-012): mv phase_enum.py → canonical_phases.py（保 single source of truth）",
+    "fccce8b refactor(F-012): 删 PHASE_REQUIREMENTS dict + R 函数改 required_phases 参数",
+    "714c066 refactor(F-012): 删 code_review_signoff.py / save_review.py signoff 接管全套",
+    "8be6f2e refactor(F-012): 删 /requirement:next + 裁剪 managing-requirement-lifecycle phase-transition 子动作",
+    "dce3549 docs(F-012): SOP 文档迁移 /requirement:next → /workflow:next"
+  ]
+}

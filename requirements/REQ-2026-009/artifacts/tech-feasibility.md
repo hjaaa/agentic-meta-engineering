@@ -27,7 +27,7 @@ Plan 1（schema + loader）已合并到 develop（commit 6d55eaf）。本预研*
 | `context/team/engineering-spec/plans/2026-05-08-workflow-engine-plan-1-schema-loader.md` | Plan 1 实现细节（来源：context/team/engineering-spec/plans/2026-05-08-workflow-engine-plan-1-schema-loader.md:1）|
 | `scripts/lib/check_reviews.py:57-65` | `PHASE_REQUIREMENTS` 硬编码点（来源：scripts/lib/check_reviews.py:57）|
 | `scripts/gates/registry.yaml` | trigger / applies_when 字段现状（来源：scripts/gates/registry.yaml:1）|
-| `.claude/skills/managing-requirement-lifecycle/reference/phase-rules.md` | 阶段规则文档硬编码点（来源：.claude/skills/managing-requirement-lifecycle/reference/phase-rules.md:1）|
+| `context/team/engineering-spec/meta-schema.yaml` | 阶段枚举单一事实源（F-012 后阶段规则文档已删除，canonical 枚举走 schema yaml）（来源：context/team/engineering-spec/meta-schema.yaml:38）|
 | `.claude/agents/*.md` | Agent description 文本中的阶段隐式绑定（来源：.claude/agents/requirement-bootstrapper.md:3）|
 | `.claude/workflows/requirement/standard-8phase.yaml` | Plan 1 已产出的 38 节点 yaml 样例|
 | `requirements/REQ-2026-008/artifacts/tech-feasibility.md` | 风格参照与工作量类比（来源：requirements/REQ-2026-008/artifacts/tech-feasibility.md:1）|
@@ -106,7 +106,7 @@ Plan 1 loader 已校验 sub_workflow 字段的嵌套深度（来源：context/te
 | `PHASE_REQUIREMENTS` 字典（7 条规则） | `scripts/lib/check_reviews.py:57-65` | 高——需要 yaml-driven 替代逻辑 |
 | 产物必存性检查（分散 8 个 artifact:must_exist 节点） | standard-8phase.yaml 中已翻译 | 低——yaml 已对应 |
 | Agent description 文本中的阶段绑定 | `.claude/agents/*.md:3`（8 个 Agent 含"阶段 X"前缀）| 低——description 仅文档，不影响功能 |
-| `phase-rules.md` 阶段枚举文档 | `.claude/skills/managing-requirement-lifecycle/reference/phase-rules.md` | 中——需要在阶段 7 更新文档 |
+| `phase-rules.md` 阶段枚举文档（F-012 已删除）| 历史路径 `.claude/skills/managing-requirement-lifecycle/reference/phase-rules.md`（F-012 删除；canonical 枚举走 meta-schema.yaml）| 中——已在阶段 7 落地 |
 | registry.yaml 中 applies_when 里的 phase 判断 | `scripts/gates/registry.yaml` | 低——gate 的 applies_when 与 yaml 阶段解耦，无需同步改 |
 
 **`PHASE_REQUIREMENTS` 删除的具体坑**：check_reviews.py 的 R001/R002/R003/R004/R005 五个规则全部依赖此字典（字典定义来源：scripts/lib/check_reviews.py:57；R001 引用来源：scripts/lib/check_reviews.py:82）。删除前，双轨期内旧的 gate review_verdict plugin 仍调用 check_reviews.py（来源：scripts/gates/registry.yaml:137）。因此必须在 Plan 3/4 完成后、引擎接管 artifact 校验后，才能安全删除 `PHASE_REQUIREMENTS`——这是阶段 7 清理任务的一个硬前置条件，不能提前。Plan 3 的 `runs/<id>/meta.yaml.phase` 字段仍须兼容旧 check_reviews 校验（因为双轨期老需求还在 `requirements/` 目录）。

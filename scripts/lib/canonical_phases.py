@@ -17,8 +17,8 @@ REQ-2026-005 F-003 扩展：
 REQ-2026-009 F-012 重命名（旧名 phase_enum.py）：
   "enum" 暗示静态常量集合，但本模块实际从 yaml 动态加载 + 缓存——名实不符。
   新名 canonical_phases.py 与函数族 load_canonical_phases / load_canonical_phases_ordered
-  / load_adjacent_phases 命名空间统一。同期删除 check_reviews.PHASE_REQUIREMENTS 字典
-  （参考 plan.md D-016）；R 函数改 required_phases 显式参数注入避免双轨漂移。
+  / load_adjacent_phases 命名空间统一。同期删除跨模块共享 dict（参考 plan.md D-016）；
+  R 函数改 required_phases 显式参数注入避免双轨漂移。
 """
 from __future__ import annotations
 

@@ -540,7 +540,7 @@ def _validate_phase_args(args: argparse.Namespace) -> Optional[str]:
       REQ-2026-005 F-003 扩展：仅 typo 拦截不够——前进跨阶段（如 bootstrap→testing）
       会跳过中间 6 个阶段的所有评审 / 设计产物，必须在入口处再加"相邻校验"。
 
-      REQ-2026-009 F-012：原 PHASE_REQUIREMENTS 字典已删除，required_phases 改为
+      REQ-2026-009 F-012：原 phase→reviews 字典已删除，required_phases 改为
       R001~R007 函数的显式入参；模块名 phase_enum.py → canonical_phases.py 同步更新。
 
     校验规则：

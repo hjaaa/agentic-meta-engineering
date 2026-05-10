@@ -31,8 +31,8 @@ import check_reviews  # noqa: E402
 from .base import Decision, Report
 
 # phase-transition 的目标 phase → 必须存在的 review phase 映射（plugin 本地副本，
-# F-012 取代旧 `_PHASE_REQUIREMENTS = check_reviews.PHASE_REQUIREMENTS` 跨模块导入；
-# 详见 scripts/lib/check_reviews.py:_PHASE_REVIEW_DEPS 顶部的设计动机注释）。
+# F-012 取代跨模块共享 dict 的旧设计；详见 scripts/lib/check_reviews.py:_PHASE_REVIEW_DEPS
+# 顶部的设计动机注释）。
 # 来源：context/team/engineering-spec/meta-schema.yaml `enums.phase` +
 #       .claude/skills/managing-requirement-lifecycle/reference/phase-rules.md
 _PHASE_REVIEW_DEPS: dict[str, list[str]] = {
@@ -186,7 +186,7 @@ def run_r_rules(
     H1 事务化（来源：detailed-design.md §3.1）：
       staged_writes 非 None 时，R005 命中 drift 只 append 到暂存通道；
       为 None 时（如 ci trigger）走 CLI 旧行为（直接写盘 stale=true）。
-    F-012：R001~R005 改 required_phases 显式入参（取代旧 PHASE_REQUIREMENTS dict 共享）；
+    F-012：R001~R005 改 required_phases 显式入参（取代旧跨模块共享 dict）；
     R006/R007 不需要 required_phases（R006 全 reviews/ 扫描；R007 仅 testing 阶段触发）。
     """
     check_reviews._r001_review_exists(meta, target_phase, required_phases, report, label)
