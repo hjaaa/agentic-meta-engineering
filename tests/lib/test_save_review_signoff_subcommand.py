@@ -407,3 +407,53 @@ def test_signoff_subcommand_non_tty_stdin_returns_rc2():
     proc = subprocess.run(cmd, input="", capture_output=True, text=True)
     assert proc.returncode == 2, f"期望 returncode=2，实际={proc.returncode}\nstderr={proc.stderr}"
     assert "stdin not a tty" in proc.stderr, f"stderr 缺关键串：{proc.stderr}"
+
+
+def test_signoff_verdict_write_oserror_returns_rc1_and_cleans_tmp(tmp_path, monkeypatch):
+    """given_oserror_on_replace_when_signoff_then_rc1_tmp_cleaned_stderr_message。
+
+    F-15 专项测试：verdict 写盘时 OSError → rc=1 + tmp 不残留 + stderr 含"verdict 写盘失败"。
+    """
+    req_dir = tmp_path / "requirements" / "REQ-2099-001"
+    reviews_dir = req_dir / "reviews"
+    reviews_dir.mkdir(parents=True)
+    process_txt = req_dir / "process.txt"
+    process_txt.write_text("", encoding="utf-8")
+
+    verdict = _make_valid_verdict()
+    verdict_path = reviews_dir / "definition-001.json"
+    verdict_path.write_text(json.dumps(verdict, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    monkeypatch.setattr(sr, "REQUIREMENTS_DIR", tmp_path / "requirements")
+    monkeypatch.setattr(_signoff, "REQUIREMENTS_DIR", tmp_path / "requirements")
+    monkeypatch.setattr(sys, "stdin", _FakeTTY())
+
+    original_replace = Path.replace
+
+    def fake_replace(self, target):
+        if self.suffix == ".tmp":
+            raise OSError("disk full")
+        return original_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", fake_replace)
+
+    args = argparse.Namespace(
+        rev_id="REV-REQ-2099-001-definition-001",
+        decision="approved",
+        trivial=False,
+        signed_by="dev@example.com",
+        signed_at="2026-04-30T10:30:00+08:00",
+        source="cli-tty",
+    )
+
+    import io
+    stderr_buf = io.StringIO()
+    monkeypatch.setattr(sys, "stderr", stderr_buf)
+
+    rc = _signoff.run_signoff(args)
+
+    assert rc == 1, f"期望 returncode=1（写盘失败），实际={rc}"
+    tmp_candidate = verdict_path.with_suffix(".json.tmp")
+    assert not tmp_candidate.exists(), "tmp 文件应已被清理"
+    stderr_output = stderr_buf.getvalue()
+    assert "verdict 写盘失败" in stderr_output, f"stderr 应含'verdict 写盘失败'，实际：{stderr_output!r}"
