@@ -23,10 +23,10 @@ if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
 # noqa: E402 —— sys.path 注入后才能 import
-import yaml  # noqa: E402
+import check_reviews     # noqa: E402  bare import 应先于 from import 同组内
+import yaml              # noqa: E402
 from common import Report as LegacyReport  # noqa: E402
 from common import Severity as LegacySeverity  # noqa: E402
-import check_reviews  # noqa: E402
 
 from .base import Decision, Report
 
@@ -34,7 +34,7 @@ from .base import Decision, Report
 # F-012 取代跨模块共享 dict 的旧设计；详见 scripts/lib/check_reviews.py:_PHASE_REVIEW_DEPS
 # 顶部的设计动机注释）。
 # 来源：context/team/engineering-spec/meta-schema.yaml `enums.phase`
-# （phase-rules.md F-012 后已删；meta-schema.yaml 为唯一事实源）
+# （phase-rules.md F-012 后已删；CI 由 tests/lib/test_phase_review_deps_consistency.py 兜底三处一致性）
 _PHASE_REVIEW_DEPS: dict[str, list[str]] = {
     "tech-research":  ["definition"],
     "outline-design": ["definition"],

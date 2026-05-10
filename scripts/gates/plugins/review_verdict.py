@@ -57,6 +57,7 @@ from . import meta_writer  # F-015 round-3：meta.yaml 原子写入委托
 # 共享 dict 的旧设计；详见 scripts/lib/check_reviews.py:_PHASE_REVIEW_DEPS 顶部的
 # 设计动机注释）。
 # 来源：context/team/engineering-spec/meta-schema.yaml `enums.phase`
+# （phase-rules.md F-012 后已删；CI 由 tests/lib/test_phase_review_deps_consistency.py 兜底三处一致性）
 _PHASE_REVIEW_DEPS: dict[str, list[str]] = {
     "tech-research":  ["definition"],
     "outline-design": ["definition"],

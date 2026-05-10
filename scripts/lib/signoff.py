@@ -1,9 +1,11 @@
-"""signoff 子命令实现：把 human_signoff 字段写入已有 verdict 文件。
+"""sign-off 子模块（F-012 rev2 从 save_review.py 拆出）
 
-F-012 rev2 拆分：原 save_review.py 中的 _run_signoff 及相关 helper 全部迁入本模块。
-save_review.py main() 的 signoff 子命令派发到本模块的 run_signoff(args)。
+⚠️ 本模块**不能作为独立 CLI 入口**——必须通过 save_review.py 的 main() 委托。
+原因：save_review.py 顶层 import signoff（L235），signoff.run_signoff 内 lazy import save_review（L268）；
+若直接 python3 signoff.py 启动，lazy import 时会触发 save_review 模块级双向加载（~62ms 冷启动 + 反模式风险）。
+未来若需独立入口，建议先抽公共 helper 到 save_review_validation.py 解开双向依赖。
 
-来源：requirements/REQ-2026-009/artifacts/detailed-design.md + F-012 rev2 ADR（D-016）
+来源：requirements/REQ-2026-009/artifacts/detailed-design.md + F-012 rev2 ADR（D-016）+ F-012 rev3 ADR（D-017）
 """
 from __future__ import annotations
 
@@ -16,6 +18,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from common import REPO_ROOT, Report, paint, rel
+
+__all__ = ["run_signoff", "build_signoff_parser"]
 
 REQUIREMENTS_DIR = REPO_ROOT / "requirements"
 

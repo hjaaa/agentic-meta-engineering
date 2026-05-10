@@ -65,6 +65,7 @@ REQUIREMENTS_DIR = REPO_ROOT / "requirements"
 #   消费方当前 3 处：本文件 main() / scripts/gates/plugins/review_verdict.py
 #   / scripts/gates/plugins/review_verdict_ci.py。
 # 来源：context/team/engineering-spec/meta-schema.yaml `enums.phase`
+# （phase-rules.md F-012 后已删；CI 由 tests/lib/test_phase_review_deps_consistency.py 兜底三处一致性）
 _PHASE_REVIEW_DEPS: dict[str, list[str]] = {
     "tech-research":  ["definition"],
     "outline-design": ["definition"],
