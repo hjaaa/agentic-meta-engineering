@@ -4,7 +4,6 @@ TC-F10-* 测试套件：验证 /requirement:* 别名兼容期 deprecation 文案
 测试本质是验证 .md 文件文本内容 + Skill 入口的路由声明，
 不执行实际 slash command——命令文件不是 Python 可执行脚本。
 """
-import re
 import subprocess
 from pathlib import Path
 
@@ -43,7 +42,7 @@ FORWARD_ARGS_KEYWORDS = {
 
 
 def _read_cmd(name: str) -> str:
-    """读取命令文件内容（frontmatter 后全文）。"""
+    """读取命令文件完整内容（含 frontmatter）。"""
     path = CMD_DIR / f"{name}.md"
     assert path.exists(), f"命令文件不存在：{path}"
     return path.read_text(encoding="utf-8")
@@ -67,7 +66,7 @@ def test_9_aliases_emit_deprecation():
         if name == "next":
             # next 用 [DEPRECATION-NEXT] 例外文案
             assert "[DEPRECATION-NEXT]" in content, (
-                f"next.md 应含 [DEPRECATION-NEXT] 而非标准 [DEPRECATION]"
+                "next.md 应含 [DEPRECATION-NEXT] 而非标准 [DEPRECATION]"
             )
         else:
             # 其余 8 个用标准 [DEPRECATION]
@@ -104,7 +103,7 @@ def test_next_exception_kept_legacy():
     """
     TC-F10-3：/requirement:next 不转发到 /workflow:*，
     保留旧实现（调用 managing-requirement-lifecycle 的 phase-transition 子动作），
-    stderr 首段含 [DEPRECATION-NEXT] 例外文案。
+    .md 文件正文含 [DEPRECATION-NEXT] 例外文案。
     """
     content = _read_cmd("next")
 
