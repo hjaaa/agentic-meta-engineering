@@ -18,13 +18,11 @@
 """
 from __future__ import annotations
 
-import json
 import logging
 import sys
 import threading
 import time
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -40,99 +38,25 @@ from workflow_rollback import RollbackResult, SubRunArchive, rollback_run  # noq
 sys.path.insert(0, str(REPO_ROOT / "tests" / "e2e" / "fixtures"))
 from sub_workflow_mock import MockSubAgent  # noqa: E402
 from e2e_helpers import (  # noqa: E402
+    ParentCancelCoordinator,
     copy_workflow_yaml,
     create_node_artifacts,
     get_event_types,
     make_run_dir,
     read_jsonl_events,
     write_child_jsonl_from_template,
+    write_event_to_jsonl,
     write_parent_jsonl_from_template,
 )
 
 
 # ============================================================================
-# 内部辅助：父侧协调器（模拟父 run 的 cancel 等待逻辑）
+# 内部辅助别名（F-011：实现已提至 e2e_helpers.ParentCancelCoordinator / write_event_to_jsonl）
+# 保留下划线别名供本文件内部调用和 test_sub_workflow_cancel_advanced.py 的跨文件 import
 # ============================================================================
 
-class _ParentCancelCoordinator:
-    """父侧等待子 graceful 退出的协调器（模拟 §7.1 时序图父侧逻辑）。
-
-    职责：
-    1. 向父 jsonl 写 cancel_requested
-    2. 轮询等待子 jsonl 出现 parent_cancelled（graceful 信号）
-    3. 若超时则调 task_stop_fn（TaskStop 兜底）
-    4. 写 child_graceful_exited 或 child_force_killed 到父 jsonl
-    """
-
-    def __init__(
-        self,
-        parent_jsonl: Path,
-        child_jsonl: Path,
-        parent_run_id: str,
-        graceful_timeout_secs: float = 30.0,
-        poll_interval_secs: float = 0.05,
-    ) -> None:
-        self.parent_jsonl = parent_jsonl
-        self.child_jsonl = child_jsonl
-        self.parent_run_id = parent_run_id
-        self.graceful_timeout_secs = graceful_timeout_secs
-        self.poll_interval_secs = poll_interval_secs
-        # 注入点：测试可 mock 以拦截 TaskStop 调用
-        self.task_stop_called = False
-        self.task_stop_run_id: str | None = None
-
-    def request_cancel_and_wait(self, child_run_id: str) -> str:
-        """写 cancel_requested 并等待子 graceful 退出。
-
-        返回：
-            "graceful"     — 子在 timeout 内写了 parent_cancelled
-            "force_killed" — 超时，调 TaskStop
-        """
-        # 父写 cancel_requested
-        append_event(self.parent_jsonl, {
-            "type": "cancel_requested",
-            "run_id": self.parent_run_id,
-        })
-
-        # 轮询子 jsonl
-        deadline = time.monotonic() + self.graceful_timeout_secs
-        while time.monotonic() < deadline:
-            child_types = get_event_types(self.child_jsonl)
-            if "parent_cancelled" in child_types:
-                # 子 graceful 退出，父写 child_graceful_exited
-                append_event(self.parent_jsonl, {
-                    "type": "child_graceful_exited",
-                    "run_id": self.parent_run_id,
-                    "data": {"child_run_id": child_run_id},
-                })
-                return "graceful"
-            time.sleep(self.poll_interval_secs)
-
-        # 超时：TaskStop forceful 兜底
-        self._call_task_stop(child_run_id)
-        append_event(self.parent_jsonl, {
-            "type": "child_force_killed",
-            "run_id": self.parent_run_id,
-            "data": {"child_run_id": child_run_id},
-        })
-        return "force_killed"
-
-    def _call_task_stop(self, child_run_id: str) -> None:
-        """调用 TaskStop（生产 = Anthropic SDK；测试可 monkeypatch）。
-
-        当前为 stub；F-009 落地时替换为真实调用。
-        记录调用情况供测试断言使用。
-        """
-        self.task_stop_called = True
-        self.task_stop_run_id = child_run_id
-
-
-def _write_event_to_jsonl(jsonl_path: Path, event: dict[str, Any]) -> None:
-    """直接向 jsonl 写入一条事件（无 VALID_EVENT_TYPES 校验，用于造 fixture 数据）。"""
-    payload = json.dumps(event, ensure_ascii=False) + "\n"
-    jsonl_path.parent.mkdir(parents=True, exist_ok=True)
-    with jsonl_path.open("a", encoding="utf-8") as fh:
-        fh.write(payload)
+_ParentCancelCoordinator = ParentCancelCoordinator
+_write_event_to_jsonl = write_event_to_jsonl
 
 
 # ============================================================================
@@ -165,7 +89,10 @@ def test_cancel_graceful_full_chain(tmp_path):
     child_jsonl = child_run_dir / "run-state.jsonl"
 
     # MockSubAgent：poll_interval_ms=50（快速响应）
-    agent = MockSubAgent(child_run_id, child_jsonl, poll_interval_ms=50)
+    # F-7：poll_started_event 注入点，run() 入口立即 set，消除调度竞态
+    poll_started_event = threading.Event()
+    agent = MockSubAgent(child_run_id, child_jsonl, poll_interval_ms=50,
+                         poll_started_event=poll_started_event)
 
     # 父侧协调器：graceful_timeout=5s，poll_interval=0.02s
     coordinator = _ParentCancelCoordinator(
@@ -180,18 +107,16 @@ def test_cancel_graceful_full_chain(tmp_path):
     # 子有 3 个节点：N1, N2, N3
     # cancel_requested 在子启动后写入，子在 N2 之前的 poll 命中
     agent_result: list[str] = []
-    agent_started = threading.Event()
 
     def run_agent():
-        agent_started.set()
         result = agent.run(parent_jsonl, ["node-n1", "node-n2", "node-n3"])
         agent_result.append(result)
 
     agent_thread = threading.Thread(target=run_agent, daemon=True)
     agent_thread.start()
-    assert agent_started.wait(timeout=2.0), "TC-F8-1 子线程 2s 内未启动"
+    assert poll_started_event.wait(timeout=2.0), "TC-F8-1 子线程 2s 内未进入 run()"
 
-    # 子已启动，父请求 cancel
+    # 子已进入 run()，父请求 cancel
     outcome = coordinator.request_cancel_and_wait(child_run_id)
 
     agent_thread.join(timeout=5.0)
@@ -346,8 +271,9 @@ def test_child_crash_on_subworkflow_failure(
                 ["__raise_node-n1-error"],
             )
         except Exception as exc:
-            logger.exception(
-                "TC-F8-3 子 agent 抛异常（type=%s, child_run_id=%s）",
+            # 业务预期失败（子节点 raise 是 TC-F8-3 设计意图），用 WARN 而非 ERROR/exception
+            logger.warning(
+                "TC-F8-3 子 agent 抛预期异常（type=%s, child_run_id=%s）",
                 type(exc).__name__, agent.child_run_id,
             )
             child_exception.append(exc)

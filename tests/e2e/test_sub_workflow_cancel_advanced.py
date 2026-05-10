@@ -29,19 +29,15 @@ sys.path.insert(0, str(REPO_ROOT / "scripts" / "lib"))
 from run_state import append_event  # noqa: E402
 
 # 导入共享工具和 MockSubAgent（来自 tests/e2e/fixtures/ 包）
+# F-011：ParentCancelCoordinator / write_event_to_jsonl 从 e2e_helpers 直接 import（去下划线公开名）
 sys.path.insert(0, str(REPO_ROOT / "tests" / "e2e" / "fixtures"))
 from sub_workflow_mock import MockSubAgent  # noqa: E402
 from e2e_helpers import (  # noqa: E402
+    ParentCancelCoordinator as _ParentCancelCoordinator,
     get_event_types,
     make_run_dir,
     read_jsonl_events,
-)
-
-# 从主文件 import 共享 helper（TC-F8-1~4 也用，留主文件）
-sys.path.insert(0, str(REPO_ROOT / "tests" / "e2e"))
-from test_sub_workflow_lifecycle import (  # noqa: E402
-    _ParentCancelCoordinator,
-    _write_event_to_jsonl,
+    write_event_to_jsonl as _write_event_to_jsonl,
 )
 
 
@@ -98,7 +94,10 @@ def test_taskstop_force_kill(tmp_path, monkeypatch):
         else:
             block_node_sleep(secs)
 
-    agent = MockSubAgent(child_run_id, child_jsonl, poll_interval_ms=10)
+    # F-7：poll_started_event 注入点，run() 入口立即 set，消除调度竞态
+    poll_started_event = threading.Event()
+    agent = MockSubAgent(child_run_id, child_jsonl, poll_interval_ms=10,
+                         poll_started_event=poll_started_event)
     monkeypatch.setattr(agent, "_sleep", controlled_sleep)
 
     # 子脚本：模拟"子收到 cancel 但忽略它，继续执行阻塞节点"的场景
@@ -109,6 +108,7 @@ def test_taskstop_force_kill(tmp_path, monkeypatch):
     # 注意：协议上"子应主动写 parent_cancelled 后退出"，TC-F8-5 测试的是"子违反协议/
     # 阻塞不退出时父的兜底路径"（TaskStop force_kill），所以子故意不写 parent_cancelled。
     poll_call_count = [0]
+    original_poll = agent._poll_parent_cancel
 
     def slow_poll_that_blocks_after_cancel(parent_j: Path) -> bool:
         """子忽略 cancel 信号（始终返回 False），让子继续执行到 __block_60 节点阻塞。
@@ -118,11 +118,9 @@ def test_taskstop_force_kill(tmp_path, monkeypatch):
         """
         poll_call_count[0] += 1
         # 调原 poll 检查信号存在（用于 poll_call_count 统计），但始终返回 False
-        _original_result = agent._original_poll(parent_j)  # type: ignore[attr-defined]
+        _original_result = original_poll(parent_j)
         return False  # 子忽略 cancel，继续执行
 
-    # 保留原 poll 方法引用，供 slow_poll 调用
-    agent._original_poll = agent._poll_parent_cancel  # type: ignore[attr-defined]
     monkeypatch.setattr(agent, "_poll_parent_cancel", slow_poll_that_blocks_after_cancel)
 
     # 协调器：graceful_timeout=0.2s（快速超时，不真等 30s）
@@ -135,16 +133,13 @@ def test_taskstop_force_kill(tmp_path, monkeypatch):
     )
 
     # 后台运行子 agent（阻塞在 __block_ 节点）
-    # 使用 threading.Event 替代 time.sleep(0.02) 等子启动（G-5 修复）
-    agent_started = threading.Event()
-
+    # F-7：使用 poll_started_event 等待子真正进入 run()（消除调度竞态，替代旧 agent_started.set()）
     def run_agent():
-        agent_started.set()
         agent.run(parent_jsonl, ["node-n1", "__block_60"])
 
     agent_thread = threading.Thread(target=run_agent, daemon=True)
     agent_thread.start()
-    assert agent_started.wait(timeout=2.0), "TC-F8-5 子线程 2s 内未启动"
+    assert poll_started_event.wait(timeout=2.0), "TC-F8-5 子线程 2s 内未进入 run()"
 
     # 父请求 cancel + 等待（0.2s 超时触发 TaskStop）
     outcome = coordinator.request_cancel_and_wait(child_run_id)
@@ -221,6 +216,11 @@ def test_poll_interval_boundary(tmp_path, monkeypatch):
     original_poll = agent._poll_parent_cancel
 
     def tracking_poll(parent_j: Path) -> bool:
+        """记录每次 poll 的时间戳，检测到 cancel 时记录命中时刻，供时延断言计算。
+
+        poll_timestamps：所有 poll 调用时刻（time.monotonic，单位秒）
+        cancel_detected_at：首次检测到 cancel_requested 的时刻（用于计算检测时延）
+        """
         t = time.monotonic()
         poll_timestamps.append(t)
         result = original_poll(parent_j)

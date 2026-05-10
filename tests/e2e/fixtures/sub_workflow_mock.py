@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -37,12 +38,16 @@ class MockSubAgent:
         child_run_id: str,
         jsonl_path: Path,
         poll_interval_ms: int = 100,
+        poll_started_event: "threading.Event | None" = None,
     ) -> None:
         self.child_run_id = child_run_id
         self.jsonl_path = jsonl_path
         self.poll_interval_ms = poll_interval_ms
         # 注入点：测试可替换 _sleep 实现快进
         self._sleep = time.sleep
+        # 注入点（F-7）：run() 入口立即 set，供测试精确等待子线程真正进入 run()，
+        # 消除 agent_started.set() 与 agent.run() 之间的调度竞态。
+        self.poll_started_event = poll_started_event
 
     # ----------------------------------------------------------------
     # 公开入口
@@ -58,6 +63,10 @@ class MockSubAgent:
         返回：
             "graceful_exit" / "completed" / "failed:<msg>"
         """
+        # F-7：run() 入口立即通知等待方（消除调度竞态）
+        if self.poll_started_event is not None:
+            self.poll_started_event.set()
+
         logger.info(
             "MockSubAgent 启动（child_run_id=%s, nodes=%s）",
             self.child_run_id, scripted_nodes,
