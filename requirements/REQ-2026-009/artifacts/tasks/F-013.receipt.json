@@ -1,8 +1,11 @@
 {
   "schema_version": "1.0",
   "feature_id": "F-013",
-  "status": "DONE_WITH_CONCERNS",
+  "status": "DONE",
   "rev": "rev2",
+  "review_id": "REV-REQ-2026-009-code-F-013-002",
+  "review_report": "artifacts/review-20260510-170902.md",
+  "signoff_decision": "approved-trivial",
   "commits": [
     {
       "rev": "rev1",
