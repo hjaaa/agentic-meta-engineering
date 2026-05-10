@@ -20,6 +20,16 @@
       "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-009/artifacts/features.json",
       "ts": "2026-05-10T13:26:37+00:00",
       "tool": "Edit"
+    },
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-009/artifacts/review-20260510-232010.md",
+      "ts": "2026-05-10T15:25:18+00:00",
+      "tool": "Write"
+    },
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/tests/lib/test_features_json_touches_consistency.py",
+      "ts": "2026-05-10T16:00:03+00:00",
+      "tool": "Edit"
     }
   ],
   "self_check_results": {
@@ -34,7 +44,8 @@
     "full_pytest": "1190 passed, 9 skipped（rev4 修复后；rev3 1187 + 3 新增：cache / rc=6 / governance gate）",
     "ruff_check": "0 新引入错误（rev4 改动文件全部通过；原有 73 个仓库级预存问题不计入本轮）",
     "post_dev_gate": "5 gates pass（GATE-META-SCHEMA / GATE-INDEX-INTEGRITY / GATE-SOURCING / GATE-PLAN-FRESHNESS / GATE-WORKSPACE-CLEAN）",
-    "run_signoff_cc": "10（radon B 级，目标 ≤10 达成）"
+    "run_signoff_cc": "10（radon B 级，目标 ≤10 达成）",
+    "rev5_fixes": "F-15 verdict 写盘 OSError + _commit_signoff helper（CC=10 维持）+ F-14 yaml.YAMLError + F-20/F-21 docstring + F-22/F-23 plan.md ADR + F-24 TODO + D-014 save_review.py 同模式"
   },
   "commits": [
     "525bf87 refactor(F-012): mv phase_enum.py → canonical_phases.py（保 single source of truth）",
@@ -61,6 +72,11 @@
     "e4a9505 test(F-012): rev4 修 M-5' rc=6 verdict JSON 损坏路径补测试覆盖",
     "76cc64a style(F-012): rev4 修 N-6 r003_r007 测试命名 given_xxx 改 fixture 状态描述 + N-8 stderr verdict_path 改 rel()",
     "8b69813 test(F-012): rev4 加 governance gate test_features_json_touches_consistency.py",
-    "658d2cd fix(F-012): rev4 governance gate ruff 修复"
+    "658d2cd fix(F-012): rev4 governance gate ruff 修复",
+    "afcd58e fix(F-012): rev5 修 F-15/F-14/F-20/F-21 signoff.py（_commit_signoff helper + OSError + YAMLError + docstring）",
+    "9659b75 fix(F-012): rev5 D-014 同模式修 save_review.py 写盘 + schema 加载",
+    "6edde0b fix(F-012): rev5 修 F-22/F-23 plan.md ADR 数字同步",
+    "7a0399d fix(F-012): rev5 修 F-24 governance gate 测试 TODO 注释",
+    "de5e1a5 test(F-012): rev5 F-15 专项测试 OSError 注入 + tmp 清理 + rc=1"
   ]
 }
