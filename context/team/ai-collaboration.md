@@ -55,6 +55,16 @@ Agent 在主对话或子 Agent 中，**禁止**调用上述入口，也**禁止*
 调用前的 tty 校验（`sys.stdin.isatty()`）会拒绝 AI shell，但 AI 不得通过假 tty / pipe trick / heredoc 等方式绕过。
 违反视为流程违规——人类发现即回滚 verdict 字段并在需求 notes.md 记录。
 
+**Approval 唯一入口**（人类在 tty 终端执行）：
+
+```bash
+/workflow:approve   # slash command 形式（最终调 workflow_approve.py）
+/workflow:reject <reason>
+```
+
+底层实现 `python3 scripts/lib/workflow_approve.py` / `workflow_reject.py` 同样禁止 AI 调用。
+hook 层（`.claude/hooks/pre-tool-use-guard.sh`）已加 D-006 拦截；CLI 层 `sys.stdin.isatty()` fail-closed 兜底。
+
 ## 人的最小行动路径（5 步）
 
 1. **说出场景** — "我要开发一个新需求" / "继续之前的需求" / "帮我审查一下这段代码"

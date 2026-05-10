@@ -1,0 +1,143 @@
+# workflow_approval_inputs.yaml — D-006 拦截用例矩阵（F-009 §5.6）
+# pytest parametrize 从 happy_block / boundary_passthrough / known_bypass 三节加载
+#
+# 字段说明：
+#   id          — 用例 ID（TC-F9-x 编号）
+#   command     — 喂给 hook 的 Bash command 字符串
+#   expect_exit — 预期 hook 退出码（2=拦截, 0=放行）
+#   description — 简述
+
+# ---------- TC-F9-1：16 条 happy block（4 入口 × 4 包装）----------
+happy_block:
+  # 入口 a: /workflow:approve，4 种包装
+  - id: TC-F9-1-a1
+    command: "/workflow:approve"
+    expect_exit: 2
+    description: "直接调 /workflow:approve"
+
+  - id: TC-F9-1-a2
+    command: "bash -c \"/workflow:approve\""
+    expect_exit: 2
+    description: "bash -c 包装 /workflow:approve"
+
+  - id: TC-F9-1-a3
+    command: "echo start && /workflow:approve && echo end"
+    expect_exit: 2
+    description: "/workflow:approve 前后加无关 token"
+
+  - id: TC-F9-1-a4
+    command: "( /workflow:approve )"
+    expect_exit: 2
+    description: "subshell 括号包装 /workflow:approve"
+
+  # 入口 b: /workflow:reject reason-text，4 种包装
+  - id: TC-F9-1-b1
+    command: "/workflow:reject some-reason"
+    expect_exit: 2
+    description: "直接调 /workflow:reject"
+
+  - id: TC-F9-1-b2
+    command: "bash -c \"/workflow:reject some-reason\""
+    expect_exit: 2
+    description: "bash -c 包装 /workflow:reject"
+
+  - id: TC-F9-1-b3
+    command: "echo pre && /workflow:reject some-reason && echo post"
+    expect_exit: 2
+    description: "/workflow:reject 前后加无关 token"
+
+  - id: TC-F9-1-b4
+    command: "/workflow:reject reason-more-than-8-chars"
+    expect_exit: 2
+    description: "/workflow:reject 带长原因"
+
+  # 入口 c: python3 scripts/lib/workflow_approve.py，4 种包装
+  - id: TC-F9-1-c1
+    command: "python3 scripts/lib/workflow_approve.py"
+    expect_exit: 2
+    description: "直接调 workflow_approve.py"
+
+  - id: TC-F9-1-c2
+    command: "bash -c \"python3 scripts/lib/workflow_approve.py\""
+    expect_exit: 2
+    description: "bash -c 包装 workflow_approve.py"
+
+  - id: TC-F9-1-c3
+    command: "echo pre && python3 scripts/lib/workflow_approve.py && echo post"
+    expect_exit: 2
+    description: "workflow_approve.py 前后加无关 token"
+
+  - id: TC-F9-1-c4
+    command: "python3 /repo/scripts/lib/workflow_approve.py"
+    expect_exit: 2
+    description: "workflow_approve.py 绝对路径调用"
+
+  # 入口 d: python3 scripts/lib/workflow_reject.py "reason"，4 种包装
+  - id: TC-F9-1-d1
+    command: "python3 scripts/lib/workflow_reject.py \"reason text\""
+    expect_exit: 2
+    description: "直接调 workflow_reject.py"
+
+  - id: TC-F9-1-d2
+    command: "bash -c \"python3 scripts/lib/workflow_reject.py reason\""
+    expect_exit: 2
+    description: "bash -c 包装 workflow_reject.py"
+
+  - id: TC-F9-1-d3
+    command: "echo pre && python3 scripts/lib/workflow_reject.py reason && echo post"
+    expect_exit: 2
+    description: "workflow_reject.py 前后加无关 token"
+
+  - id: TC-F9-1-d4
+    command: "python3 /repo/scripts/lib/workflow_reject.py reason"
+    expect_exit: 2
+    description: "workflow_reject.py 绝对路径调用"
+
+# ---------- TC-F9-2：5 条边界放行（exit 0）----------
+# 这些命令含有近似关键字但不触发正则——正则要求 /workflow:(approve|reject) 或
+# python3? ... workflow_(approve|reject).py；不匹配的命令应放行
+boundary_passthrough:
+  - id: TC-F9-2-1
+    command: "grep -r 'workflow:approve' ."
+    expect_exit: 0
+    description: "grep 命令含 workflow:approve（无前导 /）——不命中 slash 正则，放行"
+
+  - id: TC-F9-2-2
+    command: "cat context/team/ai-collaboration.md"
+    expect_exit: 0
+    description: "读取文件——无关键字命中，放行"
+
+  - id: TC-F9-2-3
+    command: "ls scripts/lib/workflow_approve.py"
+    expect_exit: 0
+    description: "ls 列出文件（无 python3 前缀）——不命中 python 正则，放行"
+
+  - id: TC-F9-2-4
+    command: "python3 scripts/lib/workflow_loader.py"
+    expect_exit: 0
+    description: "workflow_loader.py 不匹配（不是 approve/reject）——放行"
+
+  - id: TC-F9-2-5
+    command: "python3 scripts/lib/workflow_rollback.py"
+    expect_exit: 0
+    description: "workflow_rollback.py 不匹配（不是 approve/reject）——放行"
+
+# ---------- TC-F9-3：2 条已知绕过通道（hook 放行）----------
+# 变量间接引用 + eval 形式，hook 正则命中不了；CLI isatty 层兜底拒绝
+known_bypass:
+  - id: TC-F9-3-1
+    command: "x=\"/workflow\"; y=\":approve\"; eval \"${x}${y}\""
+    expect_exit: 0
+    description: "变量拼接 eval（字符串拆分，正则无法命中完整 /workflow:approve）——hook 放行（已知绕过），CLI isatty 层拦截"
+
+  - id: TC-F9-3-2
+    command: "S=workflow_approve.py; python3 \"$S\""
+    expect_exit: 0
+    description: "变量引用 python3 $S——hook 放行（已知绕过），CLI isatty 层拦截"
+
+# ---------- TC-F9-4：1 条 audit log 不写 BYPASS used ----------
+audit_no_bypass:
+  - id: TC-F9-4-1
+    command: "/workflow:approve"
+    expect_exit: 2
+    description: "命中拦截时 audit log 不应含 BYPASS used"
