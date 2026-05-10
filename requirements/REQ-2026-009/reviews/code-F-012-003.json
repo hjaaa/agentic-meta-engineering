@@ -1,0 +1,111 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-009-code-F-012-003",
+  "requirement_id": "REQ-2026-009",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-10 21:20:23",
+  "reviewed_commit": "413c9e7",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "223519bc905515544a1b770542151468d291e78631365947f42509e934f77a66"
+    },
+    {
+      "path": "artifacts/tasks/F-012.md",
+      "sha256": "85ce4c09bc4d165901396ebf87bbf738cd4741979bd45981adb7145c4e0a54b0"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 78,
+  "dimensions": {
+    "design_consistency": {
+      "score": 72,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "requirements/REQ-2026-009/artifacts/features.json:24-36 F-012.touches 仅 8 项 vs F-012.md:9-51 frontmatter touches 42 项；D-017 ADR Consequences 明文承诺 features.json + tasks/F-012.md touches 同步回填，commit 1a24281 仅扩 modules 未补 touches—— governance 债务"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/signoff.py:1-9 docstring 顶部声称『不能作为独立 CLI 入口』，但模块底部仍保留 build_signoff_parser 暴露在 __all__——文档与公开 API 表面意图冲突（小）"
+        }
+      ]
+    },
+    "security": {
+      "score": 91,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 84,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/signoff.py:79-114 _detect_default_base 4 次 subprocess.run（origin/HEAD + main + develop + master）每次 timeout=2.0s；CI shallow clone 场景下 origin/HEAD 缺失 + 三 fallback 全 miss → 最坏 8s 阻塞 sign-off 入口"
+        }
+      ]
+    },
+    "complexity": {
+      "score": 78,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/signoff.py:278-392 run_signoff AST 实测 CC≈16，超阈值 8；commit 5089b02 subject 声称『CC 20→8』honest reporting 不符——拆 helper 后主函数仍 115 行 / 16 分支"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 74,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/signoff.py:340 唯一 return 6 路径（JSON 解析失败）零测试覆盖；rev1 F-25 → rev2 N-6 → rev3 仍未补；retro-debt 累积 3 轮"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/signoff.py:98,112 except 捕获 SubprocessError + OSError 后 silent pass，缺 logger.warning—— sign-off 失败诊断不友好"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/signoff.py:1-9 docstring 引用 D-016 + D-017 ADR 但未列 detailed-design.md §10.3 出处编号——次要 sourcing 弱化"
+        }
+      ]
+    },
+    "performance": {
+      "score": 82,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/signoff.py:79-114 _detect_default_base 命中后无 cache，下次同进程调用重复 fork——signoff 通常单次调用影响小，但 trivial 通道下 _get_trivial_diff_paths 内部又调一次 base"
+        }
+      ]
+    },
+    "history_context": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "commit 2fcb06a subject 声称修 M-6/M-7/M-9 但 stat 仅 tests/lib/test_check_reviews_r003_r007.py 一个文件（实际改 M-8）；M-10 教训『复合 prefix 标注多 feature』本身在本 commit 范围错标上又复发——meta-self-recurrence"
+        },
+        {
+          "severity": "minor",
+          "description": "rev3 引入 4 项新 major (P-1/P-3/P-4/P-5) + P-20 self-recurrence；trend-G-meta『修一波又冒一波』循环 rev1→rev2→rev3 未终结"
+        }
+      ]
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "trend-G-meta 三轮未终结：每轮新引入 major 与历史债务交错；rev4 应同时修存量 + 设守门（CC 阈值 lint / commit message linter / D-017 metadata sync test）防再发",
+    "D-017 metadata sync 应做成 gate：增加 test_features_json_touches_match_frontmatter 在 CI 跑—— governance 债务机械可测，不应靠 reviewer 三轮口头追"
+  ],
+  "scope": {
+    "feature_id": "F-012"
+  },
+  "supersedes": "REV-REQ-2026-009-code-F-012-002"
+}

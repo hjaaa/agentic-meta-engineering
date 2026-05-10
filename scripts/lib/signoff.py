@@ -1,11 +1,14 @@
 """sign-off 子模块（F-012 rev2 从 save_review.py 拆出）
 
 ⚠️ 本模块**不能作为独立 CLI 入口**——必须通过 save_review.py 的 main() 委托。
-原因：save_review.py 顶层 import signoff（L235），signoff.run_signoff 内 lazy import save_review（L268）；
+原因：save_review.py 顶层 import signoff（L235），signoff.run_signoff 内 lazy import save_review（L359 之后）；
 若直接 python3 signoff.py 启动，lazy import 时会触发 save_review 模块级双向加载（~62ms 冷启动 + 反模式风险）。
 未来若需独立入口，建议先抽公共 helper 到 save_review_validation.py 解开双向依赖。
 
-来源：requirements/REQ-2026-009/artifacts/detailed-design.md + F-012 rev2 ADR（D-016）+ F-012 rev3 ADR（D-017）
+来源：requirements/REQ-2026-009/artifacts/detailed-design.md §10.3 + F-012 rev2 ADR（D-016）+ F-012 rev3 ADR（D-017）
+
+⚠️ __all__ 仅暴露 build_signoff_parser 与 run_signoff 供 save_review.py main() 委托用——
+  禁止直接 `python3 -m signoff` 启动，禁止其他模块通过 from signoff import * 引入这两个符号。
 """
 from __future__ import annotations
 
@@ -172,11 +175,17 @@ def _resolve_verdict_path(rev_id: str) -> tuple[Path | None, str]:
           REV-REQ-2026-003-code-F-001-001
 
     返回 (verdict_path, reason)：
-      - verdict_path: Path 时表示解析成功（不保证文件存在）
-      - verdict_path: None 时表示解析失败，reason 含具体原因
+      - verdict_path: Path 时表示解析成功（不保证文件存在），reason="" 占位
+      - verdict_path: None 时表示解析失败，reason 含具体原因，可选值：
+          - "invalid REV-ID format"：REV-ID 格式不符（前缀 / 段数 / 字符集错）
+          - "resolve error"：path traversal 检测命中或 Path.resolve() 抛 OSError/ValueError
+
+    注：调用方 run_signoff 在文件不存在时会自行打印 "verdict file missing: {path}"
+    （rc=4），那是 verdict_path.exists() 检查的结果，不是本函数返回的 reason。
 
     F-012 rev2 迁入 signoff.py；加 path traversal 防护。
     F-012 rev3 M-5：改返回 tuple[Path | None, str]，提供差异化诊断信息。
+    F-012 rev3 N-4：docstring 补全 reason 取值清单 + 与调用方文案的边界。
     """
     # 格式：REV-REQ-YYYY-NNN-<phase_and_seq>
     if not rev_id.startswith("REV-"):
