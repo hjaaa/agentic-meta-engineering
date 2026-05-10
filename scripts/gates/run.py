@@ -80,11 +80,11 @@ import registry as _registry  # noqa: E402
 import audit as _audit  # noqa: E402
 import state_io as _state_io  # noqa: E402
 
-# canonical phase 枚举单一事实源（scripts/lib/phase_enum.py）
+# canonical phase 枚举单一事实源（scripts/lib/canonical_phases.py，F-012 改自 phase_enum.py）
 _LIB_DIR = _REPO_ROOT / "scripts" / "lib"
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
-import phase_enum  # noqa: E402
+import canonical_phases  # noqa: E402
 
 # Re-export：测试和 triggers/submit.py 通过 `import run as runner_mod` 访问以下符号
 RegistryError = _registry.RegistryError
@@ -533,12 +533,15 @@ def _validate_phase_args(args: argparse.Namespace) -> Optional[str]:
     设计动机：
       历史 bug（REQ-2026-003 排查）——meta.yaml.phase 被写成 'technical-research'
       （应为 'tech-research'）后，phase-transition 门禁链上多处 vacuous pass：
-        1. _r001_review_exists 用 PHASE_REQUIREMENTS.get(..., []) 默认空 list
+        1. _r001_review_exists 用未知 target_phase 取空 required_phases 列表
         2. ReviewVerdictGate.run 同样落到 PASS 分支
       入口处先做白名单校验，把 typo 在最早一关拦下，比下游 plugin 各自防御更稳。
 
       REQ-2026-005 F-003 扩展：仅 typo 拦截不够——前进跨阶段（如 bootstrap→testing）
       会跳过中间 6 个阶段的所有评审 / 设计产物，必须在入口处再加"相邻校验"。
+
+      REQ-2026-009 F-012：原 PHASE_REQUIREMENTS 字典已删除，required_phases 改为
+      R001~R007 函数的显式入参；模块名 phase_enum.py → canonical_phases.py 同步更新。
 
     校验规则：
       - args.from_phase / args.to_phase 任一为空时跳过（合法用法：CI 模式不传）
@@ -547,7 +550,7 @@ def _validate_phase_args(args: argparse.Namespace) -> Optional[str]:
         - 回退方向（to_idx <= from_idx）不校验，rollback 场景豁免
         - 错误码 R-INVALID-PHASE-TRANSITION（severity: error）
     """
-    canonical = phase_enum.load_canonical_phases()
+    canonical = canonical_phases.load_canonical_phases()
     for label, val in (("--from", args.from_phase), ("--to", args.to_phase)):
         if val and val not in canonical:
             return (
@@ -558,7 +561,7 @@ def _validate_phase_args(args: argparse.Namespace) -> Optional[str]:
 
     # 两端非空 + 都已通过 canonical 校验时，做前进方向相邻校验
     if args.from_phase and args.to_phase:
-        ordered = phase_enum.load_canonical_phases_ordered()
+        ordered = canonical_phases.load_canonical_phases_ordered()
         try:
             from_idx = ordered.index(args.from_phase)
             to_idx = ordered.index(args.to_phase)
@@ -566,7 +569,7 @@ def _validate_phase_args(args: argparse.Namespace) -> Optional[str]:
             # 已在上方 canonical 校验拦下；保险兜底，理论不会到此
             return None
         if to_idx > from_idx:  # 前进方向才校验相邻
-            adjacent = phase_enum.load_adjacent_phases()
+            adjacent = canonical_phases.load_adjacent_phases()
             if (args.from_phase, args.to_phase) not in adjacent:
                 return (
                     f"R-INVALID-PHASE-TRANSITION "

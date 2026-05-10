@@ -48,7 +48,7 @@ def is_signed_off(verdict: dict) -> bool:
 
 
 import save_review
-import phase_enum  # canonical phase 枚举单一事实源
+import canonical_phases  # canonical phase 枚举单一事实源（F-012 改自 phase_enum）
 
 REQUIREMENTS_DIR = REPO_ROOT / "requirements"
 
@@ -80,12 +80,12 @@ def _r001_review_exists(meta: dict, target_phase: str, report: Report, label: st
     直接报 R001 错误。避免历史 bug：non-canonical phase 名（如 'technical-research'）
     通过 PHASE_REQUIREMENTS.get(..., []) 返回空 list → 静默 vacuous pass。
     """
-    canonical_phases = phase_enum.load_canonical_phases()
-    if target_phase and target_phase not in canonical_phases:
+    valid_phases = canonical_phases.load_canonical_phases()
+    if target_phase and target_phase not in valid_phases:
         report.add(
             label, Severity.ERROR, "R001",
             f"target-phase '{target_phase}' 不在 canonical phase 枚举内 "
-            f"({sorted(canonical_phases)})；可能 phase 名拼写有误，"
+            f"({sorted(valid_phases)})；可能 phase 名拼写有误，"
             f"参考 context/team/engineering-spec/meta-schema.yaml:38",
         )
         return

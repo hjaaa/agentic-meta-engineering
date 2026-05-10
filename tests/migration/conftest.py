@@ -14,7 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 _LIB_DIR = REPO_ROOT / "scripts" / "lib"
 _GATES_DIR = REPO_ROOT / "scripts" / "gates"
 
-# scripts/lib 注入（check_reviews / common / save_review / phase_enum）
+# scripts/lib 注入（check_reviews / common / save_review / canonical_phases）
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 

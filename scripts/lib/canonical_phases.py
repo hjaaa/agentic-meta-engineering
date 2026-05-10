@@ -3,20 +3,22 @@
 唯一事实源：context/team/engineering-spec/meta-schema.yaml `enums.phase`
 
 任何门禁或 CLI 入口只要需要校验 phase 字符串是否合法，都必须用本模块；
-禁止各处复制 PHASE_REQUIREMENTS / phase-rules.md 表导致漂移。
+禁止各处复制 phase-rules.md 表导致漂移。
 
 设计动机：
   REQ-2026-003 排查发现，meta.yaml 的 `phase` 字段被写成 `technical-research`
-  （应为 `tech-research`）后，门禁链上有两处 vacuous pass：
-    1. scripts/lib/check_reviews.py:_r001_review_exists 用 PHASE_REQUIREMENTS.get(...)
-       默认空 list → 未知 phase 名静默通过 R001
-    2. scripts/gates/plugins/review_verdict.py 同样用 _PHASE_REQUIREMENTS 判定
-       → 未知 phase 名直接返回 PASS
-  本模块加载 schema 真名集合，让两处都能 fail-closed。
+  （应为 `tech-research`）后，门禁链上多处 vacuous pass（未知 phase 名静默通过）。
+  本模块加载 schema 真名集合，让所有 R 函数与 plugin 都能 fail-closed。
 
 REQ-2026-005 F-003 扩展：
   新增 load_adjacent_phases() / load_canonical_phases_ordered()，从 enums.phase
   有序列表推导前进相邻关系，给 runner _validate_phase_args 做"非法 phase 跳跃"校验。
+
+REQ-2026-009 F-012 重命名（旧名 phase_enum.py）：
+  "enum" 暗示静态常量集合，但本模块实际从 yaml 动态加载 + 缓存——名实不符。
+  新名 canonical_phases.py 与函数族 load_canonical_phases / load_canonical_phases_ordered
+  / load_adjacent_phases 命名空间统一。同期删除 check_reviews.PHASE_REQUIREMENTS 字典
+  （参考 plan.md D-016）；R 函数改 required_phases 显式参数注入避免双轨漂移。
 """
 from __future__ import annotations
 
