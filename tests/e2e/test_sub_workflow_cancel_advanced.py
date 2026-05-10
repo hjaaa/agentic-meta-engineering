@@ -170,9 +170,9 @@ def test_taskstop_force_kill(tmp_path, monkeypatch):
     # TC-F8-5 场景：子故意忽略 cancel（不写 parent_cancelled），所以 child_jsonl 不含该事件。
     # 但 poll_call_count > 0 证明子线程确实执行了 poll，而不是卡在 sleep 从未 poll。
     assert poll_call_count[0] > 0, (
-        f"TC-F8-5 子线程未真正执行 poll（poll_call_count=0），"
-        f"测试空洞——controlled_sleep 可能再次把 poll 间隔撑成长阻塞，"
-        f"子线程从未进入 slow_poll_that_blocks_after_cancel"
+        "TC-F8-5 子线程未真正执行 poll（poll_call_count=0），"
+        "测试空洞——controlled_sleep 可能再次把 poll 间隔撑成长阻塞，"
+        "子线程从未进入 slow_poll_that_blocks_after_cancel"
     )
 
 
