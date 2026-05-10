@@ -439,11 +439,11 @@
     {
       "id": "F-012",
       "title": "Plan 7 清理（删 PHASE_REQUIREMENTS / phase_enum / signoff / next + SOP 文档更新）",
-      "description": "落地 Plan 7 真删（来源：detailed-design §10.3 / outline §1.2 / D-009）：删 scripts/lib/check_reviews.py 中 PHASE_REQUIREMENTS 字典（-57 行；R001-R007 函数本身保留供 plugin 复用）+ scripts/lib/code_review_signoff.py（-150 行 / hook 接管校验后）+ scripts/lib/phase_enum.py（-30 行）+ .claude/commands/requirement/next.md + .claude/skills/managing-requirement-lifecycle/ 旧 SOP 逻辑。SOP 文档同步：CLAUDE.md / context/team/onboarding/agentic-engineer-guide.md / context/team/ai-collaboration.md 等所有引用更新（~50-100 行 modify）。最后删 workflow_loader.py 中「探测 requirements/」1 行（D-007 锁定）。前置条件：F-011 自举验证通过 + 21/21 migration 测试 pass + F-013 rename 完成。",
+      "description": "落地 Plan 7 真删（来源：detailed-design §10.3 / outline §1.2 / D-009）：删 scripts/lib/check_reviews.py 中 PHASE_REQUIREMENTS 字典（-57 行；R001-R007 函数本身保留供 plugin 复用）+ scripts/lib/code_review_signoff.py（-150 行 / hook 接管校验后）+ scripts/lib/phase_enum.py（-30 行）+ .claude/commands/requirement/next.md + .claude/skills/managing-requirement-lifecycle/ 旧 SOP 逻辑。SOP 文档同步：CLAUDE.md / context/team/onboarding/agentic-engineer-guide.md / context/team/ai-collaboration.md 等所有引用更新（~50-100 行 modify）。最后删 workflow_loader.py 中「探测 requirements/」1 行（D-007 锁定）。前置条件：F-011 自举验证通过 + 21/21 migration 测试 pass + F-013 rename 完成。（rev2 拆 signoff.py 子模块；signoff 功能迁入 scripts/lib/signoff.py，save_review.py signoff 入口保留为委托层）",
       "modules": [
         "scripts/lib/check_reviews.py",
-        "scripts/lib/code_review_signoff.py",
-        "scripts/lib/phase_enum.py",
+        "scripts/lib/canonical_phases.py",
+        "scripts/lib/signoff.py",
         ".claude/commands/requirement/next.md",
         ".claude/skills/managing-requirement-lifecycle/SKILL.md",
         ".claude/skills/managing-requirement-lifecycle/reference/phase-rules.md",
@@ -459,8 +459,8 @@
       "complexity": "light",
       "touches": [
         "scripts/lib/check_reviews.py",
-        "scripts/lib/code_review_signoff.py",
-        "scripts/lib/phase_enum.py",
+        "scripts/lib/canonical_phases.py",
+        "scripts/lib/signoff.py",
         ".claude/commands/requirement/next.md",
         ".claude/skills/managing-requirement-lifecycle/**",
         "scripts/lib/workflow_loader.py",

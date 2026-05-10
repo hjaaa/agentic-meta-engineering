@@ -196,3 +196,12 @@
 - **时间**：2026-05-10 18:30:00
 - **来源**：requirements/REQ-2026-009/artifacts/detailed-design.md §10.3（Plan 7 删除清单）/ requirements/REQ-2026-009/artifacts/tasks/F-012.md（任务定义 + 6 项 TC 自检）/ CLAUDE.md prompt（dispatch 决策）/ requirements/REQ-2026-009/plan.md:137-176（D-011 ~ D-015 同款 ADR 模板）/ scripts/lib/canonical_phases.py 模块 docstring（mv 决策动机）
 - **Plan 落地点**：F-012 6 phase 顺序 commit（525bf87 phase_enum mv / fccce8b PHASE_REQUIREMENTS dict elimination / 714c066 code_review_signoff 迁移 / 8be6f2e /requirement:next 删除 + Skill trim / dce3549 SOP 文档同步 / [本 commit] 自检 + bookkeeping）；touches 扩展同 D-013/D-015 流程性副作用通道；F-012 done 闭环后 12/13 → 13/13 等待第二轮 review
+
+### D-017 rev2 拆 signoff.py 子模块（save_review.py 委托）= 解决 rev1 F-3（save_review.py 678 行超 500）+ rev2 自然演化
+
+- **Context**：rev1 F-3 keep major 要求拆 save_review.py（D-016 决策(3) 暗示单文件合并 → 实际超 678 行）；rev2 Batch 3 提取 _run_signoff + 4 helper + _DOC_PATH_PATTERNS + _EMAIL_RE + _sanitize_log_field 到独立 scripts/lib/signoff.py（334 行）。
+- **Decision**：(1) **save_review.py signoff 入口语义保留**（兼容期内不变）；(2) **内部委托 signoff.py:run_signoff()**；(3) **save_review.py 顶层 import signoff**（lazy access via module-level alias）+ **signoff.py 函数体内 lazy import save_review**（解循环）；(4) **save_review.py 缩到 423 行（< 500）/ signoff.py 334 行（< 500）**。
+- **Consequences**：好——单文件体积降至 500 行以下；signoff 相关代码内聚到专属模块；双向 import 拓扑通过 lazy import 解环（save_review.py import signoff 在顶层；signoff.py import save_review 在 run_signoff 函数体内延迟加载，避免循环导入）。差——**双向 import 拓扑（lazy 解环）**仍存在脆弱性；若 signoff.py 模块级代码引用 save_review 中函数，将触发循环 ImportError；下次拆 helper 时建议进一步抽 save_review_validation.py 作为公共依赖，彻底打破双向依赖。测试侧 import 路径同步：tests/commands/test_signoff_command.py / tests/skills/test_code_review_signoff_skill.py / tests/lib/test_save_review_signoff_subcommand.py 改 `from signoff import`。features.json + tasks/F-012.md touches 同步回填（rev3 修 M-1）。
+- **时间**：2026-05-10 21:00:00
+- **来源**：requirements/REQ-2026-009/artifacts/review-20260510-204107.md（rev2 verdict M-1 finding：features.json modules/touches/description 同步债）/ requirements/REQ-2026-009/artifacts/tasks/F-012.receipt.json（rev2 concerns：save_review.py 423 行 + signoff.py 334 行 + 双向 import 脆弱性）/ scripts/lib/signoff.py:1-7（模块 docstring）/ requirements/REQ-2026-009/plan.md:191-198（D-016 ADR 同款模板）
+- **Plan 落地点**：F-012 rev3 Batch 3 M-1 同步债 commit（features.json modules[]/touches[]/description 字段 + plan.md D-017 ADR）；与 D-016 decision(3) 扩展衔接；rev3 done 闭环后等待 rev3 code review
