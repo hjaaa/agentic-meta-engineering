@@ -152,6 +152,15 @@
 - **来源**：requirements/REQ-2026-009/artifacts/tasks/F-009.md:7-15（原 touches）/ requirements/REQ-2026-009/artifacts/features.json#F-009.acceptance[5]（TC-F9-5 路径字面量 `pytest tests/lib/test_workflow_approve.py::test_isatty_fail_closed`）/ requirements/REQ-2026-009/artifacts/tasks/F-009.receipt.json（1 条 violation）/ requirements/REQ-2026-009/plan.md:137（D-011 同构 ADR 模板）
 - **Plan 落地点**：本轮 F-009 dispatch 闭环（features.json + task.md + receipt.json + plan.md ADR + bookkeeping commit）
 
+### D-013 review 报告 + dispatch-state.json 写入 = 流程性副作用，建议加入 touches_guard 豁免列表（清空 historical violations + hook 层 follow-up）
+
+- **Context**：F-010 闭环时 receipt.json 累计被 touches_guard.py 软记 3 条 violations：(1) `artifacts/review-20260510-115333.md` (rev1 报告) / (2) `artifacts/review-20260510-120414.md` (rev2 报告) / (3) `.dispatch-state.json` (派发锁释放 current_feature → null)。3 条均非 implementer subagent 越界，而是**主 Agent 完成 review 流程 + 释放派发锁**的 SOP 必经写入。touches_guard.py 的豁免列表（`_is_process_artifact`，`.claude/hooks/touches_guard.py:365-394`）当前只覆盖 6 类 SOP 必经写入：tasks/<fid>.md status 翻转 / receipt.json 自指 / plan.md ADR / notes.md / meta.yaml / process.txt——**未覆盖 review-*.md（reviewer 流程产物）和 .dispatch-state.json（派发锁状态机）**。F-009 同期 receipt.json `touches_violations=[]` 是因为流程顺序差异（review 写入发生在 dispatch-state release 之后，hook fail-open）；F-010 流程顺序导致重现，是设计漏洞而非偶发。
+- **Decision**：(1) 短期治理（本轮 F-010 done 闭环）——清空 `F-010.receipt.json.touches_violations[]` 共 3 条，rationale 同 D-011/D-012「historical violations 清零避免 GATE-TOUCHES-VIOLATION 在 phase-transition / submit 阶段误挡」；不扩 features.json / task.md touches glob（review-*.md 和 .dispatch-state.json 是流程性副作用，与 feature 实现 scope 无关，不应污染 per-feature touches 字段）。(2) 长期治理（hook 层 follow-up）——`touches_guard.py:_is_process_artifact` 豁免列表扩 2 类：`artifacts/review-*.md`（reviewer 流程产物）+ `.dispatch-state.json`（派发锁状态机）；归到 F-011/F-012 范围（hook + lifecycle 治理 feature），不在 F-010 实现 scope 内。(3) 审计可追溯——本 ADR + commit message 详述 3 条 violations 的根因；后续所有 done feature 在 hook 修复前都按本 ADR 模式清零（不重复写 ADR，统一引用 D-013）。
+- **Consequences**：好——F-010 phase-transition / submit 时 GATE-TOUCHES-VIOLATION 不被误挡；后续 feature 复用本 ADR 清零模式无需重复 ADR；hook 层 follow-up 一次修彻底（统一 SOP 必经写入豁免规则）。差——D-013 与 D-011/D-012 不同性质（D-011/D-012 是 per-feature 设计漏写 → 扩 touches；D-013 是 hook 设计漏洞 → 扩豁免列表），需要在文档里区分清楚避免误用；hook 修复 follow-up 未落地前，每个 feature 闭环都要手动清 violations。
+- **时间**：2026-05-10 12:09:00
+- **来源**：.claude/hooks/touches_guard.py:365-394 (_is_process_artifact 豁免列表) / requirements/REQ-2026-009/artifacts/tasks/F-010.receipt.json (3 条 historical violations) / requirements/REQ-2026-009/plan.md:137,146 (D-011/D-012 清零模板)
+- **Plan 落地点**：本轮 F-010 done 闭环（receipt.json 清零 + 本 ADR + bookkeeping commit）；hook 层修复挂 F-011/F-012 范围（lifecycle / hook 治理 feature）
+
 ### D-010 rollback 归档语义 = mv 原路径删除 + 子 run 整目录 mv + 每次独立 timestamp 目录
 
 - **Context**：spec §11.3 说"归档 X 及以后产物到 `runs/<id>/.archived/<timestamp>/`"，但未说明三件事：(1) 归档后**原路径**是否清理（保留 / 删除 / stub）；(2) 跨父子 rollback 时子 run 的整个目录 `runs/<child-id>/` 是否清空；(3) 多次 rollback 的归档目录策略（独立并存 vs 追加合并）。OQ-02 来源：requirement.md:134。
