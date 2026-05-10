@@ -331,7 +331,8 @@
         "scripts/lib/workflow_reject.py",
         "context/team/ai-collaboration.md",
         "tests/hooks/test_pre_tool_use_guard.py",
-        "tests/hooks/fixtures/workflow_approval_inputs.yaml"
+        "tests/hooks/fixtures/workflow_approval_inputs.yaml",
+        "tests/lib/test_workflow_approve.py"
       ],
       "acceptance": [
         "TC-F9-1: pytest tests/hooks/test_pre_tool_use_guard.py::test_hook_blocks_16_combinations 绿——4 入口（slash approve / slash reject / python approve / python reject）× 4 包装（直接 / bash -c / 前后无关 token / 绝对路径 python）= 16 happy block + exit 2 + stderr 含 BLOCKED 消息（§5.6）",

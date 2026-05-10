@@ -143,6 +143,15 @@
 - **来源**：requirements/REQ-2026-009/artifacts/tasks/F-008.md:7-12（原 touches）/ requirements/REQ-2026-009/artifacts/tasks/F-008.receipt.json（2 条 violations）/ pytest conftest.py 自动加载约束（https://docs.pytest.org/en/stable/reference/fixtures.html#conftest-py-sharing-fixtures-across-multiple-files）
 - **Plan 落地点**：本轮 F-008 dispatch 闭环（features.json + task.md + receipt.json + plan.md ADR + bookkeeping commit）
 
+### D-012 F-009 touches 设计回填 = 扩 `tests/lib/test_workflow_approve.py` + 清空 historical violations（同 D-011 模板）
+
+- **Context**：F-009 task.md / features.json 原 touches 含 `tests/hooks/test_pre_tool_use_guard.py` / `tests/hooks/fixtures/workflow_approval_inputs.yaml` 但**未含** `tests/lib/test_workflow_approve.py`。F-009 acceptance TC-F9-5 明文要求 `pytest tests/lib/test_workflow_approve.py::test_isatty_fail_closed`（features.json:341），路径已固化在验收脚本里，subagent 实现时按 acceptance 字面量落 `tests/lib/`；touches_guard.py 把这条写记成 `touches_violations[]`（实现正确，设计 glob 漏写）。
+- **Decision**：(1) 设计回填——features.json F-009.touches 扩 `tests/lib/test_workflow_approve.py`（在 `tests/hooks/fixtures/workflow_approval_inputs.yaml` 后插入）；tasks/F-009.md frontmatter touches 同步扩。(2) 清空 historical violations——`F-009.receipt.json` 的 `touches_violations[]` 清零（rationale 同 D-011：扩 touches 后路径不再越界；留着会让 phase-transition / submit 阶段 GATE-TOUCHES-VIOLATION 误挡）。(3) 审计可追溯——本 ADR + commit message 详述根因；与 D-011 走完全同构通道。
+- **Consequences**：好——CLI isatty 测试用 `tests/lib/` 标准位置不再被误记越界；GATE-TOUCHES-VIOLATION 在 submit 阶段不会误挡；后续类似 feature（hook + CLI 双层）detailed-design 模板可借鉴本 ADR 在 features.json 模板里默认带 `tests/lib/test_<cli>.py` glob。差——同 D-011，事后扩 touches + 清 violations 流程上比一次设计到位多一步。
+- **时间**：2026-05-10 10:58:00
+- **来源**：requirements/REQ-2026-009/artifacts/tasks/F-009.md:7-15（原 touches）/ requirements/REQ-2026-009/artifacts/features.json#F-009.acceptance[5]（TC-F9-5 路径字面量 `pytest tests/lib/test_workflow_approve.py::test_isatty_fail_closed`）/ requirements/REQ-2026-009/artifacts/tasks/F-009.receipt.json（1 条 violation）/ requirements/REQ-2026-009/plan.md:137（D-011 同构 ADR 模板）
+- **Plan 落地点**：本轮 F-009 dispatch 闭环（features.json + task.md + receipt.json + plan.md ADR + bookkeeping commit）
+
 ### D-010 rollback 归档语义 = mv 原路径删除 + 子 run 整目录 mv + 每次独立 timestamp 目录
 
 - **Context**：spec §11.3 说"归档 X 及以后产物到 `runs/<id>/.archived/<timestamp>/`"，但未说明三件事：(1) 归档后**原路径**是否清理（保留 / 删除 / stub）；(2) 跨父子 rollback 时子 run 的整个目录 `runs/<child-id>/` 是否清空；(3) 多次 rollback 的归档目录策略（独立并存 vs 追加合并）。OQ-02 来源：requirement.md:134。
