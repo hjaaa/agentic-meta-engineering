@@ -19,7 +19,7 @@
 #   - 本脚本是 git pre-commit hook，拦截 git commit 操作
 #   - pre-tool-use-guard.sh 是 Claude Code tool hook，拦截 AI Edit/Write/Bash
 #   - BYPASS 口径相同（reason ≥ 8 字符），但各自独立触发
-# - 消息格式：本 hook 用 [HOOK_NAME] 前缀 + >&2；pre-tool-use-guard 用裸 BLOCKED + >&3（fd 重定向）
+#   - 消息格式：本 hook 用 [HOOK_NAME] 前缀 + >&2；pre-tool-use-guard 用裸 BLOCKED + >&3（fd 重定向）
 
 set -uo pipefail
 
