@@ -56,7 +56,7 @@ def _make_base_verdict(phase: str = "definition", conclusion: str = "looks_clean
 class TestR003BlockedOrUnsigned:
     """_r003_blocked_or_unsigned 测试套件。"""
 
-    def test_should_error_when_old_verdict_without_human_signoff_given_r003(self, tmp_path: Path) -> None:
+    def test_should_error_when_old_verdict_without_human_signoff_given_old_verdict_schema(self, tmp_path: Path) -> None:
         """旧 verdict 无 human_signoff → R003 报错，禁止切阶段。"""
         # 构造临时仓库结构：requirements/<REQ>/reviews/definition-001.json
         reviews_dir = tmp_path / "requirements" / _REQ / "reviews"
@@ -87,7 +87,7 @@ class TestR003BlockedOrUnsigned:
         assert len(errors) > 0, "旧 verdict 无 human_signoff 应触发 R003"
         assert any("未签字" in f[3] or "human_signoff" in f[3] for f in errors)
 
-    def test_should_error_when_conclusion_rejected_given_r003(self, tmp_path: Path) -> None:
+    def test_should_error_when_conclusion_rejected_given_blocked_meta(self, tmp_path: Path) -> None:
         """旧 schema conclusion=rejected 直接触发 R003（无需读 verdict 文件）。"""
         meta = {
             "reviews": {
@@ -103,7 +103,7 @@ class TestR003BlockedOrUnsigned:
         errors = [f for f in report.findings() if f[1] == Severity.ERROR and f[2] == "R003"]
         assert len(errors) > 0, "conclusion=rejected 应触发 R003"
 
-    def test_should_error_when_conclusion_blocked_given_r003(self, tmp_path: Path) -> None:
+    def test_should_error_when_conclusion_blocked_given_blocked_conclusion(self, tmp_path: Path) -> None:
         """新 schema conclusion=blocked 也触发 R003。"""
         meta = {
             "reviews": {
@@ -119,7 +119,7 @@ class TestR003BlockedOrUnsigned:
         errors = [f for f in report.findings() if f[1] == Severity.ERROR and f[2] == "R003"]
         assert len(errors) > 0, "conclusion=blocked 应触发 R003"
 
-    def test_should_pass_when_signed_verdict_given_r003(self, tmp_path: Path) -> None:
+    def test_should_pass_when_signed_verdict_given_valid_human_signoff(self, tmp_path: Path) -> None:
         """verdict 含合法 human_signoff.decision=approved → R003 通过。"""
         reviews_dir = tmp_path / "requirements" / _REQ / "reviews"
         verdict = _make_base_verdict(phase="definition", conclusion="looks_clean")
@@ -166,7 +166,7 @@ class TestR007CodeByFeatureCoverage:
         }
         (features_dir / "features.json").write_text(json.dumps(content), encoding="utf-8")
 
-    def test_should_error_when_code_verdict_without_human_signoff_given_r007(self, tmp_path: Path) -> None:
+    def test_should_error_when_code_verdict_without_human_signoff_given_old_code_verdict(self, tmp_path: Path) -> None:
         """code by_feature verdict 无 human_signoff → R007 报错。"""
         fid = "F-001"
         req_dir = tmp_path / "requirements" / _REQ
