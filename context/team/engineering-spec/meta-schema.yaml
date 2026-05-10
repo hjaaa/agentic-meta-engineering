@@ -33,8 +33,7 @@ required_fields:
 
 # ---------- 枚举白名单 ----------
 enums:
-  # phase 枚举以 .claude/skills/managing-requirement-lifecycle/reference/phase-rules.md 为事实源
-  # 此处同步一份便于 check-meta.sh 直接读取
+  # phase 枚举单一事实源（F-012 后此处即为事实源；phase-rules.md 已删）
   phase:
     - bootstrap
     - definition
