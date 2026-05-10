@@ -1,0 +1,10 @@
+# 仿历史 paused run fixture（TC-F11-3 AC-E2E 用）
+# 模拟 REQ-2026-005 风格的 paused run（实际 REQ-2026-005 已 phase=completed 且无 jsonl）
+# 决策 A：用 fixture 模拟，见 notes.md Plan 6 自举验证 SOP
+id: REQ-MIGR-LEGACY-001
+title: Legacy paused run fixture for TC-F11-3
+phase: development
+created_at: "2026-01-01 00:00:00"
+branch: feat/req-migr-legacy-001
+base_branch: develop
+reviews: {}

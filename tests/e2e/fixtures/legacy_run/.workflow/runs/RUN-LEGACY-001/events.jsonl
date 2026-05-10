@@ -1,0 +1,6 @@
+{"type": "workflow_started", "run_id": "RUN-LEGACY-001", "ts": "2026-01-01 10:00:00", "data": {"workflow_name": "standard-8phase", "arguments": ""}}
+{"type": "node_started", "run_id": "RUN-LEGACY-001", "node_id": "definition", "ts": "2026-01-01 10:00:01", "data": {}}
+{"type": "node_completed", "run_id": "RUN-LEGACY-001", "node_id": "definition", "ts": "2026-01-01 10:01:00", "data": {"output": "definition phase completed"}}
+{"type": "node_started", "run_id": "RUN-LEGACY-001", "node_id": "tech-research", "ts": "2026-01-01 10:01:01", "data": {}}
+{"type": "node_completed", "run_id": "RUN-LEGACY-001", "node_id": "tech-research", "ts": "2026-01-01 10:02:00", "data": {"output": "tech-research phase completed"}}
+{"type": "workflow_paused", "run_id": "RUN-LEGACY-001", "ts": "2026-01-01 10:02:01", "data": {"reason": "waiting for user approval"}}

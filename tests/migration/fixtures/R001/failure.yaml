@@ -1,0 +1,22 @@
+# R001 failure：target_phase 要求的 review 缺失（latest 为空）
+# 场景：切到 tech-research，但 definition review 的 latest 为空
+description: "R001 failure - review latest is null"
+req_id: "REQ-2099-102"
+target_phase: "tech-research"
+
+meta:
+  id: "REQ-2099-102"
+  title: "R001 failure fixture"
+  phase: "definition"
+  created_at: "2026-01-01 00:00:00"
+  branch: "feat/req-2099-102"
+  base_branch: "develop"
+  reviews:
+    definition:
+      latest: null
+      conclusion: null
+
+reviews: []
+
+expected_conclusion: "fail"
+expected_codes: ["R001"]
