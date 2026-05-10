@@ -149,3 +149,5 @@
 2026-05-10 12:10:31 [save] F-010 闭环（rev1 85→rev2 93 +8 / 13 候选 4 keep 全闭合 / 5 drop / 锁释放 / D-013 ADR 落地：review-*.md + .dispatch-state.json 统一治理建议挂 F-011/F-012）；10/13；待派 F-011
 2026-05-10 12:19:10 [development] F-011 派发（model=sonnet）：D-009 自举验证 21 条双跑（7×3 fixture）+ AC-E2E fixture 模拟 paused run（决策 A）+ AC-SELF 记录文档 + 剩余阶段自举
 2026-05-10 13:00:08 [development] F-011 实现完成（subagent DONE）：21 fixture + 4 测试 / 2 commits 7af5cdb+3808471 / pytest 29+1176 全 PASS / ruff All passed / receipt.json status=DONE
+2026-05-10 13:30:50 [review:needs_attention] code-quality-reviewer rev1 87 (REV-REQ-2026-009-code-F-011-001) — 17 候选 5/6/6 → 3 major (F-7/F-8/F-10) + 3 minor (F-4/5/6) + 11 drop；93→87；派 rev2
+2026-05-10 13:40:06 [development] F-011 rev2 修复完成（subagent DONE）：6 项全闭合（3 major F-7/F-8/F-10 + 3 minor F-4/F-5/F-6）/ 2 commits fd60521+0437a1b / pytest 1179 + 29 全 PASS / ruff 0 / R004 boundary strict→fail 验证 / workflow_continue.main 真调路径覆盖
