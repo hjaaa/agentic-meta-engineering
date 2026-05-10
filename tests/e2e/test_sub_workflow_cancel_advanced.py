@@ -9,13 +9,12 @@
 全部用例：
 - 不真派 Agent（MockSubAgent + monkeypatch）
 - 不真 sleep（monkeypatch 替换）
-- 总耗时 ≤ 10 秒
+- 正常路径总耗时 ≤ 10 秒（异常时最长 5s）
 
 来源：requirements/REQ-2026-009/artifacts/detailed-design.md §7.4 边-3/边-4
 """
 from __future__ import annotations
 
-import json
 import logging
 import sys
 import threading
@@ -77,41 +76,53 @@ def test_taskstop_force_kill(tmp_path, monkeypatch):
     child_jsonl = child_run_dir / "run-state.jsonl"
 
     # MockSubAgent：poll_interval_ms=10，节点 "__block_60" 模拟阻塞 60s
-    # 为不真 sleep 60s，把 _sleep 替换为受控阻塞
+    # 为不真 sleep 60s，把 _sleep 拆为两路：
+    #   - fast_poll_sleep：poll 间隔短 sleep（secs < 1.0），立即返回让子线程继续进入 poll 逻辑
+    #   - block_node_sleep：业务节点长 sleep（secs >= 1.0），阻塞等 unblock_event 或 5s 兜底
+    # 注意：旧方案 max(secs, 60.0) 把 poll 间隔 0.01s 也撑成 60s wait，
+    # 导致子线程卡在首次 poll 间隔，slow_poll_that_blocks_after_cancel 的写入路径无法执行。
     unblock_event = threading.Event()
 
+    def fast_poll_sleep(secs: float):
+        """poll 间隔的短 sleep，立即返回让子线程继续进入 poll 逻辑。"""
+        pass  # 不真 sleep，快进 poll 间隔
+
+    def block_node_sleep(secs: float):
+        """业务节点的长 sleep，等 unblock_event 或 5s 兜底（与 docstring '总耗时 ≤ 10s' 对齐）。"""
+        unblock_event.wait(timeout=5.0)
+
     def controlled_sleep(secs: float):
-        """阻塞直到 unblock_event set，不依赖真实时间。"""
-        unblock_event.wait(timeout=max(secs, 60.0))
+        """按 secs 阈值分发：< 1.0 快进（poll 间隔）/ >= 1.0 阻塞等 unblock_event。"""
+        if secs < 1.0:
+            fast_poll_sleep(secs)
+        else:
+            block_node_sleep(secs)
 
     agent = MockSubAgent(child_run_id, child_jsonl, poll_interval_ms=10)
     monkeypatch.setattr(agent, "_sleep", controlled_sleep)
 
-    # 子脚本：先正常节点（poll 命中后 graceful_exit）然后阻塞节点
-    # 为模拟"poll 命中但阻塞"的场景，把 _poll_parent_cancel 替换为：
-    # 首次 poll 命中后写 parent_cancelled，再执行真正阻塞节点
+    # 子脚本：模拟"子收到 cancel 但忽略它，继续执行阻塞节点"的场景
+    # 把 _poll_parent_cancel 替换为：始终返回 False（子忽略 cancel 信号），
+    # 不写 parent_cancelled——子会继续执行到 __block_60 节点并阻塞在 block_node_sleep。
+    # 这样 coordinator 在 graceful_timeout 内读不到 parent_cancelled，超时后调 TaskStop。
+    #
+    # 注意：协议上"子应主动写 parent_cancelled 后退出"，TC-F8-5 测试的是"子违反协议/
+    # 阻塞不退出时父的兜底路径"（TaskStop force_kill），所以子故意不写 parent_cancelled。
     poll_call_count = [0]
-    original_poll = agent._poll_parent_cancel
 
     def slow_poll_that_blocks_after_cancel(parent_j: Path) -> bool:
-        """首次 poll 命中（写 parent_cancelled），之后子仍阻塞（故意不返回 graceful_exit）。"""
-        poll_call_count[0] += 1
-        result = original_poll(parent_j)
-        # 首次命中：写 parent_cancelled 后继续（不 return True，模拟子已写入但仍阻塞）
-        if result and poll_call_count[0] == 1:
-            # 子手动写 parent_cancelled（因为我们不走 run 的正常路径）
-            from sub_workflow_mock import _utc_now_iso  # noqa: F401
-            payload = json.dumps({
-                "type": "parent_cancelled",
-                "ts": _utc_now_iso(),
-                "run_id": child_run_id,
-            }, ensure_ascii=False) + "\n"
-            with child_jsonl.open("a", encoding="utf-8") as fh:
-                fh.write(payload)
-            # 继续阻塞（返回 False 让子不执行 graceful_exit，而是继续下一节点/阻塞）
-            return False
-        return result
+        """子忽略 cancel 信号（始终返回 False），让子继续执行到 __block_60 节点阻塞。
 
+        模拟场景：子 poll 到 cancel_requested 但无法/不愿意 graceful exit
+        （如子代码 bug / 子任务不可中断），导致父 30s 超时后调 TaskStop 兜底。
+        """
+        poll_call_count[0] += 1
+        # 调原 poll 检查信号存在（用于 poll_call_count 统计），但始终返回 False
+        _original_result = agent._original_poll(parent_j)  # type: ignore[attr-defined]
+        return False  # 子忽略 cancel，继续执行
+
+    # 保留原 poll 方法引用，供 slow_poll 调用
+    agent._original_poll = agent._poll_parent_cancel  # type: ignore[attr-defined]
     monkeypatch.setattr(agent, "_poll_parent_cancel", slow_poll_that_blocks_after_cancel)
 
     # 协调器：graceful_timeout=0.2s（快速超时，不真等 30s）
@@ -159,6 +170,16 @@ def test_taskstop_force_kill(tmp_path, monkeypatch):
         "超时路径不应含 child_graceful_exited"
     )
 
+    # 断言（F-5 空洞防护）：poll-mock 路径确实被执行（子线程真正进入了 poll 逻辑），
+    # 而不是因 controlled_sleep 卡死子线程导致 poll 从未执行。
+    # TC-F8-5 场景：子故意忽略 cancel（不写 parent_cancelled），所以 child_jsonl 不含该事件。
+    # 但 poll_call_count > 0 证明子线程确实执行了 poll，而不是卡在 sleep 从未 poll。
+    assert poll_call_count[0] > 0, (
+        f"TC-F8-5 子线程未真正执行 poll（poll_call_count=0），"
+        f"测试空洞——controlled_sleep 可能再次把 poll 间隔撑成长阻塞，"
+        f"子线程从未进入 slow_poll_that_blocks_after_cancel"
+    )
+
 
 # ============================================================================
 # TC-F8-6: poll 间隔边界（快进 monkeypatch，不真 sleep 10s）
@@ -169,7 +190,6 @@ def test_poll_interval_boundary(tmp_path, monkeypatch):
 
     不真 sleep 10s：
     - monkeypatch MockSubAgent._sleep = 立即返回（快进 poll 间隔）
-    - monkeypatch time.monotonic 在父侧推进虚拟时钟（快进 scripted 节点耗时）
     - 验证：cancel 从写入到子检测到的时延 ≤ poll_interval_ms × 1.1 ms（换算秒）
 
     注：因为 mock 后 sleep 是 no-op，真实时延会远低于 10s。
