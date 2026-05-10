@@ -1028,7 +1028,7 @@ class MockSubAgent:
 
 ### 7.4 单测覆盖矩阵
 
-测试落 `tests/e2e/test_sub_workflow_lifecycle.py`，覆盖 2 主场景 + 4 边界场景：
+测试落 `tests/e2e/test_sub_workflow_lifecycle.py`（TC-F8-1~4，2 主 + 2 边界）与 `tests/e2e/test_sub_workflow_cancel_advanced.py`（TC-F8-5/F8-6，2 边界，rev3 G-3 拆出），覆盖 2 主场景 + 4 边界场景：
 
 | # | 场景 | 触发 | 期望 |
 |---|---|---|---|
@@ -1043,7 +1043,8 @@ class MockSubAgent:
 
 新增/修改文件：
 
-- `tests/e2e/test_sub_workflow_lifecycle.py`（2 主 + 4 边界共 6 用例）
+- `tests/e2e/test_sub_workflow_lifecycle.py`（TC-F8-1~4：2 主 + 边-1/边-2 共 4 用例）
+- `tests/e2e/test_sub_workflow_cancel_advanced.py`（TC-F8-5/F8-6：边-3 TaskStop 兜底 + 边-4 poll 时延边界，rev3 G-3 拆出）
 - `tests/e2e/fixtures/sub_workflow_mock.py`（MockSubAgent 类）
 - `tests/e2e/conftest.py`（顶层 conftest，pytest 加载机制约束 / D-011 ADR）
 - `tests/e2e/fixtures/e2e_helpers.py`（共享 loader 函数：make_run_dir / write_*_jsonl_from_template / get_event_types 等）
@@ -1365,7 +1366,7 @@ Plan 7+1 删 8 个别名（兼容期到期人工触发）
 | AC-08 14 类 yaml 错误识别 | tests/lib/fixtures/workflows/invalid-*.yaml 全集（14 fixture）+ 行号断言 | §2 / F-001 |
 | AC-09 兼容期别名 | tests/skills/test_alias_passthrough.py（9 命令 × deprecation warning 文案 + ARGUMENTS 透传） | §10.2 / F-010 |
 | AC-10 跨父子 rollback | tests/lib/test_workflow_rollback.py（F1 场景，§6.5）+ tests/e2e/test_sub_workflow_lifecycle.py（主-2，§7.4） | §6 + §7 / F-007 + F-008 |
-| AC-11 父 cancel 子终止 | tests/e2e/test_sub_workflow_lifecycle.py（主-1 graceful + 边-3 TaskStop 兜底） | §7 / F-008 |
+| AC-11 父 cancel 子终止 | tests/e2e/test_sub_workflow_lifecycle.py（主-1 graceful）+ tests/e2e/test_sub_workflow_cancel_advanced.py（边-3 TaskStop 兜底，rev3 G-3 拆出） | §7 / F-008 |
 | AC-E2E 老需求新引擎续跑 | tests/e2e/test_legacy_run_compat.py（选 1 个 paused 历史 run 跑通 continue） | §10 + §3 / F-011 |
 | AC-SELF 自举验证 | F-011 SOP（手工 + migration 测试 21/21，§8.4）+ Plan 6 验证日志 | §8 / F-011 |
 | AC-CLEAN 旧路径清理 | tests/tools/test_migrate_requirements.py（5 类断言，§9.7）+ pre-commit hook + grep 自检 | §9 / F-012 + F-013 |
