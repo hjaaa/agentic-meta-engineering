@@ -13,7 +13,6 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 import yaml
@@ -103,6 +102,6 @@ def test_should_match_when_features_json_touches_compared_with_frontmatter():
                 })
 
     assert not mismatches, (
-        f"features.json touches != frontmatter touches:\n"
+        "features.json touches != frontmatter touches:\n"
         + "\n".join(str(m) for m in mismatches)
     )
