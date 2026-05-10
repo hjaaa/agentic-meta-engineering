@@ -48,30 +48,38 @@ class _FakeTTY:
 # ════════════════════════════════════════════════════════
 
 class TestResolveVerdictPath:
-    """_resolve_verdict_path(rev_id) 反推路径单测。"""
+    """_resolve_verdict_path(rev_id) 反推路径单测。
+
+    F-012 rev3 M-5：_resolve_verdict_path 改返回 tuple[Path | None, str]，
+    测试同步更新解包方式。
+    """
 
     def test_definition_phase(self):
         """given_definition_rev_id_when_resolve_then_correct_path。"""
-        path = sr._resolve_verdict_path("REV-REQ-2026-003-definition-001")
+        path, reason = sr._resolve_verdict_path("REV-REQ-2026-003-definition-001")
         assert path is not None
         assert path.name == "definition-001.json"
         assert "REQ-2026-003" in str(path)
 
     def test_code_phase_with_feature_id(self):
         """given_code_phase_rev_id_with_feature_when_resolve_then_correct_path。"""
-        path = sr._resolve_verdict_path("REV-REQ-2026-003-code-F-001-001")
+        path, reason = sr._resolve_verdict_path("REV-REQ-2026-003-code-F-001-001")
         assert path is not None
         assert path.name == "code-F-001-001.json"
 
     def test_invalid_format_returns_none(self):
         """given_invalid_rev_id_when_resolve_then_none。"""
-        assert sr._resolve_verdict_path("INVALID-ID") is None
-        assert sr._resolve_verdict_path("") is None
-        assert sr._resolve_verdict_path("REV-") is None
+        path, reason = sr._resolve_verdict_path("INVALID-ID")
+        assert path is None
+        assert reason == "invalid REV-ID format"
+        path2, reason2 = sr._resolve_verdict_path("")
+        assert path2 is None
+        path3, reason3 = sr._resolve_verdict_path("REV-")
+        assert path3 is None
 
     def test_outline_design_phase(self):
         """given_outline_design_rev_id_when_resolve_then_correct_path。"""
-        path = sr._resolve_verdict_path("REV-REQ-2026-003-outline-design-002")
+        path, reason = sr._resolve_verdict_path("REV-REQ-2026-003-outline-design-002")
         assert path is not None
         assert path.name == "outline-design-002.json"
 

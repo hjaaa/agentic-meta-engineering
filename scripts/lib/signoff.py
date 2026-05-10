@@ -15,7 +15,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from common import REPO_ROOT, paint, rel
+from common import REPO_ROOT, Report, paint, rel
 
 REQUIREMENTS_DIR = REPO_ROOT / "requirements"
 
@@ -160,52 +160,122 @@ def _append_signoff_process_log(
         print(paint(f"⚠️  process.txt 写入失败（{exc}），签字已生效", "yellow"), file=sys.stderr)
 
 
-def _resolve_verdict_path(rev_id: str) -> Path | None:
+def _resolve_verdict_path(rev_id: str) -> tuple[Path | None, str]:
     """从 REV-ID 反推 verdict 文件路径。
 
     REV-ID 格式：REV-<REQ-ID>-<prefix>-NNN
     示例：REV-REQ-2026-003-definition-001
           REV-REQ-2026-003-code-F-001-001
 
-    返回路径（不保证存在），或 None（解析失败）。
+    返回 (verdict_path, reason)：
+      - verdict_path: Path 时表示解析成功（不保证文件存在）
+      - verdict_path: None 时表示解析失败，reason 含具体原因
 
     F-012 rev2 迁入 signoff.py；加 path traversal 防护。
+    F-012 rev3 M-5：改返回 tuple[Path | None, str]，提供差异化诊断信息。
     """
     # 格式：REV-REQ-YYYY-NNN-<phase_and_seq>
     if not rev_id.startswith("REV-"):
-        return None
+        return None, "invalid REV-ID format"
     rest = rev_id[4:]  # 去掉 "REV-"
 
     # REQ-ID 固定为 REQ-YYYY-NNN（3 段 + 连字符）
     parts = rest.split("-")
     # 期望格式：["REQ", "2026", "003", ...phase+seq...]
     if len(parts) < 4 or parts[0] != "REQ":
-        return None
+        return None, "invalid REV-ID format"
 
     req_id = f"{parts[0]}-{parts[1]}-{parts[2]}"
     # 文件名：rest 去掉 "<req_id>-" 前缀 = 余下的 phase-seq 部分
     filename_stem = rest[len(req_id) + 1:]  # e.g. "definition-001" or "code-F-001-001"
     if not filename_stem:
-        return None
+        return None, "invalid REV-ID format"
 
     # F-012 rev2 F-21：path traversal 防护
     if ".." in filename_stem or "/" in filename_stem:
-        return None
+        return None, "invalid REV-ID format"
     verdict_path = REQUIREMENTS_DIR / req_id / "reviews" / f"{filename_stem}.json"
     try:
         resolved = verdict_path.resolve()
         reviews_root = (REQUIREMENTS_DIR / req_id / "reviews").resolve()
         if not str(resolved).startswith(str(reviews_root) + "/"):
-            return None
+            return None, "resolve error"
     except (OSError, ValueError):
-        return None
-    return verdict_path
+        return None, "resolve error"
+    return verdict_path, ""
+
+
+def _check_args_mutex(args: argparse.Namespace) -> int | None:
+    """步骤 1 互斥校验：--trivial 与 --decision 不能同时使用。
+
+    返回 None 放行继续 / int 退出码（调用方直接 return）。
+
+    F-012 rev3 M-3 从 run_signoff 拆出。
+    """
+    if args.trivial and args.decision is not None:
+        print(
+            "signoff: --trivial 与 --decision 不能同时使用（--trivial 自动设 approved-trivial）",
+            file=sys.stderr,
+        )
+        return 1
+    if not args.trivial and args.decision is None:
+        print(
+            "signoff: 必须指定 --decision，可选值 [approved, approved-trivial, rejected]",
+            file=sys.stderr,
+        )
+        return 1
+    return None
+
+
+def _resolve_signoff_decision(args: argparse.Namespace) -> tuple[str | None, list[str], int | None]:
+    """步骤 2 trivial 分支处理：路径白名单判定 + decision 确定。
+
+    返回 (decision, diff_paths, rc)：
+      - decision: str 时放行（调用方用此值）
+      - rc: int 时调用方直接 return rc
+
+    F-012 rev3 M-3 从 run_signoff 拆出。
+    """
+    if args.trivial:
+        diff_paths = _get_trivial_diff_paths()
+        all_doc, non_doc = _check_trivial_paths(diff_paths)
+        if not all_doc:
+            paths_str = " ".join(non_doc)
+            print(f"trivial: non-doc files detected: {paths_str}", file=sys.stderr)
+            return None, diff_paths, 3
+        # --trivial 通过 → 强制 decision = approved-trivial
+        return "approved-trivial", diff_paths, None
+    else:
+        return args.decision, [], None
+
+
+def _validate_signed_by(args: argparse.Namespace) -> tuple[str | None, int | None]:
+    """步骤 3 _EMAIL_RE 校验 + _get_git_email fallback。
+
+    返回 (signed_by, rc)：
+      - signed_by: str 时放行
+      - rc: int 时调用方直接 return rc
+
+    F-012 rev3 M-3 从 run_signoff 拆出。
+    """
+    if args.signed_by is not None:
+        if not _EMAIL_RE.match(args.signed_by):
+            print(paint("❌ --signed-by 格式非法，应为 email", "red"), file=sys.stderr)
+            return None, 1
+        return args.signed_by, None
+    else:
+        signed_by = _get_git_email()
+        if signed_by is None:
+            print("signoff: 无法获取 git config user.email，请先配置", file=sys.stderr)
+            return None, 1
+        return signed_by, None
 
 
 def run_signoff(args: argparse.Namespace) -> int:
     """signoff 子命令公开入口：把 human_signoff 字段写入已有 verdict 文件。
 
     F-012 rev2 从 save_review._run_signoff 迁入并公开（改名 run_signoff）。
+    F-012 rev3 M-3：拆 3 helper（_check_args_mutex / _resolve_signoff_decision / _validate_signed_by）。
 
     流程（F-012 重构后单一入口）：
       0. D-003 深防御：校验 stdin 必须为 tty（防 AI 代签；不允许 env var 旁路）
@@ -232,53 +302,29 @@ def run_signoff(args: argparse.Namespace) -> int:
         return 2
 
     # 步骤 1：模式互斥校验
-    if args.trivial and args.decision is not None:
-        print(
-            "signoff: --trivial 与 --decision 不能同时使用（--trivial 自动设 approved-trivial）",
-            file=sys.stderr,
-        )
-        return 1
-    if not args.trivial and args.decision is None:
-        print(
-            "signoff: 必须指定 --decision，可选值 [approved, approved-trivial, rejected]",
-            file=sys.stderr,
-        )
-        return 1
+    rc = _check_args_mutex(args)
+    if rc is not None:
+        return rc
 
-    # 步骤 2：--trivial 路径白名单判定
-    if args.trivial:
-        diff_paths = _get_trivial_diff_paths()
-        all_doc, non_doc = _check_trivial_paths(diff_paths)
-        if not all_doc:
-            paths_str = " ".join(non_doc)
-            print(f"trivial: non-doc files detected: {paths_str}", file=sys.stderr)
-            return 3
-        # --trivial 通过 → 强制 decision = approved-trivial
-        decision = "approved-trivial"
-    else:
-        decision = args.decision
+    # 步骤 2：--trivial 路径白名单判定 + decision 确定
+    decision, _diff_paths, rc = _resolve_signoff_decision(args)
+    if rc is not None:
+        return rc
 
     # 步骤 3：自动填充 signed_by / signed_at（CLI 未提供时从 git / now 取）
-    if args.signed_by is not None:
-        if not _EMAIL_RE.match(args.signed_by):
-            print(paint("❌ --signed-by 格式非法，应为 email", "red"), file=sys.stderr)
-            return 1
-        signed_by = args.signed_by
-    else:
-        signed_by = _get_git_email()
-        if signed_by is None:
-            print("signoff: 无法获取 git config user.email，请先配置", file=sys.stderr)
-            return 1
+    signed_by, rc = _validate_signed_by(args)
+    if rc is not None:
+        return rc
     signed_at = args.signed_at or _get_iso8601_now()
 
     # 步骤 4：定位 verdict 文件 + 已签字预检
     rev_id = args.rev_id
-    verdict_path = _resolve_verdict_path(rev_id)
+    verdict_path, reason = _resolve_verdict_path(rev_id)
     if verdict_path is None:
-        print(f"signoff: verdict {rev_id} not found", file=sys.stderr)
+        print(f"signoff: {reason}: {rev_id}", file=sys.stderr)
         return 4
     if not verdict_path.exists():
-        print(f"signoff: verdict {rev_id} not found", file=sys.stderr)
+        print(f"signoff: verdict file missing: {verdict_path}", file=sys.stderr)
         return 4
 
     # 读取 verdict 文件
@@ -286,7 +332,7 @@ def run_signoff(args: argparse.Namespace) -> int:
         with verdict_path.open("r", encoding="utf-8") as f:
             verdict = json.load(f)
     except (json.JSONDecodeError, OSError) as exc:
-        print(paint(f"❌ verdict 文件解析失败: {exc}", "red"), file=sys.stderr)
+        print(paint(f"❌ verdict file corrupted: {verdict_path}: {exc}", "red"), file=sys.stderr)
         return 6
 
     # 检查是否已签字（防重复签名）
@@ -313,7 +359,6 @@ def run_signoff(args: argparse.Namespace) -> int:
     except FileNotFoundError as exc:
         print(paint(f"❌ schema 文件缺失: {exc}", "red"), file=sys.stderr)
         return 1
-    from common import Report  # noqa: PLC0415
 
     report = Report()
     label = f"{verdict_path.name}:{verdict.get('requirement_id', '?')}"

@@ -116,7 +116,8 @@ def test_tc_b4_trivial_all_md_files_returns_approved_trivial(tmp_path, monkeypat
     monkeypatch.setattr(sig, "_get_trivial_diff_paths", lambda: ["README.md", "docs/guide.md", "notes.txt"])
     monkeypatch.setattr(sig, "_get_git_email", lambda: "test@example.com")
     monkeypatch.setattr(sig, "_get_iso8601_now", lambda: "2026-04-30T10:00:00+08:00")
-    monkeypatch.setattr(sig, "_resolve_verdict_path", lambda _: verdict_path)
+    # F-012 rev3 M-5：_resolve_verdict_path 改返回 tuple[Path | None, str]
+    monkeypatch.setattr(sig, "_resolve_verdict_path", lambda _: (verdict_path, ""))
     monkeypatch.setattr(sig, "REQUIREMENTS_DIR", tmp_path / "requirements")
 
     rc = sig._run_signoff(_make_args("REV-REQ-2099-001-definition-001", trivial=True))

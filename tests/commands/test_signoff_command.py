@@ -89,10 +89,11 @@ def test_tc_b1_signoff_writes_human_signoff_fields(tmp_path, monkeypatch):
     verdict_path.write_text(json.dumps(verdict, ensure_ascii=False, indent=2), encoding="utf-8")
 
     # mock：tty=True，git email，时间戳，_resolve_verdict_path，REQUIREMENTS_DIR
+    # F-012 rev3 M-5：_resolve_verdict_path 改返回 tuple[Path | None, str]
     monkeypatch.setattr(sig.sys.stdin, "isatty", lambda: True)
     monkeypatch.setattr(sig, "_get_git_email", lambda: "test@example.com")
     monkeypatch.setattr(sig, "_get_iso8601_now", lambda: "2026-04-30T10:00:00+08:00")
-    monkeypatch.setattr(sig, "_resolve_verdict_path", lambda _: verdict_path)
+    monkeypatch.setattr(sig, "_resolve_verdict_path", lambda _: (verdict_path, ""))
     monkeypatch.setattr(sig, "REQUIREMENTS_DIR", tmp_path / "requirements")
 
     args = _make_args("REV-REQ-2099-001-definition-001", decision="approved")
@@ -141,7 +142,8 @@ def test_tc_b5_trivial_with_non_doc_files_returns_rc3(monkeypatch):
     monkeypatch.setattr(sig, "_get_trivial_diff_paths", lambda: ["src/foo.py", "README.md"])
 
     # 用假 verdict 路径避免文件查找失败（trivial 路径失败前就 return 3）
-    monkeypatch.setattr(sig, "_resolve_verdict_path", lambda _: Path("/nonexistent/verdict.json"))
+    # F-012 rev3 M-5：_resolve_verdict_path 改返回 tuple[Path | None, str]
+    monkeypatch.setattr(sig, "_resolve_verdict_path", lambda _: (Path("/nonexistent/verdict.json"), ""))
 
     rc = sig._run_signoff(_make_args("REV-XXX", trivial=True))
 
@@ -182,7 +184,8 @@ def test_tc_b6_already_signed_returns_rc5(tmp_path, monkeypatch):
 
     monkeypatch.setattr(sig.sys.stdin, "isatty", lambda: True)
     monkeypatch.setattr(sig, "_get_git_email", lambda: "test@example.com")
-    monkeypatch.setattr(sig, "_resolve_verdict_path", lambda _: verdict_path)
+    # F-012 rev3 M-5：_resolve_verdict_path 改返回 tuple[Path | None, str]
+    monkeypatch.setattr(sig, "_resolve_verdict_path", lambda _: (verdict_path, ""))
 
     rc = sig._run_signoff(_make_args("REV-REQ-2099-001-definition-001", decision="approved"))
 
@@ -205,7 +208,8 @@ def test_tc_b6_already_signed_stderr_contains_keyword(tmp_path, monkeypatch, cap
 
     monkeypatch.setattr(sig.sys.stdin, "isatty", lambda: True)
     monkeypatch.setattr(sig, "_get_git_email", lambda: "test@example.com")
-    monkeypatch.setattr(sig, "_resolve_verdict_path", lambda _: verdict_path)
+    # F-012 rev3 M-5：_resolve_verdict_path 改返回 tuple[Path | None, str]
+    monkeypatch.setattr(sig, "_resolve_verdict_path", lambda _: (verdict_path, ""))
 
     sig._run_signoff(_make_args("REV-REQ-2099-001-definition-001", decision="approved"))
 
@@ -224,13 +228,14 @@ def test_tc_b7_verdict_not_found_rc4_unit(monkeypatch, capsys):
     monkeypatch.setattr(sig.sys.stdin, "isatty", lambda: True)
     monkeypatch.setattr(sig, "_get_git_email", lambda: "test@example.com")
 
-    # 使用一个不存在路径
-    monkeypatch.setattr(sig, "_resolve_verdict_path", lambda _: Path("/nonexistent/does_not_exist.json"))
+    # 使用一个不存在路径；F-012 rev3 M-5：返回 tuple[Path | None, str]
+    monkeypatch.setattr(sig, "_resolve_verdict_path", lambda _: (Path("/nonexistent/does_not_exist.json"), ""))
 
     rc = sig._run_signoff(_make_args("REV-NONEXISTENT-001", decision="approved"))
 
     assert rc == 4, f"期望 returncode=4，实际={rc}"
     captured = capsys.readouterr()
-    assert "not found" in captured.err, (
-        f"期望 stderr 含 'not found'，实际={captured.err!r}"
+    # F-012 rev3 M-5：path 解析成功但文件不存在时输出 "verdict file missing"
+    assert "missing" in captured.err or "not found" in captured.err, (
+        f"期望 stderr 含 'missing' 或 'not found'，实际={captured.err!r}"
     )
