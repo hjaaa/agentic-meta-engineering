@@ -135,7 +135,7 @@ check_review_path() {
     cat >&3 <<EOF
 BLOCKED: $p
 reviews/*.json 不能直写。必须走 scripts/save-review.sh（reviewer Agent）
-或 scripts/lib/code_review_signoff.py（人类 sign-off，需 tty）。
+或 python3 scripts/lib/save_review.py signoff ...（人类 sign-off，需 tty；F-012 后唯一入口）。
 紧急绕过：CLAUDE_GATES_GLOBAL_BYPASS="<原因>" <重新执行>
 EOF
     exit 2
@@ -149,7 +149,7 @@ check_bash_writes_review() {
     cat >&3 <<EOF
 BLOCKED: Bash 写入 requirements/*/reviews/*.json 被禁。
 规避方式：scripts/save-review.sh（reviewer Agent）；
-     人类 sign-off 走 scripts/lib/code_review_signoff.py（必须 tty）。
+     人类 sign-off 走 python3 scripts/lib/save_review.py signoff ...（必须 tty；F-012 后唯一入口）。
 紧急绕过：CLAUDE_GATES_GLOBAL_BYPASS="<原因>" <重新执行>
 EOF
     exit 2

@@ -1,4 +1,4 @@
-# tty 校验语义与双层防御
+# tty 校验语义
 
 ## 为什么 sign-off 需要 tty 校验
 
@@ -14,62 +14,57 @@ sign-off（卡点 B）是人类专属动作。AI Agent 运行在非交互式 she
 
 两者语义相同：返回 True 表示 stdin 连接到真实终端，False 表示管道 / PIPE / 重定向。
 
-## 双层校验（Command 预检 + Skill 二次校验）
+## 校验位置（F-012 后简化为单一入口）
 
 ```
 用户终端
   │
-  ├─ [Command 层] code-review/signoff.md
-  │    └─ 预检：python3 scripts/lib/code_review_signoff.py --rev-id ...
-  │         └─ _check_tty() ← 第一层校验
-  │
-  └─ [Skill 层] code-review-signoff/SKILL.md
-       └─ 委托：python3 scripts/lib/code_review_signoff.py
-            └─ _check_tty() ← 第二层校验（深防御）
+  └─ [Command 层 + Skill 层] code-review/signoff.md / code-review-signoff/SKILL.md
+       └─ 委托：python3 scripts/lib/save_review.py signoff --rev-id ...
+            └─ sys.stdin.isatty() ← 唯一 tty 校验（在 _run_signoff 流程步骤 0）
 ```
 
-**为什么两层都要检测**：
+F-012 重构前曾有 **双层** 校验（Command 与 Skill 两层均跑 _check_tty()）；F-012 之后入口
+合并到 `save_review.py signoff` 单层——因为：
 
-- Command 层是用户入口，理论上已校验 tty
-- 但 Skill 可以被绕过 Command 直接调用（如 `python3 code_review_signoff.py --rev-id ...`）
-- 二次校验确保：即便调用路径跳过 Command，非 tty 环境也会被拒绝
-- 成本：一次系统调用（< 10ms），收益：封堵所有管道注入和 subagent 绕过
+- 入口收敛后无第二条调用路径可绕过
+- 入口本身在 `_run_signoff` 第 0 步就 isatty 校验，全部下游分支都在它之后
+- 减少代码重复（D-002 单一事实源 + 上下文工程"位置即语义"）
 
-**禁止删除二次校验**——即便认为"Command 已经检查过了"，深防御不冗余。
+成本：仍是一次系统调用（< 10ms），收益：封堵所有管道注入和 subagent 绕过。
 
 ## 禁止的旁路
 
 以下任何形式的旁路均违反 D-003 红线：
 
 ```bash
-# ❌ 禁止
-FAKE_TTY=1 python3 code_review_signoff.py ...
-SKIP_TTY_CHECK=1 python3 code_review_signoff.py ...
-DRY_RUN=1 python3 code_review_signoff.py ...
+# 禁止
+FAKE_TTY=1 python3 save_review.py signoff ...
+SKIP_TTY_CHECK=1 python3 save_review.py signoff ...
+DRY_RUN=1 python3 save_review.py signoff ...
 ```
 
-F-002 教训：FAKE_TTY env var 曾在 code_review_routing.py 中被引入，后来被用户回炉删除。
-本期（F-004a）从设计层面杜绝——脚本内部只读 `sys.stdin.isatty()`，不读任何 env var。
+F-002 教训：FAKE_TTY env var 曾在 code_review_routing.py 中被引入，后被用户回炉删除。
+F-004a 起从设计层面杜绝——脚本内部只读 `sys.stdin.isatty()`，不读任何 env var。
 
 ## 单测的 tty mock 方式
 
 测试时需要模拟 tty 为 True 或 False，正确做法是 monkeypatch：
 
 ```python
-# ✅ 正确：直接 mock 模块函数
-monkeypatch.setattr(code_review_signoff, "_check_tty", lambda: True)
+# 正确：直接 mock 模块函数
+monkeypatch.setattr(save_review.sys.stdin, "isatty", lambda: True)
 
-# ✅ 正确：subprocess 跑脚本，stdin=PIPE 自动为非 tty
-result = subprocess.run([sys.executable, str(_SCRIPT), "--rev-id", "..."],
+# 正确：subprocess 跑脚本，stdin=PIPE 自动为非 tty
+result = subprocess.run([sys.executable, str(_SCRIPT), "signoff", "--rev-id", "..."],
                         input="", capture_output=True, text=True)
 assert result.returncode == 2
 
-# ❌ 禁止：env var 旁路
+# 禁止：env var 旁路
 os.environ["FAKE_TTY"] = "1"  # 不要这样做
 ```
 
-## F-004b 关联（占位）
+## ai-collaboration.md 关联
 
-F-004b 实施后，`context/team/ai-collaboration.md` 将新增规则三（「sign-off 是人类专属动作」），
-明确禁止 AI 通过任何手段（包括 fake tty / pipe trick / heredoc）绕过本校验。
-届时可在此处补充引用：`context/team/ai-collaboration.md:规则三`。
+`context/team/ai-collaboration.md` 规则三明确禁止 AI 通过任何手段（包括 fake tty / pipe trick / heredoc）
+绕过本校验。违反视为流程违规——人类发现即回滚 verdict 字段并在需求 notes.md 记录。

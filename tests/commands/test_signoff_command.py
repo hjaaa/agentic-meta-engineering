@@ -1,20 +1,24 @@
 """signoff Command 测试（TC-B1 / TC-B2 / TC-B5 / TC-B6 / TC-B7）。
 
+F-012 重构后，code_review_signoff.py 已被删除；卡点 B 唯一入口为：
+  python3 scripts/lib/save_review.py signoff --rev-id <REV-ID> [--decision <v>] [--trivial]
+
 测试范围：
   TC-B1  tty + 普通 sign-off（函数级单测 + mock）：verdict.human_signoff 全字段填充
-  TC-B2  非 tty → returncode 2，stderr 含 'stdin not a tty'（subprocess 断端到端）
+  TC-B2  非 tty → returncode 2，stderr 含 'stdin not a tty'（subprocess 端到端）
   TC-B5  --trivial + 含 .py diff → returncode 3，stderr 'non-doc files detected'
   TC-B6  已签 verdict → returncode 5，stderr 'already signed'
   TC-B7  不存在 REV-ID → returncode 4，stderr 'verdict ... not found'
 
 实现说明：
-  - TC-B1（tty 正向场景）：函数级单测，monkeypatch mock _check_tty / git 调用
-    直接调 _run_signoff_skill()，不依赖 env var 旁路
+  - TC-B1（tty 正向场景）：函数级单测，monkeypatch mock tty / git 调用
+    直接调 _run_signoff()，不依赖 env var 旁路
   - TC-B2/B5/B6/B7（端到端拒收）：subprocess 跑入口脚本，stdin=PIPE 自动为非 tty，
     其中 TC-B5/B6/B7 需要 mock tty=True，故也用函数级单测 + monkeypatch
 """
 from __future__ import annotations
 
+import argparse
 import json
 import subprocess
 import sys
@@ -25,12 +29,30 @@ import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SCRIPTS_LIB = _REPO_ROOT / "scripts" / "lib"
-_SCRIPT = _SCRIPTS_LIB / "code_review_signoff.py"
+_SCRIPT = _SCRIPTS_LIB / "save_review.py"
 
 if str(_SCRIPTS_LIB) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_LIB))
 
-import code_review_signoff as sig  # noqa: E402
+import save_review as sig  # noqa: E402
+
+
+def _make_args(
+    rev_id: str,
+    decision: str | None = None,
+    trivial: bool = False,
+    signed_by: str | None = None,
+    signed_at: str | None = None,
+) -> argparse.Namespace:
+    """构造 _run_signoff 期望的 Namespace。"""
+    return argparse.Namespace(
+        rev_id=rev_id,
+        decision=decision,
+        trivial=trivial,
+        signed_by=signed_by,
+        signed_at=signed_at,
+        source="cli-tty",
+    )
 
 
 # ════════════════════════════════════════════════════════
@@ -69,30 +91,15 @@ def test_tc_b1_signoff_writes_human_signoff_fields(tmp_path, monkeypatch):
     verdict_path = reviews_dir / "definition-001.json"
     verdict_path.write_text(json.dumps(verdict, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    rev_id = "REV-REQ-2099-001-definition-001"
-
-    # mock：tty=True，git email，时间戳，_resolve_verdict_path，_call_save_review_signoff
-    monkeypatch.setattr(sig, "_check_tty", lambda: True)
+    # mock：tty=True，git email，时间戳，_resolve_verdict_path，REQUIREMENTS_DIR
+    monkeypatch.setattr(sig.sys.stdin, "isatty", lambda: True)
     monkeypatch.setattr(sig, "_get_git_email", lambda: "test@example.com")
     monkeypatch.setattr(sig, "_get_iso8601_now", lambda: "2026-04-30T10:00:00+08:00")
     monkeypatch.setattr(sig, "_resolve_verdict_path", lambda _: verdict_path)
+    monkeypatch.setattr(sig, "REQUIREMENTS_DIR", tmp_path / "requirements")
 
-    # mock _call_save_review_signoff：实际写入 human_signoff 字段并返回 0
-    def fake_call(rev_id, decision, signed_by, signed_at, source="cli-tty"):
-        with verdict_path.open("r", encoding="utf-8") as f:
-            v = json.load(f)
-        v["human_signoff"] = {
-            "decision": decision,
-            "signed_by": signed_by,
-            "signed_at": signed_at,
-            "source": source,
-        }
-        verdict_path.write_text(json.dumps(v, ensure_ascii=False, indent=2), encoding="utf-8")
-        return 0
-
-    monkeypatch.setattr(sig, "_call_save_review_signoff", fake_call)
-
-    rc = sig._run_signoff_skill(rev_id, "approved", False)
+    args = _make_args("REV-REQ-2099-001-definition-001", decision="approved")
+    rc = sig._run_signoff(args)
 
     assert rc == 0, f"期望 returncode=0，实际={rc}"
 
@@ -113,7 +120,7 @@ def test_tc_b1_signoff_writes_human_signoff_fields(tmp_path, monkeypatch):
 def test_tc_b2_non_tty_returns_rc2():
     """given_non_tty_stdin_when_signoff_then_returncode_2_and_stderr_contains_not_a_tty。"""
     result = subprocess.run(
-        [sys.executable, str(_SCRIPT), "--rev-id", "REV-XXX", "--decision", "approved"],
+        [sys.executable, str(_SCRIPT), "signoff", "--rev-id", "REV-XXX", "--decision", "approved"],
         input="",
         capture_output=True,
         text=True,
@@ -133,24 +140,24 @@ def test_tc_b2_non_tty_returns_rc2():
 
 def test_tc_b5_trivial_with_non_doc_files_returns_rc3(monkeypatch):
     """given_tty_and_trivial_when_diff_contains_py_then_returncode_3_and_non_doc_detected。"""
-    monkeypatch.setattr(sig, "_check_tty", lambda: True)
+    monkeypatch.setattr(sig.sys.stdin, "isatty", lambda: True)
     monkeypatch.setattr(sig, "_get_trivial_diff_paths", lambda: ["src/foo.py", "README.md"])
 
     # 用假 verdict 路径避免文件查找失败（trivial 路径失败前就 return 3）
     monkeypatch.setattr(sig, "_resolve_verdict_path", lambda _: Path("/nonexistent/verdict.json"))
 
     with mock.patch("sys.stderr") as mock_stderr:
-        rc = sig._run_signoff_skill("REV-XXX", None, trivial=True)
+        rc = sig._run_signoff(_make_args("REV-XXX", trivial=True))
 
     assert rc == 3, f"期望 returncode=3，实际={rc}"
 
 
 def test_tc_b5_trivial_non_doc_stderr_contains_keyword(monkeypatch, capsys):
     """given_trivial_non_doc_files_when_run_then_stderr_contains_non_doc_files_detected。"""
-    monkeypatch.setattr(sig, "_check_tty", lambda: True)
+    monkeypatch.setattr(sig.sys.stdin, "isatty", lambda: True)
     monkeypatch.setattr(sig, "_get_trivial_diff_paths", lambda: ["src/bar.py"])
 
-    sig._run_signoff_skill("REV-XXX", None, trivial=True)
+    sig._run_signoff(_make_args("REV-XXX", trivial=True))
 
     captured = capsys.readouterr()
     assert "non-doc files detected" in captured.err, (
@@ -177,10 +184,11 @@ def test_tc_b6_already_signed_returns_rc5(tmp_path, monkeypatch):
     verdict_path = tmp_path / "definition-001.json"
     verdict_path.write_text(json.dumps(verdict), encoding="utf-8")
 
-    monkeypatch.setattr(sig, "_check_tty", lambda: True)
+    monkeypatch.setattr(sig.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(sig, "_get_git_email", lambda: "test@example.com")
     monkeypatch.setattr(sig, "_resolve_verdict_path", lambda _: verdict_path)
 
-    rc = sig._run_signoff_skill("REV-REQ-2099-001-definition-001", "approved", False)
+    rc = sig._run_signoff(_make_args("REV-REQ-2099-001-definition-001", decision="approved"))
 
     assert rc == 5, f"期望 returncode=5，实际={rc}"
 
@@ -199,10 +207,11 @@ def test_tc_b6_already_signed_stderr_contains_keyword(tmp_path, monkeypatch, cap
     verdict_path = tmp_path / "definition-001.json"
     verdict_path.write_text(json.dumps(verdict), encoding="utf-8")
 
-    monkeypatch.setattr(sig, "_check_tty", lambda: True)
+    monkeypatch.setattr(sig.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(sig, "_get_git_email", lambda: "test@example.com")
     monkeypatch.setattr(sig, "_resolve_verdict_path", lambda _: verdict_path)
 
-    sig._run_signoff_skill("REV-REQ-2099-001-definition-001", "approved", False)
+    sig._run_signoff(_make_args("REV-REQ-2099-001-definition-001", decision="approved"))
 
     captured = capsys.readouterr()
     assert "already signed" in captured.err, (
@@ -211,28 +220,18 @@ def test_tc_b6_already_signed_stderr_contains_keyword(tmp_path, monkeypatch, cap
 
 
 # ════════════════════════════════════════════════════════
-# TC-B7：不存在 REV-ID → returncode 4（subprocess 端到端）
+# TC-B7：不存在 REV-ID → returncode 4
 # ════════════════════════════════════════════════════════
-
-def test_tc_b7_nonexistent_rev_id_returns_rc4():
-    """given_non_tty_when_nonexistent_rev_id_then_returncode_4_and_not_found_in_stderr。
-
-    注意：非 tty stdin 会先触发退出码 2（tty 校验在文件查找之前）。
-    此 TC 用函数级单测 mock tty=True 来验证 verdict 查找的退出码 4。
-    """
-    # 需要 tty=True 才能到达文件查找逻辑——用函数级单测
-    pass  # 见下方 test_tc_b7_verdict_not_found_rc4_unit
-
 
 def test_tc_b7_verdict_not_found_rc4_unit(monkeypatch, capsys):
     """given_tty_when_rev_id_not_found_then_returncode_4_and_not_found_in_stderr（函数级）。"""
-    monkeypatch.setattr(sig, "_check_tty", lambda: True)
+    monkeypatch.setattr(sig.sys.stdin, "isatty", lambda: True)
     monkeypatch.setattr(sig, "_get_git_email", lambda: "test@example.com")
 
     # 使用一个不存在路径
     monkeypatch.setattr(sig, "_resolve_verdict_path", lambda _: Path("/nonexistent/does_not_exist.json"))
 
-    rc = sig._run_signoff_skill("REV-NONEXISTENT-001", "approved", False)
+    rc = sig._run_signoff(_make_args("REV-NONEXISTENT-001", decision="approved"))
 
     assert rc == 4, f"期望 returncode=4，实际={rc}"
     captured = capsys.readouterr()

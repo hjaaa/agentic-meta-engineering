@@ -20,7 +20,7 @@ import json
 import re
 import subprocess
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -384,31 +384,138 @@ def _run_save(args: argparse.Namespace) -> int:
     return 0
 
 
+# ─── F-012：原 code_review_signoff.py 4 helper 全部迁入 ───────────────────────
+# trivial 模式文档白名单：与原 code_review_signoff.py 保持一致（D-003 红线）
+_DOC_PATH_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"^.*\.md$"),
+    re.compile(r"^docs/.*$"),
+    re.compile(r"^.*\.txt$"),
+]
+
+# email 格式校验（与 code_review_routing.py 一致）
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _get_git_email() -> str | None:
+    """从 git config 取 user.email；失败或格式非法返回 None。
+
+    F-012 从 code_review_signoff.py 迁入。
+    """
+    try:
+        email = subprocess.check_output(
+            ["git", "config", "user.email"],
+            text=True,
+            cwd=REPO_ROOT,
+        ).strip()
+    except subprocess.CalledProcessError:
+        email = ""
+    if not email or not _EMAIL_RE.match(email):
+        return None
+    return email
+
+
+def _get_iso8601_now() -> str:
+    """返回当前时间的 ISO8601 含时区字符串（F-012 从 code_review_signoff.py 迁入）。"""
+    return datetime.now(timezone.utc).astimezone().isoformat()
+
+
+def _check_trivial_paths(diff_paths: list[str]) -> tuple[bool, list[str]]:
+    """判断 diff_paths 是否全部属于文档白名单（F-012 从 code_review_signoff.py 迁入）。
+
+    返回：(all_doc, non_doc_paths)
+      - all_doc=True 表示全部是文档文件（放行 --trivial）
+      - non_doc_paths 是命中白名单之外的路径列表
+    """
+    non_doc: list[str] = []
+    for path in diff_paths:
+        if not any(pat.match(path) for pat in _DOC_PATH_PATTERNS):
+            non_doc.append(path)
+    return len(non_doc) == 0, non_doc
+
+
+def _get_trivial_diff_paths(base: str = "main") -> list[str]:
+    """获取 --trivial 模式下的 diff 文件列表（ACMR 变更）。
+
+    F-012 从 code_review_signoff.py 迁入。
+    """
+    try:
+        out = subprocess.check_output(
+            ["git", "diff", "--name-only", "--diff-filter=ACMR", f"{base}..HEAD"],
+            text=True,
+            cwd=REPO_ROOT,
+        )
+        return [p for p in out.strip().splitlines() if p]
+    except subprocess.CalledProcessError:
+        # git diff 失败视为有非文档文件（保守策略）
+        return ["<git-diff-failed>"]
+
+
 def _run_signoff(args: argparse.Namespace) -> int:
     """signoff 子命令：把 human_signoff 字段写入已有 verdict 文件。
 
-    流程：
-      0. D-003 深防御第三层：校验 stdin 必须为 tty（防 AI 绕过 Command + Skill 直调本入口）
-      1. 从 REV-ID 定位 verdict 文件
-      2. 读 verdict JSON
-      3. 写 human_signoff 字段
-      4. 全量重跑 CR-1~CR-8 校验
-      5. 通过 → 写盘 + append process.txt
-      6. 失败 → 退出码 1 + stderr CR 详情
+    流程（F-012 重构后单一入口）：
+      0. D-003 深防御：校验 stdin 必须为 tty（防 AI 代签；不允许 env var 旁路）
+      1. 模式互斥校验：--trivial 与 --decision 不能同时使用
+      2. --trivial 模式：跑路径白名单 → 通过则强制 decision=approved-trivial
+      3. 自动填充 signed_by（git config user.email）/ signed_at（ISO8601 now）
+         若未通过 CLI 显式提供
+      4. 从 REV-ID 定位 verdict 文件 + 已签字预检
+      5. 写 human_signoff 字段 + 全量重跑 CR-1~CR-8
+      6. 通过 → 写盘 + append process.txt；失败 → 退出码 1 + stderr CR 详情
+
+    退出码：
+      0 — 签字成功
+      1 — 参数非法（互斥冲突 / 缺 git email / CR 校验失败）
+      2 — 非 tty stdin
+      3 — --trivial 通道：diff 含非文档文件
+      4 — verdict 文件不存在
+      5 — 已签字
     """
-    # D-003 深防御第三层：save_review.py signoff 本身也校验 tty，
-    # 防 AI 绕过 Command + Skill 两层直接调本入口完成代签。
-    # 绝不引入任何 env var 旁路（FAKE_TTY 等已被红线封禁）。
+    # 步骤 0：tty 校验（D-003 深防御；FAKE_TTY 等 env var 红线封禁）
     if not sys.stdin.isatty():
         print("signoff: stdin not a tty, refuse to sign for AI", file=sys.stderr)
         return 2
 
+    # 步骤 1：模式互斥校验
+    if args.trivial and args.decision is not None:
+        print(
+            "signoff: --trivial 与 --decision 不能同时使用（--trivial 自动设 approved-trivial）",
+            file=sys.stderr,
+        )
+        return 1
+    if not args.trivial and args.decision is None:
+        print(
+            "signoff: 必须指定 --decision，可选值 [approved, approved-trivial, rejected]",
+            file=sys.stderr,
+        )
+        return 1
+
+    # 步骤 2：--trivial 路径白名单判定
+    if args.trivial:
+        diff_paths = _get_trivial_diff_paths()
+        all_doc, non_doc = _check_trivial_paths(diff_paths)
+        if not all_doc:
+            paths_str = " ".join(non_doc)
+            print(f"trivial: non-doc files detected: {paths_str}", file=sys.stderr)
+            return 3
+        # --trivial 通过 → 强制 decision = approved-trivial
+        decision = "approved-trivial"
+    else:
+        decision = args.decision
+
+    # 步骤 3：自动填充 signed_by / signed_at（CLI 未提供时从 git / now 取）
+    signed_by = args.signed_by or _get_git_email()
+    if signed_by is None:
+        print("signoff: 无法获取 git config user.email，请先配置", file=sys.stderr)
+        return 1
+    signed_at = args.signed_at or _get_iso8601_now()
+
+    # 步骤 4：定位 verdict 文件 + 已签字预检
     rev_id = args.rev_id
     verdict_path = _resolve_verdict_path(rev_id)
     if verdict_path is None:
         print(f"signoff: verdict {rev_id} not found", file=sys.stderr)
         return 4
-
     if not verdict_path.exists():
         print(f"signoff: verdict {rev_id} not found", file=sys.stderr)
         return 4
@@ -424,16 +531,16 @@ def _run_signoff(args: argparse.Namespace) -> int:
     # 检查是否已签字（防重复签名）
     existing_sig = verdict.get("human_signoff") or {}
     if existing_sig.get("decision"):
-        signed_by = existing_sig.get("signed_by", "unknown")
-        signed_at = existing_sig.get("signed_at", "unknown")
-        print(f"signoff: already signed by {signed_by} at {signed_at}", file=sys.stderr)
+        existing_by = existing_sig.get("signed_by", "unknown")
+        existing_at = existing_sig.get("signed_at", "unknown")
+        print(f"signoff: already signed by {existing_by} at {existing_at}", file=sys.stderr)
         return 5
 
-    # 写入 human_signoff 字段
+    # 步骤 5：写入 human_signoff 字段
     verdict["human_signoff"] = {
-        "decision": args.decision,
-        "signed_at": args.signed_at,
-        "signed_by": args.signed_by,
+        "decision": decision,
+        "signed_at": signed_at,
+        "signed_by": signed_by,
         "source": args.source,
     }
 
@@ -462,7 +569,7 @@ def _run_signoff(args: argparse.Namespace) -> int:
     # append process.txt 评审事件
     req_id = verdict.get("requirement_id", "")
     if req_id:
-        _append_signoff_process_log(req_id, rev_id, args.decision, args.signed_by)
+        _append_signoff_process_log(req_id, rev_id, decision, signed_by)
 
     return 0
 
@@ -504,17 +611,26 @@ def _build_parsers() -> tuple[argparse.ArgumentParser, argparse._SubParsersActio
     save_p.add_argument("--scope", default=None,
                         help="形如 feature_id=F-001（仅 phase=code 必填）")
 
-    # signoff 子命令（卡点 B 调用）
-    signoff_p = sub.add_parser("signoff", help="写 human_signoff 字段（卡点 B 调用）")
+    # signoff 子命令（卡点 B 调用，F-012 后唯一用户入口）
+    signoff_p = sub.add_parser(
+        "signoff",
+        help="写 human_signoff 字段（卡点 B 调用；包含 tty 校验 + trivial 路径白名单 + CR 校验）",
+    )
     signoff_p.add_argument("--rev-id", required=True,
                            help="REV-ID，如 REV-REQ-2026-003-definition-001")
-    signoff_p.add_argument("--decision", required=True,
+    # F-012：--decision 与 --trivial 互斥；二者必择一（运行时校验）
+    signoff_p.add_argument("--decision", default=None,
                            choices=["approved", "approved-trivial", "rejected"],
-                           help="sign-off 决策")
-    signoff_p.add_argument("--signed-by", required=True,
-                           help="签字人 email（取自 git config user.email）")
-    signoff_p.add_argument("--signed-at", required=True,
-                           help="签字时间（ISO8601 含时区）")
+                           help="sign-off 决策（与 --trivial 互斥）")
+    signoff_p.add_argument("--trivial", action="store_true",
+                           help="纯文档变更快速通道：git diff 全部 ∈ *.md/docs/**/*.txt 才放行；"
+                                "通过则强制 decision=approved-trivial（与 --decision 互斥）")
+    # F-012：--signed-by / --signed-at 改为可选——未提供时自动取 git config user.email / 当前时间
+    # 老调用方仍可显式传入（例如脚本化场景）；新用户入口直接省略
+    signoff_p.add_argument("--signed-by", default=None,
+                           help="签字人 email（默认从 git config user.email 取）")
+    signoff_p.add_argument("--signed-at", default=None,
+                           help="签字时间 ISO8601 含时区（默认当前时间）")
     # --source 当前枚举仅 cli-tty，保留参数形式为 D-004（PR Review 等价）预留扩展
     signoff_p.add_argument("--source", default="cli-tty", choices=["cli-tty"],
                            help="sign-off 来源（默认 cli-tty）")

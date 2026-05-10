@@ -40,15 +40,20 @@ Agent 写入 `requirements/<id>/artifacts/*.md` 的每条关键信息必须属�
 **Sign-off 唯一入口**（人类在 tty 终端执行）：
 
 ```bash
-python3 scripts/lib/code_review_signoff.py --rev-id <REV-ID> --decision <approved|approved-trivial|rejected>
+python3 scripts/lib/save_review.py signoff --rev-id <REV-ID> --decision <approved|approved-trivial|rejected>
+# 或文档变更快速通道：
+python3 scripts/lib/save_review.py signoff --rev-id <REV-ID> --trivial
 # slash command 糖（等价）：/code-review:signoff <REV-ID> --decision=<v>
 ```
 
-Agent 在主对话或子 Agent 中，**禁止**调用上述入口，也**禁止**调用其底层实现以防绕过 tty 校验深防御层：
+F-012 后，原 `scripts/lib/code_review_signoff.py` 已合并入 `save_review.py signoff`
+子命令——同一入口承担 tty 校验 + trivial 路径白名单 + git email 自动取 + CR-1~CR-8 校验
++ verdict 写盘 + process.txt 追加全套职责。
 
-- `python3 scripts/lib/code_review_signoff.py ...`（唯一用户入口）
+Agent 在主对话或子 Agent 中，**禁止**调用上述入口：
+
+- `python3 scripts/lib/save_review.py signoff ...`（F-012 后唯一用户入口）
 - `/code-review:signoff <REV-ID>`（slash command 糖，最终也调上面入口）
-- `python3 scripts/lib/save_review.py signoff ...`（底层实现，绕过 code_review_signoff.py 的预检层）
 
 > 注：`scripts/save-review.sh` 是**写 verdict** 的入口（reviewer Agent 用），不接受 `signoff` 子命令；用户不要把它当作 sign-off 入口。
 

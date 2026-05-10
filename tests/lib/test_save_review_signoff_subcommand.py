@@ -182,9 +182,11 @@ def test_signoff_subcommand_writes_human_signoff_and_appends_process_txt(tmp_pat
     monkeypatch.setattr(sys, "stdin", _FakeTTY())
 
     # 构造 args（模拟 argparse 解析的结果）
+    # F-012 后 _run_signoff 接受 trivial 字段；显式传 False（与 --decision 互斥）
     args = argparse.Namespace(
         rev_id="REV-REQ-2099-001-definition-001",
         decision="approved",
+        trivial=False,
         signed_by="dev@example.com",
         signed_at="2026-04-30T10:30:00+08:00",
         source="cli-tty",
@@ -235,6 +237,7 @@ def test_signoff_subcommand_rejects_already_signed(tmp_path, monkeypatch):
     args = argparse.Namespace(
         rev_id="REV-REQ-2099-001-definition-001",
         decision="approved",
+        trivial=False,
         signed_by="dev@example.com",
         signed_at="2026-04-30T10:30:00+08:00",
         source="cli-tty",
@@ -251,6 +254,7 @@ def test_signoff_subcommand_rejects_nonexistent_rev_id(monkeypatch):
     args = argparse.Namespace(
         rev_id="REV-REQ-9999-001-definition-999",
         decision="approved",
+        trivial=False,
         signed_by="dev@example.com",
         signed_at="2026-04-30T10:30:00+08:00",
         source="cli-tty",
@@ -284,6 +288,7 @@ def test_signoff_subcommand_rejects_verdict_with_cr_violation(tmp_path, monkeypa
     args = argparse.Namespace(
         rev_id="REV-REQ-2099-001-definition-001",
         decision="approved",
+        trivial=False,
         signed_by="dev@example.com",
         signed_at="2026-04-30T10:30:00+08:00",
         source="cli-tty",
