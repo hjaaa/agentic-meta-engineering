@@ -4,9 +4,10 @@
   "status": "DONE_WITH_CONCERNS",
   "concerns": [
     "TC-F12-5 字面假设删除整个 managing-requirement-lifecycle 目录；本实现按 CLAUDE.md prompt 走保守 trim（仅删 phase-transition 子动作 + reference/phase-rules.md）。审查时需对照 D-016 决策与任务定义实际意图——保留伞形 Skill 是 prompt 明确指令，不视为缺陷。",
-    "三处 _PHASE_REVIEW_DEPS dict 本地副本是潜在漂移源。缓解：每处加 source 注释指向 meta-schema.yaml `enums.phase`；新增 trigger 时人工同步。如多年后 trigger 数量翻倍可考虑反向合并到 canonical_phases.py。",
+    "三处 _PHASE_REVIEW_DEPS dict 本地副本是潜在漂移源。缓解：每处加双行 source+CI 注释（rev3 M-6 统一格式）；新增 trigger 时人工同步。如多年后 trigger 数量翻倍可考虑反向合并到 canonical_phases.py。",
     "签字深防御从双层（Command + Skill）降为单层（save_review.py signoff 单一入口）。缓解：入口收敛后无第二条调用路径绕过；isatty 在 _run_signoff 第 0 步就拦下所有下游分支；FAKE_TTY env var 等红线仍封禁。",
-    "save_review.py 重构后 423 行（目标 <410 行），超 13 行。已消除所有可删注释及空行，剩余超量来自最小正确实现不可压缩部分。signoff.py 334 行（目标 ~270 行），差距来自 F-19/F-20/F-21/F-7/F-8 修复的安全逻辑必要行数。"
+    "双向 import 拓扑（signoff.py ↔ save_review.py lazy 解环）仍存在脆弱性——若 signoff.py 模块级代码引用 save_review 中函数，将触发循环 ImportError。rev3 M-4 已加注释明示风险；建议下次拆 helper 时进一步抽 save_review_validation.py 解开双向依赖（D-017 记录）。",
+    "save_review.py 重构后 423 行（目标 <410 行），超 13 行。已消除所有可删注释及空行，剩余超量来自最小正确实现不可压缩部分。signoff.py rev3 约 345 行（含 _detect_default_base + 3 helper + __all__ + 注释增补）。"
   ],
   "touches_violations": [],
   "self_check_results": {
@@ -18,7 +19,8 @@
     "TC-F12-6": "PASS"
   },
   "test_results": {
-    "full_pytest": "1186 passed, 9 skipped（rev2 修复后）",
+    "full_pytest": "1187 passed, 9 skipped（rev3 修复后；rev2 1186 + 1 新增 _detect_default_base 测试）",
+    "ruff_check": "0 新引入错误（rev3 改动文件全部通过；原有 74 个仓库级预存问题不计入本轮）",
     "post_dev_gate": "5 gates pass（GATE-META-SCHEMA / GATE-INDEX-INTEGRITY / GATE-SOURCING / GATE-PLAN-FRESHNESS / GATE-WORKSPACE-CLEAN）"
   },
   "commits": [
@@ -34,6 +36,11 @@
     "b455244 test(F-012): rev2 加 _PHASE_REVIEW_DEPS 三副本一致性测试 + R001-R005 None 守卫",
     "7bf98a2 chore(F-012): rev2 features.json + tasks/F-012.md TC-F12-5 同步 D-016 ADR 决策",
     "d06e74b style(F-012): rev2 trivial 5 minor（PEP 8 / stale 注释 / 测试命名 / EOL）",
-    "c91f182 chore(F-012): rev2 trivial 5-minor fix + 自检收尾 + bookkeeping"
+    "c91f182 chore(F-012): rev2 trivial 5-minor fix + 自检收尾 + bookkeeping",
+    "73023a7 fix(F-012): rev3 修 M-2 trivial 通道 base 动态推导（_detect_default_base）",
+    "5089b02 refactor(F-012): rev3 修 M-3 run_signoff 拆 3 helper",
+    "1a24281 chore(F-012): rev3 修 M-1 features.json + plan.md D-017 ADR",
+    "eada280 fix(F-012): rev3 修 M-4 注释 + M-5 路径校验诊断信息统一",
+    "2fcb06a style(F-012): rev3 修 M-6/M-7/M-8/M-9/M-10 trivial"
   ]
 }
