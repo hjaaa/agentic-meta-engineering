@@ -53,8 +53,21 @@ import canonical_phases  # canonical phase 枚举单一事实源（F-012 改自 
 REQUIREMENTS_DIR = REPO_ROOT / "requirements"
 
 
-# ─── target-phase → 必须存在的 review phase 列表 ────────────────────────────
-PHASE_REQUIREMENTS: dict[str, list[str]] = {
+# ─── target-phase → 必须存在的 review phase 列表（CLI 入口本地副本）──────────
+# 设计动机（REQ-2026-009 F-012）：
+#   旧实现暴露一个共享 PHASE_REQUIREMENTS 字典并被 plugins 跨模块 import；这种
+#   "定义一处、消费多处"的拓扑会让 R 函数调用方与字典定义模块产生隐式耦合，且 R
+#   函数内部 `PHASE_REQUIREMENTS.get(target_phase, [])` 的兜底空 list 是 vacuous
+#   pass 的根源。
+#   新方案——每个调用方各持本地副本（dict literal）+ R 函数改 required_phases 显式入参：
+#     1. dict literal 极小（7 行）+ 跨模块复制不会显著维护成本
+#     2. R 函数只消费 list，不依赖具体 dict；新增 trigger 时不改 R 函数
+#     3. 与 phase-rules.md 单一事实源对齐（人工同步 + ci 校验）；
+#   消费方当前 3 处：本文件 main() / scripts/gates/plugins/review_verdict.py
+#   / scripts/gates/plugins/review_verdict_ci.py。
+# 来源：context/team/engineering-spec/meta-schema.yaml `enums.phase` +
+#       .claude/skills/managing-requirement-lifecycle/reference/phase-rules.md
+_PHASE_REVIEW_DEPS: dict[str, list[str]] = {
     "tech-research":  ["definition"],
     "outline-design": ["definition"],
     "detail-design":  ["outline-design"],
@@ -73,12 +86,19 @@ def _load_meta(req: str) -> dict[str, Any]:
         return yaml.safe_load(f) or {}
 
 
-def _r001_review_exists(meta: dict, target_phase: str, report: Report, label: str) -> None:
+def _r001_review_exists(
+    meta: dict,
+    target_phase: str,
+    required_phases: list[str],
+    report: Report,
+    label: str,
+) -> None:
     """R001: target-phase 要求的 review 必须存在（latest != null）
 
     fail-closed 防御：target_phase 必须在 canonical 枚举内，否则视为 typo / 非法值
     直接报 R001 错误。避免历史 bug：non-canonical phase 名（如 'technical-research'）
-    通过 PHASE_REQUIREMENTS.get(..., []) 返回空 list → 静默 vacuous pass。
+    会让前置 dict 取空 list → 静默 vacuous pass。
+    F-012：required_phases 改为显式入参；调用方负责传入正确的 phase 列表。
     """
     valid_phases = canonical_phases.load_canonical_phases()
     if target_phase and target_phase not in valid_phases:
@@ -89,7 +109,6 @@ def _r001_review_exists(meta: dict, target_phase: str, report: Report, label: st
             f"参考 context/team/engineering-spec/meta-schema.yaml:38",
         )
         return
-    required_phases = PHASE_REQUIREMENTS.get(target_phase, [])
     reviews = meta.get("reviews") or {}
     for phase in required_phases:
         if phase == "code":
@@ -101,15 +120,20 @@ def _r001_review_exists(meta: dict, target_phase: str, report: Report, label: st
 
 
 def _r003_blocked_or_unsigned(
-    meta: dict, target_phase: str, report: Report, label: str, req: str
+    meta: dict,
+    required_phases: list[str],
+    report: Report,
+    label: str,
+    req: str,
 ) -> None:
     """R003: latest.conclusion != blocked（D-008 旧 rejected 等价）且必须有 human_signoff。
 
     升级口径（REQ-2026-003 D-008）：
     - 旧 schema 里 conclusion=rejected → 新 schema 里 conclusion=blocked；两者都阻断
     - 新要求：所有非 code phase 的 latest verdict 必须经过人类 sign-off 才允许切阶段
+    F-012：required_phases 改为显式入参（旧 target_phase 参数已删——R003 不在错误消息里
+    引用 target_phase）。
     """
-    required_phases = PHASE_REQUIREMENTS.get(target_phase, [])
     reviews = meta.get("reviews") or {}
     for phase in required_phases:
         if phase == "code":
@@ -145,11 +169,20 @@ def _r003_blocked_or_unsigned(
             )
 
 
-def _r002_schema_recheck(meta: dict, target_phase: str, report: Report, label: str, req: str) -> None:
-    """R002: review JSON schema 合法（复用 save_review 的校验函数）"""
+def _r002_schema_recheck(
+    meta: dict,
+    required_phases: list[str],
+    report: Report,
+    label: str,
+    req: str,
+) -> None:
+    """R002: review JSON schema 合法（复用 save_review 的校验函数）
+
+    F-012：required_phases 改为显式入参。
+    """
     schema = save_review._load_schema()
     reviews = meta.get("reviews") or {}
-    for phase in PHASE_REQUIREMENTS.get(target_phase, []):
+    for phase in required_phases:
         if phase == "code":
             # PR1: code 类 review 文件的 schema 复检暂未实现；R007 只检查 existence/conclusion。
             # 完整 schema 复检留待 PR3，届时 protect-branch 也会禁止主对话直接编辑 reviews/*.json。
@@ -184,14 +217,20 @@ def _r002_schema_recheck(meta: dict, target_phase: str, report: Report, label: s
             report.add(f, sev, f"R002/{code}", msg)
 
 
-def _r004_needs_revision(meta: dict, target_phase: str, report: Report, label: str) -> None:
+def _r004_needs_revision(
+    meta: dict,
+    required_phases: list[str],
+    report: Report,
+    label: str,
+) -> None:
     """R004: latest.conclusion = needs_attention → 默认 WARNING，--strict 升 ERROR
 
     F-001/F-003 schema 升级后，旧 conclusion 值 needs_revision 已替换为
     needs_attention（AI 三档机器评估）。R004 同步级联到新枚举值。
+    F-012：required_phases 改为显式入参。
     """
     reviews = meta.get("reviews") or {}
-    for phase in PHASE_REQUIREMENTS.get(target_phase, []):
+    for phase in required_phases:
         if phase == "code":
             continue
         entry = reviews.get(phase) or {}
@@ -202,7 +241,7 @@ def _r004_needs_revision(meta: dict, target_phase: str, report: Report, label: s
 
 def _r005_hash_drift(
     meta: dict,
-    target_phase: str,
+    required_phases: list[str],
     report: Report,
     label: str,
     req: str,
@@ -216,10 +255,11 @@ def _r005_hash_drift(
         （格式：("meta.yaml", f"reviews.{phase}.stale", True)），
         由 review_verdict plugin 的 commit_staged_writes 在所有 gate pass 后落盘。
       - staged_writes 为 None ⇒ 维持旧行为，CLI 入口（scripts/lib/check_reviews.py main）走此路径。
+    F-012：required_phases 改为显式入参。
     """
     req_dir = REQUIREMENTS_DIR / req
     reviews = meta.get("reviews") or {}
-    for phase in PHASE_REQUIREMENTS.get(target_phase, []):
+    for phase in required_phases:
         if phase == "code":
             continue
         entry = reviews.get(phase) or {}
@@ -373,11 +413,12 @@ def main() -> int:
         print(paint(f"ℹ️  {args.req} legacy=true，跳过 reviewer-verdict 校验（R001~R007）", "cyan"))
         return 0
 
-    _r001_review_exists(meta, args.target_phase, report, label)
-    _r002_schema_recheck(meta, args.target_phase, report, label, args.req)
-    _r003_blocked_or_unsigned(meta, args.target_phase, report, label, args.req)
-    _r004_needs_revision(meta, args.target_phase, report, label)
-    _r005_hash_drift(meta, args.target_phase, report, label, args.req)
+    required_phases = _PHASE_REVIEW_DEPS.get(args.target_phase, [])
+    _r001_review_exists(meta, args.target_phase, required_phases, report, label)
+    _r002_schema_recheck(meta, required_phases, report, label, args.req)
+    _r003_blocked_or_unsigned(meta, required_phases, report, label, args.req)
+    _r004_needs_revision(meta, required_phases, report, label)
+    _r005_hash_drift(meta, required_phases, report, label, args.req)
     _r006_supersedes_chain(meta, args.target_phase, report, label, args.req)
     _r007_code_by_feature_coverage(meta, args.target_phase, report, label, args.req)
 

@@ -81,7 +81,7 @@ class TestR003BlockedOrUnsigned:
         cr.REQUIREMENTS_DIR = tmp_path / "requirements"
         try:
             report = Report()
-            _r003_blocked_or_unsigned(meta, "tech-research", report, _REQ, _REQ)
+            _r003_blocked_or_unsigned(meta, ["definition"], report, _REQ, _REQ)
         finally:
             cr.REQUIREMENTS_DIR = original_dir
 
@@ -100,7 +100,7 @@ class TestR003BlockedOrUnsigned:
             }
         }
         report = Report()
-        _r003_blocked_or_unsigned(meta, "tech-research", report, _REQ, _REQ)
+        _r003_blocked_or_unsigned(meta, ["definition"], report, _REQ, _REQ)
 
         errors = [f for f in report.findings() if f[1] == Severity.ERROR and f[2] == "R003"]
         assert len(errors) > 0, "conclusion=rejected 应触发 R003"
@@ -116,7 +116,7 @@ class TestR003BlockedOrUnsigned:
             }
         }
         report = Report()
-        _r003_blocked_or_unsigned(meta, "tech-research", report, _REQ, _REQ)
+        _r003_blocked_or_unsigned(meta, ["definition"], report, _REQ, _REQ)
 
         errors = [f for f in report.findings() if f[1] == Severity.ERROR and f[2] == "R003"]
         assert len(errors) > 0, "conclusion=blocked 应触发 R003"
@@ -147,7 +147,7 @@ class TestR003BlockedOrUnsigned:
         cr.REQUIREMENTS_DIR = tmp_path / "requirements"
         try:
             report = Report()
-            _r003_blocked_or_unsigned(meta, "tech-research", report, _REQ, _REQ)
+            _r003_blocked_or_unsigned(meta, ["definition"], report, _REQ, _REQ)
         finally:
             cr.REQUIREMENTS_DIR = original_dir
 

@@ -447,9 +447,10 @@ def test_review_verdict_r007_missing_code_review(tmp_path, monkeypatch):
 
 # ====================== canonical phase 枚举校验（REQ-2026-003 工程债修复） ======================
 # 历史 bug：to_phase 写成 'technical-research' 等非 canonical 名时，plugin 的
-# `effective_phase not in _PHASE_REQUIREMENTS` 分支返回 PASS（"无对应 review 要求"），
-# 让 typo 静默通过。修复：先用 phase_enum.load_canonical_phases() 区分"typo"和
+# `effective_phase not in _PHASE_REVIEW_DEPS` 分支返回 PASS（"无对应 review 要求"），
+# 让 typo 静默通过。修复：先用 canonical_phases.load_canonical_phases() 区分"typo"和
 # "合法但无 review 要求"两种情况，前者直接 FAIL。
+# F-012：原 _PHASE_REQUIREMENTS（跨模块导入）改为 plugin 本地常量 _PHASE_REVIEW_DEPS。
 
 
 def test_review_verdict_fails_on_typo_phase(tmp_path, monkeypatch):
@@ -479,7 +480,7 @@ def test_review_verdict_passes_on_canonical_phase_without_review_requirement(
 ):
     """given_canonical_phase_without_review_requirement_when_run_then_pass。
 
-    bootstrap / definition 是合法 phase 但不在 PHASE_REQUIREMENTS 中（无前置 review
+    bootstrap / definition 是合法 phase 但不在 _PHASE_REVIEW_DEPS 中（无前置 review
     要求）→ 维持原 PASS 语义，与 typo 分支区分开。
     """
     req_id = "REQ-2026-990"

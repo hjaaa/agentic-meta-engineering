@@ -211,6 +211,10 @@ def _run_old_chain(
     避免 test_signoff_no_circular_import._purge_modules 导致模块漂移。
 
     strict=True 时 R004 的 WARNING 通过 report.exit_code(strict=True) 升为 ERROR 语义。
+
+    F-012：required_phases 由本测试自行计算（与 plugin/main 内联 dict 等价的最小副本）；
+    R 函数签名升级后，旧链路与新链路调 R 函数签名一致——本测试对比的是"直接逐函数调"
+    与"经 run_r_rules 一把梭"的等价性，与 dict 共享与否无关。
     """
     # 与 _run_new_chain 保持一致：从 review_verdict_ci 取内部 check_reviews 引用
     cr = review_verdict_ci.check_reviews
@@ -220,11 +224,12 @@ def _run_old_chain(
         meta = cr._load_meta(req_id)
         report = LegacyReport()
         label = req_id
-        cr._r001_review_exists(meta, target_phase, report, label)
-        cr._r002_schema_recheck(meta, target_phase, report, label, req_id)
-        cr._r003_blocked_or_unsigned(meta, target_phase, report, label, req_id)
-        cr._r004_needs_revision(meta, target_phase, report, label)
-        cr._r005_hash_drift(meta, target_phase, report, label, req_id)
+        required_phases = review_verdict_ci._PHASE_REVIEW_DEPS.get(target_phase, [])
+        cr._r001_review_exists(meta, target_phase, required_phases, report, label)
+        cr._r002_schema_recheck(meta, required_phases, report, label, req_id)
+        cr._r003_blocked_or_unsigned(meta, required_phases, report, label, req_id)
+        cr._r004_needs_revision(meta, required_phases, report, label)
+        cr._r005_hash_drift(meta, required_phases, report, label, req_id)
         cr._r006_supersedes_chain(meta, target_phase, report, label, req_id)
         cr._r007_code_by_feature_coverage(meta, target_phase, report, label, req_id)
         return report
@@ -257,8 +262,11 @@ def _run_new_chain(
         meta = cr._load_meta(req_id)
         report = LegacyReport()
         label = req_id
+        required_phases = review_verdict_ci._PHASE_REVIEW_DEPS.get(target_phase, [])
         # 新链路复用 run_r_rules（GATE-REVIEW-VERDICT plugin 的 _run_single_requirement 同一路径）
-        review_verdict_ci.run_r_rules(report, meta, target_phase, label, req_id, None)
+        review_verdict_ci.run_r_rules(
+            report, meta, target_phase, required_phases, label, req_id, None
+        )
         return report
     finally:
         cr.REQUIREMENTS_DIR = original_dir

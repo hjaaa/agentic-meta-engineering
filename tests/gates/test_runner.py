@@ -451,8 +451,9 @@ def test_build_audit_exit_code_zero_when_no_failures_with_plan():
 
 # ====================== canonical phase 枚举校验（REQ-2026-003 工程债修复） ======================
 # 历史 bug：meta.yaml.phase 写成 'technical-research'（非 canonical）后，phase-transition
-# 门禁链路上的 R001 / ReviewVerdictGate 都因 PHASE_REQUIREMENTS.get(..., []) 默认空 list
+# 门禁链路上的 R001 / ReviewVerdictGate 都因旧 PHASE_REQUIREMENTS dict 取空 list
 # 而 vacuous pass。修复：runner 入口 + check_reviews + review_verdict plugin 三层 fail-closed。
+# F-012：PHASE_REQUIREMENTS dict 已删；plugin 本地化为 _PHASE_REVIEW_DEPS；R 函数改 required_phases 显式入参。
 
 
 def test_main_returns_two_when_to_phase_not_in_canonical_enum(capsys):
