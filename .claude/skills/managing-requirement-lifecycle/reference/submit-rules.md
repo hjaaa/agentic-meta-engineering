@@ -128,7 +128,7 @@ pr_number: <num>
 
 ## 和追溯链的关系
 
-`submit` **不**调用 `traceability-gate-checker`。追溯链是 `development → testing` 的硬门禁，PR 开出时代码可能还在补单测；submit 只要求"已有 review 报告且无 blocker"即可。PR 合并后再由 `/requirement:next` 驱动追溯链校验。
+`submit` **不**调用 `traceability-gate-checker`。追溯链是 `development → testing` 的硬门禁，PR 开出时代码可能还在补单测；submit 只要求"已有 review 报告且无 blocker"即可。PR 合并后再由 `/workflow:next` 驱动追溯链校验。
 
 ## §7.5 `--codex` 子模式状态机（F-004）
 

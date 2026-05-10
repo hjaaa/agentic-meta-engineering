@@ -11,14 +11,14 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CMD_DIR = REPO_ROOT / ".claude" / "commands" / "requirement"
 
-# 9 个命令文件
-ALL_CMDS = ["new", "continue", "save", "status", "list", "rollback", "next", "submit", "archive"]
+# 8 个命令文件（F-012 删除 next.md，原 9 → 8）
+ALL_CMDS = ["new", "continue", "save", "status", "list", "rollback", "submit", "archive"]
 
 # 6 个转发别名（A 类）
 FORWARDING_CMDS = ["new", "continue", "save", "status", "list", "rollback"]
 
-# 3 个例外保留（B 类）
-EXCEPTION_CMDS = ["next", "submit", "archive"]
+# 2 个例外保留（B 类，F-012 删除 next 后剩 2 项）
+EXCEPTION_CMDS = ["submit", "archive"]
 
 # A 类命令 → 目标 /workflow:*
 FORWARD_TARGETS = {
@@ -49,30 +49,24 @@ def _read_cmd(name: str) -> str:
 
 
 # ─── TC-F10-1 ────────────────────────────────────────────────────────────────
-def test_9_aliases_emit_deprecation():
+def test_8_aliases_emit_deprecation():
     """
-    TC-F10-1：9 个命令文件各含 [DEPRECATION] 字串 + 「截至 2026-08-08」字面量。
-    - next.md 用 [DEPRECATION-NEXT]（不是 [DEPRECATION] 后跟转发内容）
-    - 所有 9 个文件必须包含「截至 2026-08-08」字面量
+    TC-F10-1：8 个命令文件各含 [DEPRECATION] 字串 + 「截至 2026-08-08」字面量。
+    F-012：原 next.md 已删除（PHASE_REQUIREMENTS / phase-transition 子动作迁移到
+    /workflow:next）；ALL_CMDS 由 9 → 8。
     """
     for name in ALL_CMDS:
         content = _read_cmd(name)
 
-        # 所有 9 个文件都必须含「截至 2026-08-08」字面量
+        # 所有 8 个文件都必须含「截至 2026-08-08」字面量
         assert "截至 2026-08-08" in content, (
             f"{name}.md 缺少「截至 2026-08-08」字面量"
         )
 
-        if name == "next":
-            # next 用 [DEPRECATION-NEXT] 例外文案
-            assert "[DEPRECATION-NEXT]" in content, (
-                "next.md 应含 [DEPRECATION-NEXT] 而非标准 [DEPRECATION]"
-            )
-        else:
-            # 其余 8 个用标准 [DEPRECATION]
-            assert "[DEPRECATION]" in content, (
-                f"{name}.md 缺少 [DEPRECATION] 标志"
-            )
+        # 8 个均用标准 [DEPRECATION]（next 已删，无 [DEPRECATION-NEXT] 例外）
+        assert "[DEPRECATION]" in content, (
+            f"{name}.md 缺少 [DEPRECATION] 标志"
+        )
 
 
 # ─── TC-F10-2 ────────────────────────────────────────────────────────────────
@@ -99,32 +93,17 @@ def test_arguments_forwarding():
 
 
 # ─── TC-F10-3 ────────────────────────────────────────────────────────────────
-def test_next_exception_kept_legacy():
+def test_next_command_deleted():
     """
-    TC-F10-3：/requirement:next 不转发到 /workflow:*，
-    保留旧实现（调用 managing-requirement-lifecycle 的 phase-transition 子动作），
-    .md 文件正文含 [DEPRECATION-NEXT] 例外文案。
+    TC-F10-3（F-012 重写）：/requirement:next 已删除——next.md 文件不应存在。
+
+    原行为（F-012 前）：next.md 是 D-009 例外保留项，调 managing-requirement-lifecycle
+    的 phase-transition 子动作。F-012 后阶段切换统一走 /workflow:next（standard-8phase
+    yaml workflow phase-transition 节点）。
     """
-    content = _read_cmd("next")
-
-    # 不含「→ /workflow:next」转发声明
-    assert "→ /workflow:next" not in content, (
-        "next.md 不应含「→ /workflow:next」转发声明（D-009 例外：不转发）"
-    )
-
-    # 含 [DEPRECATION-NEXT] 例外文案
-    assert "[DEPRECATION-NEXT]" in content, (
-        "next.md 应含 [DEPRECATION-NEXT] 例外文案"
-    )
-
-    # 含旧实现调用声明——Skill managing-requirement-lifecycle
-    assert "managing-requirement-lifecycle" in content, (
-        "next.md 应声明调用 Skill `managing-requirement-lifecycle`"
-    )
-
-    # 含 phase-transition 子动作声明
-    assert "phase-transition" in content, (
-        "next.md 应声明调用 phase-transition 子动作"
+    next_path = CMD_DIR / "next.md"
+    assert not next_path.exists(), (
+        f"next.md 应已删除（F-012），实际仍存在：{next_path}"
     )
 
 
@@ -171,8 +150,8 @@ def test_submit_archive_kept_legacy():
 # ─── TC-F10-5（辅助验证，也作为独立测试用例）────────────────────────────────
 def test_deadline_literal_grep_coverage():
     """
-    TC-F10-5 对应逻辑：subprocess grep 验证 9 个 .md 文件均含「截至 2026-08-08」。
-    命中行数 ≥ 9，且涉及全部 9 个文件。
+    TC-F10-5 对应逻辑：subprocess grep 验证 8 个 .md 文件均含「截至 2026-08-08」。
+    命中行数 ≥ 8，且涉及全部 8 个文件（F-012 删 next.md 后，原 9 → 8）。
     """
     result = subprocess.run(
         ["grep", "-rn", "截至 2026-08-08", str(CMD_DIR)],
@@ -182,12 +161,12 @@ def test_deadline_literal_grep_coverage():
     )
     lines = [line for line in result.stdout.splitlines() if line.strip()]
 
-    # 至少 9 行匹配
-    assert len(lines) >= 9, (
-        f"grep「截至 2026-08-08」命中 {len(lines)} 行，期望 ≥ 9 行\n{result.stdout}"
+    # 至少 8 行匹配（F-012 删 next.md 后）
+    assert len(lines) >= 8, (
+        f"grep「截至 2026-08-08」命中 {len(lines)} 行，期望 ≥ 8 行\n{result.stdout}"
     )
 
-    # 验证涉及全部 9 个文件
+    # 验证涉及全部 8 个文件
     matched_files = set()
     for line in lines:
         for name in ALL_CMDS:

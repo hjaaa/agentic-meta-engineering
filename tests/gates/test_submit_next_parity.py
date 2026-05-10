@@ -1,6 +1,8 @@
-"""F-003 H3 · /requirement:submit 与 /requirement:next 同源（gate 集合一致性）。
+"""F-003 H3 · /requirement:submit 与 phase-transition trigger 同源（gate 集合一致性）。
 
 来源：requirements/REQ-2026-002/artifacts/detailed-design.md §4.2（行 411-423）。
+F-012 后用户入口 phase-transition 走 /workflow:next 而非 /requirement:next；本测试名
+保留为历史 trigger 概念名（"submit vs next 同源"）。
 
 核心断言：
   phase-transition 的 gate 集合 ⊆ submit 的 gate 集合

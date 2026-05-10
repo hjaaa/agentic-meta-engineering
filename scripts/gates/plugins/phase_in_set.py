@@ -10,7 +10,7 @@
 可提交 phase 白名单：development（开发实施）/ testing（测试验收）
   - 来源：context/team/engineering-spec/iteration-sop.md 8 阶段定义
   - 其他阶段（bootstrap / requirement / tech-research / outline / detail / planning /
-    completed / archived）禁止 submit；用户应走 /requirement:next 推进 phase
+    completed / archived）禁止 submit；用户应走 /workflow:next 推进 phase（F-012 后）
 """
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ class PhaseInSetGate(Gate):
             message=message,
             fix_hint=(
                 "phase 必须为 development 或 testing 才能 submit；"
-                "如还在设计阶段，先用 /requirement:next 推进 phase"
+                "如还在设计阶段，先用 /workflow:next 推进 phase"
             ),
         )
 

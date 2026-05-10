@@ -61,7 +61,7 @@ def test_should_fail_when_pr_state_is_merged(monkeypatch):
     assert report.decision == Decision.FAIL
     assert report.code == "PR-MERGED"
     assert "#42" in (report.message or "")
-    assert "/requirement:next" in (report.fix_hint or "")
+    assert "/workflow:next" in (report.fix_hint or "")
     # F-022 round-2：pr_number 字符串化后写入 vars
     assert report.vars["pr_number"] == "42"
 
