@@ -1,0 +1,119 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-009-code-F-013-001",
+  "requirement_id": "REQ-2026-009",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-10 16:41:07",
+  "reviewed_commit": "0bc9cec",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "458da8d0c2c06b89a94a24554d27ba78ca6f0f0bf08c3591f72afaeb791dc683"
+    },
+    {
+      "path": "artifacts/tasks/F-013.md",
+      "sha256": "da42219a3b2672267544565baecbcdf577f703980808ff067f3865e69e58fe4d"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 88,
+  "dimensions": {
+    "design_consistency": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/migrate_requirements_to_runs.py:39 Reference.kind 注释列出 docstring/yaml_glob 但实现仅产出 literal/comment/f_string/concat 四类，行为与 spec §9.6「自动改」表等价但分类细分度漂移（F-1 降级）"
+        },
+        {
+          "severity": "major",
+          "description": "tests/tools/test_migrate_requirements.py:317 注释自称内置 plan.md pattern 命中 whitelist_plan.md，但 tmp_path 下内置正则 requirements/REQ-[^/]+/plan\\.md$ 永远不命中，实际由 extra_whitelist 命中；注释误导且内置正则零测试覆盖（F-2）"
+        },
+        {
+          "severity": "minor",
+          "description": "requirements/REQ-2026-009/artifacts/features.json:483-492 modules 5 处文件名偏离实际：sample.py→sample_script.py / sample.md→sample_doc.md / sample.yaml→sample_config.yaml / whitelist_doc.md→whitelist_plan.md / 2026-XX→2026-05（F-3）"
+        },
+        {
+          "severity": "minor",
+          "description": "tests/tools/test_migrate_requirements.py:142-175 TC-F13-1 断言由 == N 弱化为 >= 1，文档语义未明（md 引用块/quote 行归属未澄清），盲目收紧风险高，转 follow-up（F-4）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/migrate_requirements_to_runs.py:317-323 API 签名扩展 repo_root/extra_files 未回填到 detailed-design §9.6（F-5）"
+        }
+      ]
+    },
+    "security": {
+      "score": 95,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 95,
+      "issues": []
+    },
+    "complexity": {
+      "score": 90,
+      "issues": []
+    },
+    "error_handling": {
+      "score": 90,
+      "issues": []
+    },
+    "auxiliary_spec": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/migrate_requirements_to_runs.py:多处 Optional[X] 与 X | None 混用（F-6）"
+        },
+        {
+          "severity": "minor",
+          "description": "tests/tools/test_migrate_requirements.py:84-85,108 _run_hook 内 import tempfile 后 line 108 又 import tempfile as tf2 重复导入（F-8）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/git-hooks/pre-commit-rename-guard.sh:104 BYPASS reason 太短提示末尾缺中文句号（F-9）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/git-hooks/pre-commit-rename-guard.sh:18-21 头部注释自称「BYPASS 口径相同」但 BLOCKED 输出格式与 .claude/hooks/pre-tool-use-guard.sh 差异（裸 BLOCKED+>&3 vs [HOOK_NAME] BLOCKED+>&2），需补一行说明（F-10）"
+        },
+        {
+          "severity": "minor",
+          "description": "context/team/engineering-spec/migration/2026-05-runs-rename.md:27 代码块缺语言标签（F-12）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/migrate_requirements_to_runs.py:436 CLI 调试入口标题英文 DRY RUN/WET RUN，全局规范要求中文（F-13）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/git-hooks/pre-commit-rename-guard.sh:31 注释自称「bash extglob 格式」但脚本未 shopt -s extglob 也无 extglob 语法（F-14）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/migrate_requirements_to_runs.py:217,365,405 3 处行宽超过 100（F-17）"
+        }
+      ]
+    },
+    "performance": {
+      "score": 95,
+      "issues": []
+    },
+    "history_context": {
+      "score": 95,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "auxiliary_spec 维度 8 项 minor 集中在「注释/规范一致性」，单 rev 速修成本低（< 30 行变更），建议在 trivial sign-off 阶段一并修复",
+    "design_consistency 维度的 F-2（注释误导 + 内置正则零测试覆盖）虽 critic 判 not_rebutted/major，但行为正确性 OK——应在 trivial 修复中同时补一条「内置 plan.md pattern 命中」的真实 fixture 测试用例，避免 F-012 真迁移时漏检",
+    "F-4 / F-5（语义未明 + 文档同步）转 follow-up 给 F-012：F-012 真迁移时一并澄清「md 引用块/quote 行归属」+ 回填 detailed-design §9.6 的 API 签名"
+  ],
+  "scope": {
+    "feature_id": "F-013"
+  },
+  "supersedes": null
+}
