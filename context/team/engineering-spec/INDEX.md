@@ -31,6 +31,10 @@
 - [`roadmap.md`](roadmap.md) — 骨架当前能力快照 + 未实现缺口
 - [`plans/INDEX.md`](plans/INDEX.md) — 实施计划目录（活计划 + 历史归档）
 
+## 迁移说明
+
+- [`migration/2026-05-runs-rename.md`](migration/2026-05-runs-rename.md) — requirements/ → runs/ 批量 rename 工具使用说明、顺序约束、hook 安装方式
+
 ## 历史设计文档
 
 - [`specs/`](specs/) — 所有重要设计决定的存档
