@@ -258,7 +258,11 @@ def _run_save(args: argparse.Namespace) -> int:
         print(paint(f"❌ verdict.reviewer={verdict.get('reviewer')!r} 与 --reviewer={args.reviewer!r} 不一致", "red"), file=sys.stderr)
         return 1
 
-    schema = _load_schema()
+    try:
+        schema = _load_schema()
+    except yaml.YAMLError as exc:
+        print(paint(f"❌ schema 文件格式错误: {exc}", "red"), file=sys.stderr)
+        return 1
     report = Report()
     label = f"<stdin>:{args.req}/{args.phase}"
 
@@ -353,9 +357,14 @@ def _run_save(args: argparse.Namespace) -> int:
 
     # atomic 写入：先写临时文件，再原子替换，防止中途崩溃导致 meta.yaml 损坏
     tmp_path = meta_path.with_suffix(meta_path.suffix + ".tmp")
-    with tmp_path.open("w", encoding="utf-8") as f:
-        _meta_yaml.dump(meta, f)
-    tmp_path.replace(meta_path)  # POSIX 原子操作
+    try:
+        with tmp_path.open("w", encoding="utf-8") as f:
+            _meta_yaml.dump(meta, f)
+        tmp_path.replace(meta_path)  # POSIX 原子操作
+    except OSError as exc:
+        tmp_path.unlink(missing_ok=True)
+        print(paint(f"❌ meta.yaml 写盘失败（{exc}），已清理 tmp 文件", "red"), file=sys.stderr)
+        return 1
     print(paint(f"✓ 已更新 {rel(meta_path)} 的 reviews.{phase}", "green"))
 
     return 0
