@@ -209,12 +209,16 @@ reviews:
         history:
           - REV-REQ-2026-009-code-F-008-001
           - REV-REQ-2026-009-code-F-008-002
-        latest: REV-REQ-2026-009-code-F-008-002
-        conclusion: blocked
-        reviewed_commit: 2461b97
+          - REV-REQ-2026-009-code-F-008-003
+          - REV-REQ-2026-009-code-F-008-004
+        latest: REV-REQ-2026-009-code-F-008-004
+        conclusion: looks_clean
+        reviewed_commit: 2aea3b0
         artifact_hashes:
           artifacts/features.json: 
-            6ef54072bc8e48df2c1c45fd767d4815b41dfea0f93aeabef87d40bf81700c65
+            f7f0386a07f1e7facb09d3ed077135acdcf10dd08f305e67fb8a9cf68757b831
           artifacts/tasks/F-008.md: 
-            7dae4a7462bb38f73805365d7aa9fc5f6c08cdf5ee6f5c3c75f8ceb525544fc1
+            c9c10db3cb1511e3175b192e8784b5250779aafd0fc87b5869ba47446b251fe9
+          artifacts/detailed-design.md: 
+            d821e5a34bd458c6070ee0f3e2cecc9076e9b39c15f99bd555ac63e245bb1507
         stale: false

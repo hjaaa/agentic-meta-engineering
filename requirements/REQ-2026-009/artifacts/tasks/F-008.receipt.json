@@ -14,7 +14,23 @@
     "requirements/REQ-2026-009/notes.md"
   ],
   "test_summary": "rev4 严格 scope 修 4 major + 9 minor（F-12 已标 follow-up，不影响 DONE 判定） / pytest test_sub_workflow_lifecycle.py + test_sub_workflow_cancel_advanced.py: 8 passed（含 TC-F8-3 三参数化）/ 关联回归 1120 passed 9 skipped 0 fail / pycodestyle 0 violation（--max-line-length=120）/ ruff F-008 文件 All checks passed / time.sleep grep 0（test_sub_workflow_*.py 本身 0 行；协调器 poll 已迁入 e2e_helpers.py）/ 4 commits: 5623366（三方文档 6 处）+ 8f3b900（controlled_sleep 拆分 + F-9/F-10/F-14）+ 150a7c2（F-7/F-11/F-16/F-23）+ 90f36b8（F541 lint fix）",
-  "touches_violations": [],
+  "touches_violations": [
+    {
+      "path": "/tmp/F-008-rev4-verdict.json",
+      "ts": "2026-05-10T02:39:24+00:00",
+      "tool": "Write"
+    },
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-009/artifacts/review-20260510-103200.md",
+      "ts": "2026-05-10T02:41:01+00:00",
+      "tool": "Write"
+    },
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-009/.dispatch-state.json",
+      "ts": "2026-05-10T02:43:57+00:00",
+      "tool": "Edit"
+    }
+  ],
   "concerns": [],
   "missing_context": "",
   "block_reason": "",
