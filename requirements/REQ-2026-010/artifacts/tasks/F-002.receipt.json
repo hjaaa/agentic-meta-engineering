@@ -1,0 +1,11 @@
+{
+  "feature_id": "F-002",
+  "schema_version": "1.0",
+  "touches_violations": [
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-010/artifacts/review-20260511-155100.md",
+      "ts": "2026-05-11T07:52:41+00:00",
+      "tool": "Write"
+    }
+  ]
+}
