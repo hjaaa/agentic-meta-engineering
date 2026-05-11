@@ -27,16 +27,22 @@ argument-hint: "[scope]（可选，默认 git diff main..HEAD）"
 - 取 diff / 确定 services（不写盘）
 - 输出预检摘要，用户确认继续
 
-**Step 2-pre（卡点 A）：路由器 `routing.py` 交互**
+**Step 2-pre：路由器 `routing.py` 自动决策**
 
 调用 `python3 scripts/lib/code_review_routing.py --mode embedded --requirement-id <id> --base-sha <sha> --head-sha <sha> --base-branch develop --current-branch <branch>`
 
-处理 5 个退码分支：
+自 F-014 起取消人类卡点 A——路由器按 diff 与 routing.yaml 自动决策：
+
+- 全 trivial → `decision=trivial-skipped`
+- 命中 must / suggest → `decision=accept`，跑推荐集
+- 推荐集为空（diff 全是灰色文件）→ `decision=all`，升 8 全集兜底
+
+处理 3 个退码分支：
 - `EXIT_OK (0)` — 正常完成，读 `.review-scope.json`；若 `skipped==true` 输出最小报告（trivial-skip）并 return
-- `EXIT_NON_TTY (2)` — 检测到非 tty 调用（AI / 管道），报错并 abort
 - `EXIT_SCHEMA_INVALID (3)` — routing.yaml 语义错，报错并 abort
 - `EXIT_YAML_LOAD_ERROR (4)` — routing.yaml IO/解析失败，报错并 abort
-- `EXIT_USER_ABORT (5)` — 用户主动取消或连续 3 次无效，audit 已写，abort
+
+（`EXIT_NON_TTY (2)` / `EXIT_USER_ABORT (5)` 在自动模式下不再触发，保留供回滚兼容）
 
 若 skipped 不为 true，继续 Step 2。
 

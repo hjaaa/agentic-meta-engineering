@@ -32,3 +32,5 @@
 2026-05-11 16:57:41 [signoff] REV-REQ-2026-010-code-F-003-002 approved by hj19961223@gmail.com
 2026-05-11 16:59:15 [development] F-003 done（signoff approved by hj19961223@gmail.com，post-dev 0 error）
 2026-05-11 17:02:06 [save] F-003 全周期完成（4 commits af471ca→29b7b10→cbd7672→330d185 / rev2 looks_clean / signoff approved）；trend-G-meta 二次终结；下次可派 F-004 / F-009
+2026-05-11 17:23:55 [blocker-resolved] D-014 横扫发现 F-002.receipt 残留+hook 缺 review-*.md 豁免；A+B hotfix 闭环（commit 3d01aa8 / hooks 40 passed / GATE-TOUCHES-VIOLATION 双向断言 OK）
+2026-05-11 17:24:34 [save] hotfix 闭环；F-001/002/003 全 done + D-014 残留 violation 已清；下次可派 F-004 / F-009

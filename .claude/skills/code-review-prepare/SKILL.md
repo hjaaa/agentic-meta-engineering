@@ -16,10 +16,11 @@ description: /code-review 的预检 Skill。识别审查模式（独立/嵌入�
 
 2. **输出元信息给路由器（不写盘）**：取 diff 文件列表、规模、服务列表，交由 `scripts/lib/code_review_routing.py` 统一处理
 
-3. **卡点 A — 路由确认**（`scripts/lib/code_review_routing.py`）：
-   - **100% trivial 短路**：diff 中所有文件命中 `trivial_whitelist`（如 `**/*.md`、`requirements/*/notes.md` 等）→ routing.py 写 `skipped=true`，跳过整个 review（包括所有 8 个 checker）。无须二阶段 tty 确认，直接生成"trivial-skipped" audit 记录
-   - **正常路由**：diff 命中 must / suggest 规则 → routing.py 在 tty 展示候选 checker 集（4 档热键：enter=accept推荐 / a=全 8 个 / 1,3=自定）→ 写 `.review-scope.json`（含 skipped=false、routing_decision、checker_route、skipped_checkers）
-   - **stdin 非 tty → 退出码 2**（拒绝 AI 在主对话直接调；abort 或错误路径不写盘）
+3. **自动路由**（`scripts/lib/code_review_routing.py`）：
+   - **100% trivial 短路**：diff 中所有文件命中 `trivial_whitelist`（如 `**/*.md`、`requirements/*/notes.md` 等）→ routing.py 写 `skipped=true`，跳过整个 review（包括所有 8 个 checker），生成"trivial-skipped" audit 记录
+   - **命中 must / suggest**：routing.py 直接按推荐集（must ∪ suggest）写 `decision=accept`，跑推荐 checker
+   - **推荐集为空**（diff 全是灰色文件，未命中任何规则）：升 8 全集兜底，`decision=all`
+   - 自 F-014 起取消人类 tty 卡点 A，AI / CI / 管道均可调用
 
 4. **触发并行 checker**：按 `.review-scope.json.checker_route` 运行对应 checker（不是固定 8 个；`decision=all` 才是 8 全集）
 
