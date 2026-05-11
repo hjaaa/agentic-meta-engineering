@@ -110,6 +110,7 @@ class RunState:
     - pending_approval：当前 approval_pending 节点 id（state == approval_pending 时设置）
     - last_event_ts：最后一条合法事件的 ts
     - warnings：反扫期间收集的 warn（损坏行 / 残缺对）
+    - loop_counters：{node_id: 当前迭代次数}（由 loop_iteration_started/completed 维护）
     """
 
     run_id: str | None = None
@@ -121,6 +122,8 @@ class RunState:
     pending_approval: str | None = None
     last_event_ts: str | None = None
     warnings: list[str] = field(default_factory=list)
+    # F-005：循环节点迭代计数器；key = node_id，value = 最近一次 iteration 编号
+    loop_counters: dict[str, int] = field(default_factory=dict)
 
     @classmethod
     def rebuild(
@@ -199,6 +202,12 @@ class RunState:
                     state.pending_approval = None
                 if state.state == "approval_pending":
                     state.state = "running"
+            elif ev_type in ("loop_iteration_started", "loop_iteration_completed") and node_id:
+                # 更新循环节点的当前迭代编号（F-005：loop_counters 字段）
+                # data["iteration"] 由 _dispatch_loop_node 在写事件时设置
+                iteration = data.get("iteration")
+                if iteration is not None:
+                    state.loop_counters[node_id] = int(iteration)
 
         # 残缺对处理（spec §13）：node_started 无对应 node_completed → 标 warn
         for node_id, started_ts in node_started_at.items():
