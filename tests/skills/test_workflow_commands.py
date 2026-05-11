@@ -215,21 +215,41 @@ class TestHappyPath:
         reject_events = [e for e in events if e["type"] == "approval_rejected"]
         assert reject_events[0]["data"]["reason"] == "设计方案不合格，需重审"
 
-    @pytest.mark.skip(
-        reason="F-007 已落地 workflow_rollback.py，本占位测试的 ImportError 假设失效。"
-        "等 F-010 把 workflow_rollback_cmd.py 完整对接 F-007 API（替换 from workflow_rollback import"
-        " rollback_run 占位调用为真实签名 + try/except RollbackError）后重写本测试。"
-    )
-    def test_rollback_passes_state_check_but_exits_1_without_f010(self, tmp_repo: Path):
-        """given_running_state_when_rollback_then_state_check_passes_but_f010_not_landed。"""
-        run_id = "RUN-20260509-006"
-        _make_run_dir(tmp_repo, run_id, "running")
+    def test_rollback_passes_repo_root_into_rollback_run_e2e(self, tmp_repo: Path):
+        """given_running_state_when_rollback_then_cmd_layer_drives_rollback_run_with_repo_root。
+
+        回归 Hotfix：早期 workflow_rollback_cmd.py:73 把 run_dir(Path) 当 target_id(str) 传，
+        进 workflow_rollback.py:419 re.fullmatch 会 TypeError。本用例验证命令层真调用走到
+        rollback_run 内部并成功返回（产物被归档 + jsonl tail 写出），不再是 ImportError 占位。
+        """
+        import shutil
+
+        run_id = "TEST-CMD-RB-001"
+        run_dir = tmp_repo / "runs" / run_id
+        run_dir.mkdir(parents=True)
+
+        # 复用 F-007 fixture：4 节点单链 + 完整 node_completed 链路，state ≈ running
+        fixture_dir = _REPO_ROOT / "tests" / "lib" / "fixtures" / "rollback" / "R1-single-layer"
+        shutil.copy(fixture_dir / "workflow.yaml", run_dir / "workflow.yaml")
+        shutil.copy(fixture_dir / "initial-jsonl.txt", run_dir / "run-state.jsonl")
+        # 节点产物目录（rollback_run 会按拓扑 mv 到 .archived/）
+        for nid in ["node-a", "node-b", "node-c", "node-d"]:
+            artifact_dir = run_dir / nid
+            artifact_dir.mkdir()
+            (artifact_dir / "output.json").write_text('{"ok": true}', encoding="utf-8")
 
         with _patch_git_branch(run_id):
-            rc = workflow_rollback_cmd.main(["node-a"], repo_root=tmp_repo)
+            rc = workflow_rollback_cmd.main(["node-c"], repo_root=tmp_repo)
 
-        # F-010 未落地 → exit 1（ImportError 兜底），但状态校验通过了
-        assert rc == 1, f"rollback 在 F-010 未落地时应返回 1（占位），实际 rc={rc}"
+        # rc=0 == 命令层真把 repo_root=tmp_repo 透传到 rollback_run，且未触发 TypeError
+        assert rc == 0, f"rollback 命令层应返回 0，实际 rc={rc}"
+        # node-d 应已被归档（落入 .archived/<ts>/）
+        assert not (run_dir / "node-d").exists(), "node-d 产物应已被 rollback 归档"
+        archived_root = run_dir / ".archived"
+        assert archived_root.is_dir(), "应生成 .archived/ 目录"
+        ts_dirs = list(archived_root.iterdir())
+        assert ts_dirs and (ts_dirs[0] / "node-d").is_dir(), \
+            "node-d 应归档到 .archived/<ts>/node-d/"
 
     def test_cancel_in_running_state_writes_cancel_requested(self, tmp_repo: Path):
         """given_running_state_when_cancel_then_cancel_requested_event_written。"""

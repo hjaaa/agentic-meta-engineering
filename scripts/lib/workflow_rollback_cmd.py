@@ -23,6 +23,12 @@ from common import REPO_ROOT, WorkflowError, infer_run_id_from_branch  # noqa: E
 from run_state import RunState, _resolve_run_dir, read_events  # noqa: E402
 from workflow_state_validator import validate_state_for_cmd  # noqa: E402
 
+# rollback_run 公开 API 签名（workflow_rollback.py:402）：
+#   rollback_run(run_id, to_node, target_id=None, repo_root=None)
+# 历史 bug：早期版本把 run_dir 当 target_id 传，进入正则校验时 TypeError。
+# 这里命令层只需 (run_id, to_node, repo_root=root)；target_id 缺省由
+# rollback_run 内部按规则自动级联子 run。
+
 
 def main(args: list[str], repo_root: Path | None = None) -> int:
     """rollback 命令主入口。
@@ -67,10 +73,10 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
         print(str(exc), file=sys.stderr)
         return 1
 
-    # 调 rollback_run（F-010 落地前为占位）
+    # 调 rollback_run（公开 API 签名：run_id, to_node, target_id=None, repo_root=None）
     try:
         from workflow_rollback import rollback_run  # type: ignore
-        rc = rollback_run(run_id, to_node, run_dir)
+        rc = rollback_run(run_id, to_node, repo_root=root)
         return rc if isinstance(rc, int) else 0
     except ImportError:
         # 功能未实现（F-010 待落地）：exit 1 与状态拒绝同档，
