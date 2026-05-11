@@ -36,7 +36,6 @@ if str(_LIB_DIR) not in sys.path:
 
 from run_state import RunState, read_events  # noqa: E402
 from workflow_dispatcher import (  # noqa: E402
-    DispatchResult,
     _dispatch_bash_node,
     _dispatch_skill_node,
     _dispatch_prompt_node,
@@ -129,6 +128,7 @@ def test_bash_node_nonzero_returncode_via_dispatch_node(
     types = [e.get("type") for e in events]
     assert types.count("node_failed") == 1  # 不重复写
     assert "node_started" in types
+    assert result.error and ("exit code" in result.error or result.error.strip())
 
 
 # ============================================================================
