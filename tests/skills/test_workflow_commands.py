@@ -54,10 +54,12 @@ def tmp_repo(tmp_path: Path) -> Path:
 
 @pytest.fixture()
 def sample_template(tmp_repo: Path) -> str:
-    """在临时仓库中创建 minimal workflow yaml 模板。"""
+    """在临时仓库中创建 minimal workflow yaml 模板（F-003 后含 schema 必填字段）。"""
     template_name = "test-template"
     template_content = """\
 name: test-template
+version: 1
+category: assist
 description: 测试模板（F-005 单测用）
 nodes:
   - id: node-a
@@ -899,5 +901,110 @@ class TestGenerateReqIdMaxPlusOne:
         )
         assert (req_dir / req_id).is_dir(), (
             f"{req_id} 对应顶层目录未创建"
+        )
+
+
+# ============================================================
+# F-003：load_workflow schema 校验门禁单测
+# ============================================================
+
+class TestLoadWorkflowSchemaGate:
+    """F-003 acceptance：main() schema 校验门禁的两条验收路径。
+
+    AC-1：非法 yaml（缺必填字段）→ exit 1 + stderr 含校验报告
+    AC-2：合法模板通过校验 → 不被误判，进入正常分支（monkeypatch 截断）
+    """
+
+    # ------------------------------------------------------------------
+    # 辅助：在 tmp_repo 写入一个 workflow yaml，返回 template_id
+    # ------------------------------------------------------------------
+
+    def _write_template(self, tmp_repo: Path, template_id: str, content: str) -> str:
+        """将 yaml 内容写入 tmp_repo/.claude/workflows/<template_id>.yaml。"""
+        template_dir = tmp_repo / ".claude" / "workflows" / "test-gate"
+        template_dir.mkdir(parents=True, exist_ok=True)
+        (template_dir / f"{template_id}.yaml").write_text(content, encoding="utf-8")
+        return template_id
+
+    # ------------------------------------------------------------------
+    # AC-1：非法 yaml（缺 name / category / nodes）→ exit 1 + stderr 报告
+    # ------------------------------------------------------------------
+
+    def test_main_exits_1_on_invalid_schema(self, tmp_repo: Path, capsys):
+        """given_invalid_yaml_missing_required_fields_when_run_then_exit_1_with_schema_report ✗。
+
+        构造一个缺少 `category` 和 `nodes` 的最小 yaml，
+        验证 main() 返回 1，且 stderr 中包含校验报告（W1xx 错误码或 render 关键字）。
+        """
+        # 故意缺 category / nodes / version
+        bad_content = "name: bad-template\n"
+        template_id = self._write_template(tmp_repo, "bad-template", bad_content)
+
+        rc = workflow_run.main([template_id], repo_root=tmp_repo)
+
+        assert rc == 1, f"非法 yaml 应返回 1，实际 rc={rc}"
+        captured = capsys.readouterr()
+        # render() 至少含 "ERROR" 或 "W1" 字样（load_workflow 报告内容）
+        assert captured.err.strip(), (
+            f"非法 yaml 时 stderr 应含校验报告，实际 stderr 为空"
+        )
+        # 检查报告中包含错误信息（W 开头错误码 或 "error" / "ERROR" 字样）
+        stderr_lower = captured.err.lower()
+        assert any(kw in stderr_lower for kw in ("error", "w1", "w0", "缺少")), (
+            f"stderr 应含 W1xx 错误码或错误关键字，实际：{captured.err!r}"
+        )
+
+    # ------------------------------------------------------------------
+    # AC-2：合法最小 yaml 通过门禁 → 进入 _run_requirement / _run_generic
+    # ------------------------------------------------------------------
+
+    def test_main_passes_through_valid_template(self, tmp_repo: Path, monkeypatch):
+        """given_valid_schema_yaml_when_run_then_not_blocked_by_schema_gate ✓。
+
+        构造最小合法 yaml（category=assist），monkeypatch _run_generic 立即 return 0，
+        验证 schema 门禁不误判合法模板（即 main() 能穿透到 _run_generic 而非在校验处 return 1）。
+        """
+        valid_content = """\
+name: valid-minimal
+version: 1
+category: assist
+nodes:
+  - id: step-1
+    prompt: "do something"
+"""
+        template_id = self._write_template(tmp_repo, "valid-minimal", valid_content)
+
+        # monkeypatch 截断 _run_generic，避免触发完整 run 流程
+        monkeypatch.setattr(workflow_run, "_run_generic", lambda *a, **kw: 0)
+
+        rc = workflow_run.main([template_id], repo_root=tmp_repo)
+
+        assert rc == 0, (
+            f"合法 yaml 不应被 schema 门禁拦截，期望 rc=0，实际 rc={rc}"
+        )
+
+    def test_main_passes_through_valid_requirement_template(self, tmp_repo: Path, monkeypatch):
+        """given_valid_requirement_yaml_when_run_then_routes_to_run_requirement ✓。
+
+        构造最小合法 category=requirement yaml，monkeypatch _run_requirement 立即 return 0，
+        验证 schema 通过后走 requirement 分支（workflow.get("category") == "requirement"）。
+        """
+        req_content = """\
+name: req-minimal
+version: 1
+category: requirement
+nodes:
+  - id: step-1
+    prompt: "bootstrap requirement"
+"""
+        template_id = self._write_template(tmp_repo, "req-minimal", req_content)
+
+        # monkeypatch 截断 _run_requirement，避免触发 bootstrap 副作用
+        monkeypatch.setattr(workflow_run, "_run_requirement", lambda *a, **kw: 0)
+
+        rc = workflow_run.main([template_id], repo_root=tmp_repo)
+
+        assert rc == 0, (
+            f"合法 requirement yaml 应通过门禁并路由到 _run_requirement，期望 rc=0，实际 rc={rc}"
         )
 

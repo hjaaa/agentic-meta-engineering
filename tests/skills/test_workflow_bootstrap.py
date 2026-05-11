@@ -435,32 +435,8 @@ class TestParseArgs:
 
 
 # ============================================================================
-# _is_requirement_template：category 字段优先，路径兜底
+# _is_requirement_template 相关测试（F-003 已删除此函数）
 # ============================================================================
-
-class TestIsRequirementTemplate:
-    """_is_requirement_template：category 字段优先，路径兜底。"""
-
-    def test_yaml_when_category_is_requirement_returns_true(self, tmp_path: Path):
-        """given_yaml_with_category_requirement_when_check_then_returns_true."""
-        yaml_path = tmp_path / "x.yaml"
-        yaml_path.write_text("name: t\ncategory: requirement\n", encoding="utf-8")
-        assert wr._is_requirement_template(yaml_path) is True
-
-    def test_yaml_when_category_is_not_requirement_returns_false(self, tmp_path: Path):
-        """given_yaml_with_category_review_when_check_then_returns_false."""
-        yaml_path = tmp_path / "x.yaml"
-        yaml_path.write_text("name: t\ncategory: review\n", encoding="utf-8")
-        assert wr._is_requirement_template(yaml_path) is False
-
-    def test_yaml_without_category_falls_back_to_path_match(self, tmp_path: Path):
-        """given_yaml_without_category_when_check_then_falls_back_to_path_segment."""
-        req_dir = tmp_path / "requirement"
-        req_dir.mkdir()
-        yaml_path = req_dir / "x.yaml"
-        yaml_path.write_text("name: t\n", encoding="utf-8")
-        assert wr._is_requirement_template(yaml_path) is True
-
-        other_yaml = tmp_path / "review.yaml"
-        other_yaml.write_text("name: t\n", encoding="utf-8")
-        assert wr._is_requirement_template(other_yaml) is False
+# F-003 删除了 _is_requirement_template 过渡 helper，改由 load_workflow().workflow.get("category")
+# 直接判定。对应的等价测试已迁移到 tests/skills/test_workflow_commands.py
+# 的 TestLoadWorkflowSchemaGate 类中（test_main_passes_through_valid_requirement_template）。

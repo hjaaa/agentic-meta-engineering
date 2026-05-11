@@ -36,6 +36,7 @@ if str(_LIB_DIR) not in sys.path:
 
 from common import REPO_ROOT, WorkflowError  # noqa: E402
 from run_state import append_event  # noqa: E402
+from workflow_loader import load_workflow  # noqa: E402  # F-003: schema 校验
 
 # F-002 bootstrap 链路：异常 + 6 helper + 主入口（拆分到 workflow_bootstrap.py 后导入）
 # 保持公开符号兼容：原 workflow_run.BootstrapError / _bootstrap_requirement 等
@@ -154,29 +155,8 @@ def _generate_req_id(repo_root: Path) -> str:
 # ============================================================================
 # F-002 helpers：模板分类 / 参数解析（其余 bootstrap helper 已迁至 workflow_bootstrap.py）
 # ============================================================================
-
-def _is_requirement_template(template_path: Path) -> bool:
-    """读 yaml 顶部 category 字段判定是否走 requirement bootstrap 路径。
-
-    优先解析 yaml；解析失败 / 无 yaml 依赖时降级用路径片段 `/requirement/`
-    判定（与现有 `.claude/workflows/requirement/*.yaml` 目录约定一致）。
-    F-003 落地 schema 校验后此函数会被 load_workflow().workflow.category 取代，
-    本 feature 用最小依赖实现，不引入 schema。
-    """
-    try:
-        import yaml  # type: ignore
-        with template_path.open("r", encoding="utf-8") as fh:
-            data = yaml.safe_load(fh) or {}
-        if isinstance(data, dict) and data.get("category") == "requirement":
-            return True
-        # category 显式非 requirement 时也走显式判定，不再退回路径推断
-        if isinstance(data, dict) and "category" in data:
-            return False
-    except (ImportError, OSError) as exc:
-        # yaml 缺失或读文件失败 → 用路径片段兜底
-        logging.debug("_is_requirement_template yaml 解析失败：%s", exc)
-    # 路径兜底：.claude/workflows/requirement/*.yaml
-    return "/requirement/" in str(template_path).replace("\\", "/")
+# 注：F-002 的过渡 helper _is_requirement_template 已在 F-003 删除，
+# 改由 load_workflow().workflow.get("category") 直接获取，无路径兜底降级。
 
 
 def _parse_args(args: list[str]) -> tuple[str, str, str]:
@@ -239,9 +219,18 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
 
     template_path = candidates[0]
 
-    # F-002 分支判定：requirement 类走 _bootstrap_requirement 重路径；
-    # 其他类（code-review-embedded 等）保留原 run_id 轻路径，向后兼容 F-005。
-    if _is_requirement_template(template_path):
+    # F-003：schema 校验门禁——load_workflow 自身不抛异常，
+    # 失败信息通过 report.errors 报告，调用方无需 try/except。
+    load_result = load_workflow(template_path)
+    if load_result.report.errors:
+        print(load_result.report.render(), file=sys.stderr)
+        return 1
+    # schema 通过后，直接从已解析产物取 category，不再重复读 yaml
+    workflow = load_result.workflow  # dict，由 load_workflow 保证非 None
+
+    # F-003 替换 _is_requirement_template：用 workflow.get("category") 直接判定，
+    # 无路径兜底降级——schema 已保证 category 在 ALLOWED_CATEGORIES 内。
+    if workflow.get("category") == "requirement":
         return _run_requirement(template_id, template_args, title, template_path, root)
     return _run_generic(template_id, template_args, template_path, root)
 
