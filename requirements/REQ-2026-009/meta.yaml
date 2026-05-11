@@ -1,7 +1,7 @@
 # ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-009
 title: 自定义工作流改造
-phase: development
+phase: testing
 created_at: '2026-05-08 11:38:56'
 branch: feat/req-2026-009
 base_branch: develop
@@ -35,8 +35,14 @@ gates_passed:
   - phase: development
     at: '2026-05-08 20:32:51'
     via: phase-transition
-    notes: 11 项 error gate 全过；features.json 13 features + tasks/F-001~F-013 落盘 
+    notes: 11 项 error gate 全过；features.json 13 features + tasks/F-001~F-013 落盘
       schema pass；PLAN-FRESHNESS 无 warning
+  - phase: testing
+    at: '2026-05-11 09:15:50'
+    via: phase-transition
+    notes: 9 项 error gate 全过 + 2 项自然 skip（GATE-FEATURES-SCHEMA / GATE-TASK-FRONTMATTER 因 changed_files 不含 features.json/tasks 自然过滤）；
+      解锁路径——detail-design rev3 88→92 looks_clean approved（解锁 R005 stale 阻塞）+ 12 receipt schema 1.0 字段补齐 +
+      D-013 清零 17 条 historical touches_violations（流程性副作用，统一引用 D-013 不重复 ADR）
 pr_url: ""
 pr_number: 0
 log_layout: split
