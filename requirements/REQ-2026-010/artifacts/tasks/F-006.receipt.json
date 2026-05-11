@@ -2,17 +2,17 @@
   "schema_version": "1.0",
   "feature_id": "F-006",
   "status": "DONE",
-  "commit_sha": "659137c",
+  "commit_sha": "5e80d8b5436bfd6d467ff881ad9488ef14ee7c4b",
   "files_changed": [
     "scripts/lib/workflow_dispatcher.py",
-    "tests/skills/test_workflow_dispatcher_dispatch.py",
     "tests/skills/test_workflow_dispatcher_bash_skill_prompt.py",
+    "requirements/REQ-2026-010/artifacts/detailed-design.md",
     "requirements/REQ-2026-010/artifacts/tasks/F-006.md"
   ],
-  "test_summary": "36 passed in 0.10s（pytest tests/skills/test_workflow_dispatcher_dispatch.py tests/skills/test_workflow_dispatcher_bash_skill_prompt.py）",
+  "test_summary": "36 passed in 0.11s（pytest tests/skills/test_workflow_dispatcher_*.py）",
   "touches_violations": [],
   "concerns": [],
   "missing_context": "",
   "block_reason": "",
-  "timestamp": "2026-05-11T21:45:00Z"
+  "timestamp": "2026-05-11T22:10:00Z"
 }
