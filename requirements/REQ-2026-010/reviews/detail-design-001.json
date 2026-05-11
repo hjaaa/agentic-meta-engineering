@@ -1,0 +1,113 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-010-detail-design-001",
+  "requirement_id": "REQ-2026-010",
+  "phase": "detail-design",
+  "reviewer": "detail-design-quality-reviewer",
+  "reviewed_at": "2026-05-11 12:48:31",
+  "reviewed_commit": "dc23db2",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/detailed-design.md",
+      "sha256": "41f3fa9730849a67020c45c0f3f9ca0e7fbde7a2d690e92cd2b59fcc545d6a19"
+    },
+    {
+      "path": "artifacts/features.json",
+      "sha256": "55dce39a6470931b0e777d3a83453f90c273f67b7c91f9144536524b6cb71563"
+    },
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "99da579f50722ec9f646f01f085159b2563134edc6027877af1a5402ed532933"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 82,
+  "dimensions": {
+    "consistency_with_outline": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "detailed-design.md 第 411-536 行内嵌 features.json 用 F-A1~F-A4 / F-B1~F-B7 编号，但正式 features.json 用 F-001~F-011；两套 id 体系不一致，阶段 6 任务规划读 detailed-design §8 与读 features.json 会得到不同 feature id，需要统一其一（建议保留 features.json 的 F-001~F-011）"
+        }
+      ]
+    },
+    "interface_completeness": {
+      "score": 78,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "detailed-design.md 第 287-297 行（§3 AC-03 改造表）只列出 7 处节点，但实际 grep .claude/workflows/requirement/standard-8phase.yaml 命中 10 处 `runs/$RUN_ID/` 字面量，分布在 8 个节点：phase-to-tech-research / phase-to-outline-design / phase-to-detail-design / phase-to-task-planning / phase-to-development / phase-to-testing / pr-submit（行 678）/ archive-finalize（行 703）；遗漏的 pr-submit 节点会导致 F-004 acceptance 第 1 条 `grep 返回 0 个匹配` 在只改 7 节点时无法通过；需在 §3 表新增 pr-submit 行"
+        },
+        {
+          "severity": "major",
+          "description": "detailed-design.md 第 287-297 行（§3）针对 archive-finalize 提到 `feat/req-${RUN_ID,,}` 小写化，但 pr-submit 节点行 669/670 的 `git push origin feat/req-$RUN_ID` 与 `gh pr list --head feat/req-$RUN_ID` 也使用大写 RUN_ID 字面量；若 REQ-ID 是大写 `REQ-2026-NNN`，与 _bootstrap_requirement 切的 `feat/req-<lower(req_id)>` 分支名不匹配，pr-submit 节点会失败；§3 改造表需要把这两行也纳入"
+        },
+        {
+          "severity": "minor",
+          "description": "detailed-design.md 第 339-355 行（§5.1）mock_agent_dispatch fixture 使用 `monkeypatch.setattr(\"workflow_dispatcher._dispatch_agent_node\", ...)` 字符串路径形式，实际项目模块路径是 scripts.lib.workflow_dispatcher，运行时会因模块未注入 sys.modules 失败；建议改用对象引用 `monkeypatch.setattr(workflow_dispatcher, \"_dispatch_agent_node\", _fake_dispatch)`"
+        },
+        {
+          "severity": "minor",
+          "description": "detailed-design.md 第 383-390 行（§6 失败处理矩阵）覆盖 bash/agent/approval/sub_workflow/loop 失败，但缺少 R-05 风险（bootstrap 回滚自身 IOError）对应的二级失败链路；§5.2.1 已声明`rollback IOError 不抛出，打 ERROR`，矩阵应补一行 `bootstrap rollback 内部 IOError` 与之呼应"
+        },
+        {
+          "severity": "minor",
+          "description": "detailed-design.md 第 224-228 行 main loop 伪代码引用 `_handle_failure(run_state, node, on_failure, jsonl_path)`，但 §1 接口签名段没有给出该函数的显式签名（仅 §5.2.2 outline 有语义描述），建议在 §1 新增 _handle_failure 签名段，含 retry/skip/abort 三分支返回值与 jsonl 事件契约"
+        }
+      ]
+    },
+    "data_model_soundness": {
+      "score": 82,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "detailed-design.md 第 246-257 行 RunState 字段扩展只新增 `loop_counters: dict[str, int]`，但 §7 模块文件清单第 401 行 run_state.py 备注 `+arguments 字段` 暗示也要新增 arguments；前后不一致，需在 §2.2 RunState dataclass 中显式声明 `arguments: str` 字段或删去 §7 该备注"
+        }
+      ]
+    },
+    "sequence_correctness": {
+      "score": 86,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "detailed-design.md 第 259-264 行 RunState.rebuild 算法只覆盖 loop_iteration_completed / node_completed / approval_pending / approval_approved，未提及 sub_workflow_pending / sub_workflow_done / loop_iteration_started / node_skipped / node_failed 事件如何更新 RunState；建议补全或显式说明哪些是只观测不改 state"
+        }
+      ]
+    },
+    "feature_granularity": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "features.json F-011 acceptance 第 3 条 `loop_counters 字段在 RunState.rebuild 时正确累计` 依赖 main loop 逻辑，但 depends_on_features 只写了 F-005，未显式依赖 F-008；如果 F-011 单独并行实施会与 main loop 逻辑撞车，建议补 depends_on_features"
+        }
+      ]
+    }
+  },
+  "required_fixes": [
+    "detailed-design.md §3 表新增 pr-submit 节点行（含 `runs/$RUN_ID/meta.yaml` → `$META_PATH` 改造以及 `feat/req-$RUN_ID` → `feat/req-${RUN_ID,,}` 小写化）",
+    "detailed-design.md §3 archive-finalize 行说明的小写分支名约定同步到 pr-submit（push / gh pr list / branch -d 三条命令统一）",
+    "detailed-design.md §1 新增 _handle_failure 函数签名段（retry/skip/abort 三分支契约 + jsonl 事件）",
+    "detailed-design.md §8 内嵌 features.json 的 F-A* / F-B* 编号统一为 F-001~F-011（与正式 features.json 文件对齐）"
+  ],
+  "suggestions": [
+    "detailed-design.md §2.2 显式声明 RunState.arguments 字段或删去 §7 中该备注以保持一致",
+    "detailed-design.md §2.2 RunState.rebuild 补全 sub_workflow_pending / sub_workflow_done / loop_iteration_started / node_skipped / node_failed 等事件的状态过渡逻辑",
+    "detailed-design.md §5.1 mock fixture monkeypatch 改为对象引用形式（避免字符串路径在测试环境下失败）",
+    "detailed-design.md §6 失败处理矩阵补一行 bootstrap rollback 内部 IOError 的处理路径",
+    "features.json F-011 depends_on_features 补 F-008（main loop）以确保 loop_counters 重建逻辑落地后再实施",
+    "PR-A / PR-B 拆分与 outline §2.1 一致，无需调整；F-004 acceptance 第 1 条的 grep 0 匹配在 §3 修订补 pr-submit 后即可通过"
+  ],
+  "scope": null,
+  "supersedes": null,
+  "features_json_validation": {
+    "valid": true,
+    "issues": [],
+    "enhancement_suggestions": [
+      "features.json 11 个 feature 与详细设计 §8 内嵌 F-A*/F-B* 两套编号体系并存，建议统一为 F-001~F-011",
+      "features.json F-005 / F-007 / F-011 已含 complexity 字段，阶段 7 派发可识别；F-003 complexity=trivial 与 F-001 complexity=light 区分粒度合适",
+      "features.json F-005 acceptance 已隐含 _build_env 契约，建议补一条 `interfaces_frozen: true` 标记便于阶段 7 派发器识别签名已冻结"
+    ]
+  }
+}

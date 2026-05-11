@@ -14,12 +14,13 @@ gates_passed:
   - phase: outline-design
     at: "2026-05-11 11:49:07"
     via: managing-requirement-lifecycle
-    notes: tech-research.md 完成，4 条待澄清 user 已确认；feasibility=high；工作量 9.8 天，PR 拆分
+    notes: tech-research.md 完成，4 条待澄清 user 已确认；feasibility=high；工作量 9.8 天，PR 拆分 
       PR-A/PR-B 锁定
   - phase: detail-design
     at: "2026-05-11 12:26:40"
     via: managing-requirement-lifecycle
-    notes: outline-design-002 looks_clean（首轮 2 required_fix 已闭环：DispatchResult 7 outcome 枚举 + §5.2 三小节）
+    notes: outline-design-002 looks_clean（首轮 2 required_fix 已闭环：DispatchResult 7
+      outcome 枚举 + §5.2 三小节）
 created_at: "2026-05-11 11:25:44"
 branch: feat/req-2026-010
 base_branch: develop
@@ -70,4 +71,18 @@ reviews:
     history:
       - REV-REQ-2026-010-outline-design-001
       - REV-REQ-2026-010-outline-design-002
+    stale: false
+  detail-design:
+    latest: REV-REQ-2026-010-detail-design-001
+    conclusion: needs_attention
+    reviewed_commit: dc23db2
+    artifact_hashes:
+      artifacts/detailed-design.md: 
+        41f3fa9730849a67020c45c0f3f9ca0e7fbde7a2d690e92cd2b59fcc545d6a19
+      artifacts/features.json: 
+        55dce39a6470931b0e777d3a83453f90c273f67b7c91f9144536524b6cb71563
+      artifacts/outline-design.md: 
+        99da579f50722ec9f646f01f085159b2563134edc6027877af1a5402ed532933
+    history:
+      - REV-REQ-2026-010-detail-design-001
     stale: false
