@@ -17,10 +17,8 @@ import json
 import logging
 import os
 import re
-import shutil
-import subprocess
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 # _generate_run_id 最大 EEXIST 重试次数（并发冲突时递增编号）
@@ -32,18 +30,6 @@ _REQ_ID_MAX_RETRIES = 3
 # REQ-YYYY-NNN 格式正则
 _REQ_ID_PATTERN = re.compile(r"^REQ-(\d{4})-(\d{3})$")
 
-# requirement 类 base_branch 选择优先级（develop 优先，兜底 main/master）
-_BASE_BRANCH_PRIORITY: tuple[str, ...] = ("develop", "main", "master")
-
-# Asia/Shanghai 固定偏移（CST = UTC+8，无 DST 困扰）
-_CST_TZ = timezone(timedelta(hours=8))
-
-# git 子进程默认超时（秒）；分支操作通常 < 1s，5s 足够
-_GIT_TIMEOUT_SECONDS = 5
-
-# 模板源目录（managing-requirement-lifecycle Skill 持有真实模板，本模块只读）
-_TEMPLATE_DIR_RELATIVE = Path(".claude/skills/managing-requirement-lifecycle/templates")
-
 _LIB_DIR = Path(__file__).resolve().parent
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
@@ -51,29 +37,22 @@ if str(_LIB_DIR) not in sys.path:
 from common import REPO_ROOT, WorkflowError  # noqa: E402
 from run_state import append_event  # noqa: E402
 
-
-# ============================================================================
-# F-002 异常体系
-# ============================================================================
-
-class BootstrapError(WorkflowError):
-    """bootstrap 过程任一步失败时抛出。
-
-    携带已完成步骤标志（artifacts_created / branch_created），供 main 调用
-    _bootstrap_rollback 精确反向撤销——避免"什么都没建却试图删"或"建了一半
-    没清理"的两种边界。继承 WorkflowError 以便上层 except 链复用既有兜底。
-    """
-
-    def __init__(
-        self,
-        message: str,
-        *,
-        artifacts_created: bool = False,
-        branch_created: bool = False,
-    ) -> None:
-        super().__init__(message)
-        self.artifacts_created = artifacts_created
-        self.branch_created = branch_created
+# F-002 bootstrap 链路：异常 + 6 helper + 主入口（拆分到 workflow_bootstrap.py 后导入）
+# 保持公开符号兼容：原 workflow_run.BootstrapError / _bootstrap_requirement 等
+# 用例仍可通过 `from workflow_run import ...` 访问，避免下游测试 / dispatcher 改动。
+from workflow_bootstrap import (  # noqa: E402,F401
+    BootstrapError,
+    _bootstrap_requirement,
+    _bootstrap_rollback,
+    _checkout_feature_branch,
+    _current_branch,
+    _now_shanghai_str,
+    _render_meta_yaml,
+    _render_plan_md,
+    _resolve_base_branch,
+    _strip_req_prefix,
+    _write_artifact_file,
+)
 
 
 def _generate_run_id(repo_root: Path) -> str:
@@ -173,39 +152,8 @@ def _generate_req_id(repo_root: Path) -> str:
 
 
 # ============================================================================
-# F-002 helpers：分支推断 / 模板分类 / 参数解析 / 模板渲染
+# F-002 helpers：模板分类 / 参数解析（其余 bootstrap helper 已迁至 workflow_bootstrap.py）
 # ============================================================================
-
-def _strip_req_prefix(req_id: str) -> str:
-    """REQ-2026-010 → 2026-010（小写），feat/req-<这部分> 用。"""
-    if req_id.startswith("REQ-"):
-        return req_id[len("REQ-"):].lower()
-    return req_id.lower()
-
-
-def _current_branch(repo_root: Path) -> str:
-    """git rev-parse --abbrev-ref HEAD；失败返回空串。
-
-    bootstrap 失败回滚时需要"切回去"的目标分支；获取不到（detached HEAD /
-    非 git repo）时返回空串，调用方据此选择跳过 checkout。
-    """
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True,
-            text=True,
-            cwd=str(repo_root),
-            timeout=_GIT_TIMEOUT_SECONDS,
-        )
-        if result.returncode != 0:
-            logging.debug("git rev-parse HEAD 失败 rc=%d stderr=%s", result.returncode, result.stderr)
-            return ""
-        return result.stdout.strip()
-    except (subprocess.SubprocessError, OSError) as exc:
-        # best-effort：非 git repo / git 未安装时返回空串，不阻断 bootstrap
-        logging.debug("_current_branch 失败：%s", exc)
-        return ""
-
 
 def _is_requirement_template(template_path: Path) -> bool:
     """读 yaml 顶部 category 字段判定是否走 requirement bootstrap 路径。
@@ -249,280 +197,6 @@ def _parse_args(args: list[str]) -> tuple[str, str, str]:
     # title 取第一个位置参数；为空时降级用 template_id（避免 plan.md __TITLE__ 留占位）
     title = args[1] if len(args) > 1 and args[1].strip() else template_id
     return template_id, template_args, title
-
-
-def _resolve_base_branch(repo_root: Path) -> str:
-    """按 develop > main > master 优先级返回第一个可用的本地分支名。
-
-    仅检查本地存在性（git rev-parse --verify）；远程同步 / pull --ff-only 不在
-    本函数职责内——bootstrap 阶段尽量减少网络依赖，避免离线开发被卡。
-    全部不可用时返回空串（极端场景，调用方应当容错）。
-    """
-    for branch in _BASE_BRANCH_PRIORITY:
-        try:
-            result = subprocess.run(
-                ["git", "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}"],
-                capture_output=True,
-                text=True,
-                cwd=str(repo_root),
-                timeout=_GIT_TIMEOUT_SECONDS,
-            )
-            if result.returncode == 0:
-                return branch
-        except (subprocess.SubprocessError, OSError) as exc:
-            logging.debug("_resolve_base_branch %s 校验失败：%s", branch, exc)
-    return ""
-
-
-def _now_shanghai_str() -> str:
-    """返回当前 Asia/Shanghai 时间，格式 YYYY-MM-DD HH:MM:SS（time-format.md 约定）。"""
-    return datetime.now(_CST_TZ).strftime("%Y-%m-%d %H:%M:%S")
-
-
-def _render_meta_yaml(
-    req_id: str,
-    title: str,
-    branch: str,
-    base_branch: str,
-) -> str:
-    """基于 meta.yaml.tmpl 渲染流程组字段（语义组/结果组保持模板默认空值）。
-
-    模板源 `.claude/skills/managing-requirement-lifecycle/templates/meta.yaml.tmpl`
-    用 `__PLACEHOLDER__` 风格占位符；本函数做最小字符串替换，不引入 jinja。
-    PROJECT 留空（"" 字面量），与 requirement-bootstrapper.md 约定一致——bootstrap
-    阶段不强制 project 归类，由后续 definition 阶段补齐。
-    """
-    template_path = REPO_ROOT / _TEMPLATE_DIR_RELATIVE / "meta.yaml.tmpl"
-    raw = template_path.read_text(encoding="utf-8")
-    replacements = {
-        "__REQ_ID__": req_id,
-        "__TITLE__": title,
-        "__CREATED_AT__": _now_shanghai_str(),
-        "__BRANCH__": branch,
-        "__BASE_BRANCH__": base_branch or "main",  # 极端兜底（仓库无任何主干）
-        "__PROJECT__": "",
-    }
-    rendered = raw
-    for key, val in replacements.items():
-        rendered = rendered.replace(key, val)
-    return rendered
-
-
-def _render_plan_md(req_id: str, title: str) -> str:
-    """基于 plan.md.tmpl 渲染——只替换 __REQ_ID__ / __TITLE__ 两个占位符。"""
-    template_path = REPO_ROOT / _TEMPLATE_DIR_RELATIVE / "plan.md.tmpl"
-    raw = template_path.read_text(encoding="utf-8")
-    return raw.replace("__REQ_ID__", req_id).replace("__TITLE__", title)
-
-
-def _checkout_feature_branch(req_id: str, repo_root: Path) -> str:
-    """git checkout -b feat/req-<id>（id 已去前缀小写）。
-
-    返回新分支名；失败抛 BootstrapError(branch_created=False)，由调用方决定是否
-    回滚。本函数不负责 fetch / pull——base_branch 选择已发生在调用前。
-    """
-    branch = f"feat/req-{_strip_req_prefix(req_id)}"
-    try:
-        result = subprocess.run(
-            ["git", "checkout", "-b", branch],
-            capture_output=True,
-            text=True,
-            cwd=str(repo_root),
-            timeout=_GIT_TIMEOUT_SECONDS,
-        )
-    except (subprocess.SubprocessError, OSError) as exc:
-        raise BootstrapError(
-            f"git checkout -b {branch} 失败（子进程错误）：{exc}",
-            artifacts_created=True,
-            branch_created=False,
-        ) from exc
-    if result.returncode != 0:
-        raise BootstrapError(
-            f"git checkout -b {branch} 失败 rc={result.returncode}: {result.stderr.strip()}",
-            artifacts_created=True,
-            branch_created=False,
-        )
-    return branch
-
-
-# ============================================================================
-# F-002 主入口：_bootstrap_requirement / _bootstrap_rollback
-# ============================================================================
-
-def _bootstrap_requirement(
-    req_id: str,
-    title: str,
-    template_id: str,
-    template_path: Path,
-    arguments: str,
-    repo_root: Path,
-) -> Path:
-    """需求类 bootstrap 副作用三步：建目录文件 + 切分支 + 写 jsonl。
-
-    详细设计 §1.2。任一步失败抛 BootstrapError，由 main 调
-    `_bootstrap_rollback` 反向撤销。本函数自身**不**调用 rollback——分层
-    清晰：bootstrap 负责"建"，rollback 负责"删"，main 负责"编排"。
-
-    返回：requirements/<req_id>/ 路径。
-    """
-    req_dir = repo_root / "requirements" / req_id
-    artifacts_created = False
-    branch_created = False
-    base_branch = _resolve_base_branch(repo_root)
-
-    # 步骤 1：建 artifacts/（req_id 顶层目录已由 _generate_req_id 创建）
-    try:
-        (req_dir / "artifacts").mkdir(parents=False, exist_ok=False)
-    except OSError as exc:
-        # mkdir 失败：顶层目录已存在（_generate_req_id 副作用），rollback 需删它；
-        # 但 artifacts 子目录本身未必建成功——标 artifacts_created=True 让 rollback
-        # rmtree 整个 req_dir，覆盖"建了一半"的边界
-        raise BootstrapError(
-            f"创建 {req_dir}/artifacts/ 失败：{exc}",
-            artifacts_created=True,
-            branch_created=False,
-        ) from exc
-    artifacts_created = True
-    logging.info("bootstrap req_id=%s step=mkdir_artifacts done", req_id)
-
-    # 步骤 2：渲染并写 meta.yaml
-    branch_name = f"feat/req-{_strip_req_prefix(req_id)}"
-    try:
-        meta_content = _render_meta_yaml(req_id, title, branch_name, base_branch)
-        (req_dir / "meta.yaml").write_text(meta_content, encoding="utf-8")
-    except OSError as exc:
-        raise BootstrapError(
-            f"写 meta.yaml 失败：{exc}",
-            artifacts_created=artifacts_created,
-            branch_created=branch_created,
-        ) from exc
-    logging.info("bootstrap req_id=%s step=write_meta done", req_id)
-
-    # 步骤 3：渲染并写 plan.md
-    try:
-        plan_content = _render_plan_md(req_id, title)
-        (req_dir / "plan.md").write_text(plan_content, encoding="utf-8")
-    except OSError as exc:
-        raise BootstrapError(
-            f"写 plan.md 失败：{exc}",
-            artifacts_created=artifacts_created,
-            branch_created=branch_created,
-        ) from exc
-    logging.info("bootstrap req_id=%s step=write_plan done", req_id)
-
-    # 步骤 4：写空 process.txt（process.tool.log 由 Hook 首次触发时生成，不在这里建）
-    try:
-        (req_dir / "process.txt").write_text("", encoding="utf-8")
-    except OSError as exc:
-        raise BootstrapError(
-            f"写 process.txt 失败：{exc}",
-            artifacts_created=artifacts_created,
-            branch_created=branch_created,
-        ) from exc
-    logging.info("bootstrap req_id=%s step=write_process done", req_id)
-
-    # 步骤 5：切 feature 分支（注意：本步骤先于 jsonl，是因为 jsonl 写失败比
-    # 分支切换失败更罕见；分支切失败比写文件更可能（已有同名分支 / detached HEAD），
-    # 让"高风险动作"靠后能减少回滚频度）
-    _checkout_feature_branch(req_id, repo_root)
-    branch_created = True
-    logging.info("bootstrap req_id=%s step=checkout_branch done", req_id)
-
-    # 步骤 6：写 workflow_started jsonl 事件（顶层 run-state.jsonl）
-    jsonl_path = req_dir / "run-state.jsonl"
-    try:
-        append_event(jsonl_path, {
-            "type": "workflow_started",
-            "run_id": req_id,
-            "data": {
-                "workflow_name": template_id,
-                "arguments": arguments,
-                "template_path": str(template_path.relative_to(repo_root)) if template_path else "",
-                "title": title,
-            },
-        })
-    except WorkflowError as exc:
-        raise BootstrapError(
-            f"写 workflow_started 事件失败：{exc}",
-            artifacts_created=artifacts_created,
-            branch_created=branch_created,
-        ) from exc
-    logging.info("bootstrap req_id=%s step=workflow_started done", req_id)
-
-    return req_dir
-
-
-def _bootstrap_rollback(
-    req_id: str,
-    repo_root: Path,
-    previous_branch: str,
-    artifacts_created: bool,
-    branch_created: bool,
-) -> None:
-    """bootstrap 失败反向撤销。
-
-    顺序：先 git 后文件——若先 rmtree 再切分支，HEAD 仍指向已被删的目录里
-    的内容时 git checkout 会失败；而 `git checkout <prev>` 不依赖 req_dir 存在，
-    切回去再删才是安全顺序。
-
-    所有 IOError / 子进程异常被吞并 logging.error——本函数自身在 try/finally
-    /兜底链上调用，再抛会掩盖**原始** BootstrapError（即 bootstrap 失败的根因）。
-    幂等：所有 step 用 best-effort 失败容忍，可重复调用。
-    """
-    branch_name = f"feat/req-{_strip_req_prefix(req_id)}"
-
-    # 步骤 1：先切回旧分支（若 bootstrap 已成功切到新分支）
-    if branch_created:
-        if previous_branch:
-            try:
-                subprocess.run(
-                    ["git", "checkout", previous_branch],
-                    capture_output=True,
-                    text=True,
-                    cwd=str(repo_root),
-                    timeout=_GIT_TIMEOUT_SECONDS,
-                    check=False,
-                )
-            except (subprocess.SubprocessError, OSError) as exc:
-                logging.error(
-                    "rollback req_id=%s git checkout %s 失败：%s",
-                    req_id, previous_branch, exc,
-                )
-        else:
-            logging.error(
-                "rollback req_id=%s previous_branch 为空，跳过 checkout（HEAD 可能仍在 %s）",
-                req_id, branch_name,
-            )
-
-        # 步骤 2：删除新建的 feature 分支（-D 强制删，因为可能还有未提交内容）
-        try:
-            subprocess.run(
-                ["git", "branch", "-D", branch_name],
-                capture_output=True,
-                text=True,
-                cwd=str(repo_root),
-                timeout=_GIT_TIMEOUT_SECONDS,
-                check=False,
-            )
-        except (subprocess.SubprocessError, OSError) as exc:
-            logging.error(
-                "rollback req_id=%s git branch -D %s 失败：%s",
-                req_id, branch_name, exc,
-            )
-
-    # 步骤 3：删除 requirements/<req_id>/ 整树（含 _generate_req_id 创建的顶层目录）
-    if artifacts_created:
-        req_dir = repo_root / "requirements" / req_id
-        try:
-            shutil.rmtree(req_dir)
-        except FileNotFoundError:
-            # 已被外部清理 → 等价于已回滚成功
-            logging.debug("rollback req_id=%s req_dir 已不存在，跳过 rmtree", req_id)
-        except OSError as exc:
-            logging.error(
-                "rollback req_id=%s rmtree %s 失败：%s",
-                req_id, req_dir, exc,
-            )
 
 
 # ============================================================================
@@ -579,7 +253,12 @@ def _run_requirement(
     template_path: Path,
     root: Path,
 ) -> int:
-    """requirement 类模板的 run 流程：生成 REQ-ID → bootstrap → 输出提示。"""
+    """requirement 类模板的 run 流程：生成 REQ-ID → bootstrap → 输出提示。
+
+    返回：int（0 成功 / 1 失败）
+    失败处理：BootstrapError 已在函数内部触发 _bootstrap_rollback 反向撤销，
+    调用方无需再清理 requirements/<req_id>/ 或 feat 分支。
+    """
     previous_branch = _current_branch(root)
 
     # 生成 REQ-ID + 顶层目录（_generate_req_id 已 mkdir requirements/<REQ-ID>/）
@@ -594,6 +273,12 @@ def _run_requirement(
             req_id, title, template_id, template_path, template_args, root,
         )
     except BootstrapError as exc:
+        # 关键失败链路必须先 logging 再 rollback——rollback 自身若再异常会掩盖原因，
+        # logging.error 在前确保 ERROR 日志至少落盘一行（不依赖 rollback 成功与否）
+        logging.error(
+            "bootstrap req_id=%s 失败，已触发 rollback：%s",
+            req_id, exc,
+        )
         _bootstrap_rollback(
             req_id, root, previous_branch,
             exc.artifacts_created, exc.branch_created,
