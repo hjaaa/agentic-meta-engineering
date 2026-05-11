@@ -196,6 +196,7 @@
 - **时间**：2026-05-10 18:30:00
 - **来源**：requirements/REQ-2026-009/artifacts/detailed-design.md §10.3（Plan 7 删除清单）/ requirements/REQ-2026-009/artifacts/tasks/F-012.md（任务定义 + 6 项 TC 自检）/ CLAUDE.md prompt（dispatch 决策）/ requirements/REQ-2026-009/plan.md:137-176（D-011 ~ D-015 同款 ADR 模板）/ scripts/lib/canonical_phases.py 模块 docstring（mv 决策动机）
 - **Plan 落地点**：F-012 6 phase 顺序 commit（525bf87 phase_enum mv / fccce8b PHASE_REQUIREMENTS dict elimination / 714c066 code_review_signoff 迁移 / 8be6f2e /requirement:next 删除 + Skill trim / dce3549 SOP 文档同步 / [本 commit] 自检 + bookkeeping）；touches 扩展同 D-013/D-015 流程性副作用通道；F-012 done 闭环后 12/13 → 13/13 等待第二轮 review
+- 2026-05-11 rev6 真回填 tests/lib/test_features_json_touches_consistency.py + tests/lib/test_adr_line_count_drift.py + scripts/lib/save_review_validation.py 到 features.json + tasks/F-012.md frontmatter touches；self-coverage 由 Major 3 governance gate 红线强制守护。
 
 ### D-017 rev2 拆 signoff.py 子模块（save_review.py 委托）= 解决 rev1 F-3（save_review.py 678 行超 500）+ rev2 自然演化
 
