@@ -38,3 +38,4 @@
 2026-05-11 20:29:27 [review:looks_clean] F-004 rev1 code-review 完成（REV-REQ-2026-010-code-F-004-001）：8 checker 0 critical / 0 major / 0 minor keep；3 候选 finding 全 critic-rejected（2 EH 越 F-005 边界 / 1 aux 零证据）；score 92；待 signoff approved → done
 2026-05-11 20:30:26 [signoff] REV-REQ-2026-010-code-F-004-001 approved by hj19961223@gmail.com
 2026-05-11 20:33:25 [development] F-004 done（signoff approved by hj19961223@gmail.com，post-dev 0 error；commit b1aadea / review-20260511-202840.md / 0 keep）
+2026-05-11 20:44:40 [save] F-004 全周期完成（b1aadea→ef790cb / rev1 looks_clean / score 92 / signoff approved）+ 2 遗留闭环（7ae8429）：routing.py 撤 accept/all audit + subagent prompt 加 receipt schema 11 字段 + 升 F-001/002/003/004 历史 stub；下次派 F-005 或 F-009
