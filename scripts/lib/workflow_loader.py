@@ -720,7 +720,11 @@ def _validate_sub_workflow_depth(
     depth: int = 1,
     visited: set[Path] | None = None,
 ) -> None:
-    """递归加载 sub_workflow 的 yaml，深度 > MAX_SUB_WORKFLOW_DEPTH 即 W150。"""
+    """递归加载 sub_workflow 的 yaml，深度 > MAX_SUB_WORKFLOW_DEPTH 即 W150。
+
+    visited 语义为"当前 DFS 路径上的节点集合"（path-local），递归进入时 add、
+    退出时 discard——backtrack 后兄弟节点重复引用同一 sub 不会被误判 W152。
+    """
     if visited is None:
         visited = set()
 
@@ -750,16 +754,21 @@ def _validate_sub_workflow_depth(
             continue
         visited.add(sub_path)
         try:
-            with sub_path.open("r", encoding="utf-8") as fh:
-                sub_yaml = yaml.safe_load(fh)
-        except (yaml.YAMLError, OSError) as exc:
-            report.add(file_label, Severity.ERROR, "W153",
-                       f"嵌套 sub_workflow {rel(sub_path)} 解析失败: {exc}")
-            continue
-        if isinstance(sub_yaml, dict):
-            _validate_sub_workflow_depth(
-                sub_yaml, report, file_label, search_root, depth + 1, visited
-            )
+            try:
+                with sub_path.open("r", encoding="utf-8") as fh:
+                    sub_yaml = yaml.safe_load(fh)
+            except (yaml.YAMLError, OSError) as exc:
+                report.add(file_label, Severity.ERROR, "W153",
+                           f"嵌套 sub_workflow {rel(sub_path)} 解析失败: {exc}")
+                continue
+            if isinstance(sub_yaml, dict):
+                _validate_sub_workflow_depth(
+                    sub_yaml, report, file_label, search_root, depth + 1, visited
+                )
+        finally:
+            # path-local backtrack：退出当前递归层时移除，使 sibling 节点合法
+            # 复用同一 sub_workflow（共享依赖 DAG）不被误判为 W152 循环。
+            visited.discard(sub_path)
 
 
 # ============================================================================

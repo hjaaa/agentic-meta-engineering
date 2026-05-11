@@ -374,3 +374,48 @@ def test_should_include_findings_when_cli_outputs_json():
     assert payload["errors"] >= 1
     codes = [f["code"] for f in payload["findings"]]
     assert "W110" in codes
+
+
+# ============================================================================
+# codex round-1 P1-2：sub_workflow visited 必须 path-local backtrack
+# ============================================================================
+
+def test_sub_workflow_shared_dependency_not_cycle(tmp_path):
+    """合法 DAG：父 yaml 含 2 个 sibling 节点引用同一个 sub_workflow，
+    不应被误报 W152。回归 visited set 共享但不 backtrack 的 bug。"""
+    leaf = tmp_path / "leaf.yaml"
+    leaf.write_text(
+        "name: leaf\nversion: 1\ncategory: assist\n"
+        "nodes:\n  - id: x\n    bash: 'echo x'\n",
+        encoding="utf-8",
+    )
+    parent = tmp_path / "parent.yaml"
+    parent.write_text(
+        "name: parent\nversion: 1\ncategory: assist\n"
+        "nodes:\n"
+        "  - id: a\n    sub_workflow: leaf\n"
+        "  - id: b\n    sub_workflow: leaf\n",
+        encoding="utf-8",
+    )
+    result = load_workflow(parent)
+    codes = _codes_of(result)
+    assert "W152" not in codes, f"sibling 共享 sub 被误判为循环：{codes}"
+
+
+def test_sub_workflow_real_cycle_still_detected(tmp_path):
+    """真循环（自引用）应仍被 W152 检出，
+    防止"修复 backtrack 而漏检真循环"的回归。
+
+    用自引用而非 A→B→A：MAX_SUB_WORKFLOW_DEPTH=2 下 A→B→A 会先撞 W150；
+    自引用 (self → self) 在 depth=1 时 visited.add(self)，
+    递归 depth=2 时同节点再次出现在 path 上即 W152——这正是
+    backtrack 修复必须保留的语义。"""
+    self_ref = tmp_path / "selfref.yaml"
+    self_ref.write_text(
+        "name: selfref\nversion: 1\ncategory: assist\n"
+        "nodes:\n  - id: x\n    sub_workflow: selfref\n",
+        encoding="utf-8",
+    )
+    result = load_workflow(self_ref)
+    codes = _codes_of(result)
+    assert "W152" in codes, f"真循环漏检：{codes}"
