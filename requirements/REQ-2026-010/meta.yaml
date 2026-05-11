@@ -1,7 +1,7 @@
 # ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-010
 title: workflow 引擎 main loop 与 bootstrap 完整化
-phase: tech-research
+phase: outline-design
 gates_passed:
   - phase: definition
     at: "2026-05-11 11:34:20"
@@ -11,6 +11,10 @@ gates_passed:
     at: "2026-05-11 11:38:23"
     via: managing-requirement-lifecycle
     notes: requirement-quality-reviewer looks_clean (88 分 / 5 minor 已闭环 4)
+  - phase: outline-design
+    at: "2026-05-11 11:49:07"
+    via: managing-requirement-lifecycle
+    notes: tech-research.md 完成，4 条待澄清 user 已确认；feasibility=high；工作量 9.8 天，PR 拆分 PR-A/PR-B 锁定
 created_at: "2026-05-11 11:25:44"
 branch: feat/req-2026-010
 base_branch: develop

@@ -186,9 +186,9 @@ AC-01（bootstrap 完整化）→ AC-03（yaml 路径参数化）→ AC-02（mai
 
 ## 待澄清清单
 
-本阶段新增的待澄清条目：
+本阶段新增的待澄清条目（用户已于阶段 3 末确认锁定）：
 
-1. **AC-05 mock dispatcher 是否可接受** [待用户确认]——是否同意 mock `_dispatch_agent_node` 返回值（不走真实 Claude API）来验证 dispatcher 整条链路；如不同意需评估真实 LLM 调用的 CI 稳定性兜底方案
-2. **9.8 天工作量预估** [待用户确认]——按 5 条 AC 粒度分解的人天估算是否合理；阶段 4 概要设计前需要锁定否则影响 PR 拆分策略
-3. **PR-A / PR-B 拆分** [待用户确认]——是否同意 AC-01+AC-03 一个 PR、AC-02+AC-04+AC-05 一个 PR 的拆分方案
-4. **dispatcher 200ms 定位为软约束（SLO）** [待用户确认]——同意降级为软约束并阶段 8 一次性基准验证（不在 CI 加硬断言）
+1. **AC-05 mock dispatcher**：✅ 锁定为 mock `_dispatch_agent_node` 返回值方案，不走真实 Claude API；阶段 4 详细设计时落实 mock fixture 与断言写法
+2. **工作量预估**：✅ 9.8 天估算锁定为阶段 4 起点
+3. **PR-A / PR-B 拆分**：✅ PR-A=AC-01+AC-03，PR-B=AC-02+AC-04+AC-05；阶段 4 概要设计需明确两个 PR 的模块边界
+4. **dispatcher 延迟目标**：✅ 200ms 定位为软约束（SLO），阶段 8 micro-bench 一次性验证，不入 CI 硬断言
