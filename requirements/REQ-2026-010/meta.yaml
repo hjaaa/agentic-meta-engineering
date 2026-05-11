@@ -1,12 +1,16 @@
 # ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-010
 title: workflow 引擎 main loop 与 bootstrap 完整化
-phase: definition
+phase: tech-research
 gates_passed:
   - phase: definition
     at: "2026-05-11 11:34:20"
     via: managing-requirement-lifecycle
-    notes: check-sourcing 0 error / check-meta 0 error；六维评审待 phase-transition 时由 requirement-quality-reviewer 评
+    notes: check-sourcing 0 error / check-meta 0 error
+  - phase: tech-research
+    at: "2026-05-11 11:38:23"
+    via: managing-requirement-lifecycle
+    notes: requirement-quality-reviewer looks_clean (88 分 / 5 minor 已闭环 4)
 created_at: "2026-05-11 11:25:44"
 branch: feat/req-2026-010
 base_branch: develop
@@ -34,3 +38,14 @@ tags:
 outcome: ""
 completed_at: ""
 lessons_extracted: false
+reviews:
+  definition:
+    latest: REV-REQ-2026-010-definition-001
+    conclusion: looks_clean
+    reviewed_commit: ce7bef2
+    artifact_hashes:
+      artifacts/requirement.md: 
+        766181bf1c849e23759be304af2ed7cefa3ee6fbe61294ca53f748804965b3eb
+    history:
+      - REV-REQ-2026-010-definition-001
+    stale: false

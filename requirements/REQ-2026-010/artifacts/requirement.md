@@ -77,11 +77,11 @@ REQ-2026-009 已通过 PR-67 合并归档，phase=completed（来源：requireme
 
 | AC | 内容 | 验证手段 |
 |---|---|---|
-| AC-01 | `/workflow:run` bootstrap 完整化：load_workflow 校验 + 需求类生成 `REQ-YYYY-NNN` + 切 `feat/req-<id>` 分支 + 建 `requirements/<id>/{plan.md, artifacts/}` | e2e：跑一次 `/workflow:run standard-8phase "<title>"`，断言 bootstrap-validate 节点 PASS |
-| AC-02 | `/workflow:continue` main loop 真派发 7 类节点（agent / skill / prompt / bash / approval / loop / sub_workflow），写 `node_started` + `node_completed` 事件 | e2e：跑一个最小 standard-8phase run 至少穿过 2-3 节点；approval 节点写 `approval_pending` 后 return |
+| AC-01 | `/workflow:run` bootstrap 完整化：load_workflow 校验 + 需求类生成 `REQ-YYYY-NNN` + 切 `feat/req-<id>` 分支 + 建 `requirements/<id>/{plan.md, artifacts/}` | e2e：跑一次 `/workflow:run standard-8phase "<title>"`，断言 bootstrap-validate 节点 PASS。**失败兜底**：load_workflow / mkdir / 切分支任一步骤失败 → 反向撤销已建目录与分支，恢复到调用前状态 |
+| AC-02 | `/workflow:continue` main loop 真派发 7 类节点（agent / skill / prompt / bash / approval / loop / sub_workflow），写 `node_started` + `node_completed` 事件 | e2e：跑一个最小 standard-8phase run 至少穿过 **3 个节点且含 1 个 approval 类**；approval 节点写 `approval_pending` 后 return |
 | AC-03 | 模板硬编码路径全部参数化：`standard-8phase.yaml` 中 `runs/$RUN_ID/...` 改为 `$RUN_DIR` / `$META_PATH`，引擎统一注入 | grep 校验 + bash 节点能在 D-007 双路径下都 PASS |
 | AC-04 | 父子 run 路径收敛到 `run_dir/sub_runs/<node_id>/`；`workflow_status` / `workflow_rollback_subrun` / `workflow_continue` 共用同一发现策略 | 端到端：起 sub_workflow → status 显示子 run → rollback 跨父子归档；前后看到的子 run 集合相同 |
-| AC-05 | 替换 2 条占位 e2e（`test_code_review_embedded` / `test_sub_workflow_lifecycle`）为真 e2e：真派 Agent / 真跑节点 | 新测试中至少 1 处断言 LLM 派发后 jsonl 含 `node_completed` 且 `output` 非空 |
+| AC-05 | 替换 2 条占位 e2e（`test_code_review_embedded` / `test_sub_workflow_lifecycle`）为真 e2e：真派 Agent / 真跑节点 | 新测试中至少 1 处断言 LLM 派发后 jsonl 含 `node_completed` 事件，且对其 `output` 做非空断言（如 `assert len(json.dumps(event["data"]["output"])) > 0`） |
 
 ### 不包含
 
@@ -89,6 +89,7 @@ REQ-2026-009 已通过 PR-67 合并归档，phase=completed（来源：requireme
 - **不动** `code-review-embedded.yaml` 模板自身逻辑（仅替换其 e2e）。
 - **不做** `/workflow:next` 命令落地——F-012 阶段切换迁移作为独立 PR / 后续需求处理（来源：CLAUDE.md:23）。
 - **不做** `requirements/` → `runs/` 历史目录物理迁移；D-007 双轨期延续。
+- **不处理** 并发触发 `/workflow:run` 的 REQ-ID 生成竞争场景；本期假设单进程顺序调用（依据：scripts/lib/workflow_run.py:51 已有 EEXIST 重试，但 `RUN-`/`REQ-` 编号策略本身不防跨进程顺序回退）。
 
 ## 关键决策记录
 
