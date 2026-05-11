@@ -20,7 +20,7 @@
   "test_results": {
     "full_pytest": "1193 passed, 9 skipped（rev6 + 3 新增：governance self-coverage / ADR drift / 拆 helper CC 下降）",
     "ruff_check": "0 新引入错误（所有本轮改动文件通过）",
-    "post_dev_gate": "待 workspace clean 后验证（rev6 commits 全提交后运行）",
+    "post_dev_gate": "5/5 PASS（GATE-META-SCHEMA + GATE-INDEX-INTEGRITY + GATE-SOURCING + GATE-PLAN-FRESHNESS + GATE-WORKSPACE-CLEAN，workspace clean 后 exit=0）",
     "signoff_py_lines": "434（< 495 D-017 上限）",
     "save_review_py_lines": "492（< 500）",
     "save_review_validation_py_lines": "47",
@@ -64,6 +64,8 @@
     "00e256e feat(F-012): rev6 Batch 1 Major 1 — 新建 save_review_validation.py + signoff.py 压到 434 行",
     "e7c7483 refactor(F-012): rev6 Batch 2 Major 2 — 拆 _run_save 5 helper，CC 23→10",
     "ca96bc5 feat(F-012): rev6 Batch 3 Major 3+4 — governance gate self-coverage 红线 + D-016(6) 真回填",
-    "989ab2a test(F-012): rev6 Batch 4 Minor 1+2 — ADR 行数脚本化校验 + plan.md D-017 数字校准"
+    "989ab2a test(F-012): rev6 Batch 4 Minor 1+2 — ADR 行数脚本化校验 + plan.md D-017 数字校准",
+    "618e538 chore(F-012): rev6 Batch 5 receipt.json DONE + process.txt 完成事件 + meta bookkeeping",
+    "ced7b98 chore(F-012): rev4 review 报告 + verdict JSON 入库（流程性产物，D-013 豁免）"
   ]
 }
