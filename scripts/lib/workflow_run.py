@@ -100,11 +100,10 @@ def _generate_req_id(repo_root: Path) -> str:
                 nums.append(int(m.group(2)))
     next_num = max(nums) + 1 if nums else 1
 
-    # 检查溢出（NNN 为 3 位，最大 999）；max(nums) 提供当前已用最大编号供运维定位
+    # 检查溢出（NNN 为 3 位，最大 999）；进入此分支前 next_num>999 已保证 nums 非空
     if next_num > 999:
-        current_max = max(nums) if nums else 998
         raise WorkflowError(
-            f"生成 req_id 失败：{ts_prefix} 年编号已达上限 999（当前 max={current_max}），请人工干预"
+            f"生成 req_id 失败：{ts_prefix} 年编号已达上限 999（当前 max={max(nums)}），请人工干预"
         )
 
     # 原子化创建：exist_ok=False 确保只有一个进程成功；EEXIST 时递增重试

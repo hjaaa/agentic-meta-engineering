@@ -870,7 +870,7 @@ class TestGenerateReqIdConcurrencySafe:
             )
 
 
-# TC-F1-3：max+1 策略一致（features.json F-001 acceptance[2]）
+# TC-F1-3: max+1 策略一致（features.json F-001 acceptance[2]）
 class TestGenerateReqIdMaxPlusOne:
     """_generate_req_id 存在多个现有目录时，返回 max+1 编号。"""
 
