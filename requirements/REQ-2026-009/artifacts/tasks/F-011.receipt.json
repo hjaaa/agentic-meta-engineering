@@ -60,5 +60,10 @@
     "TC-F11-3": "PASS (4 e2e subtests + workflow_continue.main([RUN-LEGACY-001], repo_root=tmp_path) rc=0)",
     "TC-F11-4": "PASS (test_r003_signoff_through_hook: sign-off PASS + no signoff FAIL + hook assert)",
     "TC-F11-5": "PASS (test_plan6_sop_doc_present: notes.md contains SOP markers)"
-  }
+  },
+  "commit_sha": "fd60521",
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-10T00:00:00+08:00"
 }

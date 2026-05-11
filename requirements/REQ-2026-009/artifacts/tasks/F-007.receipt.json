@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "feature_id": "F-007",
-  "status": "DONE",
+  "status": "DONE_WITH_CONCERNS",
   "commit_sha": "b95dd2d",
   "files_changed": [
     "requirements/REQ-2026-009/artifacts/detailed-design.md",
