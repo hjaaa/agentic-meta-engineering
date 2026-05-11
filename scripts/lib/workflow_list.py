@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,15 @@ from typing import Any
 _LIB_DIR = Path(__file__).resolve().parent
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
+
+# yaml 是可选第三方依赖；缺失时回退 json 解析 meta.yaml（meta 内容兼容 JSON）。
+# 必须模块级处理：若放进 try/except yaml.YAMLError 块内，PyYAML 缺失会抛
+# ModuleNotFoundError，而 except 子句因 yaml 名未绑定再触发 NameError，导致
+# /workflow:list 在最小环境完全失败。
+try:
+    import yaml  # type: ignore[import-not-found]
+except ModuleNotFoundError:  # pragma: no cover — 仅在最小环境触发
+    yaml = None  # type: ignore[assignment]
 
 from common import REPO_ROOT, WorkflowError  # noqa: E402
 from run_state import RunState, read_events  # noqa: E402
@@ -48,35 +58,38 @@ def _load_run_entry(run_dir: Path) -> dict[str, Any] | None:
 
     # 读 meta.yaml 补充模板名等
     if meta_path.exists():
-        try:
-            # yaml 是可选第三方依赖，用 fallback；json 是 stdlib，但放此与 yaml fallback 路径合并便于读
-            import yaml  # type: ignore
-            with meta_path.open("r", encoding="utf-8") as fh:
-                meta = yaml.safe_load(fh) or {}
-        except yaml.YAMLError as exc:
-            # yaml 解析失败 → 尝试 json fallback，并输出 WARN
-            print(f"WARN: meta 解析失败（yaml） {run_dir.name}: {exc}", file=sys.stderr)
-            try:
-                import json  # noqa: PLC0415 — 与 yaml fallback 路径合并
-                with meta_path.open("r", encoding="utf-8") as fh:
-                    meta = json.load(fh)
-            except (json.JSONDecodeError, OSError) as exc2:
-                print(f"WARN: meta 解析失败（json） {run_dir.name}: {exc2}", file=sys.stderr)
-                meta = {}
-        except OSError as exc:
-            # 非 yaml 解析错误（OSError 类 IO/权限）→ 尝试 json fallback
-            try:
-                import json  # noqa: PLC0415 — 与 yaml fallback 路径合并
-                with meta_path.open("r", encoding="utf-8") as fh:
-                    meta = json.load(fh)
-            except (json.JSONDecodeError, OSError) as exc2:
-                print(f"WARN: meta 解析失败 {run_dir.name}: yaml={exc} json={exc2}", file=sys.stderr)
-                meta = {}
+        meta = _load_meta_with_fallback(meta_path, run_dir.name)
         entry["template"] = meta.get("template", "")
         entry["phase"] = meta.get("phase", "")
         entry["parent_run_id"] = meta.get("parent_run_id", "")
 
     return entry
+
+
+def _load_meta_with_fallback(meta_path: Path, run_name: str) -> dict[str, Any]:
+    """读 meta.yaml；yaml 不可用 / 解析失败时回退 json，全失败返回 {} 并 WARN。"""
+    if yaml is not None:
+        try:
+            with meta_path.open("r", encoding="utf-8") as fh:
+                return yaml.safe_load(fh) or {}
+        except yaml.YAMLError as exc:
+            print(f"WARN: meta 解析失败（yaml） {run_name}: {exc}", file=sys.stderr)
+        except OSError as exc:
+            return _try_json_fallback(meta_path, run_name, f"yaml={exc}")
+    return _try_json_fallback(meta_path, run_name, "yaml 解析失败或 PyYAML 未安装")
+
+
+def _try_json_fallback(meta_path: Path, run_name: str, prior_reason: str) -> dict[str, Any]:
+    """meta.yaml 内容兼容 JSON 时回退；失败 WARN 并返回 {}。"""
+    try:
+        with meta_path.open("r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except (json.JSONDecodeError, OSError) as exc:
+        print(
+            f"WARN: meta 解析失败 {run_name}: {prior_reason} json={exc}",
+            file=sys.stderr,
+        )
+        return {}
 
 
 def _apply_filter(entries: list[dict[str, Any]], filter_expr: str) -> list[dict[str, Any]] | None:
