@@ -63,7 +63,7 @@ description: 用户用自然语言描述意图（继续/审/新建/批准/驳回
 |---|---|
 | continue | `/workflow:continue` |
 | review | `/workflow:run code-review-embedded` |
-| new | `/workflow:new standard-8phase "<title>"` |
+| new | `/workflow:run standard-8phase "<title>"` |
 | approve | `/workflow:approve` |
 | reject | `/workflow:reject <reason>` |
 | release | `/workflow:run release-cut`（Post-MVP） |
