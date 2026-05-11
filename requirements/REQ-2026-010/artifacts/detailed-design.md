@@ -328,7 +328,11 @@ def _build_env(run_state, run_dir, root) -> dict[str, str]:
     return env
 ```
 
-`substitute_vars(template, node_outputs, env, escape_for_bash=<bool>)` 已实现（来源：scripts/lib/substitute_vars.py:61）。bash 节点 `escape_for_bash=False`；skill / prompt / approval 节点走默认 `True`（防注入）。
+`substitute_vars(template, node_outputs, env, escape_for_bash=<bool>)` 已实现（来源：scripts/lib/substitute_vars.py:61，函数默认 `False`）。escape 策略按节点输出是否进入 shell 区分：
+
+- **bash 节点 `escape_for_bash=False`**：替换后作为 `subprocess.run(["bash", "-c", ...])` 入参，由 bash 自身解析引号（裸字面值）
+- **skill / prompt 节点 `escape_for_bash=True`**：args / prompt 可能被下游主 Claude 拼接进 shell 调用链，显式 escape 防注入（深度防御）
+- **approval 节点 `escape_for_bash=False`（即函数默认值，调用时不传该参数）**：rendered prompt 仅写入 jsonl `event.data.prompt`，供人类审批阅读与 `workflow_status` 展示，不进任何 shell；保留裸字面值与人类阅读体验一致，相关单测断言 raw 值（如 `"请审批 REQ-2026-010"`）
 
 ## 3. AC-03 yaml 模板改造清单
 
