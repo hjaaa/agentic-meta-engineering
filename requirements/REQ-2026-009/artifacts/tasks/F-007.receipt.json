@@ -31,38 +31,7 @@
     "tests/skills/test_workflow_commands.py"
   ],
   "test_summary": "rev8 真终结轮: 1 commit (≤15 行单 commit 闭合 2 项 / 实际 +8/-2 = 净 +6 行) / pytest tests/lib/test_workflow_rollback.py -v: 17 passed (含 KI-step-1 加 caplog) / pytest tests/: 1112 passed, 9 skipped, 0 failed / ruff 0 错误 (I001/F401/F821) / pycodestyle 0 错误 (E302/E303/E305 全文件) / radon max CC = 10 (_resume_in_progress 维持) / 主模块 511 行不动 (rev8 仅触碰 test + design.md，零源码改动) / 红→绿验证: 临时把 _consume_residual_new if 块改 pass → 测试 FAILED (caplog.text == ''); cp 还原 → 测试 PASSED — 证明 'F-1: assert 检测到残留 .new in caplog.text' 真正 pin 住 _consume_residual_new os.replace 路径而非被 _truncate 'w' 模式旁路 / 累计 47 + rev5 18 + rev6 11 + rev7 7 + rev8 2 项 keep 全闭合 = 85 项 keep finding 总闭合",
-  "touches_violations": [
-    {
-      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-009/artifacts/review-20260509-202104.md",
-      "ts": "2026-05-09T12:22:58+00:00",
-      "tool": "Write"
-    },
-    {
-      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-009/artifacts/review-20260509-205624.md",
-      "ts": "2026-05-09T12:58:14+00:00",
-      "tool": "Write"
-    },
-    {
-      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-009/artifacts/review-20260509-212655.md",
-      "ts": "2026-05-09T13:28:36+00:00",
-      "tool": "Write"
-    },
-    {
-      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-009/artifacts/review-20260509-215748.md",
-      "ts": "2026-05-09T13:59:03+00:00",
-      "tool": "Write"
-    },
-    {
-      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-009/artifacts/review-20260509-221711.md",
-      "ts": "2026-05-09T14:18:08+00:00",
-      "tool": "Write"
-    },
-    {
-      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-009/.dispatch-state.json",
-      "ts": "2026-05-09T14:32:12+00:00",
-      "tool": "Write"
-    }
-  ],
+  "touches_violations": [],
   "concerns": [
     "rev8 是 F-007 真终结轮 — 严格 scope 守住、3 anti-pattern 终结后 F-1 假闭合最终修复。rev7 KI-step-1 测试 happy-path 4 个终态 assert 对 _consume_residual_new os.replace 真执行与 _truncate_jsonl_to_tail 'w' 模式覆写 .new 两条路径都成立，无法 pin 上游 helper；rev8 用 caplog 抓 logger.warning('检测到残留 .new...') 字面，pin 住 os.replace 路径必然被命中。红→绿实测：删 _consume_residual_new if 块函数体后测试 FAILED → cp 还原后 PASSED，证明断言不是哑断言。",
     "rev8 单 commit / 净 +6 行 / 零源码改动 / pre-check 全过 / 主模块行数不变（511 行）。F-1 测试加 caplog 防止后续重构时 _consume_residual_new os.replace 路径被旁路而无报错；F-2 §6.3 表上下文列细化两路径，文档与代码（_consume_residual_new RollbackError 包装的 new_path / jsonl_path 字面）精确对齐。",

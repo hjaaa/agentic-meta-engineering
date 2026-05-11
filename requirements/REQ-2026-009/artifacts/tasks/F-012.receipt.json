@@ -8,13 +8,7 @@
     "签字深防御从双层（Command + Skill）降为单层（save_review.py signoff 单一入口）。缓解：入口收敛后无第二条调用路径绕过；isatty 在 _run_signoff 第 0 步就拦下所有下游分支；FAKE_TTY env var 等红线仍封禁。",
     "D-014 同模式边界外发现：signoff.py _append_signoff_process_log OSError 分支 {exc} 仍暴露路径（属 baseline，不在本 rev scope）——follow-up 建议用 exc.strerror 替换。"
   ],
-  "touches_violations": [
-    {
-      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-009/.dispatch-state.json",
-      "ts": "2026-05-11T00:58:08+00:00",
-      "tool": "Write"
-    }
-  ],
+  "touches_violations": [],
   "self_check_results": {
     "TC-F12-1": "PASS",
     "TC-F12-2": "PASS",

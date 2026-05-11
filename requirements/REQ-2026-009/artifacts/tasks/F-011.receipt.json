@@ -20,40 +20,7 @@
     "tests/e2e/test_legacy_run_compat.py"
   ],
   "test_summary": "rev3 修 3 项 minor：F-1 _classify_report 合并冗余内层 if + docstring 简化为 2 分支；F-5 line 172-173 列表推导改显式 for 循环 + json.JSONDecodeError try/except；F-8 统一 4 处 ValueError 模板（<artifact-type> 解析失败（path=...）：{exc}）。全套 1179 passed / 9 skipped，ruff All checks passed。",
-  "touches_violations": [
-    {
-      "path": "tests/e2e/fixtures/legacy_run/meta.yaml",
-      "note": "touches_guard 软记录，视为 tests/e2e/ 触及范围内的 fixture 子目录扩展，可接受"
-    },
-    {
-      "path": "tests/e2e/fixtures/legacy_run/.workflow/runs/RUN-LEGACY-001/events.jsonl",
-      "note": "同上，fixture 子目录，可接受"
-    },
-    {
-      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-009/artifacts/review-20260510-132838.md",
-      "ts": "2026-05-10T05:30:26+00:00",
-      "tool": "Write"
-    },
-    {
-      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-009/artifacts/detailed-design.md",
-      "note": "F-8 豁免：F-011 rev2 scope 明确允许改 detailed-design.md §8.3 R005 文案"
-    },
-    {
-      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-009/artifacts/review-20260510-135703.md",
-      "ts": "2026-05-10T05:58:25+00:00",
-      "tool": "Write"
-    },
-    {
-      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-009/artifacts/review-20260510-154609.md",
-      "ts": "2026-05-10T07:47:23+00:00",
-      "tool": "Write"
-    },
-    {
-      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-009/.dispatch-state.json",
-      "ts": "2026-05-10T07:51:39+00:00",
-      "tool": "Write"
-    }
-  ],
+  "touches_violations": [],
   "test_results": {
     "TC-F11-1": "PASS (21/21 parametrize, test_zero_mismatch_across_all_fixtures PASS, R004-boundary strict=True → fail 验证通过)",
     "TC-F11-2": "PASS (test_three_triggers: triggers >= {phase-transition, submit, ci}, yaml异常包裹通过)",
