@@ -11,3 +11,6 @@
 2026-05-11 14:01:03 [save] 设计阶段 1-5 全部完成；阶段 6/7/8 留下次会话；远程已 push origin/feat/req-2026-010
 2026-05-11 14:06:26 [save] task-planning 拆 features.json → 11 个 task 文件（F-001..F-011），全部 pending；frontmatter + features schema 校验通过
 2026-05-11 14:08:10 [development] F-001 派发（model=sonnet）：_generate_req_id + REQ-YYYY-NNN 编号策略，复刻 _generate_run_id 并发安全模式
+2026-05-11 14:26:20 [review:needs_attention] F-001 code-review 完成（REV-REQ-2026-010-code-F-001-001）：0 critical / 2 major / 7 minor / 4 follow-up；critic verdict not_rebutted×13 / not_proven×5 / rejected×0；待用户 signoff
+2026-05-11 14:31:02 [development] F-001 rev2 派发完成（commit f10afb4）：9 项 keep finding 闭合（2 major + 7 minor），pytest 60 passed；触发第二轮 /code-review
+2026-05-11 14:40:05 [review:looks_clean] F-001 rev2 code-review 完成（REV-REQ-2026-010-code-F-001-002 supersedes -001）：rev1 9 项 keep 全闭；rev2 0 critical / 0 major / 2 minor / 5 follow-up；trend-G-meta 不触发 rev3；待 signoff approved → done
