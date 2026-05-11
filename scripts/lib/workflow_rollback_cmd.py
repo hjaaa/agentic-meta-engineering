@@ -76,7 +76,7 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
         # 功能未实现（F-010 待落地）：exit 1 与状态拒绝同档，
         # 但语义不同——这里是"功能未实现"而非"状态不满足"
         print(
-            f"ERROR: rollback 功能未实现（待 F-010 实现 workflow_rollback.py）",
+            "ERROR: rollback 功能未实现（待 F-010 实现 workflow_rollback.py）",
             file=sys.stderr,
         )
         print(

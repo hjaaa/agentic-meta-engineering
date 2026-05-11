@@ -44,7 +44,8 @@ from typing import Any
 
 import yaml
 
-from common import REPO_ROOT, Report, Severity, WorkflowError, rel
+from common import REPO_ROOT, Report, Severity, rel
+from common import WorkflowError as WorkflowError  # noqa: F401 — re-export，跨模块 except 共享类（test_workflow_error_is_shared_class 围栏）
 from topological_sort import CycleError, topological_layers
 
 
@@ -302,7 +303,7 @@ def _validate_schema_top(workflow: dict[str, Any], report: Report, file_label: s
                    f"effort 必须 ∈ {sorted(ALLOWED_EFFORTS)}，实际 {workflow['effort']!r}")
     if "thinking" in workflow and not _is_valid_thinking(workflow["thinking"]):
         report.add(file_label, Severity.ERROR, "W100",
-                   f"thinking 必须是 adaptive/enabled/disabled 字符串或带 budgetTokens 的 object")
+                   "thinking 必须是 adaptive/enabled/disabled 字符串或带 budgetTokens 的 object")
 
 
 def _is_valid_thinking(value: Any) -> bool:

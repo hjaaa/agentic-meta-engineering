@@ -92,7 +92,7 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     print(f"Rejected {node_id!r} at {ts}: {reason}")
     print(f"  run_id: {run_id}")
-    print(f"  on_reject 路径由 main loop（F-006）处理")
+    print("  on_reject 路径由 main loop（F-006）处理")
     return 0
 
 

@@ -147,7 +147,7 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
         print(f"ERROR: 写 jsonl 事件失败：{exc}", file=sys.stderr)
         return 1
 
-    print(f"workflow run 已启动")
+    print("workflow run 已启动")
     print(f"  run_id:   {run_id}")
     print(f"  template: {template_id}")
     print(f"  run_dir:  {run_dir.relative_to(root)}")
