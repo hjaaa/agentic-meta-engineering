@@ -55,3 +55,17 @@ Window B 的 main loop 完整化与 bootstrap 流程补全延至本需求实施�
 - **F-001 / F-002 frontmatter touches 完整性盲区**：F-001 / F-002 当时无 receipt.json 留痕，无法核查 touches 字段是否覆盖实际 diff 范围。建议独立 review 周期核查（参考 D-014 同语义类别区分原则）
 - **F-8 系统性问题**：feature task.md 在 detailed-design 阶段就该把测试文件预先纳入 touches，或 GATE-TOUCHES-VIOLATION 增加 `tests/skills/test_<同模块名>.py` 白名单豁免——属 spec-level 议题，需独立需求承载
 - ~~**F-002.receipt.json 残留 violation**（rev2 judge 发现）：`F-002.receipt.json` 仍有 1 条 `touches_violations[]` 记录（`review-20260511-155100.md` Write，F-002 rev2 review 报告写盘时 current_feature=F-002 触发）。F-002 已 done（signoff approved at 15:54），但 receipt 未自动清理。GATE-TOUCHES-VIOLATION 可能在 phase-transition 时扫所有 feature receipt 命中。~~ → **已 hotfix（A+B 组合）**：(a) F-002.receipt.json violations[] reset 为 []；(b) `touches_guard._is_process_artifact` 白名单从 6 类扩到 7 类，新增 `<req_dir>/artifacts/review-*.md` pattern（parent+name 匹配，跨需求不豁免）；(c) 加 3 个新测试用例 TL-WL-008/009/010 覆盖正反例；hooks 40 tests passed；GATE-TOUCHES-VIOLATION 双向断言（pass / fail）OK。(c=phase-transition 只扫 in-progress 的方案不采纳——违背 gate 文档"扫所有 feature"的合规校验意图)
+
+## F-006 review rev2 D-014 横扫发现（任务边界外，留痕备查）
+
+### 修复范围内（已闭合）
+- dead import REPO_ROOT（workflow_dispatcher.py）、MagicMock（测试文件）
+- dead fixture repo_root（测试文件）
+- hardcoded /tmp/ 路径（test_skill_node_args_node_output_substituted）
+- 4 处注释失实（L170 banner、L180 agent docstring、L191 skill docstring、L225 prompt docstring）
+- bash returncode!=0 stderr 空兜底
+- detailed-design.md 3 处 spec-lag（F-8/F-9/F-10）
+
+### 任务边界外，不修，仅留痕
+- `_dispatch_agent_node`（F-010）/ `_dispatch_loop_node`（F-011）/ `_dispatch_sub_workflow_node`（F-011）的 stub docstring 准确描述了其待实现状态，**不属于失实**——F-006 rev2 正确识别为不修
+- `_dispatch_loop_node` / `_dispatch_sub_workflow_node` 签名与实际实现一致（stub 返回 completed），无需在 F-006 触碰（各自由 F-011 接管）
