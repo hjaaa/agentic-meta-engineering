@@ -328,7 +328,7 @@ def _build_env(run_state, run_dir, root) -> dict[str, str]:
     return env
 ```
 
-`substitute_vars(template, node_outputs, env, escape_for_bash=<bool>)` 已实现（来源：scripts/lib/substitute_vars.py:61，函数默认 `False`）。escape 策略按节点输出是否进入 shell 区分：
+`substitute_vars(template, node_outputs, env, escape_for_bash=<bool>)` 已实现（来源：scripts/lib/substitute_vars.py:61）；函数签名默认 `escape_for_bash=False`。escape 策略按节点输出是否进入 shell 区分：
 
 - **bash 节点 `escape_for_bash=False`**：替换后作为 `subprocess.run(["bash", "-c", ...])` 入参，由 bash 自身解析引号（裸字面值）
 - **skill / prompt 节点 `escape_for_bash=True`**：args / prompt 可能被下游主 Claude 拼接进 shell 调用链，显式 escape 防注入（深度防御）
