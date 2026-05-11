@@ -1,6 +1,6 @@
 id: REQ-2026-009
 title: 自定义工作流改造
-phase: testing
+phase: completed
 created_at: '2026-05-08 11:38:56'
 branch: feat/req-2026-009
 base_branch: develop
@@ -57,8 +57,8 @@ tags:
 - dag
 - yaml-driven
 - archon-inspired
-outcome: ''
-completed_at: ''
+outcome: shipped
+completed_at: '2026-05-11 10:17:58'
 lessons_extracted: true
 reviews:
   definition:
@@ -260,3 +260,4 @@ reviews:
           artifacts/features.json: a8046f03b004f38e39ee21f706dfabe3f7913669375c4f938e6cfffb3b8eaa8b
           artifacts/tasks/F-012.md: 7bce7f466fd5982a2a0604e9172c6e258a5ac61e9bd72af8a82a702dc0e31ecb
         stale: false
+archived_at: '2026-05-11 10:17:58'
