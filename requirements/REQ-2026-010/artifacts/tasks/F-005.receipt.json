@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-005",
+  "status": "DONE",
+  "commit_sha": "2aca3f2629447cb90f22266397f61d85807b074a",
+  "files_changed": [
+    "scripts/lib/workflow_dispatcher.py",
+    "scripts/lib/run_state.py",
+    "tests/skills/test_workflow_dispatcher.py"
+  ],
+  "test_summary": "25 passed in 0.06s（pytest tests/skills/test_workflow_dispatcher.py -v）；回归 74 passed in 1.14s（test_workflow_commands.py + test_workflow_bootstrap.py）",
+  "touches_violations": [],
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-11T20:30:00+08:00"
+}
