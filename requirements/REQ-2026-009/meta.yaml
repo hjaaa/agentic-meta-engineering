@@ -43,8 +43,8 @@ gates_passed:
     notes: 9 项 error gate 全过 + 2 项自然 skip（GATE-FEATURES-SCHEMA / GATE-TASK-FRONTMATTER 因 changed_files 不含 features.json/tasks 自然过滤）；
       解锁路径——detail-design rev3 88→92 looks_clean approved（解锁 R005 stale 阻塞）+ 12 receipt schema 1.0 字段补齐 +
       D-013 清零 17 条 historical touches_violations（流程性副作用，统一引用 D-013 不重复 ADR）
-pr_url: ""
-pr_number: 0
+pr_url: https://github.com/hjaaa/agentic-meta-engineering/pull/66
+pr_number: 66
 log_layout: split
 
 # ============ 语义组（definition 阶段补齐，供跨需求检索） ============
