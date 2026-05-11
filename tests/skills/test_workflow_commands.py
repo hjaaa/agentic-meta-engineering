@@ -793,3 +793,73 @@ class TestOSErrorWrappedAsWorkflowError:
         assert "Traceback" not in captured.err, (
             f"dispatcher 应兜住 traceback 不暴露，实际 stderr：{captured.err}"
         )
+
+
+# ============================================================
+# F-001：_generate_req_id 单测
+# ============================================================
+
+class TestGenerateReqId:
+    """TC-F1-1：_generate_req_id 空 requirements/ 时返回 REQ-{当年}-001。"""
+
+    def test_empty_requirements_returns_first_id(self, tmp_repo: Path):
+        """given_empty_requirements_when_generate_req_id_then_returns_REQ_YYYY_001。
+
+        tmp_repo/requirements/ 已在 fixture 建好（空目录），
+        断言返回 REQ-{当年}-001 且目录已创建。
+        """
+        import workflow_run as wr
+        from datetime import datetime, timezone
+
+        req_id = wr._generate_req_id(tmp_repo)
+
+        year = datetime.now(timezone.utc).strftime("%Y")
+        expected = f"REQ-{year}-001"
+        assert req_id == expected, (
+            f"空 requirements/ 首次调用期望 {expected}，实际：{req_id}"
+        )
+        assert (tmp_repo / "requirements" / req_id).is_dir(), (
+            f"{req_id} 对应顶层目录未创建"
+        )
+
+
+class TestGenerateReqIdConcurrencySafe:
+    """TC-F1-2：_generate_req_id 并发 3 路调用，3 个 REQ-ID 唯一（原子化验证）。"""
+
+    def test_concurrent_req_id_no_collision(self, tmp_repo: Path):
+        """given_three_concurrent_calls_when_generate_req_id_then_req_ids_are_unique ✓。
+
+        使用 threading 三发 _generate_req_id，断言 3 个 req_id 互不重叠，
+        且每个对应目录均已创建。复刻 TC-F5-G8 并发安全验证模式。
+        """
+        import threading
+        import workflow_run as wr
+
+        results: list[str] = []
+        errors: list[Exception] = []
+
+        def worker() -> None:
+            try:
+                req_id = wr._generate_req_id(tmp_repo)
+                results.append(req_id)
+            except Exception as exc:
+                errors.append(exc)
+
+        # 同时启动三个线程竞争创建 req_id
+        threads = [threading.Thread(target=worker) for _ in range(3)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # 断言：无异常 + 3 个 req_id 均不重复
+        assert not errors, f"_generate_req_id 抛出异常：{errors}"
+        assert len(results) == 3, f"期望 3 个 req_id，实际：{results}"
+        assert len(set(results)) == 3, (
+            f"并发生成的 req_id 存在重复：{results}"
+        )
+        # 确认 3 个目录都已实际创建
+        for rid in results:
+            assert (tmp_repo / "requirements" / rid).is_dir(), (
+                f"req_id {rid!r} 对应顶层目录未创建"
+            )

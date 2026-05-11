@@ -10,12 +10,19 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 # _generate_run_id 最大 EEXIST 重试次数（并发冲突时递增编号）
 _RUN_ID_MAX_RETRIES = 3
+
+# _generate_req_id 最大 EEXIST 重试次数（并发冲突时递增编号）
+_REQ_ID_MAX_RETRIES = 3
+
+# REQ-YYYY-NNN 格式正则
+_REQ_ID_PATTERN = re.compile(r"^REQ-(\d{4})-(\d{3})$")
 
 _LIB_DIR = Path(__file__).resolve().parent
 if str(_LIB_DIR) not in sys.path:
@@ -62,6 +69,61 @@ def _generate_run_id(repo_root: Path) -> str:
     # 超过最大重试次数（极低概率；最多支持 3 路并发冲突重试，≥4 进程同时竞争才会失败）
     raise WorkflowError(
         f"生成 run_id 失败：并发冲突超过 {_RUN_ID_MAX_RETRIES} 次重试"
+    )
+
+
+def _generate_req_id(repo_root: Path) -> str:
+    """扫 requirements/ 下现有 REQ-YYYY-NNN 取 max+1，原子化建目录。
+
+    并发安全：mkdir(exist_ok=False) + EEXIST 重试，与 _generate_run_id 一致。
+
+    max 取**当年** REQ-YYYY-NNN 中 NNN 的 max（year==ts_prefix），跨年从 1 重新开始。
+
+    返回：成功创建目录的 REQ-ID（str）。
+    抛出：WorkflowError 若超 _REQ_ID_MAX_RETRIES。
+    """
+    # 当前年份（4 位，UTC）
+    ts_prefix = datetime.now(timezone.utc).strftime("%Y")
+    base = repo_root / "requirements"
+    base.mkdir(parents=True, exist_ok=True)
+
+    # 扫描已有当年编号，取 max+1 作为起始候选
+    nums = []
+    for d in base.iterdir():
+        if not d.is_dir():
+            continue
+        m = _REQ_ID_PATTERN.match(d.name)
+        if m and m.group(1) == ts_prefix:
+            # 仅收集当年编号；跨年重新从 1 计
+            nums.append(int(m.group(2)))
+    next_num = max(nums) + 1 if nums else 1
+
+    # 检查溢出（NNN 为 3 位，最大 999）
+    if next_num > 999:
+        raise WorkflowError(
+            f"生成 req_id 失败：{ts_prefix} 年编号已达上限 999，请人工干预"
+        )
+
+    # 原子化创建：exist_ok=False 确保只有一个进程成功；EEXIST 时递增重试
+    for attempt in range(_REQ_ID_MAX_RETRIES):
+        candidate_id = f"REQ-{ts_prefix}-{next_num:03d}"
+        candidate_dir = base / candidate_id
+        try:
+            candidate_dir.mkdir(parents=False, exist_ok=False)
+            logging.info("req_id=%s 顶层目录已创建", candidate_id)
+            return candidate_id
+        except FileExistsError:
+            # 并发冲突：另一进程已抢占该编号，取下一个编号重试
+            logging.debug("req_id %s 冲突，递增重试 attempt=%d", candidate_id, attempt)
+            next_num += 1
+            if next_num > 999:
+                raise WorkflowError(
+                    f"生成 req_id 失败：{ts_prefix} 年编号超过上限 999"
+                ) from None
+
+    # 超过最大重试次数（极低概率；最多支持 3 路并发冲突重试，≥4 进程同时竞争才会失败）
+    raise WorkflowError(
+        f"生成 req_id 失败：并发冲突超过 {_REQ_ID_MAX_RETRIES} 次重试"
     )
 
 
