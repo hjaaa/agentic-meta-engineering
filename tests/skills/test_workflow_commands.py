@@ -800,7 +800,7 @@ class TestOSErrorWrappedAsWorkflowError:
 # ============================================================
 
 class TestGenerateReqId:
-    """TC-F1-1：_generate_req_id 空 requirements/ 时返回 REQ-{当年}-001。"""
+    """_generate_req_id 空 requirements/ 时返回 REQ-{当年}-001。"""
 
     def test_empty_requirements_returns_first_id(self, tmp_repo: Path):
         """given_empty_requirements_when_generate_req_id_then_returns_REQ_YYYY_001。
@@ -824,21 +824,26 @@ class TestGenerateReqId:
 
 
 class TestGenerateReqIdConcurrencySafe:
-    """TC-F1-2：_generate_req_id 并发 3 路调用，3 个 REQ-ID 唯一（原子化验证）。"""
+    """_generate_req_id 并发 3 路调用，3 个 REQ-ID 唯一（原子化验证）。"""
 
     def test_concurrent_req_id_no_collision(self, tmp_repo: Path):
         """given_three_concurrent_calls_when_generate_req_id_then_req_ids_are_unique ✓。
 
         使用 threading 三发 _generate_req_id，断言 3 个 req_id 互不重叠，
         且每个对应目录均已创建。复刻 TC-F5-G8 并发安全验证模式。
+        用 threading 近似进程模型：mkdir(exist_ok=False) 的原子性在跨进程同样适用，
+        无需 multiprocessing 提升测试复杂度。
         """
         import threading
         import workflow_run as wr
 
         results: list[str] = []
         errors: list[Exception] = []
+        # Barrier 同步三线程起跑线，强化真并发竞争密度
+        barrier = threading.Barrier(3)
 
         def worker() -> None:
+            barrier.wait()  # 等所有线程就位后同步起跑，最大化竞争密度
             try:
                 req_id = wr._generate_req_id(tmp_repo)
                 results.append(req_id)
@@ -863,3 +868,35 @@ class TestGenerateReqIdConcurrencySafe:
             assert (tmp_repo / "requirements" / rid).is_dir(), (
                 f"req_id {rid!r} 对应顶层目录未创建"
             )
+
+
+# TC-F1-3：max+1 策略一致（features.json F-001 acceptance[2]）
+class TestGenerateReqIdMaxPlusOne:
+    """_generate_req_id 存在多个现有目录时，返回 max+1 编号。"""
+
+    def test_picks_max_plus_one_when_existing_dirs(self, tmp_repo: Path):
+        """given_existing_dirs_003_and_007_when_generate_req_id_then_returns_008。
+
+        预建 REQ-{当年}-003 和 REQ-{当年}-007，
+        调用 _generate_req_id 后期望返回 REQ-{当年}-008，
+        验证 max+1 策略与 _generate_run_id 保持一致。
+        """
+        import workflow_run as wr
+        from datetime import datetime, timezone
+
+        year = datetime.now(timezone.utc).strftime("%Y")
+        req_dir = tmp_repo / "requirements"
+
+        # 预建两个目录，非连续编号以验证取 max 而非 count
+        (req_dir / f"REQ-{year}-003").mkdir()
+        (req_dir / f"REQ-{year}-007").mkdir()
+
+        req_id = wr._generate_req_id(tmp_repo)
+
+        expected = f"REQ-{year}-008"
+        assert req_id == expected, (
+            f"存在 -003、-007 时 max+1 期望 {expected}，实际：{req_id}"
+        )
+        assert (req_dir / req_id).is_dir(), (
+            f"{req_id} 对应顶层目录未创建"
+        )

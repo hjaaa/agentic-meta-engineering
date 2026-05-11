@@ -13,7 +13,7 @@
       "complexity": "light",
       "acceptance": [
         "调用返回 'REQ-2026-XXX' 格式的字符串",
-        "并发 3 个进程同时调用，无 EEXIST 冲突未消化",
+        "并发 3 个线程/进程同时调用，无 EEXIST 冲突未消化",
         "max+1 策略与 _generate_run_id 一致；通过现有单测模式覆盖"
       ],
       "estimate_days": 0.5,
