@@ -280,9 +280,10 @@ reviews:
           - REV-REQ-2026-009-code-F-012-002
           - REV-REQ-2026-009-code-F-012-003
           - REV-REQ-2026-009-code-F-012-004
-        latest: REV-REQ-2026-009-code-F-012-004
+          - REV-REQ-2026-009-code-F-012-005
+        latest: REV-REQ-2026-009-code-F-012-005
         conclusion: needs_attention
-        reviewed_commit: 7dabf58
+        reviewed_commit: '0851e57'
         artifact_hashes:
           artifacts/features.json: 
             983be7a713c57d0b8d84d7c47c6727f1e840041666382fdbd07b3055bf81ee0c

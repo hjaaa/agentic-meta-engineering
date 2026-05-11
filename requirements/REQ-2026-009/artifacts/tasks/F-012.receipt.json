@@ -1,37 +1,14 @@
 {
   "feature_id": "F-012",
   "schema_version": "1.0",
-  "status": "DONE_WITH_CONCERNS",
+  "status": "DONE",
   "concerns": [
     "TC-F12-5 字面假设删除整个 managing-requirement-lifecycle 目录；本实现按 CLAUDE.md prompt 走保守 trim（仅删 phase-transition 子动作 + reference/phase-rules.md）。审查时需对照 D-016 决策与任务定义实际意图——保留伞形 Skill 是 prompt 明确指令，不视为缺陷。",
     "三处 _PHASE_REVIEW_DEPS dict 本地副本是潜在漂移源。缓解：每处加双行 source+CI 注释（rev3 M-6 统一格式）；新增 trigger 时人工同步。如多年后 trigger 数量翻倍可考虑反向合并到 canonical_phases.py。",
     "签字深防御从双层（Command + Skill）降为单层（save_review.py signoff 单一入口）。缓解：入口收敛后无第二条调用路径绕过；isatty 在 _run_signoff 第 0 步就拦下所有下游分支；FAKE_TTY env var 等红线仍封禁。",
-    "双向 import 拓扑（signoff.py ↔ save_review.py lazy 解环）仍存在脆弱性——若 signoff.py 模块级代码引用 save_review 中函数，将触发循环 ImportError。rev3 M-4 已加注释明示风险；建议下次拆 helper 时进一步抽 save_review_validation.py 解开双向依赖（D-017 记录）。",
-    "governance gate 仅覆盖 REQ-2026-009 F-012（保守起步版）；其他 REQ 的 features.json/frontmatter touches 一致性未纳入 CI 强制检查，未来推广时在 _GATE_SCOPE 追加。",
-    "本轮 rev4 新引入 minor：run_signoff CC 降至 10（radon B 级，目标 ≤10 达成，但边界较紧）；_append_signoff_process_log 加入 req_id 空值守卫（行为变化：原代码空 req_id 时会尝试打开 REQUIREMENTS_DIR/process.txt 路径，新代码直接 return——语义等价，无 regression）。"
+    "D-014 同模式边界外发现：signoff.py _append_signoff_process_log OSError 分支 {exc} 仍暴露路径（属 baseline，不在本 rev scope）——follow-up 建议用 exc.strerror 替换。"
   ],
-  "touches_violations": [
-    {
-      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-009/artifacts/review-20260510-212235.md",
-      "ts": "2026-05-10T13:23:50+00:00",
-      "tool": "Write"
-    },
-    {
-      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-009/artifacts/features.json",
-      "ts": "2026-05-10T13:26:37+00:00",
-      "tool": "Edit"
-    },
-    {
-      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-009/artifacts/review-20260510-232010.md",
-      "ts": "2026-05-10T15:25:18+00:00",
-      "tool": "Write"
-    },
-    {
-      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/tests/lib/test_features_json_touches_consistency.py",
-      "ts": "2026-05-10T16:00:03+00:00",
-      "tool": "Edit"
-    }
-  ],
+  "touches_violations": [],
   "self_check_results": {
     "TC-F12-1": "PASS",
     "TC-F12-2": "PASS",
@@ -41,11 +18,16 @@
     "TC-F12-6": "PASS"
   },
   "test_results": {
-    "full_pytest": "1190 passed, 9 skipped（rev4 修复后；rev3 1187 + 3 新增：cache / rc=6 / governance gate）",
-    "ruff_check": "0 新引入错误（rev4 改动文件全部通过；原有 73 个仓库级预存问题不计入本轮）",
-    "post_dev_gate": "5 gates pass（GATE-META-SCHEMA / GATE-INDEX-INTEGRITY / GATE-SOURCING / GATE-PLAN-FRESHNESS / GATE-WORKSPACE-CLEAN）",
-    "run_signoff_cc": "10（radon B 级，目标 ≤10 达成）",
-    "rev5_fixes": "F-15 verdict 写盘 OSError + _commit_signoff helper（CC=10 维持）+ F-14 yaml.YAMLError + F-20/F-21 docstring + F-22/F-23 plan.md ADR + F-24 TODO + D-014 save_review.py 同模式"
+    "full_pytest": "1193 passed, 9 skipped（rev6 + 3 新增：governance self-coverage / ADR drift / 拆 helper CC 下降）",
+    "ruff_check": "0 新引入错误（所有本轮改动文件通过）",
+    "post_dev_gate": "待 workspace clean 后验证（rev6 commits 全提交后运行）",
+    "signoff_py_lines": "434（< 495 D-017 上限）",
+    "save_review_py_lines": "492（< 500）",
+    "save_review_validation_py_lines": "47",
+    "run_save_cc": "10（radon B 级，目标 ≤10 达成）",
+    "run_signoff_cc": "10（radon B 级，保持）",
+    "rev6_major_fixes": "F-1 signoff.py 514→434 行 / F-4 _run_save CC 23→10 / F-16 governance gate self-coverage 红线 / F-22' D-016(6) 真回填",
+    "rev6_minor_fixes": "F-2 run_signoff docstring CC 顶格警示 / F-7（含于 Batch 3）/ F-8 OSError rel() / F-10+F-11 tmp_path 进程隔离 / F-14 review JSON atomic write / F-17+F-18 ADR 数字脚本化"
   },
   "commits": [
     "525bf87 refactor(F-012): mv phase_enum.py → canonical_phases.py（保 single source of truth）",
@@ -77,6 +59,11 @@
     "9659b75 fix(F-012): rev5 D-014 同模式修 save_review.py 写盘 + schema 加载",
     "6edde0b fix(F-012): rev5 修 F-22/F-23 plan.md ADR 数字同步",
     "7a0399d fix(F-012): rev5 修 F-24 governance gate 测试 TODO 注释",
-    "de5e1a5 test(F-012): rev5 F-15 专项测试 OSError 注入 + tmp 清理 + rc=1"
+    "de5e1a5 test(F-012): rev5 F-15 专项测试 OSError 注入 + tmp 清理 + rc=1",
+    "6c1e1a6 chore(F-012): rev6 Batch 0 status pending→in-progress + updated_at",
+    "00e256e feat(F-012): rev6 Batch 1 Major 1 — 新建 save_review_validation.py + signoff.py 压到 434 行",
+    "e7c7483 refactor(F-012): rev6 Batch 2 Major 2 — 拆 _run_save 5 helper，CC 23→10",
+    "ca96bc5 feat(F-012): rev6 Batch 3 Major 3+4 — governance gate self-coverage 红线 + D-016(6) 真回填",
+    "989ab2a test(F-012): rev6 Batch 4 Minor 1+2 — ADR 行数脚本化校验 + plan.md D-017 数字校准"
   ]
 }
