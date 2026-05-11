@@ -26,9 +26,9 @@
 | **review** | `跑下代码评审` | 6 | `/workflow:run code-review-embedded` |
 | **review** | `跑代码评审` | 5 | `/workflow:run code-review-embedded` |
 | **review** | `审一下` | 3 | `/workflow:run code-review-embedded` |
-| **new** | `开个新需求` | 5 | `/workflow:new standard-8phase "<title>"` |
-| **new** | `新建需求` | 4 | `/workflow:new standard-8phase "<title>"` |
-| **new** | `创建需求` | 4 | `/workflow:new standard-8phase "<title>"` |
+| **new** | `开个新需求` | 5 | `/workflow:run standard-8phase "<title>"` |
+| **new** | `新建需求` | 4 | `/workflow:run standard-8phase "<title>"` |
+| **new** | `创建需求` | 4 | `/workflow:run standard-8phase "<title>"` |
 | **release** | `release` | 7 | `/workflow:run release-cut`（Post-MVP）|
 | **release** | `我要发版` | 4 | `/workflow:run release-cut`（Post-MVP）|
 | **release** | `打版本` | 3 | `/workflow:run release-cut`（Post-MVP）|

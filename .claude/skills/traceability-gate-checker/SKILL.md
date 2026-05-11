@@ -5,7 +5,7 @@ description: 测试阶段切换前的追溯链门禁——校验需求→设计�
 
 ## 什么时候用
 
-由 `/workflow:next` 在切换到 `testing` 阶段之前自动调用（F-012 后；原由 `managing-requirement-lifecycle` 调用，现委托给 standard-8phase yaml workflow phase-transition 节点）。
+由 `/workflow:next [F-012 待落地]` 在切换到 `testing` 阶段之前自动调用（F-012 后；原由 `managing-requirement-lifecycle` 调用，现委托给 standard-8phase yaml workflow phase-transition 节点）。
 
 ## 核心流程
 

@@ -20,7 +20,7 @@
 | 提 PR | `/requirement:submit` |
 | 卡住了/不确定 | `/agentic:help` |
 
-全量命令见 `.claude/commands/`；详细 SOP 见 `context/team/onboarding/agentic-engineer-guide.md`。需求按 8 阶段推进（初始化 → 需求定义 → 技术预研 → 概要设计 → 详细设计 → 任务规划 → 开发实施 → 测试验收），`/workflow:next` 逐阶段切换并触发门禁（F-012 后阶段切换由 workflow 引擎承载）。
+全量命令见 `.claude/commands/`；详细 SOP 见 `context/team/onboarding/agentic-engineer-guide.md`。需求按 8 阶段推进（初始化 → 需求定义 → 技术预研 → 概要设计 → 详细设计 → 任务规划 → 开发实施 → 测试验收）。阶段切换当前由 `managing-requirement-lifecycle` Skill 承载（用户在主对话中说明 → Skill 写 `meta.yaml.phase` + 跑门禁）；F-012 落地后将统一到 `/workflow:next`（standard-8phase yaml 的 phase-transition 节点）。F-012 状态见 `requirements/REQ-2026-009/`。
 
 ## 自动机制（Hook）
 

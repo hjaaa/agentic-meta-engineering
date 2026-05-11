@@ -52,7 +52,7 @@ tc_f6_1_each_category_happy:
     input: "开个新需求：重构登录模块"
     active_run_states: []
     expected:
-      command: "/workflow:new standard-8phase \"<title>\""
+      command: "/workflow:run standard-8phase \"<title>\""
       args: "重构登录模块"
       conflict: false
 
@@ -60,7 +60,7 @@ tc_f6_1_each_category_happy:
     input: "新建需求"
     active_run_states: []
     expected:
-      command: "/workflow:new standard-8phase \"<title>\""
+      command: "/workflow:run standard-8phase \"<title>\""
       args: null
       conflict: false
 

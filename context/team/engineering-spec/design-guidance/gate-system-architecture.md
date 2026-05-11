@@ -87,7 +87,7 @@ PreToolUse Hook
 
 | trigger | 触发场景 | 跑哪些 gate |
 |---|---|---|
-| `phase-transition` | `/workflow:next` | traceability、reviews-consistency、sourcing |
+| `phase-transition` | `/workflow:next [F-012 待落地]` | traceability、reviews-consistency、sourcing |
 | `pr-submit` | `/requirement:submit` | plan-freshness、workspace-clean、ahead-of-origin |
 | `save-review` | reviewer Agent 落 verdict | reviews_consistency |
 | `manual` | 调试、离线审计 | 全部 |

@@ -2,7 +2,7 @@
 #
 # 用途：
 #   - check-meta.sh 校验 requirements/<id>/meta.yaml 时的唯一事实源
-#   - /workflow:next 门禁 / CI workflow 依赖此文件决定必填与枚举（F-012 后）
+#   - /workflow:next [F-012 待落地] 门禁 / CI workflow 依赖此文件决定必填与枚举（F-012 后）
 #
 # 修改原则：
 #   - required_fields / enums / format 的变更必须走 PR review（影响历史需求）
