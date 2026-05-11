@@ -194,16 +194,69 @@ def test_dispatch_node_approval_writes_event_and_substitutes_prompt(jsonl_path, 
 
 
 def test_dispatch_approval_node_stub_writes_event_with_prompt(tmp_path):
-    """直接调用 _dispatch_approval_node：prompt 替换 + 事件写入。"""
+    """直接调用 _dispatch_approval_node：$ENV_VAR 替换 + 事件写入。"""
     jsonl_path = tmp_path / "run-state.jsonl"
     node = {"id": "gate", "approval": {"prompt": "Approve $ARGUMENTS?"}}
     env = {"ARGUMENTS": "feature-x"}
-    result = _dispatch_approval_node(node, env, jsonl_path)
+    rs = RunState(run_id="REQ-TEST-001")
+    result = _dispatch_approval_node(node, env, rs, jsonl_path)
 
     assert result.outcome == "approval_pending"
     events, _ = read_events(jsonl_path)
     ap = [e for e in events if e.get("type") == "approval_pending"]
     assert ap[0]["data"]["prompt"] == "Approve feature-x?"
+
+
+def test_dispatch_approval_node_resolves_node_output_field(tmp_path):
+    """TC-D4 扩展：$<nodeId>.output.field 通过 run_state.node_outputs 解析，不渲染为空串。
+
+    这是 F-10 修复的核心场景：standard-8phase.yaml 中 approval prompt 引用上游节点输出字段，
+    如 $req-quality-review.output.verdict；修复前传 None 导致引用全部解析为空字符串。
+    """
+    jsonl_path = tmp_path / "run-state.jsonl"
+    rs = RunState(run_id="REQ-TEST-001")
+    rs.node_outputs["upstream"] = {
+        "output": '{"verdict": "approved"}',
+        "state": "completed",
+        "data": {},
+    }
+    node = {
+        "id": "approve-gate",
+        "approval": {"prompt": "verdict=$upstream.output.verdict"},
+    }
+    env: dict = {}
+    result = _dispatch_approval_node(node, env, rs, jsonl_path)
+
+    assert result.outcome == "approval_pending"
+    events, _ = read_events(jsonl_path)
+    ap = [e for e in events if e.get("type") == "approval_pending"]
+    assert len(ap) == 1
+    # 修复前为空串 "verdict="，修复后应解析为字段值
+    assert ap[0]["data"]["prompt"] == "verdict=approved"
+
+
+def test_dispatch_approval_node_env_and_node_output_combined(tmp_path):
+    """TC-D4 扩展：同一 prompt 中同时包含 $ENV_VAR 和 $<nodeId>.output.field，两者均正确替换。"""
+    jsonl_path = tmp_path / "run-state.jsonl"
+    rs = RunState(run_id="REQ-TEST-002")
+    rs.node_outputs["tech-assess"] = {
+        "output": '{"feasibility": "yes"}',
+        "state": "completed",
+        "data": {},
+    }
+    node = {
+        "id": "final-approve",
+        "approval": {
+            "prompt": "RUN=$RUN_ID feasibility=$tech-assess.output.feasibility"
+        },
+    }
+    env = {"RUN_ID": "REQ-TEST-002"}
+    result = _dispatch_approval_node(node, env, rs, jsonl_path)
+
+    assert result.outcome == "approval_pending"
+    events, _ = read_events(jsonl_path)
+    ap = [e for e in events if e.get("type") == "approval_pending"]
+    assert ap[0]["data"]["prompt"] == "RUN=REQ-TEST-002 feasibility=yes"
 
 
 # ============================================================================

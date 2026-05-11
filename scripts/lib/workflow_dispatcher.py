@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
@@ -140,13 +140,13 @@ def dispatch_node(
         elif "bash" in node:
             result = _dispatch_bash_node(node, env, run_dir, jsonl_path)
         elif "approval" in node:
-            result = _dispatch_approval_node(node, env, jsonl_path)
+            result = _dispatch_approval_node(node, env, run_state, jsonl_path)
         elif "loop" in node:
             result = _dispatch_loop_node(node, env, run_state, jsonl_path)
         elif "sub_workflow" in node:
             result = _dispatch_sub_workflow_node(node, env, run_dir, root, jsonl_path)
         else:
-            raise WorkflowError(f"未知节点类型：{node_id}")
+            raise WorkflowError(f"未知节点类型: {node_id}")
 
     except Exception as exc:
         # 所有异常（含 WorkflowError）统一转换为 outcome=failed，写 node_failed 事件
@@ -219,9 +219,10 @@ def _dispatch_bash_node(
 def _dispatch_approval_node(
     node: dict,
     env: dict[str, Any],
+    run_state: RunState,
     jsonl_path: Path,
 ) -> DispatchResult:
-    """Approval 节点 stub（不是纯 stub，F-007 依赖此事件写入）。
+    """Approval 节点：写 approval_pending 事件供 F-007 续跑消费。
 
     按 detailed-design.md:178-185：
     1. 对 node["approval"]["prompt"] 执行 substitute_vars 替换
@@ -236,9 +237,8 @@ def _dispatch_approval_node(
 
     # 替换 prompt 中的变量引用（$RUN_ID / $nodeId.output 等）
     raw_prompt: str = approval_cfg.get("prompt", "")
-    # substitute_vars 签名：(text, node_outputs, env)
-    # env 同时充当 node_outputs（已包含 <nodeId>.output 键）和 env 变量
-    rendered_prompt = substitute_vars(raw_prompt, None, env)
+    # 传 run_state.node_outputs 让 prompt 中 $<nodeId>.output[.field] 引用能解析（env 走 ENV_VAR 路径覆盖不到 .output 后缀）
+    rendered_prompt = substitute_vars(raw_prompt, run_state.node_outputs, env)
 
     append_event(jsonl_path, {
         "type": "approval_pending",
