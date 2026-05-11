@@ -1,0 +1,90 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-009-code-F-011-001",
+  "requirement_id": "REQ-2026-009",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-10 13:26:27",
+  "reviewed_commit": "b6806c6",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "9057caca361533de2979f48a9b74a5169e6e5f1181c83050699e36cbf4d1d047"
+    },
+    {
+      "path": "artifacts/tasks/F-011.md",
+      "sha256": "8c7d627c2128a59ce09a6069e92531cbc8cc903e90fc7bf56d7fa9c0789fe091"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 87,
+  "dimensions": {
+    "design_consistency": {
+      "score": 70,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "tests/migration/fixtures/R004/boundary.yaml:27 写 strict:true 但 _run_old_chain/_run_new_chain 完全不读 strict 字段，与 failure fixture 等价，未真验证设计 §8.3 R004 boundary '--strict 升 ERROR' 路径"
+        },
+        {
+          "severity": "major",
+          "description": "tests/migration/fixtures/R005/boundary.yaml:18-20 测的是 meta.yaml hash drift（与 failure 同语义），与设计 §8.3 R005 boundary '黑名单兜底' 不符——黑名单逻辑在 scripts/lib/save_review.py:210-228 写入侧，与 R005 读取侧 hash drift 是两条链路"
+        },
+        {
+          "severity": "major",
+          "description": "tests/e2e/test_legacy_run_compat.py:139-179 TC-F11-3 acceptance 声明'跑 /workflow:continue'，但只 append_event+RunState.rebuild，未调 scripts/lib/workflow_continue.main()；_resolve_run_dir / validate_state_for_cmd / main loop stub 全未覆盖"
+        }
+      ]
+    },
+    "security": {
+      "score": 95,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 95,
+      "issues": []
+    },
+    "complexity": {
+      "score": 92,
+      "issues": []
+    },
+    "error_handling": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "tests/migration/test_phase_requirements_equivalence.py:46 _load_fixture yaml.safe_load 异常未捕获含 path 上下文"
+        },
+        {
+          "severity": "minor",
+          "description": "tests/e2e/test_legacy_run_compat.py:126 _load_legacy_meta yaml.safe_load 异常未捕获含 path（同文件 _load_events_from_fixture 已包裹 json.JSONDecodeError，存在双标）"
+        },
+        {
+          "severity": "minor",
+          "description": "tests/migration/test_phase_requirements_equivalence.py:380 registry yaml.safe_load 异常未捕获含 path"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 88,
+      "issues": []
+    },
+    "performance": {
+      "score": 95,
+      "issues": []
+    },
+    "history_context": {
+      "score": 92,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "三处 yaml.safe_load 与一处 json.JSONDecodeError 错误处理双标——下个迭代统一 fixture loader 异常包装函数",
+    "TC-F11-3 / TC-F11-4 acceptance 文案与实测代码语义 gap：acceptance 写'跑 X / 走双层'但实测仅 stub 或 grep——下次设计阶段就把 acceptance 写得更可执行（e.g. '调用 main() 期望 exit 0' 而非'跑 /workflow:continue'）"
+  ],
+  "scope": {
+    "feature_id": "F-011"
+  },
+  "supersedes": null
+}

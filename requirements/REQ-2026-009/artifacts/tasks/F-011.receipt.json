@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-011",
+  "status": "DONE",
+  "commits": [
+    {
+      "rev": "rev2",
+      "commit_sha": "fd60521",
+      "summary": "F-011 rev2 修 6 项 review finding（3 major + 3 minor）"
+    },
+    {
+      "rev": "rev3",
+      "commit_sha": "8fac307",
+      "summary": "F-011 rev3 修 3 项 minor（F-1 docstring+冗余分支 + F-5 try/except + F-8 ValueError 模板统一）"
+    }
+  ],
+  "rev": "rev3",
+  "files_changed": [
+    "tests/migration/test_phase_requirements_equivalence.py",
+    "tests/e2e/test_legacy_run_compat.py"
+  ],
+  "test_summary": "rev3 修 3 项 minor：F-1 _classify_report 合并冗余内层 if + docstring 简化为 2 分支；F-5 line 172-173 列表推导改显式 for 循环 + json.JSONDecodeError try/except；F-8 统一 4 处 ValueError 模板（<artifact-type> 解析失败（path=...）：{exc}）。全套 1179 passed / 9 skipped，ruff All checks passed。",
+  "touches_violations": [],
+  "test_results": {
+    "TC-F11-1": "PASS (21/21 parametrize, test_zero_mismatch_across_all_fixtures PASS, R004-boundary strict=True → fail 验证通过)",
+    "TC-F11-2": "PASS (test_three_triggers: triggers >= {phase-transition, submit, ci}, yaml异常包裹通过)",
+    "TC-F11-3": "PASS (4 e2e subtests + workflow_continue.main([RUN-LEGACY-001], repo_root=tmp_path) rc=0)",
+    "TC-F11-4": "PASS (test_r003_signoff_through_hook: sign-off PASS + no signoff FAIL + hook assert)",
+    "TC-F11-5": "PASS (test_plan6_sop_doc_present: notes.md contains SOP markers)"
+  },
+  "commit_sha": "fd60521",
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-10T00:00:00+08:00"
+}

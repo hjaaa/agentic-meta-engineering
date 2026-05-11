@@ -1,0 +1,10 @@
+# to-root 场景：rollback 到 node-a（第一个节点），归档 B/C
+# 期望 run_dir 内：
+#   run-state.jsonl  — 仅含 workflow_started + node-a 完成事件
+#   node-b/ node-c/  — 已删（mv 到 archived）
+# 期望 .archived/<ts>/ 内：
+#   node-b/ node-c/  — 存在
+#   run-state.jsonl.tail — 含 B/C 事件
+KEPT_EVENTS: node-a
+ARCHIVED_DIRS: node-b node-c
+ALL_LATER_NODES_ARCHIVED: yes

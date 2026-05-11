@@ -21,12 +21,11 @@ import re
 import subprocess
 import sys
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 # ruamel.yaml 用于 meta.yaml round-trip（保留注释）；PyYAML 仅用于 schema 读取
-from ruamel.yaml import YAML
 import yaml
+from ruamel.yaml import YAML
 
 from common import REPO_ROOT, Report, Severity, paint, rel
 
@@ -230,47 +229,56 @@ def _check_artifact_blacklist(artifacts: list) -> str | None:
     return None
 
 
-def _resolve_verdict_path(rev_id: str) -> Path | None:
-    """从 REV-ID 反推 verdict 文件路径。
+# ─── F-012 rev2：signoff 子模块 re-export ─────────────────────────────────────
+# signoff 相关 helper 已迁入 scripts/lib/signoff.py；
+# 下面的 import 保留原模块级名字，确保测试 monkeypatch 继续工作。
+import signoff as _signoff_mod  # noqa: E402
 
-    REV-ID 格式：REV-<REQ-ID>-<prefix>-NNN
-    示例：REV-REQ-2026-003-definition-001
-          REV-REQ-2026-003-code-F-001-001
-
-    返回路径（不保证存在），或 None（解析失败）。
-    """
-    # 格式：REV-REQ-YYYY-NNN-<phase_and_seq>
-    # 去掉开头的 "REV-" 前缀
-    if not rev_id.startswith("REV-"):
-        return None
-    rest = rev_id[4:]  # 去掉 "REV-"
-
-    # REQ-ID 固定为 REQ-YYYY-NNN（3 段 + 连字符）
-    # 从 rest 中提取：REQ-2026-003 然后是文件名剩余部分
-    parts = rest.split("-")
-    # 期望格式：["REQ", "2026", "003", ...phase+seq...]
-    if len(parts) < 4 or parts[0] != "REQ":
-        return None
-
-    req_id = f"{parts[0]}-{parts[1]}-{parts[2]}"
-    # 文件名：rest 去掉 "<req_id>-" 前缀 = 余下的 phase-seq 部分
-    filename_stem = rest[len(req_id) + 1:]  # e.g. "definition-001" or "code-F-001-001"
-    if not filename_stem:
-        return None
-
-    verdict_path = REQUIREMENTS_DIR / req_id / "reviews" / f"{filename_stem}.json"
-    return verdict_path
+_resolve_verdict_path = _signoff_mod._resolve_verdict_path
+_run_signoff = _signoff_mod.run_signoff
+_check_trivial_paths = _signoff_mod._check_trivial_paths
 
 
-def _run_save(args: argparse.Namespace) -> int:
-    """既有 save 逻辑（原 main() 全部迁入此函数）。"""
+def _load_stdin_verdict() -> tuple[dict | None, int | None]:
+    """从 stdin 读取并解析 JSON verdict；返回 (verdict, None) 或 (None, rc)。"""
     try:
         verdict = json.load(sys.stdin)
     except json.JSONDecodeError as exc:
         print(paint(f"❌ stdin JSON 解析失败: {exc}", "red"), file=sys.stderr)
-        return 2
+        return None, 2
+    return verdict, None
 
-    # Fix 5+6: 交叉校验 CLI 参数与 verdict 字段，防止文件与命令行不一致
+
+def _run_schema_checks(
+    verdict: dict, args: argparse.Namespace
+) -> tuple[dict | None, int | None]:
+    """加载 schema + 全量 CR 校验；返回 (schema, None) 通过，(None, rc) 失败。"""
+    try:
+        schema = _load_schema()
+    except yaml.YAMLError as exc:
+        print(paint(f"❌ schema 文件格式错误: {exc}", "red"), file=sys.stderr)
+        return None, 1
+    report = Report()
+    label = f"<stdin>:{args.req}/{args.phase}"
+    _check_required_fields(verdict, schema, report, label)
+    _check_enums(verdict, schema, report, label)
+    _check_format(verdict, schema, report, label)
+    _check_cr_rules(verdict, report, label)
+    _check_commit_matches_head(verdict, report, label)
+    _check_scope_rules(verdict, schema, report, label)
+    print(report.render())
+    if report.errors > 0:
+        return None, report.exit_code(strict=False)
+    return schema, None
+
+
+def _validate_inputs(
+    args: argparse.Namespace, verdict: dict
+) -> int | None:
+    """stdin JSON 解析后的 CLI/verdict 字段一致性 + req_id/phase/reviewer 校验 + 黑名单。
+
+    返回 None 通过，int=退出码（调用方直接 return）。
+    """
     if verdict.get("requirement_id") != args.req:
         print(paint(f"❌ verdict.requirement_id={verdict.get('requirement_id')!r} 与 --req={args.req!r} 不一致", "red"), file=sys.stderr)
         return 1
@@ -280,36 +288,15 @@ def _run_save(args: argparse.Namespace) -> int:
     if verdict.get("reviewer") != args.reviewer:
         print(paint(f"❌ verdict.reviewer={verdict.get('reviewer')!r} 与 --reviewer={args.reviewer!r} 不一致", "red"), file=sys.stderr)
         return 1
-
-    schema = _load_schema()
-    report = Report()
-    label = f"<stdin>:{args.req}/{args.phase}"
-
-    _check_required_fields(verdict, schema, report, label)
-    _check_enums(verdict, schema, report, label)
-    _check_format(verdict, schema, report, label)
-    _check_cr_rules(verdict, report, label)
-    _check_commit_matches_head(verdict, report, label)
-    _check_scope_rules(verdict, schema, report, label)
-
-    print(report.render())
-
-    if report.errors > 0:
-        return report.exit_code(strict=False)
-
-    # 重算 reviewed_artifacts[].sha256
-    req_dir = REQUIREMENTS_DIR / args.req
-    if not req_dir.exists():
-        print(paint(f"❌ 需求目录不存在: {rel(req_dir)}", "red"), file=sys.stderr)
-        return 2
-
-    # 黑名单：阻止 reviewer agent 把 meta.yaml / reviews/ 自身塞进 reviewed_artifacts
-    # 历史教训：reviewer 写入 meta.yaml.reviews 块即破坏自身 hash，导致 R005 自引用循环
     blacklist_err = _check_artifact_blacklist(verdict.get("reviewed_artifacts", []))
     if blacklist_err is not None:
         print(paint(blacklist_err, "red"), file=sys.stderr)
         return 1
+    return None
 
+
+def _compute_artifact_hashes(verdict: dict, req_dir: Any) -> int | None:
+    """重算 reviewed_artifacts[].sha256 + 文件存在性校验。返回 None 通过，int=退出码。"""
     for art in verdict.get("reviewed_artifacts", []):
         art_path = req_dir / art["path"]
         if not art_path.exists():
@@ -317,43 +304,57 @@ def _run_save(args: argparse.Namespace) -> int:
             return 1
         with art_path.open("rb") as f:
             art["sha256"] = hashlib.sha256(f.read()).hexdigest()
+    return None
 
-    # 算下一个 NNN
-    reviews_dir = req_dir / "reviews"
-    reviews_dir.mkdir(exist_ok=True)
+
+def _compute_next_review_id(
+    args: argparse.Namespace, verdict: dict, reviews_dir: Any
+) -> tuple[str, str] | int:
+    """算下一个 NNN 序号 + review_id 一致性校验。
+
+    返回 (feature_id, out_name) 或 int 退出码。feature_id 为空字符串时表示非 code phase。
+    """
     phase = args.phase
     if phase == "code":
         if not args.scope or not args.scope.startswith("feature_id="):
             print(paint("❌ phase=code 必须有 --scope feature_id=F-XXX", "red"), file=sys.stderr)
             return 1
-        # Fix 7: feature_id 只提取一次，后续复用
         feature_id = args.scope.split("=", 1)[1]
         prefix = f"code-{feature_id}-"
     else:
+        feature_id = ""
         prefix = f"{phase}-"
     existing = sorted(reviews_dir.glob(f"{prefix}*.json"))
     next_seq = len(existing) + 1
     out_name = f"{prefix}{next_seq:03d}.json"
-    out_path = reviews_dir / out_name
-
-    # 校验 review_id 与 NNN 一致
     expected_id = f"REV-{args.req}-{prefix}{next_seq:03d}"
     if verdict.get("review_id") != expected_id:
         print(paint(f"❌ review_id 应为 {expected_id!r}，实际 {verdict.get('review_id')!r}", "red"), file=sys.stderr)
         return 1
+    return feature_id, out_name
 
-    # 写入 review JSON
-    with out_path.open("w", encoding="utf-8") as f:
-        json.dump(verdict, f, ensure_ascii=False, indent=2)
-        f.write("\n")
+
+def _commit_review_json(out_path: Any, verdict: dict) -> int | None:
+    """原子写盘 review JSON（tmp+rename）；成功→None，OSError→1（D-014 同模式 _commit_signoff）。"""
+    import os
+    tmp_path = out_path.with_suffix(f".{os.getpid()}.tmp")
+    try:
+        with tmp_path.open("w", encoding="utf-8") as f:
+            json.dump(verdict, f, ensure_ascii=False, indent=2)
+            f.write("\n")
+        tmp_path.replace(out_path)
+    except OSError as exc:
+        tmp_path.unlink(missing_ok=True)
+        print(paint(f"❌ review JSON 写盘失败（路径 {rel(tmp_path)}: {exc.strerror or exc}）", "red"), file=sys.stderr)
+        return 1
     print(paint(f"✓ 已写入 {rel(out_path)}", "green"))
+    return None
 
-    # 更新 meta.yaml.reviews
-    # Fix 1+2: 使用 ruamel.yaml round-trip 模式读写，保留注释；写入改为 atomic（temp + rename）
-    meta_path = req_dir / "meta.yaml"
-    with meta_path.open("r", encoding="utf-8") as f:
-        meta = _meta_yaml.load(f) or {}
-    reviews = meta.setdefault("reviews", {})
+
+def _write_meta_yaml(
+    meta_path: Any, meta: dict, phase: str, reviews: dict, verdict: dict, feature_id: str
+) -> int | None:
+    """更新 meta.yaml.reviews + atomic 写盘；成功→None，OSError→1。"""
     artifact_hashes = {art["path"]: art["sha256"] for art in verdict["reviewed_artifacts"]}
     entry = {
         "latest": verdict["review_id"],
@@ -364,7 +365,6 @@ def _run_save(args: argparse.Namespace) -> int:
         "stale": False,
     }
     if phase == "code":
-        # feature_id 已在上方提取，直接复用（Fix 7）
         code_seg = reviews.setdefault("code", {}).setdefault("by_feature", {}).setdefault(feature_id, {"history": []})
         code_seg["history"] = (code_seg.get("history") or []) + [verdict["review_id"]]
         code_seg.update({k: v for k, v in entry.items() if k != "history"})
@@ -374,117 +374,60 @@ def _run_save(args: argparse.Namespace) -> int:
         entry["history"] = history
         reviews[phase] = entry
 
-    # atomic 写入：先写临时文件，再原子替换，防止中途崩溃导致 meta.yaml 损坏
-    tmp_path = meta_path.with_suffix(meta_path.suffix + ".tmp")
-    with tmp_path.open("w", encoding="utf-8") as f:
-        _meta_yaml.dump(meta, f)
-    tmp_path.replace(meta_path)  # POSIX 原子操作
-    print(paint(f"✓ 已更新 {rel(meta_path)} 的 reviews.{phase}", "green"))
-
-    return 0
-
-
-def _run_signoff(args: argparse.Namespace) -> int:
-    """signoff 子命令：把 human_signoff 字段写入已有 verdict 文件。
-
-    流程：
-      0. D-003 深防御第三层：校验 stdin 必须为 tty（防 AI 绕过 Command + Skill 直调本入口）
-      1. 从 REV-ID 定位 verdict 文件
-      2. 读 verdict JSON
-      3. 写 human_signoff 字段
-      4. 全量重跑 CR-1~CR-8 校验
-      5. 通过 → 写盘 + append process.txt
-      6. 失败 → 退出码 1 + stderr CR 详情
-    """
-    # D-003 深防御第三层：save_review.py signoff 本身也校验 tty，
-    # 防 AI 绕过 Command + Skill 两层直接调本入口完成代签。
-    # 绝不引入任何 env var 旁路（FAKE_TTY 等已被红线封禁）。
-    if not sys.stdin.isatty():
-        print("signoff: stdin not a tty, refuse to sign for AI", file=sys.stderr)
-        return 2
-
-    rev_id = args.rev_id
-    verdict_path = _resolve_verdict_path(rev_id)
-    if verdict_path is None:
-        print(f"signoff: verdict {rev_id} not found", file=sys.stderr)
-        return 4
-
-    if not verdict_path.exists():
-        print(f"signoff: verdict {rev_id} not found", file=sys.stderr)
-        return 4
-
-    # 读取 verdict 文件
+    import os
+    tmp_path = meta_path.with_suffix(f"{meta_path.suffix}.{os.getpid()}.tmp")
     try:
-        with verdict_path.open("r", encoding="utf-8") as f:
-            verdict = json.load(f)
-    except (json.JSONDecodeError, OSError) as exc:
-        print(paint(f"❌ verdict 文件解析失败: {exc}", "red"), file=sys.stderr)
-        return 2
-
-    # 检查是否已签字（防重复签名）
-    existing_sig = verdict.get("human_signoff") or {}
-    if existing_sig.get("decision"):
-        signed_by = existing_sig.get("signed_by", "unknown")
-        signed_at = existing_sig.get("signed_at", "unknown")
-        print(f"signoff: already signed by {signed_by} at {signed_at}", file=sys.stderr)
-        return 5
-
-    # 写入 human_signoff 字段
-    verdict["human_signoff"] = {
-        "decision": args.decision,
-        "signed_at": args.signed_at,
-        "signed_by": args.signed_by,
-        "source": args.source,
-    }
-
-    # 全量重跑 CR-1~CR-8 + 格式校验
-    schema = _load_schema()
-    report = Report()
-    label = f"{verdict_path.name}:{verdict.get('requirement_id', '?')}"
-    _check_required_fields(verdict, schema, report, label)
-    _check_enums(verdict, schema, report, label)
-    _check_format(verdict, schema, report, label)
-    _check_cr_rules(verdict, report, label)
-    _check_scope_rules(verdict, schema, report, label)
-
-    if report.errors > 0:
-        print(report.render(), file=sys.stderr)
-        return 1
-
-    # 写盘（原子替换）
-    tmp_path = verdict_path.with_suffix(".json.tmp")
-    with tmp_path.open("w", encoding="utf-8") as f:
-        json.dump(verdict, f, ensure_ascii=False, indent=2)
-        f.write("\n")
-    tmp_path.replace(verdict_path)
-    print(paint(f"✓ human_signoff 已写入 {rel(verdict_path)}", "green"))
-
-    # append process.txt 评审事件
-    req_id = verdict.get("requirement_id", "")
-    if req_id:
-        _append_signoff_process_log(req_id, rev_id, args.decision, args.signed_by)
-
-    return 0
-
-
-def _append_signoff_process_log(
-    req_id: str, rev_id: str, decision: str, signed_by: str
-) -> None:
-    """追加 signoff 事件到 requirements/<req>/process.txt。
-
-    格式（模仿 requirement-progress-logger 单行格式）：
-      <ts> [signoff] <REV-ID> <decision> by <email>
-    """
-    process_path = REQUIREMENTS_DIR / req_id / "process.txt"
-    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    line = f"{ts} [signoff] {rev_id} {decision} by {signed_by}\n"
-    try:
-        with process_path.open("a", encoding="utf-8") as f:
-            f.write(line)
-        print(paint(f"✓ 已追加事件到 {rel(process_path)}", "green"))
+        with tmp_path.open("w", encoding="utf-8") as f:
+            _meta_yaml.dump(meta, f)
+        tmp_path.replace(meta_path)
     except OSError as exc:
-        # 日志写入失败不阻断主流程，仅警告
-        print(paint(f"⚠️  process.txt 写入失败（{exc}），签字已生效", "yellow"), file=sys.stderr)
+        tmp_path.unlink(missing_ok=True)
+        print(paint(f"❌ meta.yaml 写盘失败（路径 {rel(tmp_path)}: {exc.strerror or exc}）", "red"), file=sys.stderr)
+        return 1
+    print(paint(f"✓ 已更新 {rel(meta_path)} 的 reviews.{phase}", "green"))
+    return None
+
+
+def _run_save(args: argparse.Namespace) -> int:
+    """既有 save 逻辑（拆 helper 后主流程 ≤25 行 / CC ≤10）。"""
+    verdict, rc = _load_stdin_verdict()
+    if rc is not None:
+        return rc
+
+    rc = _validate_inputs(args, verdict)  # type: ignore[arg-type]
+    if rc is not None:
+        return rc
+
+    _schema, rc = _run_schema_checks(verdict, args)
+    if rc is not None:
+        return rc
+
+    req_dir = REQUIREMENTS_DIR / args.req
+    if not req_dir.exists():
+        print(paint(f"❌ 需求目录不存在: {rel(req_dir)}", "red"), file=sys.stderr)
+        return 2
+
+    rc = _compute_artifact_hashes(verdict, req_dir)
+    if rc is not None:
+        return rc
+
+    reviews_dir = req_dir / "reviews"
+    reviews_dir.mkdir(exist_ok=True)
+    result = _compute_next_review_id(args, verdict, reviews_dir)  # type: ignore[arg-type]
+    if isinstance(result, int):
+        return result
+    feature_id, out_name = result
+
+    rc = _commit_review_json(reviews_dir / out_name, verdict)
+    if rc is not None:
+        return rc
+
+    meta_path = req_dir / "meta.yaml"
+    with meta_path.open("r", encoding="utf-8") as f:
+        meta = _meta_yaml.load(f) or {}
+    reviews = meta.setdefault("reviews", {})
+    rc = _write_meta_yaml(meta_path, meta, args.phase, reviews, verdict, feature_id)
+    return rc if rc is not None else 0
 
 
 _KNOWN_CMDS: frozenset[str] = frozenset({"save", "signoff"})
@@ -504,20 +447,8 @@ def _build_parsers() -> tuple[argparse.ArgumentParser, argparse._SubParsersActio
     save_p.add_argument("--scope", default=None,
                         help="形如 feature_id=F-001（仅 phase=code 必填）")
 
-    # signoff 子命令（卡点 B 调用）
-    signoff_p = sub.add_parser("signoff", help="写 human_signoff 字段（卡点 B 调用）")
-    signoff_p.add_argument("--rev-id", required=True,
-                           help="REV-ID，如 REV-REQ-2026-003-definition-001")
-    signoff_p.add_argument("--decision", required=True,
-                           choices=["approved", "approved-trivial", "rejected"],
-                           help="sign-off 决策")
-    signoff_p.add_argument("--signed-by", required=True,
-                           help="签字人 email（取自 git config user.email）")
-    signoff_p.add_argument("--signed-at", required=True,
-                           help="签字时间（ISO8601 含时区）")
-    # --source 当前枚举仅 cli-tty，保留参数形式为 D-004（PR Review 等价）预留扩展
-    signoff_p.add_argument("--source", default="cli-tty", choices=["cli-tty"],
-                           help="sign-off 来源（默认 cli-tty）")
+    # signoff 子命令——parser 定义集中在 signoff.py 统一维护（F-012 rev2）
+    _signoff_mod.build_signoff_parser(sub)
 
     return parser, sub
 

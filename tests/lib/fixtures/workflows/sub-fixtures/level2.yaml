@@ -1,0 +1,6 @@
+name: deep-l2
+version: 1
+category: assist
+nodes:
+  - id: leaf
+    bash: 'echo leaf'

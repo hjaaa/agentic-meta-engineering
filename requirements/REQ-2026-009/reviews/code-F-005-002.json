@@ -1,0 +1,121 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-009-code-F-005-002",
+  "requirement_id": "REQ-2026-009",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-09 10:59:17",
+  "reviewed_commit": "c8bdae2",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "a727fdb34dd16ea73c5d6b0ec65dff0932dd7ed961e3b34d3eb72072a4ca51f3"
+    },
+    {
+      "path": "artifacts/tasks/F-005.md",
+      "sha256": "f969ddbddb6773fcf0a0892d1d317abd4d01463f69c4c66ad85ed2448e4240c5"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 82,
+  "dimensions": {
+    "design_consistency": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "requirements/REQ-2026-009/artifacts/detailed-design.md:69 §1.2.3 save 前置条件漏 completed（仅 4 态），与 §1.2.6 修订后 5 态对齐冲突——rev1 F-4 闭合时漏修同质问题"
+        }
+      ]
+    },
+    "security": {
+      "score": 92,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/workflow_run.py:24-40 _generate_run_id 三步非原子（iterdir+max+1+mkdir(exist_ok=True)）：并发可生成相同 run_id 互覆盖 meta.yaml/jsonl"
+        }
+      ]
+    },
+    "complexity": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_cancel.py:52-124 main 73 行 + nested depth 5（main→if not graceful→try→except→try→except），路径线性可读但层级偏深"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 70,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/workflow_cancel.py:120 except WorkflowError: pass 完全无声——TaskStop 失败 + 降级事件失败双路全静默，用户/审计无法感知"
+        },
+        {
+          "severity": "major",
+          "description": "scripts/lib/workflow_continue.py:87 写 run_resumed 失败仅 WARN 但 main 仍 exit 0，导致审计层 run_resumed 事件丢失而调用方无感"
+        },
+        {
+          "severity": "major",
+          "description": "scripts/lib/workflow_list.py:55-61 双层 except Exception 吞 yaml+json 解析失败，meta 损坏时表格静默显示空字段"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_command_dispatcher.py:59-65 import importlib + import_module 未 catch ModuleNotFoundError，cmd 映射的模块缺失时用户看到 traceback 而非友好错误"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/common.py:47 except Exception: pass 吞 git rev-parse 异常（推断函数 fallback 合理但应 logging.debug 而非纯 pass）"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_reject.py:23 reason 仅设 _REASON_MIN_LEN=8，缺 max length 与 workflow_save.py:26 _NOTE_MAX_LEN=200 不对称"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback_cmd.py:72 noqa:F401 误标——rollback_run 在 73 行被实际调用"
+        }
+      ]
+    },
+    "performance": {
+      "score": 90,
+      "issues": []
+    },
+    "history_context": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_list.py:143 filter 语法错 return 2 与 workflow_state_validator.py:87 sys.exit(2) 非 tty 语义冲突，应改 exit 1（业务参数错）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback_cmd.py:84 依赖未实现 exit 1 vs workflow_state_validator.py:87 状态拒绝/非 tty exit 2 语义混用"
+        }
+      ]
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "G-8/G-10/G-11/G-12 四条 keep major 全集中在 error-handling+concurrency 维度，根因一致：异常吞没 + 降级事件审计丢失。建议在 rev3 用统一手法修——所有 except WorkflowError/Exception 至少 stderr WARN + 关键审计事件写失败应 exit 1 而非 WARN 降级",
+    "G-1（detailed-design.md:69 §1.2.3 漏 completed）是 rev1 F-4 闭合的尾巴，建议在 rev3 修复 G-8/G-10/G-11/G-12 时顺手补一行（≤ 5 字符改动）",
+    "G-13/G-16/G-17/G-22/G-28/G-29/G-31 七条 keep minor 风险=0、修复成本极低（合计 < 30 行），建议合并一个 polish commit 与 rev3 主修同提，避免拖到 rev4",
+    "rev1 4 keep major（F-1 cancel TaskStop 事件 / F-2 continue 漏 run_resumed / F-3 save event_type 错位 / F-13 save 5 态对齐）通过引入 cancel_taskstop_failed/run_resumed/save 三个新事件 + WORKFLOW_EVENT_TO_STATE 不映射 + TestNewEventsDoNotChangeState 3 TC 已全部闭合。rev2 浮现 4 新 keep major 是对错误处理与并发的更深层暴露，非 rev1 修复回退",
+    "G-6（test 625 行）覆盖 6 大场景 + rev2 新增 3 TC，平均每方法 22 行有 fixture/setup/assert。500 阈值是软线，当前覆盖密度合理，下次扩 TC 时再评估按场景拆分子文件"
+  ],
+  "scope": {
+    "feature_id": "F-005"
+  },
+  "supersedes": "REV-REQ-2026-009-code-F-005-001"
+}

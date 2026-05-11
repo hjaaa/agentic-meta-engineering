@@ -3,6 +3,13 @@ description: 提交当前需求的 PR——自动门禁、推分支、拼正文�
 argument-hint: [--draft] [--target <branch>] [--skip-rebase] [--reviewer <user>]... [--force-with-blockers]
 ---
 
+> [DEPRECATION] /requirement:submit 已纳入 3 月兼容期（截至 2026-08-08）。
+> 请改用：新引擎语义由 standard-8phase yaml 末端 pr-submit 节点承载（F-003）。
+> 本次仍执行旧实现以保证兼容；Plan 6 自举验证通过 + 兼容期到期后将物理删除。
+> 详见：context/team/engineering-spec/migration/2026-XX-runs-rename.md
+>
+> **例外保留说明（不转发到 /workflow:submit）**：保留旧实现 + flag 直传到旧 submit Skill；新引擎语义由 standard-8phase yaml 末端 pr-submit 节点承载。
+
 ## 用途
 
 在 `development` 或 `testing` 阶段内部执行一次"推分支 + 开 PR"动作：

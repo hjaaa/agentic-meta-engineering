@@ -2,7 +2,7 @@
 #
 # 用途：
 #   - check-meta.sh 校验 requirements/<id>/meta.yaml 时的唯一事实源
-#   - /requirement:next 门禁 / CI workflow 依赖此文件决定必填与枚举
+#   - /workflow:next 门禁 / CI workflow 依赖此文件决定必填与枚举（F-012 后）
 #
 # 修改原则：
 #   - required_fields / enums / format 的变更必须走 PR review（影响历史需求）
@@ -11,7 +11,7 @@
 # 关联文档：
 #   - context/team/engineering-spec/specs/2026-04-22-index-meta-validation-design.md
 #   - .claude/skills/managing-requirement-lifecycle/templates/meta.yaml.tmpl
-#   - .claude/skills/managing-requirement-lifecycle/reference/phase-rules.md
+#   - context/team/engineering-spec/meta-schema.yaml `enums.phase`（canonical phase 单一事实源；F-012 后 phase-rules.md 已删）
 
 # ---------- 必填字段（按组分类） ----------
 # 所有 phase 下都要求字段在 YAML 中存在（即使值为空），便于机器校验。
@@ -33,8 +33,7 @@ required_fields:
 
 # ---------- 枚举白名单 ----------
 enums:
-  # phase 枚举以 .claude/skills/managing-requirement-lifecycle/reference/phase-rules.md 为事实源
-  # 此处同步一份便于 check-meta.sh 直接读取
+  # phase 枚举单一事实源（F-012 后此处即为事实源；phase-rules.md 已删）
   phase:
     - bootstrap
     - definition

@@ -6,7 +6,8 @@ version: 1
 # ─────── must 段：高风险路径，强制全跑相关 checker（≤ 5 条，D-001 fail-closed 校验）───────
 must:
   # Q1-1：审查管道核心鉴权脚本（含本需求自身的 routing.py）
-  - pattern: "scripts/lib/{save_review,code_review_signoff,code_review_routing,check_signoff_audit}.py"
+  # F-012：原 code_review_signoff.py 已合并入 save_review.py（signoff 子命令）
+  - pattern: "scripts/lib/{save_review,code_review_routing,check_signoff_audit}.py"
     checkers: [security-checker, design-consistency-checker]
 
   # Q1-2：门禁系统（registry / runner / plugin），改动直接影响所有需求的 phase 切换

@@ -1,0 +1,4 @@
+# T1 第二次 rollback：到 node-a（归档 B，两次 ts 目录并存互不覆盖）
+KEPT_EVENTS: node-a
+ARCHIVED_DIRS_SECOND: node-b
+TWO_ARCHIVE_DIRS: yes

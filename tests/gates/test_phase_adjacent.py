@@ -25,7 +25,7 @@ from pathlib import Path
 _REPO_ROOT = Path(runner_mod._REPO_ROOT)
 if str(_REPO_ROOT / "scripts" / "lib") not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT / "scripts" / "lib"))
-import phase_enum
+import canonical_phases
 
 
 # ====================== load_adjacent_phases / load_canonical_phases_ordered ======================
@@ -38,9 +38,9 @@ def test_load_adjacent_phases_returns_forward_pairs():
                  task-planning, development, testing, completed]
     返回应含 8 对前进相邻；不含回退（如 testing→development）。
     """
-    phase_enum.reset_cache()
-    pairs = phase_enum.load_adjacent_phases()
-    ordered = phase_enum.load_canonical_phases_ordered()
+    canonical_phases.reset_cache()
+    pairs = canonical_phases.load_adjacent_phases()
+    ordered = canonical_phases.load_canonical_phases_ordered()
     assert len(pairs) == len(ordered) - 1
     for i in range(len(ordered) - 1):
         assert (ordered[i], ordered[i + 1]) in pairs
@@ -51,8 +51,8 @@ def test_load_adjacent_phases_returns_forward_pairs():
 
 def test_load_canonical_phases_ordered_preserves_yaml_order():
     """given_yaml_phase_list_when_load_ordered_then_keep_order（不排序）。"""
-    phase_enum.reset_cache()
-    ordered = phase_enum.load_canonical_phases_ordered()
+    canonical_phases.reset_cache()
+    ordered = canonical_phases.load_canonical_phases_ordered()
     assert ordered[0] == "bootstrap"
     # tech-research 应在 outline-design 之前
     assert ordered.index("tech-research") < ordered.index("outline-design")
@@ -60,9 +60,9 @@ def test_load_canonical_phases_ordered_preserves_yaml_order():
 
 def test_load_adjacent_phases_cached():
     """重复调用应走缓存，返回同一对象。"""
-    phase_enum.reset_cache()
-    a = phase_enum.load_adjacent_phases()
-    b = phase_enum.load_adjacent_phases()
+    canonical_phases.reset_cache()
+    a = canonical_phases.load_adjacent_phases()
+    b = canonical_phases.load_adjacent_phases()
     assert a is b
 
 
@@ -181,7 +181,7 @@ def test_main_allows_backward_direction_dry_run(capsys):
 
 @pytest.fixture(autouse=True)
 def _reset_phase_cache():
-    """每个用例前后重置 phase_enum 缓存，避免与 monkeypatch META_SCHEMA_PATH 的测试互染。"""
-    phase_enum.reset_cache()
+    """每个用例前后重置 canonical_phases 缓存，避免与 monkeypatch META_SCHEMA_PATH 的测试互染。"""
+    canonical_phases.reset_cache()
     yield
-    phase_enum.reset_cache()
+    canonical_phases.reset_cache()

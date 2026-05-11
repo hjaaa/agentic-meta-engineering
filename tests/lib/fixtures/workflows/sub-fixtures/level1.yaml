@@ -1,0 +1,6 @@
+name: deep-l1
+version: 1
+category: review
+nodes:
+  - id: call-l2
+    sub_workflow: sub-fixtures/level2

@@ -1,0 +1,155 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-009-code-F-007-002",
+  "requirement_id": "REQ-2026-009",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-09 16:51:24",
+  "reviewed_commit": "05aa11e",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "1296f4736e0e905be806502a9f7b95acaea978b8e3a99da98fbd66103baec7f0"
+    },
+    {
+      "path": "artifacts/tasks/F-007.md",
+      "sha256": "386d0f91db271791bdf755542d398e4bce421e1fccf7fb0af22178e45dbbfc22"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 76,
+  "dimensions": {
+    "design_consistency": {
+      "score": 70,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "requirements/REQ-2026-009/artifacts/detailed-design.md:825-835 §6.3 异常表只列 7 类，实现已 8 类（缺 RollbackResumeMismatchError）"
+        },
+        {
+          "severity": "major",
+          "description": "requirements/REQ-2026-009/artifacts/detailed-design.md:912-918 §6.7 影响域漏列 4 个新子模块（_archive/_lock/_subrun/_cmd）"
+        },
+        {
+          "severity": "major",
+          "description": "scripts/lib/workflow_rollback.py:841 主文件远超任务框架阈值≤280，4 子模块拆出后委托壳仍占大量行数"
+        },
+        {
+          "severity": "minor",
+          "description": "requirements/REQ-2026-009/artifacts/detailed-design.md:814 §6.2 注释写 new_current_node = to_node 最近上游，实现是 = to_node 本身（M-14 不符）"
+        },
+        {
+          "severity": "minor",
+          "description": "requirements/REQ-2026-009/artifacts/detailed-design.md:787 §6.1 签名缺 repo_root 参数（实现 scripts/lib/workflow_rollback.py:593 已加）"
+        },
+        {
+          "severity": "minor",
+          "description": "requirements/REQ-2026-009/artifacts/tasks/F-007.md frontmatter 触及范围与 body 不同步"
+        }
+      ]
+    },
+    "security": {
+      "score": 90,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback.py:373 _read_meta_json 返回原始 dict，_resume_in_progress:408 未对 to_node 字段做类型断言（防御性）"
+        }
+      ]
+    },
+    "concurrency": {
+      "score": 72,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/workflow_rollback.py:358-370 _write_meta_json 直接 open(\"w\") 非原子写 + scripts/lib/workflow_rollback.py:373-382 _read_meta_json 在 _resume_in_progress 持锁前读取，崩溃中间会留下 .in_progress 但 .meta.json 缺失/损坏 → 削弱 M-3 设计意图"
+        },
+        {
+          "severity": "major",
+          "description": "scripts/lib/workflow_rollback_subrun.py:117-133 _archive_sub_run 仍 append_event 先于 shutil.move，append 失败抛 RollbackError 后子 jsonl 已写 parent_rolled_back 但 mv 未执行（M-8 仅改 except→raise 没改顺序）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback.py:427-434 _resume_in_progress 内联 open+flock，异常路径无 close → fd 泄漏"
+        }
+      ]
+    },
+    "complexity": {
+      "score": 70,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/workflow_rollback.py:1-841 主文件 841 行远超 ≤280 框架（rev2 已拆 4 子模块但委托壳过多）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback.py:589-710 rollback_run 函数体 ≈122 行 + try 嵌套 4 层"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 78,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/workflow_rollback.py:358-370 _write_meta_json 失败 → 跳过内层 finally → .in_progress 残留 + .meta.json 缺失 → 续跑 fallback 削弱 M-3（与 concurrency 同根因，合并裁决）"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 75,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/workflow_rollback.py:40 from run_state import append_event 主模块未使用（应清理）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback.py:313-319 _acquire_dual_lock 主模块委托存在但全 repo 无调用方 → 死代码"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback_archive.py:59 import shutil 在 _move_artifacts 函数内（应顶部）"
+        },
+        {
+          "severity": "minor",
+          "description": "tests/lib/test_workflow_rollback.py:412,428 import json as _json 在测试函数内"
+        },
+        {
+          "severity": "minor",
+          "description": "tests/lib/test_workflow_rollback.py:389 crashed = True 死赋值（pyflakes F841）"
+        },
+        {
+          "severity": "minor",
+          "description": "tests/lib/test_workflow_rollback.py:488 first_result 死变量定义后未使用"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback.py:572-582 _setup_archive docstring 写 mkdir 在 acquire_dual_lock 之前，但 _acquire_dual_lock 已死代码 → 误导风险"
+        },
+        {
+          "severity": "minor",
+          "description": "rev1 follow-up 风格残留 8 项（field/CLI 输出/f-prefix/冒号空格/RollbackInProgressError 测试覆盖/monkeypatch 死参/list[dict] 泛型/行长 140）汇总"
+        }
+      ]
+    },
+    "performance": {
+      "score": 88,
+      "issues": []
+    },
+    "history_context": {
+      "score": 92,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "rev3 修复优先级：① M-3 atomic write（write tmp + os.replace + 把 _read_meta_json 移到 flock 之后）② G-4 append→mv 顺序倒置 ③ G-7 cleanup dead import ④ 设计文档 §6.3/§6.7 同步回写 ⑤ 主文件继续瘦身（删委托壳）",
+    "并发 + 错误处理叠加洞察：_write_meta_json 非原子 + _read_meta_json 早读 + append_event 先于 mv —— 三处叠加放大 M-3/M-8 的失效窗口，单独看都是 major，叠加后逻辑上可能相互掩盖（崩溃后 .meta.json 损坏 → fallback to_node + 子 jsonl 已写 parent_rolled_back 但子目录未 mv → 续跑读到旧位置）",
+    "复杂度 + 设计一致性叠加：主文件 841 行的根因部分是 rev2 拆模块时保留了大量委托壳（_acquire_flock / _archive_sub_run 等只转调），未真正减少主模块行数；设计文档 §6.7 也因此未及时回写新增子模块"
+  ],
+  "scope": {
+    "feature_id": "F-007"
+  },
+  "supersedes": "REV-REQ-2026-009-code-F-007-001"
+}

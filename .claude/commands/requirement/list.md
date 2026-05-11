@@ -2,6 +2,13 @@
 description: 查看所有需求的状态索引
 ---
 
+> [DEPRECATION] /requirement:list 已纳入 3 月兼容期（截至 2026-08-08）。
+> 请改用：/workflow:list [--filter=<expr>]
+> 本次仍执行旧实现以保证兼容；Plan 6 自举验证通过 + 兼容期到期后将物理删除。
+> 详见：context/team/engineering-spec/migration/2026-XX-runs-rename.md
+>
+> **ARGUMENTS 透传规则**：flag 直传，如 `/workflow:list --filter=phase=development`
+
 ## 用途
 
 多需求并行时快速看整体进度；新人上手时了解团队当前在做什么。

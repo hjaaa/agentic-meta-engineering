@@ -1,0 +1,33 @@
+# R006 failure：supersedes 链含环
+# 场景：review A supersedes B，B supersedes A → 成环
+description: "R006 failure - supersedes chain contains a cycle"
+req_id: "REQ-2099-117"
+target_phase: "tech-research"
+
+meta:
+  id: "REQ-2099-117"
+  title: "R006 failure fixture"
+  phase: "definition"
+  created_at: "2026-01-01 00:00:00"
+  branch: "feat/req-2099-117"
+  base_branch: "develop"
+  reviews:
+    definition:
+      latest: "REV-REQ-2099-117-definition-002"
+      conclusion: "looks_clean"
+
+reviews:
+  - suffix: "definition-001"
+    phase: "definition"
+    conclusion: "looks_clean"
+    with_signoff: true
+    # supersedes 指向 002，与 002 supersedes 001 形成环
+    supersedes: "REV-REQ-2099-117-definition-002"
+  - suffix: "definition-002"
+    phase: "definition"
+    conclusion: "looks_clean"
+    with_signoff: true
+    supersedes: "REV-REQ-2099-117-definition-001"
+
+expected_conclusion: "fail"
+expected_codes: ["R006"]

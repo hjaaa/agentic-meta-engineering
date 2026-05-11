@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-009",
+  "status": "DONE",
+  "commit_sha": "b91d2e7",
+  "files_changed": [
+    ".claude/hooks/pre-tool-use-guard.sh",
+    "context/team/ai-collaboration.md",
+    "tests/hooks/fixtures/workflow_approval_inputs.yaml",
+    "tests/hooks/test_pre_tool_use_guard.py",
+    "tests/lib/test_workflow_approve.py"
+  ],
+  "test_summary": "F-009 D-006 双层拦截全部落地：B 层 pre-tool-use-guard.sh 加 APPROVAL_SLASH_PATTERN/PYTHON_PATTERN 常量 + check_workflow_approval_human_only 函数（17 行 shell）+ Bash case 分支调用；C 层 ai-collaboration.md 规则三末尾追加 Approval 唯一入口段（grep 'Approval 唯一入口' 命中 line 58）；CLI 层 workflow_approve.py / workflow_reject.py 已由 F-005 完整落地 isatty fail-closed（来自 workflow_state_validator.py:81 check_tty_for_approval）。pytest tests/hooks/test_pre_tool_use_guard.py + tests/lib/test_workflow_approve.py 25 passed in 0.79s（TC-F9-1 16 happy block + TC-F9-2 5 边界放行 + TC-F9-3 2 已知绕过双层 + TC-F9-4 audit log no BYPASS + TC-F9-5 isatty fail-closed）。1 commit b91d2e7 + 1 bookkeeping commit a3d40cb（D-012 touches 回填 ADR）。code-review rev1 91/100 looks_clean → approved-trivial sign-off。",
+  "touches_violations": [],
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-10T00:00:00+08:00"
+}

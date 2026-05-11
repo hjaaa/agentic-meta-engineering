@@ -1,0 +1,11 @@
+# W130: when 表达式语法错
+name: bad-when
+version: 1
+category: assist
+nodes:
+  - id: a
+    bash: 'echo a'
+  - id: b
+    bash: 'echo b'
+    depends_on: [a]
+    when: '$$$$ broken syntax'

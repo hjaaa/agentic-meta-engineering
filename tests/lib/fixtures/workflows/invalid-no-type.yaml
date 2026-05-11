@@ -1,0 +1,7 @@
+# W111: 节点无任何类型字段
+name: no-type
+version: 1
+category: assist
+nodes:
+  - id: orphan
+    depends_on: []

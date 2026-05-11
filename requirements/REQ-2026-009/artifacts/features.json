@@ -1,0 +1,553 @@
+{
+  "schema_version": "1.0",
+  "requirement_id": "REQ-2026-009",
+  "features": [
+    {
+      "id": "F-001",
+      "title": "workflow-engine 核心（loader + run-state + dispatcher）",
+      "description": "搭 workflow-engine Skill 主体——loader 双路径 _resolve_run_dir（D-007）+ jsonl 读写 + RunState 反扫重建 + 拓扑排序 / 变量替换 / artifact lego 派发链路；含 14 类 yaml 错误识别 + spec §13 jsonl 损坏行兜底（来源：detailed-design §1.2.2 / §2.6 / outline §1.2 改动一览表 / spec §6 / §13）。Plan 1 已合并部分（commit 6d55eaf）含 workflow_loader.py 雏形 + topological_sort.py / substitute_vars.py；本 feature 在其上完成 run_state.py（事件枚举 + RunState 重建）+ run_artifact_checks.py + workflow-engine SKILL.md 决策表 + reference/*.md 详尽实现。AC-06 节点级 model 字段优先级 yaml > frontmatter > 顶层（详细设计 §2.2.1）由 loader 校验逻辑落实。",
+      "modules": [
+        ".claude/skills/workflow-engine/SKILL.md",
+        ".claude/skills/workflow-engine/reference/dispatch-decision.md",
+        "scripts/lib/workflow_loader.py",
+        "scripts/lib/run_state.py",
+        "scripts/lib/topological_sort.py",
+        "scripts/lib/substitute_vars.py",
+        "scripts/lib/run_artifact_checks.py",
+        "tests/lib/test_workflow_loader.py",
+        "tests/lib/test_run_state.py",
+        "tests/workflows/test_yaml_schema.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": [],
+      "complexity": "heavy",
+      "touches": [
+        ".claude/skills/workflow-engine/**",
+        "scripts/lib/workflow_loader.py",
+        "scripts/lib/run_state.py",
+        "scripts/lib/topological_sort.py",
+        "scripts/lib/substitute_vars.py",
+        "scripts/lib/run_artifact_checks.py",
+        "tests/lib/test_workflow_loader.py",
+        "tests/lib/test_run_state.py",
+        "tests/lib/fixtures/workflows/**",
+        "tests/workflows/__init__.py",
+        "tests/workflows/test_yaml_schema.py"
+      ],
+      "acceptance": [
+        "TC-F1-1: pytest tests/lib/test_workflow_loader.py 绿——拓扑排序合法 yaml 通过 + 字段优先级 yaml > frontmatter > 顶层（覆盖 AC-01 / AC-06）",
+        "TC-F1-2: pytest tests/lib/test_workflow_loader.py::test_invalid_yaml_14 全绿——14 套 invalid-*.yaml fixture 全部触发对应错误码 + 行号断言（覆盖 AC-08）",
+        "TC-F1-3: pytest tests/lib/test_run_state.py 绿——反扫 jsonl 重建 RunState 一致；最后一行损坏跳过 + warn；node_started 无对应 node_completed 视为残缺对（spec §13 / 风险 6）",
+        "TC-F1-4: pytest tests/lib/test_run_state.py::test_resolve_run_dir 绿——`requirements/REQ-X/` 命中走兼容路径；`runs/REQ-X/` 命中走新路径；都不存在抛 WorkflowError（D-007）",
+        "TC-F1-5: pytest tests/workflows/test_yaml_schema.py 绿——loader 加载 standard-8phase.yaml + code-review-embedded.yaml 两套 fixture 通过（与 F-003 / F-004 联动 smoke）"
+      ]
+    },
+    {
+      "id": "F-002",
+      "title": "8 种节点类型实现（含 sub_workflow / loop / approval）",
+      "description": "在 F-001 dispatcher 之上落地 8 种节点类型字段（agent / skill / prompt（含 prompt_file）/ bash / approval / loop / sub_workflow / artifact）的执行决策表 + 字段互斥 + 嵌套深度 ≤ 2 校验（来源：detailed-design §1.5 末端 3 节点示例 / §2.2 frontmatter 字段表 / outline §6 模块视图 / spec §6.2 / §6.4 / §11.2）。每节点至多 1 类型字段；sub_workflow 透传 args 经 shellQuote 转义注入子 run $ARGUMENTS；loop 节点读 jsonl 最近一条 loop_iteration_completed 事件填 $LOOP_OUTPUT / $LOOP_PREV_OUTPUT。run_state.py 新增事件枚举 cancel_requested / parent_cancelled / parent_rolled_back（D-005 / D-010 落地依赖）。",
+      "modules": [
+        ".claude/skills/workflow-engine/reference/node-types.md",
+        ".claude/skills/workflow-engine/SKILL.md",
+        "scripts/lib/workflow_loader.py",
+        "scripts/lib/run_state.py",
+        "tests/lib/fixtures/workflows/invalid-mutex.yaml",
+        "tests/lib/fixtures/workflows/invalid-deep-nest.yaml",
+        "tests/workflows/test_yaml_schema.py",
+        "tests/lib/test_node_types.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": [
+        "F-001"
+      ],
+      "complexity": "heavy",
+      "touches": [
+        ".claude/skills/workflow-engine/**",
+        "scripts/lib/workflow_loader.py",
+        "scripts/lib/run_state.py",
+        "scripts/lib/common.py",
+        "tests/lib/fixtures/workflows/**",
+        "tests/workflows/__init__.py",
+        "tests/workflows/test_yaml_schema.py",
+        "tests/lib/test_node_types.py",
+        "tests/lib/test_run_state.py"
+      ],
+      "acceptance": [
+        "TC-F2-1: pytest tests/lib/test_node_types.py -k '8_node_mutex' 绿——invalid-mutex.yaml（同节点声明 2 类型字段）loader 拒绝 + 错误码精确（AC-07）",
+        "TC-F2-2: pytest tests/lib/test_node_types.py -k 'nest_depth_limit' 绿——invalid-deep-nest.yaml（sub_workflow 嵌套 3 层）loader 拒绝 + 边界 depth=2 通过（AC-07）",
+        "TC-F2-3: pytest tests/lib/test_node_types.py -k 'sub_workflow_args or shell_quote' 绿——sub_workflow 节点 args:{feature_id: $upstream.output.id} 经 shellQuote 注入子 $ARGUMENTS 字面量与原文一致（spec §6.4 / §6.5）",
+        "TC-F2-4: pytest tests/lib/test_node_types.py -k 'loop_output' 绿——loop 节点本轮 $LOOP_OUTPUT = stdout / 下轮 $LOOP_PREV_OUTPUT = 上轮 stdout / 首轮 $LOOP_OUTPUT 与 $LOOP_PREV_OUTPUT 均替换为空字符串（spec §6.5）",
+        "TC-F2-5: pytest tests/lib/test_run_state.py -k 'event_enum' 绿——cancel_requested / parent_cancelled / parent_rolled_back 三新事件枚举可写入 + 反扫识别（D-005 / D-010 联动）"
+      ]
+    },
+    {
+      "id": "F-003",
+      "title": "standard-8phase.yaml 38 节点完整化 + 8 阶段 prompt 抽离 + 末端 3 节点",
+      "description": "落地 standard-8phase.yaml 38 节点完整化（来源：outline §1.2 改动一览表 ~600 行）+ 8 阶段 prompt 抽到 .claude/workflows/prompts/standard-8phase/*.md（来源：detailed-design §2.1）+ 末端 pr-submit / pr-merged-gate / archive-finalize 三 bash/approval 节点（detailed-design §1.5 通用性裁定，submit / archive 不入引擎层命令集，下沉为 yaml 节点）。pr-submit 节点 bash 调 gh pr create + 写 meta.pr_url；pr-merged-gate approval 等用户 PR 合并后人工 approve；archive-finalize bash 写 meta.archived_at + outcome=shipped。每节点 prompt frontmatter 与 yaml 节点字段一致（loader 校验 §2.2.1）。",
+      "modules": [
+        ".claude/workflows/requirement/standard-8phase.yaml",
+        ".claude/workflows/prompts/standard-8phase/initialization.md",
+        ".claude/workflows/prompts/standard-8phase/definition.md",
+        ".claude/workflows/prompts/standard-8phase/tech-research.md",
+        ".claude/workflows/prompts/standard-8phase/outline-design.md",
+        ".claude/workflows/prompts/standard-8phase/detail-design.md",
+        ".claude/workflows/prompts/standard-8phase/task-planning.md",
+        ".claude/workflows/prompts/standard-8phase/development.md",
+        ".claude/workflows/prompts/standard-8phase/testing.md",
+        "tests/e2e/test_standard_8phase_terminal_nodes.py",
+        "tests/workflows/test_prompt_structure.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": [
+        "F-001",
+        "F-002"
+      ],
+      "complexity": "medium",
+      "touches": [
+        ".claude/workflows/requirement/standard-8phase.yaml",
+        ".claude/workflows/prompts/standard-8phase/**",
+        "tests/e2e/test_standard_8phase_terminal_nodes.py",
+        "tests/workflows/test_prompt_structure.py"
+      ],
+      "acceptance": [
+        "TC-F3-1: pytest tests/workflows/test_yaml_schema.py::test_standard_8phase_loadable 绿——38 节点全部解析 + 拓扑序合法 + 每节点 prompt_file 指向真实存在的 .md（覆盖 AC-01 / AC-02）",
+        "TC-F3-2: pytest tests/workflows/test_prompt_structure.py::test_8phase_prompt_frontmatter 绿——8 阶段 prompt frontmatter 必填字段（name/node_id/version）齐 + node_id 与 yaml 节点 id 一致",
+        "TC-F3-3: pytest tests/e2e/test_standard_8phase_terminal_nodes.py::test_pr_submit_node 绿——mock gh pr create + yq → pr-submit 节点 stdout 含 pr_url + meta.yaml.pr_url 写入（覆盖 AC-03 末端节点）",
+        "TC-F3-4: pytest tests/e2e/test_standard_8phase_terminal_nodes.py::test_pr_merged_gate_approval 绿——approval 节点 gate_message 字段非空 + capture_response 写 jsonl approval_approved（D-006 hook 拦截 AI 由 F-009 单独验证，本测试用 tty mock 直接放行）",
+        "TC-F3-5: pytest tests/e2e/test_standard_8phase_terminal_nodes.py::test_archive_finalize_node 绿——archive-finalize bash 写 meta.archived_at（YYYY-MM-DD HH:MM:SS 格式）+ outcome=shipped + stdout 含「归档完成」提示行"
+      ]
+    },
+    {
+      "id": "F-004",
+      "title": "code-review-embedded.yaml + sub_workflow 验证 + 8 critic 并发派发",
+      "description": "落地 code-review-embedded.yaml（来源：outline §1.2 改动一览表 ~250 行 + detailed-design §2.1）：cr-prepare → 8 cr-checker-* 并发 → cr-critic 对抗 → cr-judge 综合裁决。8 cr-checker-*.md 文件名 1:1 对应 .claude/agents/*-checker.md（OQ-DD-B4 闭合）。本模板用于验证 sub_workflow 嵌套字段（standard-8phase 调它作子 workflow）+ AC-05 5-lego 组合（agent / skill / bash / approval / sub_workflow）+ 8 critic 并发派发的 fanout-fanin 语义。每 prompt 含完整 frontmatter（context: fresh / allowed_tools / output_format JSON Schema）。",
+      "modules": [
+        ".claude/workflows/review/code-review-embedded.yaml",
+        ".claude/workflows/prompts/code-review-embedded/cr-prepare.md",
+        ".claude/workflows/prompts/code-review-embedded/cr-checker-security.md",
+        ".claude/workflows/prompts/code-review-embedded/cr-checker-performance.md",
+        ".claude/workflows/prompts/code-review-embedded/cr-checker-complexity.md",
+        ".claude/workflows/prompts/code-review-embedded/cr-checker-concurrency.md",
+        ".claude/workflows/prompts/code-review-embedded/cr-checker-error-handling.md",
+        ".claude/workflows/prompts/code-review-embedded/cr-checker-design-consistency.md",
+        ".claude/workflows/prompts/code-review-embedded/cr-checker-auxiliary-spec.md",
+        ".claude/workflows/prompts/code-review-embedded/cr-checker-history-context.md",
+        ".claude/workflows/prompts/code-review-embedded/cr-critic.md",
+        ".claude/workflows/prompts/code-review-embedded/cr-judge.md",
+        "tests/e2e/test_code_review_embedded.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": [
+        "F-001",
+        "F-002"
+      ],
+      "complexity": "medium",
+      "touches": [
+        ".claude/workflows/review/code-review-embedded.yaml",
+        ".claude/workflows/prompts/code-review-embedded/**",
+        "tests/e2e/test_code_review_embedded.py",
+        "requirements/REQ-2026-009/artifacts/features.json"
+      ],
+      "acceptance": [
+        "TC-F4-1: pytest tests/workflows/test_yaml_schema.py::test_code_review_embedded_yaml_is_loadable_with_11_nodes 绿——yaml 解析通过 + 11 节点 prompt_file 全部存在（覆盖 AC-02 / AC-05）",
+        "TC-F4-2: pytest tests/e2e/test_code_review_embedded.py::test_8_critic_concurrent 绿——mock 8 cr-checker subagent 并发派发 + cr-judge 收齐 8 路 findings 后 synthesize（覆盖 AC-05 lego 组合）",
+        "TC-F4-3: pytest tests/e2e/test_code_review_embedded.py::test_cr_critic_rebuttal 绿——cr-critic 对每条 finding 给 verdict ∈ {rejected, not_proven, not_rebutted} + cr-judge 取 not_rebutted 进最终报告",
+        "TC-F4-4: pytest tests/workflows/test_prompt_structure.py::test_review_prompts_frontmatter 绿——11 prompt frontmatter context 字段值 ∈ {fresh, shared} + allowed_tools 不含 Bash/Edit/Write（仅 Read/Grep）",
+        "TC-F4-5: pytest tests/e2e/test_code_review_embedded.py::test_sub_workflow_args_passthrough 绿——standard-8phase 调本模板时 args:{diff_range: $upstream.output} 经 shellQuote 注入子 $ARGUMENTS",
+        "TC-F4-6: pytest tests/e2e/test_code_review_embedded.py::TestNoCriticWildcardRefs::test_critic_judge_no_wildcard_in_input_refs 绿——cr-critic.md / cr-judge.md 不含通配引用 $cr-checker-*.output.findings + 8 个具体 checker 引用全在（覆盖 F-12 critical 修复）",
+        "TC-F4-7: pytest tests/e2e/test_code_review_embedded.py::test_has_error_when_guard_skips_downstream 绿——10 个下游节点（8 cr-checker + cr-critic + cr-judge）全部含 when: '$cr-prepare.output.has_error == false' 守卫，cr-prepare 错误路径下 has_error=true 经引擎层 spec §6.6 when 强制终止下游（覆盖 rev3 H-1 修复）"
+      ]
+    },
+    {
+      "id": "F-005",
+      "title": "9 个 /workflow:* 通用命令 + managing-workflow-runs 伞形 Skill",
+      "description": "落地 9 个 /workflow:* 通用命令（run / continue / save / status / list / approve / reject / rollback / cancel；submit / archive 已下沉为 yaml 节点见 F-003 §1.5）+ managing-workflow-runs 伞形 Skill 派发 9 子动作（来源：detailed-design §1.1-§1.4 / outline §1.2 ~800 行）。每命令 SKILL.md 子动作开头先做 §1.3 状态机矩阵校验（行=run state / 列=命令；✗ 直接 exit 1 + 错误文案）。命令实现细分到 reference/category-rules/*.md + command-implementations/<cmd>.md 两层结构（参考 managing-requirement-lifecycle）。",
+      "modules": [
+        ".claude/commands/workflow/run.md",
+        ".claude/commands/workflow/continue.md",
+        ".claude/commands/workflow/save.md",
+        ".claude/commands/workflow/status.md",
+        ".claude/commands/workflow/list.md",
+        ".claude/commands/workflow/approve.md",
+        ".claude/commands/workflow/reject.md",
+        ".claude/commands/workflow/rollback.md",
+        ".claude/commands/workflow/cancel.md",
+        ".claude/skills/managing-workflow-runs/SKILL.md",
+        ".claude/skills/managing-workflow-runs/reference/category-rules/state-matrix.md",
+        ".claude/skills/managing-workflow-runs/reference/command-implementations/run.md",
+        ".claude/skills/managing-workflow-runs/reference/command-implementations/continue.md",
+        ".claude/skills/managing-workflow-runs/reference/command-implementations/rollback.md",
+        ".claude/skills/managing-workflow-runs/reference/command-implementations/cancel.md",
+        "tests/skills/test_workflow_commands.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": [
+        "F-001"
+      ],
+      "complexity": "medium",
+      "touches": [
+        ".claude/commands/workflow/**",
+        ".claude/skills/managing-workflow-runs/**",
+        "tests/skills/test_workflow_commands.py"
+      ],
+      "acceptance": [
+        "TC-F5-1: pytest tests/skills/test_workflow_commands.py::TestHappyPath 绿——9 命令各取 §1.3 矩阵中 ✓ 状态调用一次 + 期望 jsonl 事件正确（覆盖 AC-03）",
+        "TC-F5-2: pytest tests/skills/test_workflow_commands.py::TestInvalidStateRejected 绿——§1.3 矩阵每个 ✗ 格子调用 → exit 1 + stderr 含状态校验错误码",
+        "TC-F5-3: pytest tests/skills/test_workflow_commands.py::TestContinueResumeThreeStates 绿——running / paused / failed 三状态续跑 main loop（覆盖 AC-04）",
+        "TC-F5-4: pytest tests/skills/test_workflow_commands.py::TestStatusParentChildTree 绿——含 sub_workflow 的 run，status 输出含子 run 嵌套缩进 + 当前节点位置（spec §6.4）",
+        "TC-F5-5: pytest tests/skills/test_workflow_commands.py::TestChainCommands::test_chain_run_continue_save_status 绿——跨命令串行端到端：run → continue → save → status（4 命令链路通畅）",
+        "TC-F5-6: pytest tests/skills/test_workflow_commands.py::TestCancelWritesEvent 绿——cancel 命令在 running / paused / approval_pending 三状态下都写 cancel_requested 事件 + 30s 超时调 TaskStop（覆盖 D-005）"
+      ]
+    },
+    {
+      "id": "F-006",
+      "title": "workflow-launcher 关键词触发 Skill + 3 步仲裁",
+      "description": "落地 workflow-launcher Skill（来源：outline §1.2 ~150 行 / detailed-design §4 全章）：3 步仲裁 = state tiebreaker → 最长匹配 → 等长冲突 ask 兜底（D-008 锁定）。reference/keyword-matching.md 列 6 类 20 关键词清单 + 长度排序表（含 length=11 code review / length=7 4 条等长冲突主层）。匹配语义：ASCII 词边界 / 中文 substring / 混合标点字面量。本 Skill 仅做意图翻译，调底层 /workflow:* 命令；MVP 不支持多步连接词（'再' / '接下来' 留 v2）。",
+      "modules": [
+        ".claude/skills/workflow-launcher/SKILL.md",
+        ".claude/skills/workflow-launcher/keyword_matcher.py",
+        ".claude/skills/workflow-launcher/reference/keyword-matching.md",
+        "tests/skills/test_keyword_matching.py",
+        "tests/skills/fixtures/keyword_matching.yaml"
+      ],
+      "depends_on": [],
+      "depends_on_features": [
+        "F-005"
+      ],
+      "complexity": "medium",
+      "touches": [
+        ".claude/skills/workflow-launcher/**",
+        "tests/skills/test_keyword_matching.py",
+        "tests/skills/fixtures/keyword_matching.yaml"
+      ],
+      "acceptance": [
+        "TC-F6-1: pytest tests/skills/test_keyword_matching.py::test_each_category_happy 绿——6 类（continue/review/new/release/approve/reject）各取 1 标准输入 → 命中正确 command + ARGUMENTS（§4.6 #1）",
+        "TC-F6-2: pytest tests/skills/test_keyword_matching.py::test_longest_match_wins 绿——'我要继续之前的需求做下一步' 同时含「继续之前的需求」(7) 与「继续」(2) → 命中 7 长版本（§4.6 #2）",
+        "TC-F6-3: pytest tests/skills/test_keyword_matching.py::test_state_tiebreaker 绿——active_run.state=approval_pending + 输入 'approve 这个需求并跑下评审' → approve 优先绕过最长匹配（§4.6 #3）",
+        "TC-F6-4: pytest tests/skills/test_keyword_matching.py::test_equal_length_conflict_ask 绿——active_run.state ≠ approval_pending + length=7 多命中 → 返回 ConflictReason('equal_length', [...]) + 不调命令（§4.4 / §4.6 #4）",
+        "TC-F6-5: pytest tests/skills/test_keyword_matching.py::test_ascii_word_boundary 绿——'approved this' / 'releases' 不命中 approve / release（§4.2 词边界保护 / §4.6 #5）",
+        "TC-F6-6: pytest tests/skills/test_keyword_matching.py::test_no_match_passthrough 绿——'今天天气真好' / 普通问句 → 返回 (None, None, None)，launcher 不接管（§4.6 #6）"
+      ]
+    },
+    {
+      "id": "F-007",
+      "title": "workflow_rollback.py + 跨父子归档 + 双层锁中断保护",
+      "description": "落地 rollback_run(run_id, to_node, target_id=None) → RollbackResult（来源：detailed-design §6 全章 / D-010）：mv 语义 = shutil.move 产物到 .archived/<ts>/；父跨 sub_workflow 节点时整目录 mv 子 run 到 sub_runs/<child-id>/；多次 rollback 独立 timestamp 目录并存；jsonl 尾部 mv 为 .tail。双层锁选型：fcntl.flock（advisory）+ os.O_EXCL（原子 .in_progress 标记）解决并发互斥 + 崩溃中间状态识别；§6.4 顺序 flock→mkdir→O_EXCL。续跑流程：扫 .in_progress 残留 → 拿锁完成剩余 mv → 删标记 + RollbackResult.partial=True。.archived/<ts>/.meta.json 持久化 to_node 供续跑验证（RollbackResumeMismatchError）。拆 5 子模块：_lock / _archive / _subrun / _topology / 主模块公开 API。F-008 e2e 测试 §7.2 复用本 feature 的 F1 实现。",
+      "modules": [
+        "scripts/lib/workflow_rollback.py",
+        "scripts/lib/workflow_rollback_lock.py",
+        "scripts/lib/workflow_rollback_archive.py",
+        "scripts/lib/workflow_rollback_subrun.py",
+        "scripts/lib/workflow_rollback_topology.py",
+        "tests/lib/test_workflow_rollback.py",
+        "tests/lib/fixtures/rollback/R1-single-layer/workflow.yaml",
+        "tests/lib/fixtures/rollback/R1-single-layer/initial-jsonl.txt",
+        "tests/lib/fixtures/rollback/R1-single-layer/expected-tree-after.txt",
+        "tests/lib/fixtures/rollback/F1-cross-parent-child/workflow.yaml",
+        "tests/lib/fixtures/rollback/F1-cross-parent-child/parent-jsonl.txt",
+        "tests/lib/fixtures/rollback/F1-cross-parent-child/child-jsonl.txt",
+        "tests/lib/fixtures/rollback/T1-multiple-rollback/workflow.yaml",
+        "tests/lib/fixtures/rollback/to-root/workflow.yaml"
+      ],
+      "depends_on": [],
+      "depends_on_features": [
+        "F-001",
+        "F-002"
+      ],
+      "complexity": "medium",
+      "touches": [
+        "scripts/lib/workflow_rollback.py",
+        "scripts/lib/workflow_rollback_lock.py",
+        "scripts/lib/workflow_rollback_archive.py",
+        "scripts/lib/workflow_rollback_subrun.py",
+        "scripts/lib/workflow_rollback_topology.py",
+        "tests/lib/test_workflow_rollback.py",
+        "tests/lib/fixtures/rollback/**",
+        "tests/skills/test_workflow_commands.py"
+      ],
+      "acceptance": [
+        "TC-F7-1: pytest tests/lib/test_workflow_rollback.py::test_R1_single_layer 绿——A-B-C-D 拓扑回滚到 C → .archived/<ts>/D/output.json 存在 + 原 D/output.json 删 + jsonl 截断到 C 完成处（§6.5 R1）",
+        "TC-F7-2: pytest tests/lib/test_workflow_rollback.py::test_F1_cross_parent_child 绿——父含 sub_workflow 节点回滚到 A → .archived/<ts>/sub_runs/<child-id>/ 整目录存在 + runs/<child-id>/ 删 + RollbackResult.moved_sub_runs 含 1 项（§6.5 F1 / 覆盖 AC-10）",
+        "TC-F7-3: pytest tests/lib/test_workflow_rollback.py::test_T1_multiple_rollback 绿——两次 rollback 产生两个独立 ts 目录互不覆盖 + 各对应 .tail 文件（§6.5 T1）",
+        "TC-F7-4: pytest tests/lib/test_workflow_rollback.py::test_to_root 绿——回滚到首节点 A → 全部产物 mv 到 .archived/ + jsonl 仅留 workflow_started + node_started(A)（§6.5 to-root）",
+        "TC-F7-5: pytest tests/lib/test_workflow_rollback.py::test_crash_recovery 绿——monkeypatch 在 mv 中途 raise → 重新调 rollback_run 续跑 → RollbackResult.partial=True + 最终文件树等于无中断版（§6.6 crash-recovery）",
+        "TC-F7-6: pytest tests/lib/test_workflow_rollback.py::test_concurrent_block 绿——同 run_id 并发 2 个 rollback → 第二个抛 ConcurrentRollbackError + 第一个仍正常完成（§6.6 concurrent-block）",
+        "TC-F7-7: pytest tests/lib/test_workflow_rollback.py::test_target_not_upstream_rejected 绿——to_node = 当前节点本身或下游 → 抛 TargetNodeNotUpstreamError + exit 1（§6.3）"
+      ]
+    },
+    {
+      "id": "F-008",
+      "title": "sub_workflow 父子状态联动 e2e（D-005 cancel + parent_cancelled）",
+      "description": "落地 sub_workflow 父子状态联动 e2e 测试（来源：detailed-design §7 全章 / D-005）：父用 Agent({run_in_background: true}) 派子；用户 cancel → 父 jsonl 写 cancel_requested → 子 subagent 在每节点边界 poll 父 jsonl → 检测命中即写 parent_cancelled 到子 jsonl + graceful 退出；父等子 graceful 返回或 30s 超时调 TaskStop({task_id}) forceful 兜底。本 feature 主要交付：MockSubAgent 类（poll_interval_ms 可调）+ §7.4 单测矩阵 6 用例（2 主 + 4 边界）+ 复用 F-007 F1 fixture。子 jsonl 永远由子自身写，无跨 run 文件写权限——绕开 TaskStop graceful 不明确 + 跨 subagent 写权限两个不确定性。",
+      "modules": [
+        "tests/e2e/test_sub_workflow_lifecycle.py",
+        "tests/e2e/test_sub_workflow_cancel_advanced.py",
+        "tests/e2e/fixtures/sub_workflow_mock.py",
+        "tests/e2e/fixtures/e2e_helpers.py",
+        "tests/e2e/conftest.py",
+        "scripts/lib/run_state.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": [
+        "F-002"
+      ],
+      "complexity": "medium",
+      "touches": [
+        "tests/e2e/test_sub_workflow_lifecycle.py",
+        "tests/e2e/test_sub_workflow_cancel_advanced.py",
+        "tests/e2e/conftest.py",
+        "tests/e2e/fixtures/**",
+        "scripts/lib/run_state.py"
+      ],
+      "acceptance": [
+        "TC-F8-1: pytest tests/e2e/test_sub_workflow_lifecycle.py::test_cancel_graceful_full_chain 绿——MockSubAgent 在节点 N+2 之前 poll 命中 cancel_requested → 子 jsonl 末尾 = parent_cancelled + 父 jsonl 含 child_graceful_exited + 不调 TaskStop + 总耗时 ≤ 5s（§7.4 主-1 / 覆盖 AC-11）",
+        "TC-F8-2: pytest tests/e2e/test_sub_workflow_lifecycle.py::test_rollback_cross_parent_child 绿——调 rollback_run(parent_id, to_node='A') → RollbackResult.moved_sub_runs 含 1 项 + 子 jsonl 含 parent_rolled_back + 父 jsonl 截断（§7.4 主-2 / 覆盖 AC-10）",
+        "TC-F8-3: pytest tests/e2e/test_sub_workflow_lifecycle.py::test_child_crash_on_subworkflow_failure 绿——MockSubAgent 在节点 N 抛 RuntimeError → 父检测子异常退出 → jsonl 写 child_failed + 按 on_subworkflow_failure 字段 fail / continue / skip 三路径分支（§7.4 边-1）",
+        "TC-F8-4: pytest tests/e2e/test_sub_workflow_lifecycle.py::test_parent_crash_recovery 绿——parent_jsonl 写 cancel_requested 后父 raise → 子继续 poll 命中后正常 graceful 退出 + 父崩重启续跑发现子已 graceful（§7.4 边-2）",
+        "TC-F8-5: pytest tests/e2e/test_sub_workflow_cancel_advanced.py::test_taskstop_force_kill 绿——MockSubAgent poll 命中但故意阻塞 60s → 父 30s 超时调 TaskStop + 父 jsonl 含 child_force_killed（§7.4 边-3）",
+        "TC-F8-6: pytest tests/e2e/test_sub_workflow_cancel_advanced.py::test_poll_interval_boundary 绿——poll_interval_ms=10000 + scripted 节点耗时 1s → cancel 检测时延 ≤ poll_interval × 1.1 上界（§7.4 边-4）"
+      ]
+    },
+    {
+      "id": "F-009",
+      "title": "D-006 hook 拦截 + workflow_approve/reject.py + ai-collaboration patch",
+      "description": "落地 D-006 双层拦截（来源：detailed-design §5 全章）：B 层 .claude/hooks/pre-tool-use-guard.sh 新增 APPROVAL_SLASH_PATTERN / APPROVAL_PYTHON_PATTERN 常量 + check_workflow_approval_human_only 函数（同 case Bash 分支挂钩，~15 行 shell + +1 行调用）；C 层 ai-collaboration.md 规则三扩展为 sign-off / approval / reject 都是人类专属（+10 行）。CLI 层 workflow_approve.py / workflow_reject.py 顶端 sys.stdin.isatty() fail-closed 兜底（与原 code_review_signoff.py:61 同构搬到新位置）。已知绕过通道（变量间接引用 + eval）由 CLI isatty + BYPASS reason ≥ 8 字符 + PR review 三层兜底接受（与 carryover-A 一致）。",
+      "modules": [
+        ".claude/hooks/pre-tool-use-guard.sh",
+        "scripts/lib/workflow_approve.py",
+        "scripts/lib/workflow_reject.py",
+        "context/team/ai-collaboration.md",
+        "tests/hooks/test_pre_tool_use_guard.py",
+        "tests/hooks/fixtures/workflow_approval_inputs.yaml"
+      ],
+      "depends_on": [],
+      "depends_on_features": [
+        "F-005"
+      ],
+      "complexity": "light",
+      "touches": [
+        ".claude/hooks/pre-tool-use-guard.sh",
+        "scripts/lib/workflow_approve.py",
+        "scripts/lib/workflow_reject.py",
+        "context/team/ai-collaboration.md",
+        "tests/hooks/test_pre_tool_use_guard.py",
+        "tests/hooks/fixtures/workflow_approval_inputs.yaml",
+        "tests/lib/test_workflow_approve.py"
+      ],
+      "acceptance": [
+        "TC-F9-1: pytest tests/hooks/test_pre_tool_use_guard.py::test_hook_blocks_16_combinations 绿——4 入口（slash approve / slash reject / python approve / python reject）× 4 包装（直接 / bash -c / 前后无关 token / 绝对路径 python）= 16 happy block + exit 2 + stderr 含 BLOCKED 消息（§5.6）",
+        "TC-F9-2: pytest tests/hooks/test_pre_tool_use_guard.py::test_hook_passthrough_5_boundary 绿——5 边界放行场景：grep 字面量 / 注释中 / 字符串字面量 / --help / dry-run flag → exit 0（§5.6）",
+        "TC-F9-3: pytest tests/hooks/test_pre_tool_use_guard.py::test_known_bypass_with_isatty_block 绿——变量间接引用 P=/workflow:approve; eval $P → hook 放行 + workflow_approve.py isatty 拒绝 + exit 2 双层验证（§5.4-§5.5）",
+        "TC-F9-4: pytest tests/hooks/test_pre_tool_use_guard.py::test_audit_log_no_bypass_marker 绿——本类拦截命中时 audit log 不写 BYPASS used（与既有 audit_log 约定一致 / §5.6）",
+        "TC-F9-5: pytest tests/lib/test_workflow_approve.py::test_isatty_fail_closed 绿——sys.stdin.isatty() 返回 False（pipe / CI / subagent）→ workflow_approve.py exit 2 + stderr 含「必须在 tty 终端执行」（§5.5）",
+        "TC-F9-6: grep -n 'Approval 唯一入口' context/team/ai-collaboration.md 命中 1 行——规则三 patch 后含新增段（§5.7）"
+      ]
+    },
+    {
+      "id": "F-010",
+      "title": "9 个 /requirement:* 别名兼容期保留实现（D-009）+ /requirement:next 例外",
+      "description": "落地 9 个 /requirement:* 命令兼容期处理（来源：detailed-design §10.2 全章 / D-009 / outline §1.2）：3 月兼容期内（截至 2026-08-08）所有别名保留实际实现 + 输出 deprecation warning + 转 /workflow:* ARGUMENTS 透传。例外：(1) /requirement:next 走独立旧实现（覆盖 spec §4.3 / §15 立即删决策，延后到 Plan 6 自举验证通过后才删）+ [DEPRECATION-NEXT] 例外文案；(2) /requirement:submit / /requirement:archive 也走独立旧实现，新引擎语义由 standard-8phase yaml 末端 3 节点（F-003）承载。9 个 .claude/commands/requirement/<cmd>.md 入口处加 DEPRECATION warning 文案 + ARGUMENTS 透传到 /workflow:<target>。",
+      "modules": [
+        ".claude/commands/requirement/new.md",
+        ".claude/commands/requirement/continue.md",
+        ".claude/commands/requirement/save.md",
+        ".claude/commands/requirement/status.md",
+        ".claude/commands/requirement/list.md",
+        ".claude/commands/requirement/rollback.md",
+        ".claude/commands/requirement/submit.md",
+        ".claude/commands/requirement/archive.md",
+        ".claude/commands/requirement/next.md",
+        ".claude/skills/managing-requirement-lifecycle/SKILL.md",
+        "tests/skills/test_alias_passthrough.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": [
+        "F-005"
+      ],
+      "complexity": "light",
+      "touches": [
+        ".claude/commands/requirement/**",
+        ".claude/skills/managing-requirement-lifecycle/**",
+        "tests/skills/test_alias_passthrough.py"
+      ],
+      "acceptance": [
+        "TC-F10-1: pytest tests/skills/test_alias_passthrough.py::test_9_aliases_emit_deprecation 绿——9 命令各调用一次 → stderr 首段含 [DEPRECATION] 模板（§10.2.2 + 截至 2026-08-08 字面量）（覆盖 AC-09）",
+        "TC-F10-2: pytest tests/skills/test_alias_passthrough.py::test_arguments_forwarding 绿——/requirement:new 'X' / /requirement:continue REQ-2026-Y / /requirement:save 'note' 等 6 个非例外别名 → 调用 /workflow:<target> 时 ARGUMENTS 字面量与原文一致（§10.2.1 透传规则）",
+        "TC-F10-3: pytest tests/skills/test_alias_passthrough.py::test_next_exception_kept_legacy 绿——/requirement:next 不转发到 /workflow:* + 调旧 managing-requirement-lifecycle 的 phase-transition 子动作 + stderr 首段含 [DEPRECATION-NEXT] 例外文案（§10.2.1 + §10.2.2）",
+        "TC-F10-4: pytest tests/skills/test_alias_passthrough.py::test_submit_archive_kept_legacy 绿——/requirement:submit / /requirement:archive 走独立旧实现 + 不转发；新引擎语义由 standard-8phase yaml 节点承载（§1.5 / §10.2.1）",
+        "TC-F10-5: grep -rn '截至 2026-08-08' .claude/commands/requirement/ 命中 9 个 .md 文件 + 至少 1 行（兼容期到期日字面量字段化 / §10.2.3）"
+      ]
+    },
+    {
+      "id": "F-011",
+      "title": "自举验证 SOP（Plan 6）+ migration 测试（R001-R007 双跑对照 21/21）",
+      "description": "落地 D-009 自举验证（来源：detailed-design §8 全章 / §10.3 / requirement.md AC-SELF / AC-E2E）：(1) migration 测试 21 用例 = 7 规则 × 3 类 fixture（happy / failure / 边界），双跑对照旧 check_reviews.py CLI vs 新 GATE-REVIEW-VERDICT plugin → 结论枚举与 violation 字段集合完全一致（0 false-pass + 0 false-fail）。(2) 自举验证 SOP 写入 notes.md：本需求自身从 tech-research 推到 completed 全程必须用新引擎跑通；过程中任何阶段 fallback 到旧命令视为验证失败 → 阻塞 Plan 7。(3) AC-E2E 老需求新引擎续跑：选 1 个 paused 历史 run（如 REQ-2026-005）跑通 /workflow:continue。本 feature 通过是 Plan 7 真删 PHASE_REQUIREMENTS / 老 Skill 旧 SOP 的前置条件（§10.3）。",
+      "modules": [
+        "tests/migration/test_phase_requirements_equivalence.py",
+        "tests/migration/fixtures/R001/happy.yaml",
+        "tests/migration/fixtures/R001/failure.yaml",
+        "tests/migration/fixtures/R001/boundary.yaml",
+        "tests/migration/fixtures/R002/happy.yaml",
+        "tests/migration/fixtures/R002/failure.yaml",
+        "tests/migration/fixtures/R002/boundary.yaml",
+        "tests/migration/fixtures/R003/happy.yaml",
+        "tests/migration/fixtures/R003/failure.yaml",
+        "tests/migration/fixtures/R003/boundary.yaml",
+        "tests/migration/fixtures/R004/happy.yaml",
+        "tests/migration/fixtures/R004/failure.yaml",
+        "tests/migration/fixtures/R004/boundary.yaml",
+        "tests/migration/fixtures/R005/happy.yaml",
+        "tests/migration/fixtures/R005/failure.yaml",
+        "tests/migration/fixtures/R005/boundary.yaml",
+        "tests/migration/fixtures/R006/happy.yaml",
+        "tests/migration/fixtures/R006/failure.yaml",
+        "tests/migration/fixtures/R006/boundary.yaml",
+        "tests/migration/fixtures/R007/happy.yaml",
+        "tests/migration/fixtures/R007/failure.yaml",
+        "tests/migration/fixtures/R007/boundary.yaml",
+        "tests/e2e/test_legacy_run_compat.py",
+        "scripts/gates/registry.yaml"
+      ],
+      "depends_on": [],
+      "depends_on_features": [
+        "F-001",
+        "F-002",
+        "F-003",
+        "F-004",
+        "F-005",
+        "F-006",
+        "F-007",
+        "F-008",
+        "F-009",
+        "F-010"
+      ],
+      "complexity": "medium",
+      "touches": [
+        "tests/migration/**",
+        "tests/e2e/test_legacy_run_compat.py",
+        "scripts/gates/registry.yaml",
+        "requirements/REQ-2026-009/notes.md"
+      ],
+      "acceptance": [
+        "TC-F11-1: pytest tests/migration/test_phase_requirements_equivalence.py 绿——21 条 parametrize 用例（7 规则 × 3 fixture）双跑对照通过 + 0 false-pass + 0 false-fail（§8.4 硬阈值）",
+        "TC-F11-2: pytest tests/migration/test_phase_requirements_equivalence.py::test_three_triggers 绿——phase-transition / submit / ci 三触发点都跑过 + GATE-REVIEW-VERDICT registry.yaml triggers 字段含三项（§8.4）",
+        "TC-F11-3: pytest tests/e2e/test_legacy_run_compat.py 绿——选 1 个 paused 历史 run（如 REQ-2026-005）跑 /workflow:continue → 反扫旧 jsonl 重建 RunState 无错（覆盖 AC-E2E）",
+        "TC-F11-4: pytest tests/migration/test_phase_requirements_equivalence.py::test_R003_signoff_through_hook 绿——R003 在新链路下 sign-off 走 §5 hook + isatty 双层 + 不允许新引擎跳过签字（§8.4 / 与 F-009 联动）",
+        "TC-F11-5: 手工验证（写入 notes.md Plan 6 自举验证日志）——本需求自身 detail-design → task-planning → development → testing → completed 全程用 /workflow:* 命令推进 + 任意阶段 fallback 到旧 /requirement:* 命令视为失败（覆盖 AC-SELF）"
+      ]
+    },
+    {
+      "id": "F-012",
+      "title": "Plan 7 清理（删 PHASE_REQUIREMENTS / phase_enum / signoff / next + SOP 文档更新）",
+      "description": "落地 Plan 7 真删（来源：detailed-design §10.3 / outline §1.2 / D-009）：删 scripts/lib/check_reviews.py 中 PHASE_REQUIREMENTS 字典（-57 行；R001-R007 函数本身保留供 plugin 复用）+ scripts/lib/code_review_signoff.py（-150 行 / hook 接管校验后）+ scripts/lib/phase_enum.py（-30 行）+ .claude/commands/requirement/next.md + .claude/skills/managing-requirement-lifecycle/ 旧 SOP 逻辑。SOP 文档同步：CLAUDE.md / context/team/onboarding/agentic-engineer-guide.md / context/team/ai-collaboration.md 等所有引用更新（~50-100 行 modify）。最后删 workflow_loader.py 中「探测 requirements/」1 行（D-007 锁定）。前置条件：F-011 自举验证通过 + 21/21 migration 测试 pass + F-013 rename 完成。（rev2 拆 signoff.py 子模块；signoff 功能迁入 scripts/lib/signoff.py，save_review.py signoff 入口保留为委托层）",
+      "modules": [
+        "scripts/lib/check_reviews.py",
+        "scripts/lib/canonical_phases.py",
+        "scripts/lib/signoff.py",
+        ".claude/commands/requirement/next.md",
+        ".claude/skills/managing-requirement-lifecycle/SKILL.md",
+        ".claude/skills/managing-requirement-lifecycle/reference/phase-rules.md",
+        "scripts/lib/workflow_loader.py",
+        "CLAUDE.md",
+        "context/team/onboarding/agentic-engineer-guide.md",
+        "context/team/ai-collaboration.md"
+      ],
+      "depends_on": [],
+      "depends_on_features": [
+        "F-013"
+      ],
+      "complexity": "light",
+      "touches": [
+        "scripts/lib/check_reviews.py",
+        "scripts/lib/canonical_phases.py",
+        "scripts/lib/signoff.py",
+        "scripts/lib/save_review.py",
+        "scripts/lib/workflow_loader.py",
+        "scripts/gates/run.py",
+        "scripts/gates/plugins/review_verdict.py",
+        "scripts/gates/plugins/review_verdict_ci.py",
+        "scripts/gates/plugins/phase_in_set.py",
+        "scripts/gates/plugins/pr_state.py",
+        "scripts/gates/plugins/traceability.py",
+        "tests/gates/test_phase_in_set_plugin.py",
+        "tests/gates/test_pr_state_plugin.py",
+        "tests/gates/test_submit_next_parity.py",
+        "tests/skills/test_alias_passthrough.py",
+        ".claude/commands/requirement/**",
+        ".claude/commands/code-review/signoff.md",
+        ".claude/commands/note.md",
+        ".claude/code-review-routing.yaml",
+        ".claude/hooks/pre-tool-use-guard.sh",
+        ".claude/agents/requirement-bootstrapper.md",
+        ".claude/skills/managing-requirement-lifecycle/**",
+        ".claude/skills/code-review-signoff/**",
+        ".claude/skills/feature-lifecycle-manager/SKILL.md",
+        ".claude/skills/requirement-progress-logger/SKILL.md",
+        ".claude/skills/requirement-doc-writer/SKILL.md",
+        ".claude/skills/traceability-gate-checker/SKILL.md",
+        "tests/commands/test_signoff_command.py",
+        "tests/skills/test_code_review_signoff_skill.py",
+        "tests/gates/test_phase_adjacent.py",
+        "tests/lib/test_check_reviews_r001_phase_typo.py",
+        "tests/lib/test_check_reviews_r003_r007.py",
+        "tests/lib/test_save_review_signoff_subcommand.py",
+        "tests/lib/test_phase_review_deps_consistency.py",
+        "tests/migration/conftest.py",
+        "tests/migration/test_phase_requirements_equivalence.py",
+        "tests/gates/test_runner.py",
+        "tests/gates/test_review_verdict_plugin.py",
+        "tests/lib/test_features_json_touches_consistency.py",
+        "tests/lib/test_adr_line_count_drift.py",
+        "scripts/lib/save_review_validation.py",
+        "CLAUDE.md",
+        "context/team/**"
+      ],
+      "acceptance": [
+        "TC-F12-1: bash -c 'grep -rn PHASE_REQUIREMENTS scripts/' 命中数 = 0（HEAD 树）+ git log -p 命中删除 commit（保留历史可追溯 / §10.3）",
+        "TC-F12-2: pytest tests/ 全绿——code_review_signoff.py / phase_enum.py / next.md 删除后既有 review verdict 流程 + R 函数（保留供 plugin 复用）单测全部通过",
+        "TC-F12-3: bash -c 'grep -n requirements/ scripts/lib/workflow_loader.py' 命中 0 行——loader 仅识别 runs/ 路径（D-007 1 行删完成）",
+        "TC-F12-4: bash -c 'grep -rln \"/requirement:next\" .claude/' 命中 0 个文件——next.md 删除 + 别名兼容期内本命令例外保留期已过（覆盖 AC-CLEAN 子项）",
+        "TC-F12-5: managing-requirement-lifecycle 仅 phase-transition 子动作 + reference/phase-rules.md 删除，伞形 Skill 保留 8 子动作（archive/submit/new/continue/save/status/list/rollback）；详见 plan.md D-016 ADR",
+        "TC-F12-6: CLAUDE.md / agentic-engineer-guide.md / ai-collaboration.md 引用更新——grep '/requirement:next' 命中 0 行 + grep '/workflow:' 命中 ≥ 1 行（SOP 改写完成）"
+      ]
+    },
+    {
+      "id": "F-013",
+      "title": "requirements/ → runs/ 批量 rename 工具 + pre-commit 拦截规则",
+      "description": "落地批量 rename 工具（来源：detailed-design §9 全章 / D-002 / outline §1.2 ~80 行）：migrate_requirements_to_runs(dry_run, include_history_comments, whitelist) → MigrationReport（含 references_found / risky_unmapped / skipped_whitelist / moved_directories 等 dataclass）。6 层扫描矩阵：代码层（grep + AST）/ 配置层（frontmatter 解析）/ gate 层（registry.yaml）/ 文档层（CLAUDE.md / engineering-spec/**）/ 历史层（白名单跳过历史 ADR）/ git 层（不改 commit message）。kind 分类：literal / yaml_glob 自动改 / f_string / concat 进 risky_unmapped 人工 review。pre-commit hook 拦截新增 'requirements/REQ-' 字面量 → exit 2 + 提示改用 'runs/REQ-'；命中白名单或 markdown 引用块/代码块放行；CLAUDE_GATES_GLOBAL_BYPASS reason ≥ 8 字符可绕过。前置：F-011 自举验证通过 + migration 测试 21/21 pass。",
+      "modules": [
+        "scripts/lib/migrate_requirements_to_runs.py",
+        "scripts/git-hooks/pre-commit-rename-guard.sh",
+        "tests/tools/test_migrate_requirements.py",
+        "tests/tools/fixtures/migrate_requirements/sample_script.py",
+        "tests/tools/fixtures/migrate_requirements/sample_doc.md",
+        "tests/tools/fixtures/migrate_requirements/sample_config.yaml",
+        "tests/tools/fixtures/migrate_requirements/whitelist_plan.md",
+        "context/team/engineering-spec/migration/2026-05-runs-rename.md",
+        "requirements/INDEX.md"
+      ],
+      "depends_on": [],
+      "depends_on_features": [
+        "F-011"
+      ],
+      "complexity": "medium",
+      "touches": [
+        "scripts/lib/migrate_requirements_to_runs.py",
+        "scripts/git-hooks/pre-commit-rename-guard.sh",
+        "tests/tools/**",
+        "context/team/engineering-spec/migration/**",
+        "context/team/engineering-spec/INDEX.md",
+        "requirements/INDEX.md"
+      ],
+      "acceptance": [
+        "TC-F13-1: pytest tests/tools/test_migrate_requirements.py::test_dry_run_report_accurate 绿——fixture 仓库（含已知 N 处引用）→ dry_run 后 references_found.len == N + files_changed == [] + dry_run=True 不写文件（§9.7 #1）",
+        "TC-F13-2: pytest tests/tools/test_migrate_requirements.py::test_wet_run_full_change 绿——dry_run + wet_run 双跑后 grep 全 fixture 'requirements/REQ-' 字面量数 ≤ 白名单数（§9.7 #2 / 覆盖 AC-CLEAN）",
+        "TC-F13-3: pytest tests/tools/test_migrate_requirements.py::test_risky_unmapped_recognized 绿——fixture 含 f'requirements/{rid}' / 'requirements/' + rid → 进 risky_unmapped[] + 不进 files_changed[]（§9.7 #3）",
+        "TC-F13-4: pytest tests/tools/test_migrate_requirements.py::test_whitelist_skipped 绿——fixture 含 requirements/REQ-2026-001/plan.md 历史引用 → 进 skipped_whitelist[]（§9.7 #4 / §9.4）",
+        "TC-F13-5: pytest tests/tools/test_migrate_requirements.py::test_pre_commit_hook_blocks 绿——fixture 模拟 git diff --cached 含新增 'requirements/REQ-' → hook exit 2 + stderr 提示改用 runs/REQ-（§9.5 / §9.7 #5）",
+        "TC-F13-6: pytest tests/tools/test_migrate_requirements.py::test_pre_commit_hook_passthrough_md_quote 绿——markdown 引用块（> ...）/ 代码块内的字面量 → hook 放行（§9.5 / 叙述性引用例外）",
+        "TC-F13-7: 手工验证 4 步流程（写入 notes.md）——dry_run=True → 人工 review risky_unmapped → dry_run=False wet_run → 自检 grep 字面量数 ≤ 白名单数（§9.8 顺序约束）"
+      ]
+    }
+  ]
+}

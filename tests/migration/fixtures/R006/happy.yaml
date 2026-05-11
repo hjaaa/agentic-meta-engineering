@@ -1,0 +1,26 @@
+# R006 happy：supersedes 链直链（无环、无悬挂引用）
+# 场景：reviews/ 中有一条 review，supersedes=null（无前序），链合法
+description: "R006 happy - supersedes chain is clean (no cycles, no dangling refs)"
+req_id: "REQ-2099-116"
+target_phase: "tech-research"
+
+meta:
+  id: "REQ-2099-116"
+  title: "R006 happy fixture"
+  phase: "definition"
+  created_at: "2026-01-01 00:00:00"
+  branch: "feat/req-2099-116"
+  base_branch: "develop"
+  reviews:
+    definition:
+      latest: "REV-REQ-2099-116-definition-001"
+      conclusion: "looks_clean"
+
+reviews:
+  - suffix: "definition-001"
+    phase: "definition"
+    conclusion: "looks_clean"
+    with_signoff: true
+    supersedes: null
+
+expected_conclusion: "pass"

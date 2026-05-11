@@ -47,14 +47,26 @@ if str(_LIB_DIR) not in sys.path:
 import yaml  # noqa: E402
 from common import Report as LegacyReport  # noqa: E402
 import check_reviews  # noqa: E402
-import phase_enum  # noqa: E402  canonical phase 枚举单一事实源
+import canonical_phases  # noqa: E402  canonical phase 枚举单一事实源（F-012 改自 phase_enum）
 
 from .base import Decision, Gate, GateContext, Report, Severity, Skip
 from . import review_verdict_ci  # F-015 round-3：ci 路径委托
 from . import meta_writer  # F-015 round-3：meta.yaml 原子写入委托
 
-# 与 check_reviews.PHASE_REQUIREMENTS 保持一致（来源：scripts/lib/check_reviews.py:33-41）
-_PHASE_REQUIREMENTS = check_reviews.PHASE_REQUIREMENTS
+# target-phase → 必须存在的 review phase 列表（plugin 本地副本，F-012 取代跨模块
+# 共享 dict 的旧设计；详见 scripts/lib/check_reviews.py:_PHASE_REVIEW_DEPS 顶部的
+# 设计动机注释）。
+# 来源：context/team/engineering-spec/meta-schema.yaml `enums.phase`
+# （phase-rules.md F-012 后已删；CI 由 tests/lib/test_phase_review_deps_consistency.py 兜底三处一致性）
+_PHASE_REVIEW_DEPS: dict[str, list[str]] = {
+    "tech-research":  ["definition"],
+    "outline-design": ["definition"],
+    "detail-design":  ["outline-design"],
+    "task-planning":  ["detail-design"],
+    "development":    ["detail-design"],
+    "testing":        ["detail-design", "code"],
+    "completed":      ["definition", "outline-design", "detail-design"],
+}
 
 
 class ReviewVerdictGate(Gate):
@@ -141,16 +153,16 @@ class ReviewVerdictGate(Gate):
         effective_phase = target_phase or meta.get("phase", "")
 
         # fail-closed：typo / 非法 phase 名直接报错，避免静默 vacuous pass
-        # （历史 bug：'technical-research' 因不在 _PHASE_REQUIREMENTS 中而走下面 PASS 分支）
-        canonical_phases = phase_enum.load_canonical_phases()
-        if effective_phase and effective_phase not in canonical_phases:
+        # （历史 bug：'technical-research' 因不在 _PHASE_REVIEW_DEPS 中而走下面 PASS 分支）
+        valid_phases = canonical_phases.load_canonical_phases()
+        if effective_phase and effective_phase not in valid_phases:
             return Report(
                 gate_id=self.id,
                 decision=Decision.FAIL,
                 code="REVIEW-INVALID-PHASE",
                 message=(
                     f"target_phase={effective_phase!r} 不在 canonical phase 枚举内 "
-                    f"({sorted(canonical_phases)})；可能 phase 名拼写有误"
+                    f"({sorted(valid_phases)})；可能 phase 名拼写有误"
                 ),
                 fix_hint=(
                     "检查 meta.yaml.phase 或 --to/--from 参数；canonical 枚举见 "
@@ -158,15 +170,18 @@ class ReviewVerdictGate(Gate):
                 ),
             )
 
-        if not effective_phase or effective_phase not in _PHASE_REQUIREMENTS:
+        if not effective_phase or effective_phase not in _PHASE_REVIEW_DEPS:
             return Report(
                 gate_id=self.id,
                 decision=Decision.PASS,
                 message=f"target_phase={effective_phase!r} 无对应 review 要求；跳过",
             )
 
+        required_phases = _PHASE_REVIEW_DEPS[effective_phase]
         legacy_report = LegacyReport()
-        review_verdict_ci.run_r_rules(legacy_report, meta, effective_phase, req_id, req_id, ctx.staged_writes)
+        review_verdict_ci.run_r_rules(
+            legacy_report, meta, effective_phase, required_phases, req_id, req_id, ctx.staged_writes
+        )
 
         # 行为契约：把 legacy 完整 render 输出到 stdout
         if legacy_report.findings():

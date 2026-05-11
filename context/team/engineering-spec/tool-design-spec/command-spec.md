@@ -8,11 +8,11 @@
 |---|---|---|
 | 单文件行数 | < 100 行 | 避免把领域逻辑塞进 Command |
 | 职责 | 仅预检 + 委托给 Skill | 逻辑集中在 Skill，Command 改了不动 Skill |
-| 同领域多 Command | 委托**同一个**伞形 Skill | `/requirement:new` / `:continue` / `:next` / ... 全部委托 `managing-requirement-lifecycle` |
+| 同领域多 Command | 委托**同一个**伞形 Skill | `/requirement:new` / `:continue` / `:save` / ... 全部委托 `managing-requirement-lifecycle`（F-012：阶段切换迁移到 `/workflow:next`） |
 
 ## 为什么这样分
 
-同领域的多个命令（如 7 个 `/requirement:*`）背后共享**同一套领域知识**。如果每个 Command 都把逻辑重复写一遍，改一条规则要同时改 7 个文件。维护成本从 O(n) 降到 O(1)。
+同领域的多个命令（如 8 个 `/requirement:*`）背后共享**同一套领域知识**。如果每个 Command 都把逻辑重复写一遍，改一条规则要同时改 8 个文件。维护成本从 O(n) 降到 O(1)。
 
 ## 文件结构
 

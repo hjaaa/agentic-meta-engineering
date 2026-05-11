@@ -1,0 +1,92 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-009-outline-design-001",
+  "requirement_id": "REQ-2026-009",
+  "phase": "outline-design",
+  "reviewer": "outline-design-quality-reviewer",
+  "reviewed_at": "2026-05-08 16:06:10",
+  "reviewed_commit": "06f33f0",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "8a129eae71c15c991f86d2c3e25d491146d7a59a348edb9a95e6a146f256c48f"
+    },
+    {
+      "path": "artifacts/requirement.md",
+      "sha256": "8d5208f6aa532d24196d681f2ab7b19cba57da6aba09700ec4431190fdb0eb76"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 78,
+  "dimensions": {
+    "alignment_with_requirement": {
+      "score": 72,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "第 73 / 386 / 440 行：/requirement:next 处理三处自相矛盾——§1.2 第 73 行『保留实际实现到 Plan 6 验证后』、§5.2 第 386 行同样保留实际实现，但 §6 AC-09 映射（第 440 行）验证手段写『:next 报错』。同时与上游 requirement.md AC-09（第 123 行）『:next 调用直接报错-已删除请用 /workflow:continue』+ 用户场景 1（第 36 行）『:next 立即删除无兼容期』直接冲突。要么 outline-design §1.2/§5.2 改为『仅保留 deprecation 提示调用即报错』、要么需求文档 AC-09 改为『Plan 6 验证后才报错』，二选一并锁死，进入 detail-design 前必须消除歧义。"
+        }
+      ]
+    },
+    "module_decomposition": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 260 行：『L1 命令不允许直接调 scripts/lib/workflow_*.py 必须走 L2 Skill』禁止跨调约束已明确 L1->L3，但未说明 L2 Skill 是否可跨过 L3 直接读写 L4 artifact 文件（如 jsonl / .archived/），建议在 §3 加一条『L2 不直接 IO 必须经 L3 lib 函数』补齐 4 层间所有跨调禁令。"
+        }
+      ]
+    },
+    "tech_choice_rationale": {
+      "score": 82,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 240 行：§2.4 关键点『launcher 不引入新能力只翻译为 /workflow:*』与 §2.4 Step 1 state tiebreaker（第 209-212 行）『query active runs / 读 approval_pending 状态』之间存在概念张力——launcher 实际引入了『读 jsonl 状态做路由决策』的能力。建议在关键点 3 增加一句『launcher 读 jsonl 仅用于路由仲裁不写不参与业务逻辑』消除歧义。"
+        }
+      ]
+    },
+    "scalability": {
+      "score": 78,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 149-152 行：§2.2 rollback 时序步骤 6『截断父 jsonl 尾部』+ 步骤 7『rm .in_progress』分两步，但文档未说明『若步骤 6 已截断而步骤 7 未删除时进程崩溃』的恢复行为——.in_progress 标记暗示了恢复机制但应在『关键点』里显式补一条『续跑时若发现 .archived/<ts>/.in_progress 残留引擎应执行残留归档清理或回退』，否则中断安全的承诺缺一环。"
+        },
+        {
+          "severity": "minor",
+          "description": "第 161 行：『多次 rollback 归档目录独立并存』+ 备注『v2 后续可加 /workflow:archive --gc』，但未对单需求多次 rollback 的归档目录数量做上限提示，长期可能导致 runs/<id>/.archived/ 下大量子目录，建议在『不在本设计范围』里显式列出『.archived/ GC 策略 = Post-MVP』并提示用户当前手动清理风险。"
+        }
+      ]
+    },
+    "integration_with_existing": {
+      "score": 75,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 81 行：『scripts/lib/check_reviews.py 的 PHASE_REQUIREMENTS 延后删除到 Plan 7』在 §1.2 表格中操作字段写『-57』行，但 §5.4 又说『D-009 旧命令实现存在期间 PHASE_REQUIREMENTS 必然不能删』——表格的 -57 行数估算容易让读者以为 outline 阶段就要动 PHASE_REQUIREMENTS，建议把『操作』列改为『Plan 7 删除（-57 行）』使时序更显眼。"
+        },
+        {
+          "severity": "minor",
+          "description": "第 84 行：『requirements/ -> runs/ 批量 rename 工具』标注 ~80 行 Plan 7，但未提及该工具如何处理 D-002 双轨共存期间用户在『requirements/』下手动创建的新需求、以及现存 reviews/*.json 内 path 字段（如 artifacts/...）是否需要重写——Plan 7 实际工作量可能远超 80 行，建议在 §5 自举专题或 §7 detail-design 待办里增加『rename 工具的 path 引用扫描 + 重写策略』。"
+        }
+      ]
+    }
+  },
+  "required_fixes": [
+    "修复 /requirement:next 处理三处自相矛盾：§1.2 第 73 行 + §5.2 第 386 行 + §6 AC-09 映射（第 440 行）+ 上游 requirement.md AC-09（第 123 行）必须达成一致——明确『立即报错』还是『Plan 6 验证后才报错』，并在四处文字同步。"
+  ],
+  "suggestions": [
+    "§3.1 末尾的层间禁止跨调约束建议补齐 L2 -> L4 直读禁令（『L2 不直接 IO 必须经 L3 lib』）。",
+    "§2.4 关键点 3 建议显式补一句『launcher 读 jsonl 仅用于路由仲裁不写不参与业务』消除『不引入新能力』与 state tiebreaker 的概念张力。",
+    "§2.2 rollback 关键点建议补一条『.in_progress 残留检测 + 续跑回退策略』把中断安全承诺收尾。",
+    "§1.2 PHASE_REQUIREMENTS 行的『操作』列改为『Plan 7 删除（-57 行）』使时序更显眼。",
+    "§7 detail-design 待办建议增加一项『requirements/ -> runs/ rename 工具的 path 引用扫描 + 重写策略』，避免 Plan 7 实际工作量被低估。"
+  ],
+  "scope": null,
+  "supersedes": null,
+  "architectural_concerns": [
+    "rollback 多次累积导致 runs/<id>/.archived/<ts>/ 目录数量长期膨胀缺乏 GC 策略；当前 Post-MVP 标注合理但应在用户文档里同步提示。",
+    "D-009 旧命令保留 3 月期间 PHASE_REQUIREMENTS / phase_enum.py / code_review_signoff.py 三套旧机制与新引擎并行，若 Plan 6 自举验证不通过 Plan 7 清理将持续延期，新旧并行成本可能超出预期，建议在 detail-design 阶段为『Plan 6 验证失败』准备明确的回退 + 二次验证 SOP。"
+  ]
+}

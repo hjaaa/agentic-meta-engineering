@@ -26,7 +26,7 @@
 
 ## 伞形模式
 
-同一领域的多个 Command（如 7 个 `/requirement:*`）委托**同一个**伞形 Skill（`managing-requirement-lifecycle`）。这是为了：
+同一领域的多个 Command（如 8 个 `/requirement:*`）委托**同一个**伞形 Skill（`managing-requirement-lifecycle`）。这是为了：
 
 - 领域知识集中在一处
 - 改一条规则只改一个 Skill

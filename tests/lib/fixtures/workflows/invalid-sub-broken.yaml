@@ -1,0 +1,7 @@
+# W153: sub_workflow yaml 解析失败
+name: sub-broken
+version: 1
+category: assist
+nodes:
+  - id: enter
+    sub_workflow: sub-fixtures/broken

@@ -17,6 +17,11 @@ readonly ENTRY="pre-tool-use-guard"
 #   防御层次：BYPASS reason 长度 >= 8 + audit reason 全文 + PR review 人工（REQ-2026-006 F-002）
 readonly REVIEW_PATH='requirements/[^/]+/reviews/[^/]+\.json'
 # 单一长正则；以 ALT 形式连接 12 条 pattern；与 bash_write_protect.py 在 PR-1/PR-2 过渡期内为双轨
+# D-006 approval / reject 是人类专属（来源：requirements/REQ-2026-009/plan.md:101）
+# 命中即拒绝——hook 只对 AI Bash 触发，tty 用户不走此路径
+readonly APPROVAL_SLASH_PATTERN='(/workflow:(approve|reject))(\b|[[:space:]])'
+readonly APPROVAL_PYTHON_PATTERN='python3?[[:space:]]+([^[:space:]]+/)?(scripts/lib/)?workflow_(approve|reject)\.py(\b|[[:space:]])'
+
 readonly WRITE_OPS_PATTERN="(\
 >>?[[:space:]]*['\"]?[^|;&]*?${REVIEW_PATH}|\
 tee[[:space:]]+(-a[[:space:]]+)?['\"]?[^|;&]*?${REVIEW_PATH}|\
@@ -99,6 +104,7 @@ EOF
       python3 "$( dirname "${BASH_SOURCE[0]}" )/touches_guard.py" <<<"$input" || true
       ;;
     Bash)
+      check_workflow_approval_human_only "$command"
       check_bash_writes_review "$command"
       ;;
   esac
@@ -129,7 +135,7 @@ check_review_path() {
     cat >&3 <<EOF
 BLOCKED: $p
 reviews/*.json 不能直写。必须走 scripts/save-review.sh（reviewer Agent）
-或 scripts/lib/code_review_signoff.py（人类 sign-off，需 tty）。
+或 python3 scripts/lib/save_review.py signoff ...（人类 sign-off，需 tty；F-012 后唯一入口）。
 紧急绕过：CLAUDE_GATES_GLOBAL_BYPASS="<原因>" <重新执行>
 EOF
     exit 2
@@ -143,7 +149,24 @@ check_bash_writes_review() {
     cat >&3 <<EOF
 BLOCKED: Bash 写入 requirements/*/reviews/*.json 被禁。
 规避方式：scripts/save-review.sh（reviewer Agent）；
-     人类 sign-off 走 scripts/lib/code_review_signoff.py（必须 tty）。
+     人类 sign-off 走 python3 scripts/lib/save_review.py signoff ...（必须 tty；F-012 后唯一入口）。
+紧急绕过：CLAUDE_GATES_GLOBAL_BYPASS="<原因>" <重新执行>
+EOF
+    exit 2
+  fi
+}
+
+check_workflow_approval_human_only() {
+  local cmd="$1"
+  [[ -z "$cmd" ]] && return 0
+  if echo "$cmd" | grep -qE "$APPROVAL_SLASH_PATTERN" \
+     || echo "$cmd" | grep -qE "$APPROVAL_PYTHON_PATTERN"; then
+    cat >&3 <<EOF
+BLOCKED: /workflow:approve / /workflow:reject 是人类专属动作（D-006）。
+AI 在主对话或 subagent 中不能调用以下入口：
+  - /workflow:approve / /workflow:reject（slash command）
+  - python3 scripts/lib/workflow_approve.py / workflow_reject.py（CLI 直入）
+请由人类在 tty 终端运行；详见 context/team/ai-collaboration.md 规则三。
 紧急绕过：CLAUDE_GATES_GLOBAL_BYPASS="<原因>" <重新执行>
 EOF
     exit 2

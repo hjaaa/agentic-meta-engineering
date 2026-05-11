@@ -1,0 +1,9 @@
+# W112: 节点 ID 重复
+name: dup-id
+version: 1
+category: assist
+nodes:
+  - id: a
+    bash: 'echo 1'
+  - id: a
+    bash: 'echo 2'

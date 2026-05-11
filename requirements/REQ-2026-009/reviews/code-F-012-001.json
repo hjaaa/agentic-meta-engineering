@@ -1,0 +1,171 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-009-code-F-012-001",
+  "requirement_id": "REQ-2026-009",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-10 19:28:53",
+  "reviewed_commit": "52b5a6c",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "5c82178840ff870dee3f6ab73d7e8612059b0694b14b521e6731e652dd60cb3c"
+    },
+    {
+      "path": "artifacts/tasks/F-012.md",
+      "sha256": "e09e28798599676be440342e7abcba733eb414643ff76dec06f206f479360eaa"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 71,
+  "dimensions": {
+    "design_consistency": {
+      "score": 75,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/save_review.py:589 _append_signoff_process_log 与 requirement-progress-logger 单行格式存在双轨复制——同一 process.txt 写入逻辑无 helper 复用 (F-23 critic not_proven 降级)"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/gates/plugins/review_verdict.py:60 与 review_verdict_ci.py:38 / scripts/lib/check_reviews.py:68 三处 _PHASE_REVIEW_DEPS dict literal 副本仅依赖人工同步——D-016 ADR 自承且接受 (F-24)"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/save_review.py:597 _KNOWN_CMDS frozenset 仅 2 项 (save/signoff)，未在文件顶部 docstring 暴露子命令矩阵 (F-25)"
+        },
+        {
+          "severity": "minor",
+          "description": ".claude/skills/managing-requirement-lifecycle/SKILL.md:10 stale 注释引用已删除的 PHASE_REQUIREMENTS——D-016 决策保留伞形 Skill 而非全删 (F-26 trivial fix)"
+        }
+      ]
+    },
+    "security": {
+      "score": 65,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/save_review.py:525-529 _run_signoff JSON 解析失败/OSError 返回 rc=2，与第 477 行 tty fail 的 rc=2 语义重叠——调用方 (.claude/skills/code-review-signoff/SKILL.md:79 退出码矩阵) 无法区分两类错误，运维诊断成本上升 (F-7)"
+        },
+        {
+          "severity": "major",
+          "description": "scripts/gates/plugins/review_verdict_ci.py:115 ci 路径 run_r_rules 传 staged_writes=None → R005 命中 drift 走 check_reviews.py:286-294 旧 CLI 直写盘行为，导致 ci 全量扫描时实际写盘 stale=true 到 meta.yaml——ci 应只读不副作用 (F-9)"
+        },
+        {
+          "severity": "major",
+          "description": "requirements/REQ-2026-009/artifacts/features.json F-012.acceptance[5] (TC-F12-5) 字面假设 managing-requirement-lifecycle Skill 全删，但 D-016 ADR 决定保守 trim 保留伞形——acceptance 与实现脱节，TC-F12-5 NOT_PASS 但未在 features.json 同步标注 (F-10)"
+        },
+        {
+          "severity": "major",
+          "description": "scripts/lib/save_review.py:233-262 _resolve_verdict_path 无 '..' 路径校验——攻击者可构造 rev_id='REV-REQ-2026-001-../../../etc/passwd-001' 让构造路径逃出 reviews/ 目录边界；虽然只读且需 .exists() 兜底，但与 F-7/F-19/F-20 叠加构成 sign-off 攻击面集合 (F-21)"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/save_review.py:516-521 _resolve_verdict_path 返回 None 与文件不存在均返回 rc=4，stderr 文案一致——异常诊断时无法区分 REV-ID 格式错与文件确实丢失 (F-8)"
+        }
+      ]
+    },
+    "concurrency": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/gates/plugins/review_verdict.py:60 / review_verdict_ci.py:38 / scripts/lib/check_reviews.py:68 三处 _PHASE_REVIEW_DEPS dict literal 副本——未来 trigger 增删时无 lock-step 保障；D-016 接受 (F-11 与 F-5 同根，concurrency 角度记录)"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/save_review.py 顶部 import 顺序未按 PEP 8 严格分组——stdlib / third-party / local 三段混排 (F-12 trivial fix)"
+        }
+      ]
+    },
+    "complexity": {
+      "score": 70,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/save_review.py 单文件 678 行——save (1-385) + signoff (387-595) + parser (600-673) 三职责集中；F-012 真新增 ~270 行迁入逻辑使本就偏大文件再扩张 ~70%；建议拆 signoff.py 子模块 (F-3)"
+        },
+        {
+          "severity": "major",
+          "description": "scripts/lib/check_reviews.py:68 / scripts/gates/plugins/review_verdict.py:60 / review_verdict_ci.py:38 三处 _PHASE_REVIEW_DEPS dict literal 副本——D-016 ADR 自承缺点但缺机器同步保障；建议落 unit test 断言 3 处 dict 字面值 == (F-5)"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 65,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/save_review.py:507 signed_by = args.signed_by or _get_git_email()——args.signed_by 路径未跑 _EMAIL_RE 校验，攻击者可通过 --signed-by 注入任意字符串作为签字人 (F-19)"
+        },
+        {
+          "severity": "major",
+          "description": "scripts/lib/save_review.py:587 line = f'{ts} [signoff] {rev_id} {decision} by {signed_by}' 未对 signed_by 中 \\n / \\r 做转义——攻击者构造含换行的 signed_by 可注入伪造 [signoff] 行到 process.txt (F-20)"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/save_review.py:404-414 _get_git_email subprocess.CalledProcessError 兜底 email='' 但未区分 git 不可用与 user.email 未配置；调用方第 508-510 行只能给统一错误 (F-18 critic not_proven 降级)"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/save_review.py:441-450 _get_trivial_diff_paths CalledProcessError 时返回 ['<git-diff-failed>']，调用方第 496 行 _check_trivial_paths 会判定为非文档 → 返回 rc=3——错误传递路径绕个圈 (F-28 critic not_proven 降级)"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/check_reviews.py:155-167 _r003 中 json.JSONDecodeError silently continue，依赖 R002 报告——R002/R003 之间错误处理强耦合 (F-36 critic not_proven 降级)"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "tests/migration/test_phase_requirements_equivalence.py:305 test_dual_run_equivalence 命名以 test_ 前缀 + 描述性后缀，但既有项目惯例是 should_xxx_when_yyy / given_when_then——本文件偏离命名约定 (F-33 trivial fix)"
+        }
+      ]
+    },
+    "performance": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/save_review.py 末尾缺 EOF 换行——POSIX 规范 trivial fix (F-35)"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/canonical_phases.py:38-53 _load_phase_enum_list 模块级缓存 _cached_ordered 在首次读盘后永久持有，测试侧需调 reset_cache 才能 monkeypatch；对短运行 CLI 可忽略 (F-36 critic not_proven 降级)"
+        }
+      ]
+    },
+    "history_context": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "context/team/engineering-spec/meta-schema.yaml header 注释引用 phase_enum.py 旧名——F-012 已 mv canonical_phases.py 但 schema 头注未同步 (F-27 trivial fix)"
+        },
+        {
+          "severity": "minor",
+          "description": "git log --oneline 3193b74..52b5a6c 6 commits 均带 (F-012) 前缀但 525bf87 phase_enum mv commit message 未交叉引用 D-016 ADR 落点——后续 git archeology 难追到决策 (F-29 trivial)"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/check_reviews.py:30-37 SIGNOFF_PASS 注释提到 F-004b 占位，但 F-012 之后 is_signed_off 已实装；注释 stale (F-28 critic not_proven 降级 / 与 error_handling F-18 同根)"
+        }
+      ]
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "横切风险：F-7 (rc 2 重叠) + F-19 (signed_by 校验缺失) + F-20 (日志注入) + F-21 (path traversal) 四项 MAJOR 集中在 _run_signoff 入口——D-016 ADR 自承'签字深防御从双层降单层'后，单层 isatty 抗 prompt 注入足够，但抗 CLI 直接调用的输入校验薄弱；建议 rev2 一并补 _EMAIL_RE 校验 + signed_by sanitize + _resolve_verdict_path 加 '..' 拒绝 + 区分 rc 2/4/6 三类错误",
+    "横切风险：F-3 (save_review.py 678 行) + F-5 (3 处 dict 副本) 复杂度叠加——D-016 接受'两套代码并存 3 月维护成本+1'但未给机器化同步保障；建议落 tests/lib/test_phase_review_deps_consistency.py 断言三处 dict 字面值相等",
+    "F-9 (ci 路径 staged_writes=None 副作用) 是 F-012 入口收敛后引入的真实新问题——ci trigger 全量扫描应只读，但 R005 旧 CLI 路径会写 meta.yaml.stale=true；建议 review_verdict_ci.run_r_rules 第 115 行改传 staged_writes=[] 并丢弃，或 _r005_hash_drift 加 read_only 参数",
+    "F-10 (TC-F12-5 NOT_PASS 与 features.json acceptance 脱节) 不是代码 bug 而是文档治理——D-016 决策保守 trim 但未回填 acceptance；建议 rev2 同步把 features.json F-012.acceptance[5] 改为 'managing-requirement-lifecycle 仅 phase-transition 子动作删除，伞形 Skill 保留 8 子动作' 与 ADR 对齐",
+    "trivial 批量修复：F-12 (PEP 8 import) + F-26 (stale 注释) + F-27 (meta-schema 头注) + F-33 (测试命名) + F-35 (EOL 缺失) 5 项可主 Agent 1 commit 直修；F-29 (commit message ADR 引用) 不修——历史 commit 已 push"
+  ],
+  "scope": {
+    "feature_id": "F-012"
+  },
+  "supersedes": null
+}

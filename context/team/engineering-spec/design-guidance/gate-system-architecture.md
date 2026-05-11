@@ -87,7 +87,7 @@ PreToolUse Hook
 
 | trigger | 触发场景 | 跑哪些 gate |
 |---|---|---|
-| `phase-transition` | `/requirement:next` | traceability、reviews-consistency、sourcing |
+| `phase-transition` | `/workflow:next` | traceability、reviews-consistency、sourcing |
 | `pr-submit` | `/requirement:submit` | plan-freshness、workspace-clean、ahead-of-origin |
 | `save-review` | reviewer Agent 落 verdict | reviews_consistency |
 | `manual` | 调试、离线审计 | 全部 |
@@ -229,7 +229,7 @@ check_bash_writes_review() {
     cat >&2 <<EOF
 BLOCKED: Bash 写入 requirements/*/reviews/*.json 被禁。
 规避方式：scripts/save-review.sh 是 reviewer Agent 的标准入口；
-     人类 sign-off 走 scripts/lib/code_review_signoff.py（必须 tty）。
+     人类 sign-off 走 python3 scripts/lib/save_review.py signoff ...（必须 tty；F-012 后唯一入口）。
 EOF
     exit 2
   fi

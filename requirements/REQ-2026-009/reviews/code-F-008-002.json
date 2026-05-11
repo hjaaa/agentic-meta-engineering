@@ -1,0 +1,93 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-009-code-F-008-002",
+  "requirement_id": "REQ-2026-009",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-10 00:31:10",
+  "reviewed_commit": "2461b97",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "6ef54072bc8e48df2c1c45fd767d4815b41dfea0f93aeabef87d40bf81700c65"
+    },
+    {
+      "path": "artifacts/tasks/F-008.md",
+      "sha256": "7dae4a7462bb38f73805365d7aa9fc5f6c08cdf5ee6f5c3c75f8ceb525544fc1"
+    }
+  ],
+  "conclusion": "blocked",
+  "score": 68,
+  "dimensions": {
+    "design_consistency": {
+      "score": 55,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "[critical 性质] requirements/REQ-2026-009/artifacts/features.json:285 modules 仍写 'tests/e2e/fixtures/conftest.py'，与 detailed-design.md §7.5 line 1048（顶层 conftest，非 fixtures/conftest.py）/ D-011 ADR 不一致；rev2 同步了 design 但没同步 features.json，三方文档漂移；详见 required_fixes blocker"
+        },
+        {
+          "severity": "major",
+          "description": "requirements/REQ-2026-009/artifacts/features.json:282-287 modules 数组缺 'tests/e2e/fixtures/e2e_helpers.py'，detailed-design.md §7.5 line 1049 已列出该共享 loader 模块"
+        }
+      ]
+    },
+    "security": {
+      "score": 95,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 85,
+      "issues": []
+    },
+    "complexity": {
+      "score": 70,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "tests/e2e/test_sub_workflow_lifecycle.py:1-667 单文件 667 行 > 500 阈值（context/team/engineering-spec/.../phase-3-agents.md:1013 单文件 ≤ 500，无测试豁免条款）"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 90,
+      "issues": []
+    },
+    "auxiliary_spec": {
+      "score": 90,
+      "issues": []
+    },
+    "performance": {
+      "score": 90,
+      "issues": []
+    },
+    "history_context": {
+      "score": 75,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "tests/e2e/test_sub_workflow_lifecycle.py:559 仍 time.sleep(0.02) 等子启动；rev1 F-19 已用 threading.Event 替换 line 183-192 同款语义，rev2 不对称修复，'修一半' anti-pattern"
+        },
+        {
+          "severity": "minor",
+          "description": "tests/e2e/fixtures/sub_workflow_mock.py:131 _poll_parent_cancel nesting=5 carry-over from rev1 F-16，rev2 commit message 未声明 known-skip 标记，bookkeeping 缺失"
+        }
+      ]
+    }
+  },
+  "required_fixes": [
+    {
+      "description": "修 features.json:285 modules，把 'tests/e2e/fixtures/conftest.py' 改成 'tests/e2e/conftest.py'，与 detailed-design.md §7.5 line 1048 / D-011 ADR 对齐（critical：features.json 是 R005 hash 校验对象 + 三方文档漂移会污染派发参数）",
+      "location": "requirements/REQ-2026-009/artifacts/features.json:285",
+      "severity": "blocker"
+    }
+  ],
+  "suggestions": [
+    "design_consistency + history_context 叠加：rev2 修 detailed-design 但漏 features.json 同名漂移（G-1 + G-2），暴露 rev2 严格 scope 工作流缺一项前置 checklist——所有三方文档（features.json / detailed-design / D-ADR）必须一并扫描；建议 reviewer agent 把 features.json modules 加入 design_consistency-checker 的强制对照清单",
+    "complexity + history_context 叠加：单文件 667 行（G-3）+ time.sleep 不对称（G-5）显示 rev2 修单点 finding 不做整文件扫描；建议 rev3 严格 scope 加一条'对相同 anti-pattern 全文件 grep 一遍再提交'"
+  ],
+  "scope": {
+    "feature_id": "F-008"
+  },
+  "supersedes": "REV-REQ-2026-009-code-F-008-001"
+}

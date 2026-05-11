@@ -40,20 +40,35 @@ Agent 写入 `requirements/<id>/artifacts/*.md` 的每条关键信息必须属�
 **Sign-off 唯一入口**（人类在 tty 终端执行）：
 
 ```bash
-python3 scripts/lib/code_review_signoff.py --rev-id <REV-ID> --decision <approved|approved-trivial|rejected>
+python3 scripts/lib/save_review.py signoff --rev-id <REV-ID> --decision <approved|approved-trivial|rejected>
+# 或文档变更快速通道：
+python3 scripts/lib/save_review.py signoff --rev-id <REV-ID> --trivial
 # slash command 糖（等价）：/code-review:signoff <REV-ID> --decision=<v>
 ```
 
-Agent 在主对话或子 Agent 中，**禁止**调用上述入口，也**禁止**调用其底层实现以防绕过 tty 校验深防御层：
+F-012 后，原 `scripts/lib/code_review_signoff.py` 已合并入 `save_review.py signoff`
+子命令——同一入口承担 tty 校验 + trivial 路径白名单 + git email 自动取 + CR-1~CR-8 校验
++ verdict 写盘 + process.txt 追加全套职责。
 
-- `python3 scripts/lib/code_review_signoff.py ...`（唯一用户入口）
+Agent 在主对话或子 Agent 中，**禁止**调用上述入口：
+
+- `python3 scripts/lib/save_review.py signoff ...`（F-012 后唯一用户入口）
 - `/code-review:signoff <REV-ID>`（slash command 糖，最终也调上面入口）
-- `python3 scripts/lib/save_review.py signoff ...`（底层实现，绕过 code_review_signoff.py 的预检层）
 
 > 注：`scripts/save-review.sh` 是**写 verdict** 的入口（reviewer Agent 用），不接受 `signoff` 子命令；用户不要把它当作 sign-off 入口。
 
 调用前的 tty 校验（`sys.stdin.isatty()`）会拒绝 AI shell，但 AI 不得通过假 tty / pipe trick / heredoc 等方式绕过。
 违反视为流程违规——人类发现即回滚 verdict 字段并在需求 notes.md 记录。
+
+**Approval 唯一入口**（人类在 tty 终端执行）：
+
+```bash
+/workflow:approve   # slash command 形式（最终调 workflow_approve.py）
+/workflow:reject <reason>
+```
+
+底层实现 `python3 scripts/lib/workflow_approve.py` / `workflow_reject.py` 同样禁止 AI 调用。
+hook 层（`.claude/hooks/pre-tool-use-guard.sh`）已加 D-006 拦截；CLI 层 `sys.stdin.isatty()` fail-closed 兜底。
 
 ## 人的最小行动路径（5 步）
 

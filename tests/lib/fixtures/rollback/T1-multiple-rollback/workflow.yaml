@@ -1,0 +1,12 @@
+name: t1-multiple-rollback
+version: 1
+category: assist
+nodes:
+  - id: node-a
+    bash: echo A
+  - id: node-b
+    bash: echo B
+  - id: node-c
+    bash: echo C
+  - id: node-d
+    bash: echo D

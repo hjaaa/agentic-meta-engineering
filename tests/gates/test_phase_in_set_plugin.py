@@ -53,7 +53,7 @@ def test_phase_in_set_fails_for_non_submittable_phases(phase):
     assert report.decision == Decision.FAIL
     assert report.code == "R-PHASE-NOT-SUBMITTABLE"
     assert phase in report.message
-    assert "/requirement:next" in report.fix_hint
+    assert "/workflow:next" in report.fix_hint
 
 
 def test_phase_in_set_fails_when_phase_missing():

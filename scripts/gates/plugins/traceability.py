@@ -154,7 +154,7 @@ def _check_design_traceability(
             ),
             fix_hint=(
                 "在 detailed-design.md 中为每个 feature 添加对应章节；"
-                "完整追溯链校验由 /requirement:next 调用 traceability-gate-checker Skill 完成"
+                "完整追溯链校验由 /workflow:next 调用 traceability-gate-checker Skill 完成"
             ),
             vars={"missing_in_design": missing_in_design},
         )

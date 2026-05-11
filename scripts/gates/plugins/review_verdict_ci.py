@@ -23,15 +23,27 @@ if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
 # noqa: E402 —— sys.path 注入后才能 import
-import yaml  # noqa: E402
+import check_reviews     # noqa: E402  bare import 应先于 from import 同组内
+import yaml              # noqa: E402
 from common import Report as LegacyReport  # noqa: E402
 from common import Severity as LegacySeverity  # noqa: E402
-import check_reviews  # noqa: E402
 
 from .base import Decision, Report
 
-# phase-transition 的目标 phase → 必须存在的 review phase 映射；与 check_reviews 一致
-_PHASE_REQUIREMENTS = check_reviews.PHASE_REQUIREMENTS
+# phase-transition 的目标 phase → 必须存在的 review phase 映射（plugin 本地副本，
+# F-012 取代跨模块共享 dict 的旧设计；详见 scripts/lib/check_reviews.py:_PHASE_REVIEW_DEPS
+# 顶部的设计动机注释）。
+# 来源：context/team/engineering-spec/meta-schema.yaml `enums.phase`
+# （phase-rules.md F-012 后已删；CI 由 tests/lib/test_phase_review_deps_consistency.py 兜底三处一致性）
+_PHASE_REVIEW_DEPS: dict[str, list[str]] = {
+    "tech-research":  ["definition"],
+    "outline-design": ["definition"],
+    "detail-design":  ["outline-design"],
+    "task-planning":  ["detail-design"],
+    "development":    ["detail-design"],
+    "testing":        ["detail-design", "code"],
+    "completed":      ["definition", "outline-design", "detail-design"],
+}
 
 
 def run_all_requirements(gate_id: str) -> Report:
@@ -84,7 +96,7 @@ def should_skip_req(meta: dict) -> bool:
     if meta.get("legacy") is True:
         return True
     target_phase = meta.get("phase", "")
-    return not target_phase or target_phase not in _PHASE_REQUIREMENTS
+    return not target_phase or target_phase not in _PHASE_REVIEW_DEPS
 
 
 def collect_findings(
@@ -95,11 +107,16 @@ def collect_findings(
 ) -> None:
     """对单个需求跑 R001~R007，结果分类追加到 all_errors / all_warnings。
 
-    ci trigger 路径，不接 staged_writes（ci 是只读全量扫描；R005 命中 stale 走旧 CLI 行为）。
+    ci trigger 路径是只读全量扫描：staged_writes=[] 显式传入空列表，
+    R005 命中 drift 时只向此列表 append（不写盘 meta.yaml.stale=true），
+    列表在本函数退出后即丢弃——保证 ci 路径无副作用。
+    （F-012 rev2 修复 F-9：旧行为 None 会让 R005 走旧 CLI 直写路径。）
     """
     target_phase = meta.get("phase", "")
+    required_phases = _PHASE_REVIEW_DEPS.get(target_phase, [])
     legacy_report = LegacyReport()
-    run_r_rules(legacy_report, meta, target_phase, req_id, req_id, None)
+    staged_writes: list = []  # ci 只读路径：R005 drift 结果暂存此列表，不写盘
+    run_r_rules(legacy_report, meta, target_phase, required_phases, req_id, req_id, staged_writes)
     for finding in legacy_report.findings():
         if finding[1] == LegacySeverity.ERROR:
             all_errors.append(finding)
@@ -163,6 +180,7 @@ def run_r_rules(
     report: LegacyReport,
     meta: dict,
     target_phase: str,
+    required_phases: list[str],
     label: str,
     req_id: str,
     staged_writes: list | None,
@@ -172,11 +190,13 @@ def run_r_rules(
     H1 事务化（来源：detailed-design.md §3.1）：
       staged_writes 非 None 时，R005 命中 drift 只 append 到暂存通道；
       为 None 时（如 ci trigger）走 CLI 旧行为（直接写盘 stale=true）。
+    F-012：R001~R005 改 required_phases 显式入参（取代旧跨模块共享 dict）；
+    R006/R007 不需要 required_phases（R006 全 reviews/ 扫描；R007 仅 testing 阶段触发）。
     """
-    check_reviews._r001_review_exists(meta, target_phase, report, label)
-    check_reviews._r002_schema_recheck(meta, target_phase, report, label, req_id)
-    check_reviews._r003_blocked_or_unsigned(meta, target_phase, report, label, req_id)
-    check_reviews._r004_needs_revision(meta, target_phase, report, label)
-    check_reviews._r005_hash_drift(meta, target_phase, report, label, req_id, staged_writes)
+    check_reviews._r001_review_exists(meta, target_phase, required_phases, report, label)
+    check_reviews._r002_schema_recheck(meta, required_phases, report, label, req_id)
+    check_reviews._r003_blocked_or_unsigned(meta, required_phases, report, label, req_id)
+    check_reviews._r004_needs_revision(meta, required_phases, report, label)
+    check_reviews._r005_hash_drift(meta, required_phases, report, label, req_id, staged_writes)
     check_reviews._r006_supersedes_chain(meta, target_phase, report, label, req_id)
     check_reviews._r007_code_by_feature_coverage(meta, target_phase, report, label, req_id)

@@ -1,0 +1,8 @@
+name: broken
+version: 1
+category: assist
+nodes:
+  - id: x
+    bash: |
+      foo
+    extras: [unbalanced

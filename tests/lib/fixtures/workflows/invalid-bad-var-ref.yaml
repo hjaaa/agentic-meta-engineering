@@ -1,0 +1,11 @@
+# W131: $nodeId.output 引用不存在节点
+name: bad-var-ref
+version: 1
+category: assist
+nodes:
+  - id: a
+    bash: 'echo a'
+  - id: b
+    bash: 'echo b'
+    depends_on: [a]
+    when: "$missing.output.x == 'y'"

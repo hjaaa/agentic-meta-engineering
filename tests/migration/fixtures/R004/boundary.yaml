@@ -1,0 +1,29 @@
+# R004 boundary：--strict 模式下 needs_attention 升为 ERROR
+# 场景：切到 tech-research，review conclusion=needs_attention，--strict 下为 ERROR
+description: "R004 boundary - conclusion needs_attention with strict=True becomes ERROR"
+req_id: "REQ-2099-112"
+target_phase: "tech-research"
+
+meta:
+  id: "REQ-2099-112"
+  title: "R004 boundary fixture"
+  phase: "definition"
+  created_at: "2026-01-01 00:00:00"
+  branch: "feat/req-2099-112"
+  base_branch: "develop"
+  reviews:
+    definition:
+      latest: "REV-REQ-2099-112-definition-001"
+      conclusion: "needs_attention"
+
+reviews:
+  - suffix: "definition-001"
+    phase: "definition"
+    conclusion: "needs_attention"
+    with_signoff: true
+
+# 严格模式：WARNING 升为 ERROR → exit_code=1 / Decision.FAIL
+# 双跑对照断言结论枚举一致（strict=True 时 warn 升 fail，两链路均判 fail）
+strict: true
+expected_conclusion: "fail"
+expected_codes: ["R004"]

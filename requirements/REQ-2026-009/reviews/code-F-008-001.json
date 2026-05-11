@@ -1,0 +1,106 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-009-code-F-008-001",
+  "requirement_id": "REQ-2026-009",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-09 23:45:32",
+  "reviewed_commit": "fe11bd5",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "6ef54072bc8e48df2c1c45fd767d4815b41dfea0f93aeabef87d40bf81700c65"
+    },
+    {
+      "path": "artifacts/tasks/F-008.md",
+      "sha256": "c53a4b693d038c9e220be35ffd337801f8a09ec5e85283f33837c76fea4c8cb3"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 84,
+  "dimensions": {
+    "design_consistency": {
+      "score": 78,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "requirements/REQ-2026-009/artifacts/detailed-design.md:1027 §7.3.3 + line 1047-1048 §7.5 文字与实现不一致：design 写 tests/e2e/fixtures/sub_workflow/ 子目录 + tests/e2e/fixtures/conftest.py，实际放 tests/e2e/fixtures/sub_workflow_mock.py + tests/e2e/conftest.py（pytest 加载机制要求 conftest 必须在测试父目录）。实施合理但 design 文字未同步，doc drift"
+        }
+      ]
+    },
+    "security": {
+      "score": 95,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "tests/e2e/test_sub_workflow_lifecycle.py:185-189 TC-F8-1 用 time.sleep(0.02) 等子线程启动，CI 慢机器易 flake；建议改用 threading.Event 同步"
+        }
+      ]
+    },
+    "complexity": {
+      "score": 82,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "tests/e2e/fixtures/sub_workflow_mock.py:46 self._now=time.monotonic 死代码注入点，全文件零消费，应删除或加注释说明保留意图"
+        },
+        {
+          "severity": "minor",
+          "description": "tests/e2e/conftest.py:27-30 f1_fixture_dir fixture 定义后零引用（grep 全 tests/e2e/ 无消费），属未消费 fixture，建议删除或在测试中实际使用"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 75,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "tests/e2e/fixtures/e2e_helpers.py:125-126 read_jsonl_events JSONDecodeError except: pass 静默吞，损坏行无 logger.warning，调试时无定位线索"
+        },
+        {
+          "severity": "major",
+          "description": "tests/e2e/fixtures/e2e_helpers.py:55-56 + 87-88 write_*_template 在 JSONDecodeError 时把损坏行原样 append 写入目标文件（rewritten.append(line) 透传），导致目标 jsonl 沿袭损坏，违反 fail-fast"
+        },
+        {
+          "severity": "major",
+          "description": "tests/e2e/fixtures/sub_workflow_mock.py:156-160 _poll_parent_cancel OSError 日志缺 parent_jsonl 路径上下文，定位问题困难"
+        },
+        {
+          "severity": "major",
+          "description": "tests/e2e/test_sub_workflow_lifecycle.py:343-344 TC-F8-3 run_agent 只 catch RuntimeError，其他异常会静默退线程导致 child_exception 列表空，断言 len==1 失败时无原因输出"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/run_state.py:101-113 RunState dataclass docstring 字段表未同步新增 child_graceful_exited/child_force_killed/child_failed 三事件不映射 state 的注释（虽 73-77 行 VALID_EVENT_TYPES 已加，docstring 末段未提）"
+        }
+      ]
+    },
+    "performance": {
+      "score": 90,
+      "issues": []
+    },
+    "history_context": {
+      "score": 90,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "测试基础设施的错误处理叠加：read_jsonl_events 静默 + write_template 透传损坏行 + _poll_parent_cancel 日志缺路径，三处叠加会让 fixture 数据问题难以定位；建议同 rev 一起修",
+    "TC-F8-3 三路径 parametrize 当前断言相同（child_failed），未真验证 fail/continue/skip 的下游差异；本 feature 未要求父侧引擎落地，可标 follow-up 到 F-009/F-010 时增强",
+    "测试基础设施 vs 生产代码标准应区分：本 feature 生产改动仅 run_state.py +5 行枚举扩展，主体是 e2e 测试，多数 minor finding 属测试代码可接受范畴"
+  ],
+  "scope": {
+    "feature_id": "F-008"
+  },
+  "supersedes": null
+}

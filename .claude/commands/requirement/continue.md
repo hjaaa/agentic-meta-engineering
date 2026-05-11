@@ -3,6 +3,13 @@ description: 恢复之前中断的需求上下文
 argument-hint: "[需求 ID]（可选，不填则按当前分支推断）"
 ---
 
+> [DEPRECATION] /requirement:continue 已纳入 3 月兼容期（截至 2026-08-08）。
+> 请改用：/workflow:continue [<id>]
+> 本次仍执行旧实现以保证兼容；Plan 6 自举验证通过 + 兼容期到期后将物理删除。
+> 详见：context/team/engineering-spec/migration/2026-XX-runs-rename.md
+>
+> **ARGUMENTS 透传规则**：`$1` 直传，如 `/workflow:continue REQ-2026-001`
+
 ## 用途
 
 开新会话要接着之前的需求继续工作时触发。

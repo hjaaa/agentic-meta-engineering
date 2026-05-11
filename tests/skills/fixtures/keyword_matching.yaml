@@ -1,0 +1,311 @@
+# keyword_matching.yaml
+# workflow-launcher 关键词匹配测试 fixture
+#
+# 结构：每条 case 字段说明
+#   name:              用例名称
+#   input:             用户原始输入
+#   active_run_states: 活跃 run 的 state 列表（用于 state tiebreaker 测试）
+#   expected:
+#     command:   期望返回的命令（null 表示无命中或冲突）
+#     args:      期望返回的附加参数（null 表示无参数）
+#     conflict:  期望是否发生等长冲突（true/false，缺省视为 false）
+#
+# 按 TC-F6-1 ~ TC-F6-6 分组
+
+# ============================================================
+# TC-F6-1：各类关键词 happy path（每类至少 1 条正例）
+# ============================================================
+tc_f6_1_each_category_happy:
+  - name: "continue_class_longest"
+    input: "我想继续之前的需求"
+    active_run_states: []
+    expected:
+      command: "/workflow:continue"
+      args: null
+      conflict: false
+
+  - name: "continue_class_short"
+    input: "继续"
+    active_run_states: []
+    expected:
+      command: "/workflow:continue"
+      args: null
+      conflict: false
+
+  - name: "review_class_ascii"
+    input: "请帮我 code review 这段代码"
+    active_run_states: []
+    expected:
+      command: "/workflow:run code-review-embedded"
+      args: null
+      conflict: false
+
+  - name: "review_class_chinese"
+    input: "跑代码评审"
+    active_run_states: []
+    expected:
+      command: "/workflow:run code-review-embedded"
+      args: null
+      conflict: false
+
+  - name: "new_class_with_title"
+    input: "开个新需求：重构登录模块"
+    active_run_states: []
+    expected:
+      command: "/workflow:new standard-8phase \"<title>\""
+      args: "重构登录模块"
+      conflict: false
+
+  - name: "new_class_no_title"
+    input: "新建需求"
+    active_run_states: []
+    expected:
+      command: "/workflow:new standard-8phase \"<title>\""
+      args: null
+      conflict: false
+
+  - name: "approve_class_ascii"
+    input: "approve"
+    active_run_states: []
+    expected:
+      command: "/workflow:approve"
+      args: null
+      conflict: false
+
+  - name: "approve_class_chinese"
+    input: "批准这个申请"
+    active_run_states: []
+    expected:
+      command: "/workflow:approve"
+      args: null
+      conflict: false
+
+  - name: "reject_class_with_colon"
+    input: "reject:理由太弱，需要补充测试"
+    active_run_states: []
+    expected:
+      command: "/workflow:reject <reason>"
+      args: "理由太弱，需要补充测试"
+      conflict: false
+
+  - name: "reject_class_butongguo"
+    input: "不通过"
+    active_run_states: []
+    expected:
+      command: "/workflow:reject <reason>"
+      args: null
+      conflict: false
+
+  - name: "release_class_ascii"
+    input: "release"
+    active_run_states: []
+    expected:
+      command: "/workflow:run release-cut"
+      args: null
+      conflict: false
+
+  - name: "release_class_chinese"
+    input: "我要发版"
+    active_run_states: []
+    expected:
+      command: "/workflow:run release-cut"
+      args: null
+      conflict: false
+
+# ============================================================
+# TC-F6-2：最长匹配优先（长短关键词共存时，长的胜出）
+# ============================================================
+tc_f6_2_longest_match_wins:
+  - name: "longest_continue_over_short"
+    input: "继续之前的需求"
+    active_run_states: []
+    expected:
+      # "继续之前的需求"(len=7) > "继续这个需求"(6) > "继续"(2)
+      command: "/workflow:continue"
+      args: null
+      conflict: false
+
+  - name: "longest_review_over_short"
+    input: "跑下代码评审"
+    active_run_states: []
+    expected:
+      # "跑下代码评审"(len=6) > "跑代码评审"(5)
+      command: "/workflow:run code-review-embedded"
+      args: null
+      conflict: false
+
+  - name: "code_review_ascii_is_longest"
+    input: "帮我 code review 一下"
+    active_run_states: []
+    expected:
+      # code review(11) 最长，胜过 审一下(3)
+      command: "/workflow:run code-review-embedded"
+      args: null
+      conflict: false
+
+  - name: "continue_zhe_over_jixu"
+    input: "继续这个需求"
+    active_run_states: []
+    expected:
+      # "继续这个需求"(6) > "继续"(2)
+      command: "/workflow:continue"
+      args: null
+      conflict: false
+
+# ============================================================
+# TC-F6-3：state tiebreaker（approval_pending 时优先 approve/reject）
+# ============================================================
+tc_f6_3_state_tiebreaker:
+  - name: "approval_pending_approve_wins"
+    input: "approve 这个需求并跑下评审"
+    # 含 approve(7) 和 跑下代码评审(6)，正常应是 approve 胜（最长匹配也是）
+    # state tiebreaker 确保第一步就命中 approve，不进入 Step2
+    active_run_states: ["approval_pending"]
+    expected:
+      command: "/workflow:approve"
+      args: null
+      conflict: false
+
+  - name: "approval_pending_reject_wins"
+    input: "reject:这版设计不符合要求"
+    active_run_states: ["approval_pending"]
+    expected:
+      command: "/workflow:reject <reason>"
+      args: "这版设计不符合要求"
+      conflict: false
+
+  - name: "no_approval_pending_normal_flow"
+    input: "approve"
+    # 无 approval_pending，走正常最长匹配
+    active_run_states: ["running"]
+    expected:
+      command: "/workflow:approve"
+      args: null
+      conflict: false
+
+  - name: "approval_pending_non_approve_input"
+    input: "继续这个需求"
+    # approval_pending 时，输入不是 approve/reject → tiebreaker 未命中，走最长匹配
+    active_run_states: ["approval_pending"]
+    expected:
+      command: "/workflow:continue"
+      args: null
+      conflict: false
+
+# ============================================================
+# TC-F6-4：等长冲突（length=7 层：approve/reject:/release/继续之前的需求）
+# ============================================================
+tc_f6_4_equal_length_conflict_ask:
+  - name: "approve_and_release_conflict"
+    # approve(7) 和 release(7) 同时命中 → 等长冲突
+    input: "please approve this release"
+    active_run_states: []
+    expected:
+      command: null
+      args: null
+      conflict: true
+
+  - name: "approve_and_reject_conflict"
+    # approve(7) 和 reject:(7) 同时命中
+    input: "approve reject:理由"
+    active_run_states: []
+    expected:
+      command: null
+      args: null
+      conflict: true
+
+  - name: "single_length7_no_conflict"
+    # 只有 approve(7) 命中，不触发冲突
+    input: "approve"
+    active_run_states: []
+    expected:
+      command: "/workflow:approve"
+      args: null
+      conflict: false
+
+# ============================================================
+# TC-F6-5：ASCII 词边界（假阳性防护）
+# ============================================================
+tc_f6_5_ascii_word_boundary:
+  - name: "approved_not_matched"
+    # approved 不应命中 approve（词边界保护）
+    input: "已 approved"
+    active_run_states: []
+    expected:
+      command: null
+      args: null
+      conflict: false
+
+  - name: "releases_not_matched"
+    # releases 不应命中 release
+    input: "the team releases today"
+    active_run_states: []
+    expected:
+      command: null
+      args: null
+      conflict: false
+
+  - name: "rejected_colon_not_matched"
+    # rejected 没有冒号，不命中 reject: 的 punct_literal 匹配
+    input: "rejected without reason"
+    active_run_states: []
+    expected:
+      command: null
+      args: null
+      conflict: false
+
+  - name: "approve_exact_word"
+    # approve 精确词命中
+    input: "please approve now"
+    active_run_states: []
+    expected:
+      command: "/workflow:approve"
+      args: null
+      conflict: false
+
+  - name: "code_review_matches"
+    # code review 含空格，词边界匹配
+    input: "please code review this PR"
+    active_run_states: []
+    expected:
+      command: "/workflow:run code-review-embedded"
+      args: null
+      conflict: false
+
+# ============================================================
+# TC-F6-6：无命中透传（launcher 不接管）
+# ============================================================
+tc_f6_6_no_match_passthrough:
+  - name: "unrelated_input"
+    input: "今天天气不错"
+    active_run_states: []
+    expected:
+      command: null
+      args: null
+      conflict: false
+
+  - name: "empty_input"
+    input: ""
+    active_run_states: []
+    expected:
+      command: null
+      args: null
+      conflict: false
+
+  - name: "partial_keyword_no_match"
+    # "续" 单字不命中任何关键词
+    input: "请问怎么续"
+    active_run_states: []
+    expected:
+      command: null
+      args: null
+      conflict: false
+
+  - name: "approving_not_matched"
+    # 词形变体不应命中
+    input: "approving this"
+    active_run_states: []
+    expected:
+      command: null
+      args: null
+      conflict: false

@@ -1,0 +1,9 @@
+# W110: 节点同时声明 sub_workflow + artifact（互斥违反 / TC-F2-1）
+name: mutex-sub-artifact
+version: 1
+category: assist
+nodes:
+  - id: bad-node
+    sub_workflow: sub-fixtures/level2
+    artifact:
+      checks: []

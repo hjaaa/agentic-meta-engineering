@@ -1,0 +1,98 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-009-code-F-007-006",
+  "requirement_id": "REQ-2026-009",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-09 21:23:32",
+  "reviewed_commit": "c9b1611",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "432cdb280e49ea08029883c319559b6a23077b89556029faa492010b99baee9e"
+    },
+    {
+      "path": "artifacts/tasks/F-007.md",
+      "sha256": "52cb52968b4a35f9f820d99159b46b815faf0780978a71aeef1656ec761316f3"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 78,
+  "dimensions": {
+    "design_consistency": {
+      "score": 72,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "requirements/REQ-2026-009/artifacts/detailed-design.md:926 §6.7 lock 模块函数列表过时——仅列 5 个 _acquire_flock/_find_in_progress_archive/_validate_resume_meta/_unlink_in_progress/_release_with_unlink，未列 rev6 新下沉到 workflow_rollback_lock.py:134/139/162 的 _now_iso8601/_write_meta_json/_read_meta_json 三个函数（grep 实证下沉到 lock 模块）。连续第 3 轮（rev3 H-9 → rev5 F-9 → rev6 又漏）该表格漏更"
+        },
+        {
+          "severity": "major",
+          "description": "requirements/REQ-2026-009/artifacts/detailed-design.md:842 §6.3 异常契约表写 IOError | mv 文件失败 | 1（重抛标准异常），但 rev6 F-8 修复后 scripts/lib/workflow_rollback_archive.py:137-140 已把 OSError 包装成 RollbackError；契约表与实现偏离"
+        },
+        {
+          "severity": "minor",
+          "description": "requirements/REQ-2026-009/artifacts/detailed-design.md:914-919 §6.6 中断保护测试矩阵未列 _consume_residual_new 续跑路径（rev6 新增 archive 端 KI 落第 2 步兜底）"
+        }
+      ]
+    },
+    "security": {
+      "score": 92,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 91,
+      "issues": []
+    },
+    "complexity": {
+      "score": 96,
+      "issues": []
+    },
+    "error_handling": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback.py:233-248 _consume_residual_new os.replace 调用未包 try/except → RollbackError，与 rev6 F-8 修复后 archive.py:137-140 三步原子化包 RollbackError 风格不一致；同模块异常风格分裂"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback.py:233-241 _consume_residual_new docstring 缺规范 Args/Returns 段，仅有说明文字，与 workflow_rollback_subrun.py:24-82 _discover_by_target_id 风格不对称"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 70,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "tests/lib/test_workflow_rollback.py:52 _setup_run_dir 函数定义前仅 1 个空行（pycodestyle 实测 E302 expected 2 blank lines, found 1）。rev6 commit 164945d 自报修复 F-1 主模块 E302 但同轮在测试文件引入同 anti-pattern；连续第 3 次工具链状态报告与实测背离（rev5 cc2d22c ruff --fix 自报修 F-4 / rev6 P0 修 F-1 主模块 / rev6 测试文件 E302）"
+        },
+        {
+          "severity": "minor",
+          "description": "tests/lib/test_workflow_rollback.py KI-step-1 场景缺专项测试——现有 test_resume_recovers_from_archive_ki_after_tail_write:592 测 step-2/step-3 之间，但 step-1（仅 .new 写完、tail 未写）路径无独立测试；F-2 修复完整性覆盖不充分"
+        }
+      ]
+    },
+    "performance": {
+      "score": 94,
+      "issues": []
+    },
+    "history_context": {
+      "score": 100,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "rev6 是 6 轮以来第二次发生'修一半 anti-pattern'：rev5 修 F-24 反引入 F-2（archive 端三步原子化只做一半）+ F-1 工具链状态背离；rev6 修 F-1 主模块反引入测试文件 E302 + 修 F-8 实现忽略 §6.3 表 + 修 F-15 模块下沉忽略 §6.7 表。两轮同根：实现与文档/工具链状态报告系统性脱节",
+    "F-1（测试文件 E302）+ F-2（§6.7 表）+ F-3（§6.3 表）三项 major 均是 rev6 自引入新债务，不是 rev5 残留——闭合 12 项 + 引入 3 项的净额不应支持 trivial sign-off。Judge 必须 stop 这个失控循环",
+    "rev7 必须严格限定 scope：纯文档 + 纯 lint commit，禁止任何代码逻辑变更/重构/优化。预计变更 ≤ 15 行：测试文件 line 52 加 1 行空行 + §6.7 表补 3 函数 + §6.3 表 IOError → RollbackError + §6.6 表加 _consume_residual_new + _consume_residual_new 加 try/except + docstring 加 Args/Returns 段 + KI-step-1 测试 ~10 行",
+    "建议在 rev7 commit message 显式列出'非目标'：本 commit 不做任何重构/性能优化/新功能；仅文档同步 + lint + docstring 风格补齐 + 1 测试用例。完成后 pycodestyle E302/E303 必须 0 错误（exit=0 + grep -c E30 = 0 双重校验）",
+    "此后该模块进入观察期：F-007 done 后建议 ≥ 4 周稳定不动，否则 history_context 维度热点风险"
+  ],
+  "scope": {
+    "feature_id": "F-007"
+  },
+  "supersedes": "REV-REQ-2026-009-code-F-007-005"
+}

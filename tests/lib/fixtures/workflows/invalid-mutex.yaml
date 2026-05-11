@@ -1,0 +1,8 @@
+# W110: 节点同时声明 skill + prompt（互斥违反）
+name: mutex-violation
+version: 1
+category: assist
+nodes:
+  - id: bad-node
+    skill: foo
+    prompt: bar

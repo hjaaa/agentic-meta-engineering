@@ -1,0 +1,121 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-009-code-F-007-004",
+  "requirement_id": "REQ-2026-009",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-09 20:15:47",
+  "reviewed_commit": "e38d062",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "432cdb280e49ea08029883c319559b6a23077b89556029faa492010b99baee9e"
+    },
+    {
+      "path": "artifacts/tasks/F-007.md",
+      "sha256": "9534ee9fa9248e9751143ea75833fd13933b2bc0662b47e51ce25040ec66fa3f"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 84,
+  "dimensions": {
+    "design_consistency": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "requirements/REQ-2026-009/artifacts/tasks/F-007.md:58-67 触及范围 body 段缺 tests/skills/test_workflow_commands.py（H-11 部分闭合，cc4df03 commit message 称已同步但 body 段未改）"
+        }
+      ]
+    },
+    "security": {
+      "score": 95,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 82,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback_lock.py:47-94 _acquire_dual_lock + _release_dual_lock 全代码库无外部调用，两轮死代码未清"
+        }
+      ]
+    },
+    "complexity": {
+      "score": 78,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback.py:297 _resume_in_progress radon CC=12（rev3 H-6 修复后仍超阈 10，critic 9 口径错按 radon -s 完整版裁定）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback_subrun.py:20 _discover_sub_runs radon CC=13 越阈 10"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback.py 文件 520 行越阈 500"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback.py:401-410 _execute_with_in_progress.finally 与 _release_with_unlink helper 仍存 6 行冗余"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 84,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback.py:137-139 _write_meta_json inner unlink fail 仅 except OSError: pass 无 logger（指纹失败盲点）"
+        },
+        {
+          "severity": "minor",
+          "description": "requirements/REQ-2026-009/artifacts/detailed-design.md:835 §6.3 表 RollbackError 行 \"基类，不直接抛出\" 与代码 docstring \"用于参数校验失败 / 资源清理失败\" 不一致（cc4df03 漏改）"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 84,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback.py:48 pycodestyle E302 expected 2 blank lines（SubRunArchive 前）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback.py:23,41 ruff I001 顶层 import 字母序"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback.py:163,214,310 ruff I001 函数体延迟 import 字母序 + 三段式 import 缺空行"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_rollback_subrun.py:119 ruff F821 SubRunArchive 前向引用未导入"
+        }
+      ]
+    },
+    "performance": {
+      "score": 92,
+      "issues": []
+    },
+    "history_context": {
+      "score": 96,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "12 项 keep+minor 集中在 lint（5 项 ruff/pycodestyle）+ CC 越阈（4 项 complexity）+ 文档同步（2 项）+ 死代码（1 项），单独修性价比低，建议 rev5 合批 follow-up（F-11/F-13/F-23/F-24）一并处理",
+    "rev3→rev4 趋势优秀：47 项 keep finding 全闭合 + 8 维度评分全升 + 0 critical/major（design_consistency +15 / error_handling +6 / complexity +10 实质性改善）",
+    "rev3 跨维度洞察 §3 规则继续遵守：H-4/H-5/H-15/H-16/H-22 已 follow-up 决议无 rev 间真实代码变化，本轮未 re-keep（合规）",
+    "F-20 口径裁定：radon -s 完整版（_resume_in_progress=12 / _discover_sub_runs=13）为准；critic 给出的 9 口径不正确，与 rev3 H-6 标尺一致",
+    "F-13 to_node 公开 API 缺正则校验属实但内部 Python 调用方限定 + 下游 _validate_to_node_is_upstream 白名单兜底，judge 降级为 follow-up（与 H-15/H-16 同 P3 标准）",
+    "F-25 _acquire_dual_lock 死代码已两轮未清——建议 rev5 删除并把 docstring 同步到 _acquire_flock + 主调用方 inline 锁顺序"
+  ],
+  "scope": {
+    "feature_id": "F-007"
+  },
+  "supersedes": "REV-REQ-2026-009-code-F-007-003"
+}

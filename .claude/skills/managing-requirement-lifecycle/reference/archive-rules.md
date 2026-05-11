@@ -2,7 +2,7 @@
 
 `/requirement:archive` 命令的子动作规则——伞形 Skill `managing-requirement-lifecycle` 在识别到「归档」意图时按本文执行。实现入口 `scripts/lib/archive_runner.py::archive_requirement`，签名见 `requirements/REQ-2026-007/artifacts/detailed-design.md` §3.1，**已 frozen**。
 
-适用阶段：`phase ∈ {testing, completed}`。`testing → completed` 由 archive 命令推进（不走 `/requirement:next`，因为含副作用动作）。
+适用阶段：`phase ∈ {testing, completed}`。`testing → completed` 由 archive 命令推进（不走 `/workflow:next`，因为含副作用动作）。
 
 ---
 
@@ -83,7 +83,7 @@ PR merged ──┐
 ### 2.1 原子写 meta.yaml
 
 - 若 `phase` 不是 `completed`，改为 `completed`
-- `archived_at` 写入「写入时刻的 Asia/Shanghai now」（格式 `YYYY-MM-DD HH:MM:SS`，与 phase-rules.md「archived_at 字段语义」示例值一致；详见 `context/team/engineering-spec/time-format.md`）
+- `archived_at` 写入「写入时刻的 Asia/Shanghai now」（格式 `YYYY-MM-DD HH:MM:SS`；详见 `context/team/engineering-spec/time-format.md`）
 - **重跑安全**：`archived_at` 已非空时**保留旧值**（首次归档时间不被覆盖）
 - 实现：写到 `meta.yaml.tmp` 后 `os.replace()` 覆盖（避免中间状态被 gate 读到）
 
@@ -171,7 +171,7 @@ archive 命令始终 exit 0（除非 4 项预检挂）。
 
 ## 5. 与其他规则的关系
 
-- `phase-rules.md` §archived_at 字段语义：`archived_at` 写入仅当 phase=completed，本文 §2.1 是其唯一执行入口
+- `meta-schema.yaml.fields.archived_at`（context/team/engineering-spec/）：`archived_at` 写入仅当 phase=completed，本文 §2.1 是其唯一执行入口
 - `requirement-progress-logger` SKILL.md：本文 §2.2 走的是 progress-logger 的格式约束（事件标签 `[archived]` 已加入白名单）
 - `submit-rules.md`：archive 强依赖 `meta.pr_number` 已被 submit 回写，预检 3 失败时引导用户先跑 `/requirement:submit`
 

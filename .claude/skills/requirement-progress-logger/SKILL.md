@@ -6,7 +6,7 @@ description: 追加语义事件到 requirements/<id>/process.txt（追加式）�
 ## 什么时候用
 
 - `/requirement:save` 命令调用
-- 阶段切换完成后（由 `managing-requirement-lifecycle` 调用）
+- 阶段切换完成后（由 `/workflow:next` 经 standard-8phase yaml workflow phase-transition 节点调用）
 - 评审结论产生后（由 `requirement-quality-reviewer` 等 Agent 间接触发）
 - 用户主动说"记录一下 [事件]"
 
@@ -50,10 +50,10 @@ description: 追加语义事件到 requirements/<id>/process.txt（追加式）�
 
 | Tag | 含义 | 触发方 |
 |---|---|---|
-| `[phase-transition]` | 阶段切换 | `managing-requirement-lifecycle` → 本 Skill |
+| `[phase-transition]` | 阶段切换 | `/workflow:next` → workflow phase-transition 节点 → 本 Skill |
 | `[save]` | 用户 `/requirement:save` 显式存档 | 命令 → 本 Skill |
 | `[review:approved\|needs_revision\|rejected]` | 评审结论 | 评审 Agent → 本 Skill |
-| `[gate:pass\|fail]` | 门禁结果 | `managing-requirement-lifecycle` → 本 Skill |
+| `[gate:pass\|fail]` | 门禁结果 | `/workflow:next` / `/requirement:submit` → 本 Skill |
 | `[blocker]` | 阻塞发生：现象 + 初步判断/下一步 | 主 Agent → 本 Skill |
 | `[blocker-resolved]` | 阻塞解除：根因 + 解决方式 | 主 Agent → 本 Skill |
 | `[archived]` | 需求归档完成 (PR #N merged at <ts>) | `archive_runner` → 本 Skill |

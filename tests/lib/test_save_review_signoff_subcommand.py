@@ -21,10 +21,6 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from unittest import mock
-
-import pytest
-
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SCRIPTS_LIB = _REPO_ROOT / "scripts" / "lib"
 
@@ -32,6 +28,8 @@ if str(_SCRIPTS_LIB) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_LIB))
 
 import save_review as sr  # noqa: E402
+import signoff as _signoff  # noqa: E402  # F-012 rev2 拆模块：REQUIREMENTS_DIR 需同步 patch
+from unittest.mock import patch
 
 
 class _FakeTTY:
@@ -50,30 +48,38 @@ class _FakeTTY:
 # ════════════════════════════════════════════════════════
 
 class TestResolveVerdictPath:
-    """_resolve_verdict_path(rev_id) 反推路径单测。"""
+    """_resolve_verdict_path(rev_id) 反推路径单测。
+
+    F-012 rev3 M-5：_resolve_verdict_path 改返回 tuple[Path | None, str]，
+    测试同步更新解包方式。
+    """
 
     def test_definition_phase(self):
         """given_definition_rev_id_when_resolve_then_correct_path。"""
-        path = sr._resolve_verdict_path("REV-REQ-2026-003-definition-001")
+        path, reason = sr._resolve_verdict_path("REV-REQ-2026-003-definition-001")
         assert path is not None
         assert path.name == "definition-001.json"
         assert "REQ-2026-003" in str(path)
 
     def test_code_phase_with_feature_id(self):
         """given_code_phase_rev_id_with_feature_when_resolve_then_correct_path。"""
-        path = sr._resolve_verdict_path("REV-REQ-2026-003-code-F-001-001")
+        path, reason = sr._resolve_verdict_path("REV-REQ-2026-003-code-F-001-001")
         assert path is not None
         assert path.name == "code-F-001-001.json"
 
     def test_invalid_format_returns_none(self):
         """given_invalid_rev_id_when_resolve_then_none。"""
-        assert sr._resolve_verdict_path("INVALID-ID") is None
-        assert sr._resolve_verdict_path("") is None
-        assert sr._resolve_verdict_path("REV-") is None
+        path, reason = sr._resolve_verdict_path("INVALID-ID")
+        assert path is None
+        assert reason == "invalid REV-ID format"
+        path2, reason2 = sr._resolve_verdict_path("")
+        assert path2 is None
+        path3, reason3 = sr._resolve_verdict_path("REV-")
+        assert path3 is None
 
     def test_outline_design_phase(self):
         """given_outline_design_rev_id_when_resolve_then_correct_path。"""
-        path = sr._resolve_verdict_path("REV-REQ-2026-003-outline-design-002")
+        path, reason = sr._resolve_verdict_path("REV-REQ-2026-003-outline-design-002")
         assert path is not None
         assert path.name == "outline-design-002.json"
 
@@ -176,15 +182,18 @@ def test_signoff_subcommand_writes_human_signoff_and_appends_process_txt(tmp_pat
     verdict_path = reviews_dir / "definition-001.json"
     verdict_path.write_text(json.dumps(verdict, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    # mock REQUIREMENTS_DIR 指向 tmp_path
+    # mock REQUIREMENTS_DIR 指向 tmp_path（同步 patch save_review + signoff，F-012 rev2 拆模块后 signoff 有自己的 REQUIREMENTS_DIR）
     monkeypatch.setattr(sr, "REQUIREMENTS_DIR", tmp_path / "requirements")
+    monkeypatch.setattr(_signoff, "REQUIREMENTS_DIR", tmp_path / "requirements")
     # D-003 第三层 tty 校验：函数级单测模拟 tty，使测试聚焦签字业务逻辑
     monkeypatch.setattr(sys, "stdin", _FakeTTY())
 
     # 构造 args（模拟 argparse 解析的结果）
+    # F-012 后 _run_signoff 接受 trivial 字段；显式传 False（与 --decision 互斥）
     args = argparse.Namespace(
         rev_id="REV-REQ-2099-001-definition-001",
         decision="approved",
+        trivial=False,
         signed_by="dev@example.com",
         signed_at="2026-04-30T10:30:00+08:00",
         source="cli-tty",
@@ -229,12 +238,14 @@ def test_signoff_subcommand_rejects_already_signed(tmp_path, monkeypatch):
     verdict_path.write_text(json.dumps(verdict), encoding="utf-8")
 
     monkeypatch.setattr(sr, "REQUIREMENTS_DIR", tmp_path / "requirements")
+    monkeypatch.setattr(_signoff, "REQUIREMENTS_DIR", tmp_path / "requirements")
     # D-003 第三层 tty 校验：函数级单测模拟 tty
     monkeypatch.setattr(sys, "stdin", _FakeTTY())
 
     args = argparse.Namespace(
         rev_id="REV-REQ-2099-001-definition-001",
         decision="approved",
+        trivial=False,
         signed_by="dev@example.com",
         signed_at="2026-04-30T10:30:00+08:00",
         source="cli-tty",
@@ -251,6 +262,7 @@ def test_signoff_subcommand_rejects_nonexistent_rev_id(monkeypatch):
     args = argparse.Namespace(
         rev_id="REV-REQ-9999-001-definition-999",
         decision="approved",
+        trivial=False,
         signed_by="dev@example.com",
         signed_at="2026-04-30T10:30:00+08:00",
         source="cli-tty",
@@ -278,12 +290,14 @@ def test_signoff_subcommand_rejects_verdict_with_cr_violation(tmp_path, monkeypa
     verdict_path.write_text(json.dumps(verdict), encoding="utf-8")
 
     monkeypatch.setattr(sr, "REQUIREMENTS_DIR", tmp_path / "requirements")
+    monkeypatch.setattr(_signoff, "REQUIREMENTS_DIR", tmp_path / "requirements")
     # D-003 第三层 tty 校验：函数级单测模拟 tty，使测试聚焦 CR 校验业务逻辑
     monkeypatch.setattr(sys, "stdin", _FakeTTY())
 
     args = argparse.Namespace(
         rev_id="REV-REQ-2099-001-definition-001",
         decision="approved",
+        trivial=False,
         signed_by="dev@example.com",
         signed_at="2026-04-30T10:30:00+08:00",
         source="cli-tty",
@@ -292,6 +306,86 @@ def test_signoff_subcommand_rejects_verdict_with_cr_violation(tmp_path, monkeypa
     rc = sr._run_signoff(args)
     # score=50 + conclusion=looks_clean 触发 CR-4，签字被拒
     assert rc == 1, f"期望 returncode=1（CR 校验失败），实际={rc}"
+
+
+def test_should_detect_develop_when_origin_head_points_develop():
+    """given_origin_head_points_develop_when_detect_default_base_then_returns_develop。
+
+    F-012 rev3 新增：验证 _detect_default_base 能正确从 git symbolic-ref 推导 develop。
+    """
+    # 重置缓存，防 fixture 间污染（F-012 rev4 N-3）
+    _signoff._reset_default_base_cache()
+
+    # mock subprocess.run：git symbolic-ref 返回 "origin/develop"
+    fake_symbolic_ref_result = subprocess.CompletedProcess(
+        args=["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+        returncode=0,
+        stdout="origin/develop\n",
+        stderr="",
+    )
+
+    with patch("signoff.subprocess.run", return_value=fake_symbolic_ref_result) as mock_run:
+        result = _signoff._detect_default_base()
+
+    assert result == "develop", f"期望 'develop'，实际={result!r}"
+    # 验证只调用了一次 git symbolic-ref（无需走 fallback）
+    assert mock_run.call_count == 1
+    call_args = mock_run.call_args
+    assert "symbolic-ref" in call_args[0][0]
+
+
+def test_should_use_cached_value_on_repeat_call():
+    """given_cached_detect_default_base_when_called_twice_then_subprocess_called_once。
+
+    F-012 rev4 新增：验证模块级缓存生效，第二次调用不重新 fork 进程（N-3）。
+    """
+    # 重置缓存，确保干净起点
+    _signoff._reset_default_base_cache()
+
+    fake_result = subprocess.CompletedProcess(
+        args=["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+        returncode=0,
+        stdout="origin/develop\n",
+        stderr="",
+    )
+
+    with patch("signoff.subprocess.run", return_value=fake_result) as mock_run:
+        first = _signoff._detect_default_base()
+        second = _signoff._detect_default_base()
+
+    assert first == "develop"
+    assert second == "develop"
+    # 第二次调用命中缓存，subprocess.run 只应被调用 1 次
+    assert mock_run.call_count == 1, (
+        f"期望 subprocess.run 只调用 1 次（缓存命中），实际={mock_run.call_count}"
+    )
+    # 收尾：重置缓存避免污染后续 fixture
+    _signoff._reset_default_base_cache()
+
+
+def test_should_return_rc6_when_verdict_json_corrupt_given_invalid_json(tmp_path, monkeypatch):
+    """rc=6 路径：verdict 文件内容损坏 → JSONDecodeError → return 6。
+
+    F-012 rev4 新增 M-5'：rc=6 测试覆盖（rev1 F-25 → rev2 N-6 → rev3 横切修复债 3 轮终结）。
+    """
+    req_dir = tmp_path / "REQ-2099-001"
+    (req_dir / "reviews").mkdir(parents=True)
+    verdict_path = req_dir / "reviews" / "definition-001.json"
+    verdict_path.write_text("{not valid json", encoding="utf-8")
+
+    monkeypatch.setattr(_signoff, "REQUIREMENTS_DIR", tmp_path)
+    monkeypatch.setattr(sys, "stdin", _FakeTTY())
+
+    args = argparse.Namespace(
+        rev_id="REV-REQ-2099-001-definition-001",
+        decision="approved",
+        trivial=False,
+        signed_by="dev@example.com",
+        signed_at="2026-04-30T10:30:00+08:00",
+        source="cli-tty",
+    )
+    rc = _signoff.run_signoff(args)
+    assert rc == 6, f"期望 returncode=6（verdict JSON 损坏），实际={rc}"
 
 
 def test_signoff_subcommand_non_tty_stdin_returns_rc2():
@@ -313,3 +407,53 @@ def test_signoff_subcommand_non_tty_stdin_returns_rc2():
     proc = subprocess.run(cmd, input="", capture_output=True, text=True)
     assert proc.returncode == 2, f"期望 returncode=2，实际={proc.returncode}\nstderr={proc.stderr}"
     assert "stdin not a tty" in proc.stderr, f"stderr 缺关键串：{proc.stderr}"
+
+
+def test_signoff_verdict_write_oserror_returns_rc1_and_cleans_tmp(tmp_path, monkeypatch):
+    """given_oserror_on_replace_when_signoff_then_rc1_tmp_cleaned_stderr_message。
+
+    F-15 专项测试：verdict 写盘时 OSError → rc=1 + tmp 不残留 + stderr 含"verdict 写盘失败"。
+    """
+    req_dir = tmp_path / "requirements" / "REQ-2099-001"
+    reviews_dir = req_dir / "reviews"
+    reviews_dir.mkdir(parents=True)
+    process_txt = req_dir / "process.txt"
+    process_txt.write_text("", encoding="utf-8")
+
+    verdict = _make_valid_verdict()
+    verdict_path = reviews_dir / "definition-001.json"
+    verdict_path.write_text(json.dumps(verdict, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    monkeypatch.setattr(sr, "REQUIREMENTS_DIR", tmp_path / "requirements")
+    monkeypatch.setattr(_signoff, "REQUIREMENTS_DIR", tmp_path / "requirements")
+    monkeypatch.setattr(sys, "stdin", _FakeTTY())
+
+    original_replace = Path.replace
+
+    def fake_replace(self, target):
+        if self.suffix == ".tmp":
+            raise OSError("disk full")
+        return original_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", fake_replace)
+
+    args = argparse.Namespace(
+        rev_id="REV-REQ-2099-001-definition-001",
+        decision="approved",
+        trivial=False,
+        signed_by="dev@example.com",
+        signed_at="2026-04-30T10:30:00+08:00",
+        source="cli-tty",
+    )
+
+    import io
+    stderr_buf = io.StringIO()
+    monkeypatch.setattr(sys, "stderr", stderr_buf)
+
+    rc = _signoff.run_signoff(args)
+
+    assert rc == 1, f"期望 returncode=1（写盘失败），实际={rc}"
+    tmp_candidate = verdict_path.with_suffix(".json.tmp")
+    assert not tmp_candidate.exists(), "tmp 文件应已被清理"
+    stderr_output = stderr_buf.getvalue()
+    assert "verdict 写盘失败" in stderr_output, f"stderr 应含'verdict 写盘失败'，实际：{stderr_output!r}"

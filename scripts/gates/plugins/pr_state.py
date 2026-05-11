@@ -4,7 +4,7 @@
 
 职责：
   - 在 /requirement:submit 触发时检查 meta.yaml.pr_number 对应的 PR 是否已 MERGED
-  - 已 MERGED → FAIL，提示用户走 /requirement:next 推进 phase（不能向已合并 PR push 新 commit）
+  - 已 MERGED → FAIL，提示用户走 /workflow:next 推进 phase（F-012 后；不能向已合并 PR push 新 commit）
   - 未 MERGED（OPEN / CLOSED 等）→ PASS
 
 precheck：
@@ -144,7 +144,7 @@ class PrMergedStateGate(Gate):
                     "禁止向已合并 PR 推送新 commit"
                 ),
                 fix_hint=(
-                    "跑 /requirement:next 推进到下一阶段；如需开新 PR，"
+                    "跑 /workflow:next 推进到下一阶段；如需开新 PR，"
                     "先清空 meta.pr_number 再重跑 submit"
                 ),
                 vars={"pr_number": pr_num_str, "merged_at": data.get("mergedAt")},

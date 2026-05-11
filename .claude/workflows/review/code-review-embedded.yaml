@@ -1,0 +1,421 @@
+# 代码审查内嵌 workflow（DAG 表达）
+#
+# 本模板是 /code-review 命令的引擎层实现，同时作为 standard-8phase
+# 通过 sub_workflow 调用的子模板。
+#
+# 11 节点：
+#   cr-prepare              （1 节点，prompt_file，shared 上下文）
+#   cr-checker-*            （8 节点，agent，fresh 上下文，并发）
+#   cr-critic               （1 节点，agent，fresh 上下文）
+#   cr-judge                （1 节点，agent，fresh 上下文）
+#
+# 节点 ID 命名约定：cr-<role>[-<domain>]，kebab-case。
+# 配套 prompt 文件在 .claude/workflows/prompts/code-review-embedded/ 目录下：
+#   cr-prepare.md（prompt_file 节点引用）
+#   cr-checker-*.md（agent 节点配套占位 prompt，文件存在但 yaml 不用 prompt_file 字段）
+#   cr-critic.md / cr-judge.md（同上）
+#
+# 并发策略：8 个 cr-checker-* 节点共享 depends_on: [cr-prepare]，
+# 引擎天然 multi-Agent 同响应启 8 个 subagent（spec §7.3）。
+
+name: code-review-embedded
+description: |
+  代码审查内嵌 workflow：
+    cr-prepare → 8 cr-checker-*(并发) → cr-critic(对抗验证) → cr-judge(综合裁决)
+
+  支持两种调用场景：
+  1. 独立调用：/code-review 命令直接 run
+  2. 嵌入调用：standard-8phase 通过 sub_workflow 节点调用（含 diff_range args 透传）
+
+version: 1
+category: review
+
+# 默认配置（节点级可覆盖）
+provider: claude
+model: sonnet
+thinking: enabled
+effort: medium
+
+# 模板挑选辅助
+applicable_when:
+  change_type: [feature, refactor, bugfix, enhancement]
+
+# ====================================================================
+# 节点定义
+# ====================================================================
+
+nodes:
+
+  # ════════════════════════════════════════════════════════════════════
+  # cr-prepare：识别审查模式（独立/嵌入）+ diff scope，输出供后续节点使用
+  # context=shared：由主 Claude 直接执行，能读到 $ARGUMENTS 和当前工作目录
+  # 配套 prompt 文件：prompts/code-review-embedded/cr-prepare.md
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: cr-prepare
+    prompt_file: prompts/code-review-embedded/cr-prepare.md
+    context: shared
+    effort: medium
+    depends_on: []
+    output_format:
+      type: object
+      properties:
+        diff_range:
+          type: string
+          minLength: 1
+        scope_file:
+          type: string
+          description: "$ARTIFACTS_DIR/review-scope.json（每次 run 独立，防并发覆盖）"
+        mode:
+          type: string
+          enum: [standalone, embedded]
+        feature_id:
+          type: string
+        warning:
+          type: string
+          description: "非致命告警信息（可选）"
+        error:
+          type: string
+          description: "安全校验失败或致命错误时设置；必须同时设 has_error: true，下游 10 节点经 when 守卫自动跳过"
+        has_error:
+          type: boolean
+          default: false
+          description: "正常路径输出 false；任何错误路径（diff_range 非法 / $ARTIFACTS_DIR 越界 / diff 为空等）输出 true，下游 10 节点经 when 守卫跳过"
+      required: [diff_range, scope_file, mode]
+
+  # ════════════════════════════════════════════════════════════════════
+  # 8 cr-checker-* 节点：并发派发，各自对 diff 做专项检查
+  # context=fresh：每个 checker 是独立 subagent，隔离上下文
+  # 均依赖 cr-prepare，引擎自动并发启动（spec §7.3）
+  # 配套 prompt 文件存在于 prompts/code-review-embedded/cr-checker-*.md
+  # （占位 prompt 文件，不作为 prompt_file 字段引用，仅供引擎查阅文档）
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: cr-checker-security
+    agent: security-checker
+    context: fresh
+    effort: medium
+    depends_on: [cr-prepare]
+    when: "$cr-prepare.output.has_error == false"
+    output_format:
+      type: object
+      properties:
+        findings:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              severity: { type: string, enum: [critical, major, minor] }
+              file: { type: string }
+              description: { type: string }
+              evidence: { type: string }
+        stats:
+          type: object
+          properties:
+            total: { type: integer }
+            critical: { type: integer }
+            major: { type: integer }
+            minor: { type: integer }
+      required: [findings, stats]
+
+  - id: cr-checker-performance
+    agent: performance-checker
+    context: fresh
+    effort: medium
+    depends_on: [cr-prepare]
+    when: "$cr-prepare.output.has_error == false"
+    output_format:
+      type: object
+      properties:
+        findings:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              severity: { type: string, enum: [critical, major, minor] }
+              file: { type: string }
+              description: { type: string }
+              evidence: { type: string }
+        stats:
+          type: object
+          properties:
+            total: { type: integer }
+            critical: { type: integer }
+            major: { type: integer }
+            minor: { type: integer }
+      required: [findings, stats]
+
+  - id: cr-checker-complexity
+    agent: complexity-checker
+    context: fresh
+    effort: medium
+    depends_on: [cr-prepare]
+    when: "$cr-prepare.output.has_error == false"
+    output_format:
+      type: object
+      properties:
+        findings:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              severity: { type: string, enum: [critical, major, minor] }
+              file: { type: string }
+              description: { type: string }
+              evidence: { type: string }
+        stats:
+          type: object
+          properties:
+            total: { type: integer }
+            critical: { type: integer }
+            major: { type: integer }
+            minor: { type: integer }
+      required: [findings, stats]
+
+  - id: cr-checker-concurrency
+    agent: concurrency-checker
+    context: fresh
+    effort: medium
+    depends_on: [cr-prepare]
+    when: "$cr-prepare.output.has_error == false"
+    output_format:
+      type: object
+      properties:
+        findings:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              severity: { type: string, enum: [critical, major, minor] }
+              file: { type: string }
+              description: { type: string }
+              evidence: { type: string }
+        stats:
+          type: object
+          properties:
+            total: { type: integer }
+            critical: { type: integer }
+            major: { type: integer }
+            minor: { type: integer }
+      required: [findings, stats]
+
+  - id: cr-checker-error-handling
+    agent: error-handling-checker
+    context: fresh
+    effort: medium
+    depends_on: [cr-prepare]
+    when: "$cr-prepare.output.has_error == false"
+    output_format:
+      type: object
+      properties:
+        findings:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              severity: { type: string, enum: [critical, major, minor] }
+              file: { type: string }
+              description: { type: string }
+              evidence: { type: string }
+        stats:
+          type: object
+          properties:
+            total: { type: integer }
+            critical: { type: integer }
+            major: { type: integer }
+            minor: { type: integer }
+      required: [findings, stats]
+
+  - id: cr-checker-design-consistency
+    agent: design-consistency-checker
+    context: fresh
+    effort: medium
+    depends_on: [cr-prepare]
+    when: "$cr-prepare.output.has_error == false"
+    output_format:
+      type: object
+      properties:
+        findings:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              severity: { type: string, enum: [critical, major, minor] }
+              file: { type: string }
+              description: { type: string }
+              evidence: { type: string }
+        stats:
+          type: object
+          properties:
+            total: { type: integer }
+            critical: { type: integer }
+            major: { type: integer }
+            minor: { type: integer }
+      required: [findings, stats]
+
+  - id: cr-checker-auxiliary-spec
+    agent: auxiliary-spec-checker
+    context: fresh
+    effort: medium
+    depends_on: [cr-prepare]
+    when: "$cr-prepare.output.has_error == false"
+    output_format:
+      type: object
+      properties:
+        findings:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              severity: { type: string, enum: [critical, major, minor] }
+              file: { type: string }
+              description: { type: string }
+              evidence: { type: string }
+        stats:
+          type: object
+          properties:
+            total: { type: integer }
+            critical: { type: integer }
+            major: { type: integer }
+            minor: { type: integer }
+      required: [findings, stats]
+
+  - id: cr-checker-history-context
+    agent: history-context-checker
+    context: fresh
+    effort: medium
+    depends_on: [cr-prepare]
+    when: "$cr-prepare.output.has_error == false"
+    output_format:
+      type: object
+      properties:
+        findings:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              severity: { type: string, enum: [critical, major, minor] }
+              file: { type: string }
+              description: { type: string }
+              evidence: { type: string }
+        stats:
+          type: object
+          properties:
+            total: { type: integer }
+            critical: { type: integer }
+            major: { type: integer }
+            minor: { type: integer }
+      required: [findings, stats]
+
+  # ════════════════════════════════════════════════════════════════════
+  # cr-critic：对抗式验证——对每条 finding 给 rejected/not_proven/not_rebutted
+  # 依赖全部 8 个 checker 完成后才启动（trigger_rule=all_done 容错 skip）
+  # 配套 prompt 文件：prompts/code-review-embedded/cr-critic.md
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: cr-critic
+    agent: review-critic
+    context: fresh
+    effort: high
+    model: opus
+    idle_timeout: 900000
+    depends_on:
+      - cr-checker-security
+      - cr-checker-performance
+      - cr-checker-complexity
+      - cr-checker-concurrency
+      - cr-checker-error-handling
+      - cr-checker-design-consistency
+      - cr-checker-auxiliary-spec
+      - cr-checker-history-context
+    trigger_rule: all_done
+    when: "$cr-prepare.output.has_error == false"
+    output_format:
+      type: object
+      properties:
+        verdicts:
+          type: array
+          items:
+            type: object
+            properties:
+              finding_id: { type: string }
+              verdict:
+                type: string
+                enum: [rejected, not_proven, not_rebutted]
+              rationale: { type: string }
+              counter_evidence: { type: string }
+        summary:
+          type: object
+          properties:
+            rejected: { type: integer }
+            not_proven: { type: integer }
+            not_rebutted: { type: integer }
+      required: [verdicts, summary]
+
+  # ════════════════════════════════════════════════════════════════════
+  # cr-judge：综合裁决——聚合 8 路 checker + critic 对抗结论，输出最终报告
+  # 只取 not_rebutted 的 finding 进入最终报告（spec §2.1 CR 流程）
+  # 配套 prompt 文件：prompts/code-review-embedded/cr-judge.md
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: cr-judge
+    agent: code-quality-reviewer
+    context: fresh
+    effort: high
+    model: opus
+    idle_timeout: 900000
+    depends_on: [cr-critic]
+    when: "$cr-prepare.output.has_error == false"
+    output_format:
+      type: object
+      properties:
+        conclusion:
+          type: string
+          enum: [looks_clean, needs_attention, blocked]
+        severity_distribution:
+          type: object
+          properties:
+            critical: { type: integer }
+            major: { type: integer }
+            minor: { type: integer }
+        merged_issues:
+          type: array
+          items:
+            type: object
+            properties:
+              finding_id: { type: string }
+              severity: { type: string, enum: [critical, major, minor] }
+              tags: { type: array, items: { type: string } }
+              file: { type: string }
+              description: { type: string }
+              suggestion: { type: string }
+            required: [finding_id, severity, description]
+        adjudication:
+          type: array
+          items:
+            type: object
+            properties:
+              finding_id: { type: string }
+              severity: { type: string, enum: [critical, major, minor] }
+              tags: { type: array, items: { type: string } }
+              file: { type: string }
+              description: { type: string }
+              suggestion: { type: string }
+              disposition:
+                type: string
+                enum: [drop, keep, downgrade, follow-up]
+              rationale: { type: string }
+            required: [finding_id, severity, description, disposition, rationale]
+        cross_dimension_insights:
+          type: array
+          items: { type: string }
+        final_verdict: { type: string }
+      required: [conclusion, severity_distribution, merged_issues, adjudication, final_verdict]
