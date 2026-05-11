@@ -1,7 +1,6 @@
-# ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-009
 title: 自定义工作流改造
-phase: testing
+phase: completed
 created_at: '2026-05-08 11:38:56'
 branch: feat/req-2026-009
 base_branch: develop
@@ -35,62 +34,62 @@ gates_passed:
   - phase: development
     at: '2026-05-08 20:32:51'
     via: phase-transition
-    notes: 11 项 error gate 全过；features.json 13 features + tasks/F-001~F-013 落盘
+    notes: 11 项 error gate 全过；features.json 13 features + tasks/F-001~F-013 落盘 
       schema pass；PLAN-FRESHNESS 无 warning
   - phase: testing
     at: '2026-05-11 09:15:50'
     via: phase-transition
-    notes: 9 项 error gate 全过 + 2 项自然 skip（GATE-FEATURES-SCHEMA / GATE-TASK-FRONTMATTER 因 changed_files 不含 features.json/tasks 自然过滤）；
-      解锁路径——detail-design rev3 88→92 looks_clean approved（解锁 R005 stale 阻塞）+ 12 receipt schema 1.0 字段补齐 +
-      D-013 清零 17 条 historical touches_violations（流程性副作用，统一引用 D-013 不重复 ADR）
+    notes: 9 项 error gate 全过 + 2 项自然 skip（GATE-FEATURES-SCHEMA / 
+      GATE-TASK-FRONTMATTER 因 changed_files 不含 features.json/tasks 自然过滤）； 
+      解锁路径——detail-design rev3 88→92 looks_clean approved（解锁 R005 stale 阻塞）+ 12 
+      receipt schema 1.0 字段补齐 + D-013 清零 17 条 historical 
+      touches_violations（流程性副作用，统一引用 D-013 不重复 ADR）
 pr_url: https://github.com/hjaaa/agentic-meta-engineering/pull/66
 pr_number: 66
 log_layout: split
-
-# ============ 语义组（definition 阶段补齐，供跨需求检索） ============
-feature_area: lifecycle                  # definition 起必填；值必须在 context/project/<project>/areas.yaml 白名单内
-change_type: refactor                    # definition 起必填；枚举：feature / bugfix / refactor / perf / security
-affected_modules:                        # definition 起必填；自由词，建议与 services 子模块对齐
+feature_area: lifecycle
+change_type: refactor
+affected_modules:
   - workflow-engine
   - scripts-gates
   - skills
   - commands
   - meta-schema
-tags:                                    # 可选；长尾标签，不归一化
+tags:
   - dag
   - yaml-driven
   - archon-inspired
-
-# ============ 结果组（completed 时才填） ============
-outcome: ""                    # shipped / abandoned / rolled-back
-completed_at: ""               # ISO8601，completed 时填
-lessons_extracted: false       # /knowledge:extract-experience 是否已跑
+outcome: shipped
+completed_at: '2026-05-11 10:17:58'
+lessons_extracted: true
 reviews:
   definition:
-    latest: REV-REQ-2026-009-definition-003
+    latest: REV-REQ-2026-009-definition-004
     conclusion: looks_clean
-    reviewed_commit: 60f4f2e
+    reviewed_commit: 0a1721f
     artifact_hashes:
       artifacts/requirement.md: 
-        e8ffd56acbb19088102e40011821f6fe32210b2398ca3555227a45ad132d15eb
+        7f069a1adfd389be8154e2f0fb01a0aee35f6922dfa37d769c652d85e97c8c8d
     history:
       - REV-REQ-2026-009-definition-001
       - REV-REQ-2026-009-definition-002
       - REV-REQ-2026-009-definition-003
+      - REV-REQ-2026-009-definition-004
     stale: false
   outline-design:
-    latest: REV-REQ-2026-009-outline-design-003
+    latest: REV-REQ-2026-009-outline-design-004
     conclusion: looks_clean
-    reviewed_commit: 914a7e1
+    reviewed_commit: 2dbd776
     artifact_hashes:
       artifacts/outline-design.md: 
-        858cea664a33ef51a36ec76cbba1197ec3e3475ecf74805e089d0e3d15c1227c
+        74b5477b55c7acc1e32e6af449432c377a094d9a09ad2d9d5c5b20d97eaf11bf
       artifacts/requirement.md: 
-        0906b57d0979c6106fb34ba3deccd2cb3f34914b387ca6ce3e7918716a6d58dc
+        7f069a1adfd389be8154e2f0fb01a0aee35f6922dfa37d769c652d85e97c8c8d
     history:
       - REV-REQ-2026-009-outline-design-001
       - REV-REQ-2026-009-outline-design-002
       - REV-REQ-2026-009-outline-design-003
+      - REV-REQ-2026-009-outline-design-004
     stale: false
   detail-design:
     latest: REV-REQ-2026-009-detail-design-003
@@ -291,10 +290,11 @@ reviews:
           - REV-REQ-2026-009-code-F-012-006
         latest: REV-REQ-2026-009-code-F-012-006
         conclusion: looks_clean
-        reviewed_commit: '960a2d2'
+        reviewed_commit: 960a2d2
         artifact_hashes:
           artifacts/features.json: 
             a8046f03b004f38e39ee21f706dfabe3f7913669375c4f938e6cfffb3b8eaa8b
           artifacts/tasks/F-012.md: 
             7bce7f466fd5982a2a0604e9172c6e258a5ac61e9bd72af8a82a702dc0e31ecb
         stale: false
+archived_at: '2026-05-11 10:17:58'

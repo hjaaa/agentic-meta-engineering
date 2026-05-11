@@ -48,5 +48,11 @@
   "supersedes": "REV-REQ-2026-009-definition-002",
   "project_specific_issues": [
     "项目 INDEX (context/project/agentic-meta-engineering/INDEX.md) 未声明特殊并发/合规约束；D-009 沿链同步属于规范内部决策修订，与项目骨架定位自洽，无新增项目级关注点"
-  ]
+  ],
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-11T10:34:38.865960+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
+  }
 }

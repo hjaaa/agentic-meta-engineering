@@ -32,6 +32,11 @@
 - [`github-api-head-syntax-fork-across-surfaces.md`](github-api-head-syntax-fork-across-surfaces.md) — `gh pr list --head` 不支持 `OWNER:BRANCH`，但 `gh api .../pulls?head=` 原生支持；`gh` 各子命令是独立薄包装，跨 surface 必须分别看 manual
 - [`claude-code-tool-name-matcher-alias.md`](claude-code-tool-name-matcher-alias.md) — Claude Code PreToolUse `matcher: "Task"` 命中但 stdin `tool_name == "Agent"`（别名映射）；hook 实现层必须以实采样到的 tool_name 为准，不能照 matcher 字符串写
 - [`transient-hook-injection-via-shell-prefix.md`](transient-hook-injection-via-shell-prefix.md) — 临时采样 hook 不能 AI 直接 Edit `.claude/settings.local.json`（被 self-modification 防护拒绝）；走用户在 `!` shell 前缀里跑一行命令 / 或用户授权安装+清理 hook 的合规路径
+- [`review-loop-rev-n-must-scan-same-pattern-and-helper-style.md`](review-loop-rev-n-must-scan-same-pattern-and-helper-style.md) — review-loop rev N 修复派发 prompt 必含「全文搜同模式 + 同 helper 风格不一致」硬规则（D-014），终结"修一波又新引入一波"反模式
+- [`trend-g-meta-double-layer-termination.md`](trend-g-meta-double-layer-termination.md) — trend-G-meta 双层终结：代码层 governance gate self-coverage 红线 + 元信息层 ADR drift 脚本化 ±5 容差；解决 governance test 自我盲点 + ADR 数字漂移
+- [`historical-touches-violations-clear-template.md`](historical-touches-violations-clear-template.md) — 流程性产物（review-*.md / .dispatch-state.json / 临时 verdict）的 historical touches_violations 清零模板（D-013）；不扩 features.json touches
+- [`local-ruff-scope-vs-ci-fullset.md`](local-ruff-scope-vs-ci-fullset.md) — 本地 ruff 改动文件 scope vs CI 全仓 `--select=F` 漂移；subagent 自检命令必须对齐 CI 命令
+- [`detail-design-stale-after-development-needs-pre-testing-rev.md`](detail-design-stale-after-development-needs-pre-testing-rev.md) — detail-design.md 在 development 长跨度回填后必 stale；testing 切换前主 Agent 自检 `reviews.detail-design.stale` 字段并预审解锁 R005
 
 ## 什么值得沉淀
 
