@@ -2,16 +2,16 @@
   "schema_version": "1.0",
   "feature_id": "F-005",
   "status": "DONE",
-  "commit_sha": "2aca3f2629447cb90f22266397f61d85807b074a",
+  "commit_sha": "6c73e94",
   "files_changed": [
-    "scripts/lib/workflow_dispatcher.py",
-    "scripts/lib/run_state.py",
-    "tests/skills/test_workflow_dispatcher.py"
+    "tests/skills/test_workflow_dispatcher.py (deleted)",
+    "tests/skills/test_workflow_dispatcher_dispatch.py (new)",
+    "tests/skills/test_workflow_dispatcher_build_env_and_state.py (new)"
   ],
-  "test_summary": "25 passed in 0.06s（pytest tests/skills/test_workflow_dispatcher.py -v）；回归 74 passed in 1.14s（test_workflow_commands.py + test_workflow_bootstrap.py）",
+  "test_summary": "rev3：27 passed（_dispatch.py 17 + _build_env_and_state.py 10）；回归 74 passed（test_workflow_commands.py + test_workflow_bootstrap.py）。拆分后两文件各 313/212 行均 ≤ 500 行。7 个 dead import 已清除（append_event + 6 个 _dispatch_*_node 私有函数）。",
   "touches_violations": [],
   "concerns": [],
   "missing_context": "",
   "block_reason": "",
-  "timestamp": "2026-05-11T20:30:00+08:00"
+  "timestamp": "2026-05-11T23:30:00+08:00"
 }
