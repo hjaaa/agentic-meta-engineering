@@ -1071,18 +1071,9 @@ def _handle_routing_result(
     decision = _auto_decide(plan, confirmed_by)
     _write_scope(plan, decision, args)
 
-    # 自动路由全部写 audit（无论 accept 还是 fallback 升 all），保留可追溯性
-    if decision.decision == "all":
-        _audit_log(
-            args.requirement_id,
-            f"[code-review-route-auto] recommended 为空，升 8 全集（files_total={plan.files_total}）",
-        )
-    else:
-        route_str = ", ".join(decision.final_route)
-        _audit_log(
-            args.requirement_id,
-            f"[code-review-route-auto] accept 推荐集：{route_str}",
-        )
+    # accept / all 不写 process.txt audit（沿用 REQ-2026-003 detailed-design §8.4 静默约定，
+    # 避免污染 process.txt；trivial-skipped 仍写以追踪短路）。
+    # scope.json.routing_decision 已含 decision/confirmed_at/files_* 全量信息，可追溯性不依赖 audit。
 
 
 def main(argv: list[str] | None = None) -> int:

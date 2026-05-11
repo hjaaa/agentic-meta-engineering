@@ -640,10 +640,15 @@ class TestAutoRouteEndToEnd:
             f"stderr: {proc.stderr}"
         )
 
-    def test_a4_given_accept_decision_when_run_then_audit_contains_route_auto(
+    def test_a4_given_accept_decision_when_run_then_audit_silent(
         self, tmp_path: Path
     ):
-        """A4: accept 路径下 audit 写 [code-review-route-auto] accept 推荐集。"""
+        """A4: accept / all 路径**不写** process.txt（沿用 REQ-2026-003 §8.4 静默约定）。
+
+        可追溯性由 scope.json.routing_decision 承担，包含 decision/confirmed_at/
+        files_must_hit/files_suggest_hit/files_trivial/files_total 全量字段。
+        process.txt 仅记录 trivial-skipped / aborted 等异常路径，避免噪音污染。
+        """
         repo, base_sha, head_sha = _setup_test_repo(tmp_path)
         argv = _build_argv(base_sha, head_sha)
 
@@ -657,11 +662,11 @@ class TestAutoRouteEndToEnd:
         )
         assert proc.returncode == 0, f"stderr: {proc.stderr}"
         process_txt = repo / "requirements" / "REQ-2099-001" / "process.txt"
-        assert process_txt.exists(), "process.txt 应存在"
-        content = process_txt.read_text(encoding="utf-8")
-        assert "[code-review-route-auto]" in content, (
-            f"audit 应含 [code-review-route-auto]，实际: {content!r}"
-        )
+        if process_txt.exists():
+            content = process_txt.read_text(encoding="utf-8")
+            assert "[code-review-route-auto]" not in content, (
+                f"accept 路径不应写 [code-review-route-auto]（§8.4 静默），实际: {content!r}"
+            )
 
 
 def _setup_grey_repo(tmp_path: Path) -> tuple[Path, str, str]:

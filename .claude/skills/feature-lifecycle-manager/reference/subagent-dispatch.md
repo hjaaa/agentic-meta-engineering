@@ -79,18 +79,48 @@ feature_id: F-xxx
    - ❌ 直接推远程（只 commit，不 push）
    - ❌ 修改 `.claude/` 或 `context/` 下任何文件
 
-6. 完成后按下方状态契约回执。
+6. **写 receipt.json**（commit 之前或之后皆可，与对话回执同步——回执说 DONE 就要写 status=DONE）：
+
+   路径：`requirements/<REQ-ID>/artifacts/tasks/<F-xxx>.receipt.json`
+   schema：`context/team/engineering-spec/receipt-schema.yaml`（11 必填字段）
+   该文件在 touches_guard 白名单（`_is_process_artifact` 第 1 类），写不触发越界。
+
+   DONE 示例：
+   ```json
+   {
+     "schema_version": "1.0",
+     "feature_id": "F-xxx",
+     "status": "DONE",
+     "commit_sha": "<7-40 位 sha 或 HEAD>",
+     "files_changed": ["相对仓库根的文件路径列表"],
+     "test_summary": "60 passed in 1.2s（pytest）或 N/A（纯数据/yaml 改造）",
+     "touches_violations": [],
+     "concerns": [],
+     "missing_context": "",
+     "block_reason": "",
+     "timestamp": "2026-05-11T20:33:25+08:00"
+   }
+   ```
+
+   字段约定（来自 receipt-schema.yaml conditional_required）：
+   - `status=DONE` → `concerns` 必须为空 list；`missing_context`/`block_reason` 留空字符串
+   - `status=DONE_WITH_CONCERNS` → `concerns` 必须非空 list
+   - `status=NEEDS_CONTEXT` → `missing_context` 必须非空字符串
+   - `status=BLOCKED` → `block_reason` 必须非空字符串
+   - `touches_violations` 由 touches_guard hook 维护；subagent 写时若文件已存在则先 read，保留 hook 已 append 的元素，仅覆盖其余字段（_read_receipt_from_fd 已保证 merge 语义）
+
+7. 完成后按下方状态契约回执（回执内容与 receipt.json 字段一一对应）。
 
 ## 回执状态契约
 
 以**下列四选一**开头，再附详情：
 
-- `DONE`：实现完成，测试通过，已 commit。附 commit SHA、改动文件列表、测试结果。
-- `DONE_WITH_CONCERNS`：完成但有疑虑（如发现设计疏漏、边界不清）。附疑虑清单。
-- `NEEDS_CONTEXT`：缺关键上下文无法继续。明确说缺什么。
-- `BLOCKED`：无法完成。说明根因（技术阻塞 / 需求不清 / 触及范围不够）。
+- `DONE`：实现完成，测试通过，已 commit，receipt.json 写完。附 commit SHA、改动文件列表、测试结果、receipt.json 路径。
+- `DONE_WITH_CONCERNS`：完成但有疑虑（如发现设计疏漏、边界不清），receipt.status=DONE_WITH_CONCERNS 且 concerns 列表已填。附疑虑清单。
+- `NEEDS_CONTEXT`：缺关键上下文无法继续，receipt.status=NEEDS_CONTEXT 且 missing_context 已填。明确说缺什么。
+- `BLOCKED`：无法完成，receipt.status=BLOCKED 且 block_reason 已填。说明根因（技术阻塞 / 需求不清 / 触及范围不够）。
 
-禁止无状态开头的自由散文回执。
+禁止无状态开头的自由散文回执；禁止回执 DONE 但不写 receipt.json（phase-transition / submit 时 GATE-POST-DEV-RECEIPT 按 schema 全集校验会硬挡）。
 ```
 
 ## 回执处理
