@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 import subprocess
 
 import pytest
@@ -58,12 +58,6 @@ def jsonl_path(tmp_path: Path) -> Path:
 def base_run_state() -> RunState:
     """最小化 RunState，含 run_id + arguments。"""
     return RunState(run_id="REQ-2026-010", arguments="test-arg")
-
-
-@pytest.fixture()
-def repo_root(tmp_path: Path) -> Path:
-    """临时目录作为仓库根，供 bash 节点 cwd 和 prompt_file 路径使用。"""
-    return tmp_path
 
 
 # ============================================================================
@@ -325,10 +319,6 @@ def test_skill_node_args_substituted_with_escape(jsonl_path, tmp_path):
 
 def test_skill_node_args_node_output_substituted(jsonl_path):
     """skill 节点 args 中 $nodeId.output 通过 run_state.node_outputs 解析。"""
-    jsonl = Path("/tmp/test_skill_noderef.jsonl")
-    if jsonl.exists():
-        jsonl.unlink()
-
     rs = RunState(run_id="REQ-TEST-003")
     rs.node_outputs["upstream"] = {
         "output": "upstream-result",
@@ -340,14 +330,11 @@ def test_skill_node_args_node_output_substituted(jsonl_path):
         "skill": "ref-skill",
         "args": {"data": "$upstream.output"},
     }
-    result = _dispatch_skill_node(node, rs, {}, jsonl)
+    result = _dispatch_skill_node(node, rs, {}, jsonl_path)
 
     assert result.outcome == "completed"
     rendered = result.output["args"]["data"]
     assert "upstream-result" in rendered
-
-    if jsonl.exists():
-        jsonl.unlink()
 
 
 # ============================================================================

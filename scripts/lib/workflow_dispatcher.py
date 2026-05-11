@@ -23,7 +23,7 @@ _LIB_DIR = Path(__file__).resolve().parent
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
-from common import REPO_ROOT, WorkflowError  # noqa: E402（WorkflowError 统一定义在 common，禁止本地重定义）
+from common import WorkflowError  # noqa: E402（WorkflowError 统一定义在 common，禁止本地重定义）
 from run_state import RunState, append_event  # noqa: E402
 from substitute_vars import substitute_vars  # noqa: E402
 
@@ -167,7 +167,7 @@ def dispatch_node(
 
 
 # ============================================================================
-# 7 类节点 stub 函数（F-006/F-007/F-011 替换真实逻辑）
+# 7 类节点 dispatcher（bash/skill/prompt 已在 F-006 落地；agent → F-010；approval 已落地；loop/sub_workflow → F-011）
 # ============================================================================
 
 def _dispatch_agent_node(
@@ -177,7 +177,7 @@ def _dispatch_agent_node(
 ) -> DispatchResult:
     """Agent 节点 stub。
 
-    真实逻辑在 F-006 实现（调用 subagent 执行 agent 字段指定的 agent）。
+    真实逻辑在 F-010 实现（mock_agent_dispatch fixture + 主 Claude 集成）。
     """
     return DispatchResult(outcome="completed")
 
@@ -188,9 +188,9 @@ def _dispatch_skill_node(
     env: dict[str, Any],
     jsonl_path: Path,
 ) -> DispatchResult:
-    """Skill 节点：渲染 args 后写 node_completed 事件（主 Claude 集成层 stub 语义）。
+    """Skill 节点：渲染 args 中的变量（escape_for_bash=True）+ 写 node_completed{output: {skill, args}}。
 
-    本 feature 不真启 Claude——只做变量预替换并写事件，集成层留后续 PR。
+    主 Claude 实际调用 skill 由后续集成层 PR 接管。
     args 中每个 value 调 substitute_vars escape_for_bash=True（默认安全转义）。
     """
     node_id: str = node.get("id", "<unknown>")
@@ -222,8 +222,9 @@ def _dispatch_prompt_node(
     root: Path,
     jsonl_path: Path,
 ) -> DispatchResult:
-    """Prompt 节点：变量替换后写 node_completed（主 Claude 集成层 stub 语义）。
+    """Prompt 节点：取 prompt / prompt_file 文本 + 变量替换（escape_for_bash=True）+ 写 node_completed。
 
+    主 Claude 实际消费 prompt 由后续集成层 PR 接管。
     优先取 node["prompt"]（inline 字符串），其次 node["prompt_file"]（相对仓库根读文件）。
     prompt_file 读不到 → raise WorkflowError，由 dispatch_node 入口的 except 转 node_failed。
     escape_for_bash=True：prompt 文本会作为 Claude 的 shell 参数传递，需防注入。
@@ -313,12 +314,13 @@ def _dispatch_bash_node(
         })
         return DispatchResult(outcome="completed", output=stdout)
     else:
+        error_msg = stderr or stdout or f"exit code {proc.returncode} (no stderr/stdout)"
         append_event(jsonl_path, {
             "type": "node_failed",
             "node_id": node_id,
-            "data": {"error": stderr},
+            "data": {"error": error_msg},
         })
-        return DispatchResult(outcome="failed", error=stderr)
+        return DispatchResult(outcome="failed", error=error_msg)
 
 
 def _dispatch_approval_node(

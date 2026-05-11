@@ -155,10 +155,10 @@ def dispatch_node(
     node_id = node["id"]
     append_event(jsonl_path, {"type": "node_started", "node_id": node_id})
     try:
-        if "agent" in node:        return _dispatch_agent_node(node, env, jsonl_path)
-        if "skill" in node:        return _dispatch_skill_node(node, env, jsonl_path)
-        if "prompt" in node:       return _dispatch_prompt_node(node, env, jsonl_path)
-        if "bash" in node:         return _dispatch_bash_node(node, env, run_dir, jsonl_path)
+        if "agent" in node:                         return _dispatch_agent_node(node, env, jsonl_path)
+        if "skill" in node:                         return _dispatch_skill_node(node, env, jsonl_path)
+        if "prompt" in node or "prompt_file" in node: return _dispatch_prompt_node(node, env, jsonl_path)
+        if "bash" in node:                          return _dispatch_bash_node(node, env, run_dir, jsonl_path)
         if "approval" in node:     return _dispatch_approval_node(node, env, jsonl_path)
         if "loop" in node:         return _dispatch_loop_node(node, env, run_state, jsonl_path)
         if "sub_workflow" in node: return _dispatch_sub_workflow_node(node, env, run_dir, root, jsonl_path)
@@ -172,15 +172,15 @@ def dispatch_node(
 
 ```python
 def _dispatch_agent_node(node, env, jsonl_path) -> DispatchResult: ...
-def _dispatch_skill_node(node, env, jsonl_path) -> DispatchResult: ...
-def _dispatch_prompt_node(node, env, jsonl_path) -> DispatchResult: ...
-def _dispatch_bash_node(node, env, run_dir, jsonl_path) -> DispatchResult: ...
-def _dispatch_approval_node(node, env, jsonl_path) -> DispatchResult:
+def _dispatch_skill_node(node, run_state, env, jsonl_path) -> DispatchResult: ...
+def _dispatch_prompt_node(node, run_state, env, run_dir, root, jsonl_path) -> DispatchResult: ...
+def _dispatch_bash_node(node, run_state, env, run_dir, root, jsonl_path) -> DispatchResult: ...
+def _dispatch_approval_node(node, env, run_state, jsonl_path) -> DispatchResult:
     """写 approval_pending 事件后立即 return（方案 ii）。"""
     append_event(jsonl_path, {
         "type": "approval_pending",
         "node_id": node["id"],
-        "data": {"prompt": substitute_vars(node["approval"].get("prompt", ""), env)},
+        "data": {"prompt": substitute_vars(node["approval"].get("prompt", ""), run_state.node_outputs, env)},
     })
     return DispatchResult(outcome="approval_pending")
 
@@ -328,7 +328,7 @@ def _build_env(run_state, run_dir, root) -> dict[str, str]:
     return env
 ```
 
-`substitute_vars(template, env, escape_for_bash=<bool>)` 已实现（来源：scripts/lib/substitute_vars.py:61）。bash 节点 `escape_for_bash=False`，其它节点默认 `True`。
+`substitute_vars(template, node_outputs, env, escape_for_bash=<bool>)` 已实现（来源：scripts/lib/substitute_vars.py:61）。bash 节点 `escape_for_bash=False`；skill / prompt / approval 节点走默认 `True`（防注入）。
 
 ## 3. AC-03 yaml 模板改造清单
 
