@@ -4,3 +4,5 @@
 2026-05-11 11:38:17 [phase-transition] definition → tech-research
 2026-05-11 11:49:07 [gate:pass] tech-research check-sourcing 0 error；4 条待澄清用户确认锁定
 2026-05-11 11:49:07 [phase-transition] tech-research → outline-design
+2026-05-11 12:26:40 [review:approved] outline-design-002 looks_clean（首轮 2 required_fix 已闭环）
+2026-05-11 12:26:40 [phase-transition] outline-design → detail-design

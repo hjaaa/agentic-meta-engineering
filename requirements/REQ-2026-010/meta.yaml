@@ -1,7 +1,7 @@
 # ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-010
 title: workflow 引擎 main loop 与 bootstrap 完整化
-phase: outline-design
+phase: detail-design
 gates_passed:
   - phase: definition
     at: "2026-05-11 11:34:20"
@@ -14,8 +14,12 @@ gates_passed:
   - phase: outline-design
     at: "2026-05-11 11:49:07"
     via: managing-requirement-lifecycle
-    notes: tech-research.md 完成，4 条待澄清 user 已确认；feasibility=high；工作量 9.8 天，PR 拆分 
+    notes: tech-research.md 完成，4 条待澄清 user 已确认；feasibility=high；工作量 9.8 天，PR 拆分
       PR-A/PR-B 锁定
+  - phase: detail-design
+    at: "2026-05-11 12:26:40"
+    via: managing-requirement-lifecycle
+    notes: outline-design-002 looks_clean（首轮 2 required_fix 已闭环：DispatchResult 7 outcome 枚举 + §5.2 三小节）
 created_at: "2026-05-11 11:25:44"
 branch: feat/req-2026-010
 base_branch: develop
@@ -55,14 +59,15 @@ reviews:
       - REV-REQ-2026-010-definition-001
     stale: false
   outline-design:
-    latest: REV-REQ-2026-010-outline-design-001
-    conclusion: needs_attention
-    reviewed_commit: 455229e
+    latest: REV-REQ-2026-010-outline-design-002
+    conclusion: looks_clean
+    reviewed_commit: 8e2de0e
     artifact_hashes:
       artifacts/outline-design.md: 
-        ed5cdbb750a012d09e7048ac85cb77176797df4a390d8c62bc78cef9e7c45fc9
+        99da579f50722ec9f646f01f085159b2563134edc6027877af1a5402ed532933
       artifacts/requirement.md: 
         25dafe20a6af9809a73530ed8a3df41851ea5693c799c5fed47259f865870067
     history:
       - REV-REQ-2026-010-outline-design-001
+      - REV-REQ-2026-010-outline-design-002
     stale: false
