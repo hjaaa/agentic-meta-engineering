@@ -909,11 +909,7 @@ class TestGenerateReqIdMaxPlusOne:
 # ============================================================
 
 class TestLoadWorkflowSchemaGate:
-    """F-003 acceptance：main() schema 校验门禁的两条验收路径。
-
-    AC-1：非法 yaml（缺必填字段）→ exit 1 + stderr 含校验报告
-    AC-2：合法模板通过校验 → 不被误判，进入正常分支（monkeypatch 截断）
-    """
+    """TC-F3-1：main() schema 校验门禁——非法 yaml exit 1，合法模板正常路由。"""
 
     # ------------------------------------------------------------------
     # 辅助：在 tmp_repo 写入一个 workflow yaml，返回 template_id
