@@ -1,0 +1,2 @@
+2026-05-11 11:34:20 [phase-transition] bootstrap → definition
+2026-05-11 11:34:20 [gate:pass] check-sourcing 0 error / check-meta 0 error
