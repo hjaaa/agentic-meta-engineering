@@ -2,7 +2,7 @@
 
 `/requirement:archive` 命令的子动作规则——伞形 Skill `managing-requirement-lifecycle` 在识别到「归档」意图时按本文执行。实现入口 `scripts/lib/archive_runner.py::archive_requirement`，签名见 `requirements/REQ-2026-007/artifacts/detailed-design.md` §3.1，**已 frozen**。
 
-适用阶段：`phase ∈ {testing, completed}`。`testing → completed` 由 archive 命令推进（不走 `/workflow:next`，因为含副作用动作）。
+适用阶段：`phase ∈ {testing, completed}`。`testing → completed` 由 archive 命令推进（不走 `/workflow:next [F-012 待落地]`，因为含副作用动作）。
 
 ---
 

@@ -16,7 +16,7 @@ description: 阶段 6（任务规划）拆分 features.json 为功能点任务�
 2. 对每个 feature_id，基于 `templates/feature-task.md.tmpl` 生成 `artifacts/tasks/<id>.md`，状态初始化为 `pending`
    - 把 `features.json` 的 `complexity` / `depends_on_features` 映射到 task frontmatter 的 `complexity` / `depends_on`
    - 缺省值：`complexity: medium`，`depends_on: []`
-3. 拆分完成后**不自行修改 `meta.yaml.phase`**——阶段切换由用户通过 `/workflow:next` 触发（F-012 后），走 standard-8phase yaml workflow phase-transition 节点
+3. 拆分完成后**不自行修改 `meta.yaml.phase`**——阶段切换由用户通过 `/workflow:next [F-012 待落地]` 触发（F-012 后），走 standard-8phase yaml workflow phase-transition 节点
 
 ### 阶段 7：feature 生命周期
 

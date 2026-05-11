@@ -1,16 +1,17 @@
 ---
 name: managing-requirement-lifecycle
-description: 需求全生命周期管理伞形 Skill，被 8 个 /requirement:* 命令共用。负责状态持久化、PR 提交、归档；阶段切换由 /workflow:next 承载（F-012 后）
+description: 需求全生命周期管理伞形 Skill，被 8 个 /requirement:* 命令共用。负责状态持久化、PR 提交、归档；阶段切换在 F-012 落地前仍由本 Skill 承载，落地后将统一到 /workflow:next
 ---
 
 ## 什么时候用
 
 用户通过 `/requirement:*` 命令，或口头说"新建需求 / 继续需求 / 保存进度 / 查看状态 / 回退 / 列出需求 / 提交 PR / 归档"时。
 
-> **F-012 范围调整**：原"下一阶段"子动作（含 PHASE_REQUIREMENTS 校验链）已迁移到
-> `/workflow:next`（standard-8phase yaml workflow phase-transition 节点）。本 Skill
-> 不再承担 phase-transition 业务，仅保留状态持久化 / submit / archive / new / continue
-> / save / status / list / rollback 8 个子动作的伞形入口。
+> **F-012 现状（hotfix 后修订）**：`/workflow:next` 命令尚未落地（workflow main loop 仍是 stub）。
+> 在 F-012 落地之前，阶段切换 + PHASE_REQUIREMENTS 校验链仍由本 Skill 承担（用户在主对话中
+> 说明意图 → 本 Skill 写 `meta.yaml.phase` + 跑 `scripts/gates/run.py --trigger=phase-transition`）。
+> F-012 落地后将统一到 standard-8phase yaml workflow 的 phase-transition 节点；下文凡出现
+> `/workflow:next [F-012 待落地]` 的描述均按此规则解读。
 
 ## 核心流程
 
@@ -44,12 +45,18 @@ REQ-2026-008 新增以下 4 个 gate，已注册在 `scripts/gates/registry.yaml
 **豁免约束**：4 个 gate 均**不**带 `legacy-bypass` tag，meta.yaml `legacy: true` 无法豁免它们。
 历史 completed REQ 通过 trigger / changed_files 路径自然隔离，不依赖 legacy 短路（D-005 #2 / D-006 V-07 修订）。
 
-## 阶段切换由 /workflow:next 承载（F-012 后）
+## 阶段切换：F-012 待落地阶段的过渡处理
 
-阶段切换（如 definition → tech-research）已统一走 standard-8phase yaml workflow 的
-phase-transition 节点；用户入口为 `/workflow:next`。本 Skill **不再**直接处理切阶段请求。
+设计目标：阶段切换（如 definition → tech-research）统一走 standard-8phase yaml workflow
+的 phase-transition 节点；用户入口 `/workflow:next [F-012 待落地]`。
 
-如需手动跑某 trigger 的全套门禁，仍可用 CLI 直入：
+**现状（F-012 落地前）**：`/workflow:next` 命令尚不可用；用户在主对话中说明"切到下一阶段"
+后，本 Skill 直接：
+1. 跑 `python3 scripts/gates/run.py --trigger=phase-transition --req=<REQ-ID> --from=<X> --to=<Y>`
+2. error 全过后写 `meta.yaml.gates_passed` + 切 `meta.yaml.phase`
+3. 调 `requirement-progress-logger` 写 `[phase-transition]` 事件
+
+如需手动跑某 trigger 的全套门禁（落地前/后通用），仍可用 CLI 直入：
 
 ```bash
 python3 scripts/gates/run.py \

@@ -8,7 +8,7 @@
 |---|---|---|
 | 单文件行数 | < 100 行 | 避免把领域逻辑塞进 Command |
 | 职责 | 仅预检 + 委托给 Skill | 逻辑集中在 Skill，Command 改了不动 Skill |
-| 同领域多 Command | 委托**同一个**伞形 Skill | `/requirement:new` / `:continue` / `:save` / ... 全部委托 `managing-requirement-lifecycle`（F-012：阶段切换迁移到 `/workflow:next`） |
+| 同领域多 Command | 委托**同一个**伞形 Skill | `/requirement:new` / `:continue` / `:save` / ... 全部委托 `managing-requirement-lifecycle`（F-012：阶段切换迁移到 `/workflow:next [F-012 待落地]`） |
 
 ## 为什么这样分
 
