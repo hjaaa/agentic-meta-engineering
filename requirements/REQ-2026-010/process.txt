@@ -24,3 +24,10 @@
 2026-05-11 15:54:43 [signoff] REV-REQ-2026-010-code-F-002-002 approved by hj19961223@gmail.com
 2026-05-11 15:55:28 [development] F-002 done（signoff approved by hj19961223@gmail.com，post-dev 0 error）
 2026-05-11 15:57:29 [save] F-002 全周期完成（4 commits / rev2 looks_clean / signoff approved）；下次可派 F-003 / F-004 / F-009
+2026-05-11 16:03:17 [development] F-003 派发（model=sonnet，用户显式指定升档；trivial 默认 haiku）：main() 插入 load_workflow schema 校验 + 替换 _is_requirement_template 为 workflow.category 判定
+2026-05-11 16:09:49 [gate:pass] F-003 post-dev 0 error / 2 warning（W002 tech-research carry-over，与 F-001/F-002 同款，已放行）
+2026-05-11 16:41:21 [review:blocked] F-003 rev1 code-review 完成（REV-REQ-2026-010-code-F-003-001）：1 critical (F-8 touches 越界硬挡 phase-transition+submit) / 0 major / 2 minor (F-5 契约 / F-10 docstring 风格) / 8 drop；critic 4 rejected / 4 not_proven / 3 not_rebutted；待修 F-8 后派 rev2
+2026-05-11 16:46:28 [development] F-003 rev2 派发完成（commit cbd7672）：F-8 critical (touches +2 files + violations 清空) + F-10 minor (docstring 单行 TC-F3-1) 已闭；63 passed；gate phase-transition 0 error / 2 warning W002 carry-over；待派 rev2 code-review
+2026-05-11 16:55:05 [review:looks_clean] F-003 rev2 code-review 完成（REV-REQ-2026-010-code-F-003-002 supersedes -001）：F-8 critical fully closed + F-10 minor closed + F-5 保 follow-up；4 checker 0 候选 finding；trend-G-meta 完美闭环二次确认；score 68→92；待 signoff approved → done
+2026-05-11 16:57:41 [signoff] REV-REQ-2026-010-code-F-003-002 approved by hj19961223@gmail.com
+2026-05-11 16:59:15 [development] F-003 done（signoff approved by hj19961223@gmail.com，post-dev 0 error）
