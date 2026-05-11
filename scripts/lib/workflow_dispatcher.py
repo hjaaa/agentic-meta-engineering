@@ -1,16 +1,18 @@
-"""workflow 节点派发器（F-005 框架骨架）。
+"""workflow 节点派发器（F-005 框架骨架；F-006 实现 bash/skill/prompt 节点）。
 
 职责：
 - `dispatch_node`：入口，按 node dict 内含的键派发到 7 类节点处理函数
 - `_build_env`：从 RunState 构建注入到下游的环境变量字典
-- 7 类 stub 函数（除 approval 外均返回 outcome="completed"；
-  approval stub 写 approval_pending 事件并返回 outcome="approval_pending"）
+- bash/skill/prompt 节点：F-006 实现真实逻辑（substitute_vars + subprocess/事件写入）
+- approval 节点：写 approval_pending 事件并返回 outcome="approval_pending"
+- loop/sub_workflow/agent 节点：stub，分别由 F-011/F-010 替换
 
-真实执行逻辑将在后续 feature（F-006/F-007/F-011）中替换相应 stub。
+真实执行逻辑：bash/skill/prompt 已在 F-006 落地；agent/loop/sub_workflow 在后续 feature 替换。
 """
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,7 +23,7 @@ _LIB_DIR = Path(__file__).resolve().parent
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
-from common import WorkflowError  # noqa: E402（WorkflowError 统一定义在 common，禁止本地重定义）
+from common import REPO_ROOT, WorkflowError  # noqa: E402（WorkflowError 统一定义在 common，禁止本地重定义）
 from run_state import RunState, append_event  # noqa: E402
 from substitute_vars import substitute_vars  # noqa: E402
 
@@ -134,11 +136,12 @@ def dispatch_node(
         if "agent" in node:
             result = _dispatch_agent_node(node, env, jsonl_path)
         elif "skill" in node:
-            result = _dispatch_skill_node(node, env, jsonl_path)
-        elif "prompt" in node:
-            result = _dispatch_prompt_node(node, env, jsonl_path)
+            result = _dispatch_skill_node(node, run_state, env, jsonl_path)
+        elif "prompt" in node or "prompt_file" in node:
+            # prompt_file 是 prompt 节点的另一种写法，统一派发（§1.6 描述两者互斥）
+            result = _dispatch_prompt_node(node, run_state, env, run_dir, root, jsonl_path)
         elif "bash" in node:
-            result = _dispatch_bash_node(node, env, run_dir, jsonl_path)
+            result = _dispatch_bash_node(node, run_state, env, run_dir, root, jsonl_path)
         elif "approval" in node:
             result = _dispatch_approval_node(node, env, run_state, jsonl_path)
         elif "loop" in node:
@@ -181,39 +184,141 @@ def _dispatch_agent_node(
 
 def _dispatch_skill_node(
     node: dict,
+    run_state: RunState,
     env: dict[str, Any],
     jsonl_path: Path,
 ) -> DispatchResult:
-    """Skill 节点 stub。
+    """Skill 节点：渲染 args 后写 node_completed 事件（主 Claude 集成层 stub 语义）。
 
-    真实逻辑在 F-006 实现（调用 /skill:xxx）。
+    本 feature 不真启 Claude——只做变量预替换并写事件，集成层留后续 PR。
+    args 中每个 value 调 substitute_vars escape_for_bash=True（默认安全转义）。
     """
-    return DispatchResult(outcome="completed")
+    node_id: str = node.get("id", "<unknown>")
+    skill_name: str = node.get("skill", "")
+    if not skill_name:
+        raise WorkflowError(f"skill 节点 {node_id!r} 缺少 skill 字段")
+
+    raw_args: dict = node.get("args") or {}
+    # 渲染每个 arg value（bash 模式：escape_for_bash=True，防注入）
+    rendered_args: dict[str, str] = {
+        k: substitute_vars(str(v), run_state.node_outputs, env, escape_for_bash=True)
+        for k, v in raw_args.items()
+    }
+
+    output = {"skill": skill_name, "args": rendered_args}
+    append_event(jsonl_path, {
+        "type": "node_completed",
+        "node_id": node_id,
+        "data": {"output": output},
+    })
+    return DispatchResult(outcome="completed", output=output)
 
 
 def _dispatch_prompt_node(
     node: dict,
+    run_state: RunState,
     env: dict[str, Any],
+    run_dir: Path,
+    root: Path,
     jsonl_path: Path,
 ) -> DispatchResult:
-    """Prompt 节点 stub。
+    """Prompt 节点：变量替换后写 node_completed（主 Claude 集成层 stub 语义）。
 
-    真实逻辑在 F-006 实现（直接向 Claude 发 prompt 并收 stdout）。
+    优先取 node["prompt"]（inline 字符串），其次 node["prompt_file"]（相对仓库根读文件）。
+    prompt_file 读不到 → raise WorkflowError，由 dispatch_node 入口的 except 转 node_failed。
+    escape_for_bash=True：prompt 文本会作为 Claude 的 shell 参数传递，需防注入。
     """
-    return DispatchResult(outcome="completed")
+    node_id: str = node.get("id", "<unknown>")
+
+    # 获取原始 prompt 文本
+    if "prompt" in node:
+        raw_text: str = node["prompt"]
+    elif "prompt_file" in node:
+        prompt_path = root / node["prompt_file"]
+        try:
+            raw_text = prompt_path.read_text(encoding="utf-8")
+        except FileNotFoundError as exc:
+            raise WorkflowError(
+                f"prompt_file not found: {prompt_path}"
+            ) from exc
+    else:
+        raise WorkflowError(f"prompt 节点 {node_id!r} 既无 prompt 也无 prompt_file")
+
+    rendered = substitute_vars(raw_text, run_state.node_outputs, env, escape_for_bash=True)
+    append_event(jsonl_path, {
+        "type": "node_completed",
+        "node_id": node_id,
+        "data": {"output": rendered},
+    })
+    return DispatchResult(outcome="completed", output=rendered)
 
 
 def _dispatch_bash_node(
     node: dict,
+    run_state: RunState,
     env: dict[str, Any],
     run_dir: Path,
+    root: Path,
     jsonl_path: Path,
 ) -> DispatchResult:
-    """Bash 节点 stub。
+    """Bash 节点：变量预替换后 subprocess.run，按 returncode 写 node_completed/node_failed。
 
-    真实逻辑在 F-006 实现（subprocess.run bash 命令、捕获 stdout/stderr/exit code）。
+    关键约束：
+    - escape_for_bash=False：bash 命令内变量以裸字面值注入，不加 shell 引号
+    - cwd=root（仓库根）：standard-8phase.yaml 的 bash 块均用相对仓库根的路径
+    - 超时/OSError 作为业务失败路径（写 node_failed），不让异常逃逸到入口（避免重复事件）
     """
-    return DispatchResult(outcome="completed")
+    node_id: str = node.get("id", "<unknown>")
+    raw_bash: str = node.get("bash") or ""
+    # bash 命令中引用变量需裸字面值（不加 shell 引号）；escape_for_bash=False
+    rendered_bash = substitute_vars(raw_bash, run_state.node_outputs, env, escape_for_bash=False)
+
+    # timeout 字段单位毫秒（与 yaml 约定对齐）；默认 60000 ms = 60s
+    timeout_ms: int = node.get("timeout", 60000)
+    timeout_sec: float = timeout_ms / 1000.0
+
+    try:
+        proc = subprocess.run(
+            ["bash", "-c", rendered_bash],
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            timeout=timeout_sec,
+        )
+    except subprocess.TimeoutExpired:
+        error_msg = f"timeout after {timeout_sec}s"
+        append_event(jsonl_path, {
+            "type": "node_failed",
+            "node_id": node_id,
+            "data": {"error": error_msg},
+        })
+        return DispatchResult(outcome="failed", error=error_msg)
+    except OSError as exc:
+        error_msg = str(exc)
+        append_event(jsonl_path, {
+            "type": "node_failed",
+            "node_id": node_id,
+            "data": {"error": error_msg},
+        })
+        return DispatchResult(outcome="failed", error=error_msg)
+
+    stdout = proc.stdout or ""
+    stderr = proc.stderr or ""
+
+    if proc.returncode == 0:
+        append_event(jsonl_path, {
+            "type": "node_completed",
+            "node_id": node_id,
+            "data": {"output": stdout},
+        })
+        return DispatchResult(outcome="completed", output=stdout)
+    else:
+        append_event(jsonl_path, {
+            "type": "node_failed",
+            "node_id": node_id,
+            "data": {"error": stderr},
+        })
+        return DispatchResult(outcome="failed", error=stderr)
 
 
 def _dispatch_approval_node(

@@ -115,8 +115,9 @@ def test_dispatch_node_agent_returns_completed(jsonl_path, base_run_state, tmp_p
 
 
 def test_dispatch_node_skill_returns_completed(jsonl_path, base_run_state, tmp_path):
-    """skill 键存在时，派发到 _dispatch_skill_node → outcome=completed。"""
-    node = _node("skill")
+    """skill 键存在（且有合法 skill 名）时，派发到 _dispatch_skill_node → outcome=completed。"""
+    # 真实实现要求 node["skill"] 为非空字符串；空值会抛 WorkflowError → outcome=failed
+    node = {"id": "test-skill", "skill": "my-skill"}
     result = dispatch_node(node, base_run_state, tmp_path, tmp_path, {}, jsonl_path)
     assert result.outcome == "completed"
 
