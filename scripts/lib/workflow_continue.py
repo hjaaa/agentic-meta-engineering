@@ -378,7 +378,7 @@ def _resume_run(run_id: str, run_state: "RunState", jsonl_path: Path) -> int:
         print(str(exc), file=sys.stderr)
         return 1
 
-    # run_resumed 不映射 WORKFLOW_EVENT_TO_STATE，保持原 state 语义不变（详细设计 §1.2.2）
+    # run_resumed 不映射 WORKFLOW_EVENT_TO_STATE，保持原 state 语义不变（详细设计 §1.2）
     try:
         append_event(jsonl_path, {"type": "run_resumed", "run_id": run_id})
     except WorkflowError as exc:
