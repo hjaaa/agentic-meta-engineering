@@ -180,7 +180,18 @@ def _dispatch_agent_node(
     """Agent 节点 stub。
 
     真实逻辑在 F-010 实现（mock_agent_dispatch fixture + 主 Claude 集成）。
+
+    P1-b（codex round-3 2026-05-12）：必须写 node_completed 事件，否则 crash 后
+    RunState.rebuild 看不到完成事件，会把节点当 unfinished 重派——破坏 F-010
+    AC-05 mock fixture 的真实保证。其他节点类型（skill/prompt/bash）入口处都写了
+    node_completed，agent 节点为了对齐补上。
     """
+    node_id: str = node.get("id", "<unknown>")
+    append_event(jsonl_path, {
+        "type": "node_completed",
+        "node_id": node_id,
+        "data": {"output": ""},  # stub 输出留空；F-010 真接入后由 fixture / 主 Claude 填
+    })
     return DispatchResult(outcome="completed")
 
 
@@ -333,10 +344,20 @@ def _dispatch_approval_node(
 ) -> DispatchResult:
     """Approval 节点：写 approval_pending 事件供 F-007 续跑消费。
 
-    按 detailed-design.md:178-185：
-    1. 对 node["approval"]["prompt"] 执行 substitute_vars 替换
-    2. 写 approval_pending 事件（data.prompt = 替换后的文本）
-    3. 返回 DispatchResult(outcome="approval_pending")
+    按 schema（workflow_loader.py:390-393）：approval.message 或 approval.gate_message
+    至少有一个；codex round-3（2026-05-12）发现旧实现读 approval.prompt 与 schema 不
+    一致，导致所有按 schema 写的真实 approval 节点（如 standard-8phase.yaml 的 8 处
+    阶段 signoff）写出来 approval_pending.data.prompt 永远空，人类看不到该签什么。
+
+    修后顺序：message → gate_message → prompt（legacy fallback，兼容历史 yaml）；
+    渲染后写 approval_pending.data.prompt（事件字段名保留不变，下游消费者 / 测试断言
+    不破坏）。
+
+    流程：
+    1. 取消息文本（message > gate_message > prompt）
+    2. 对文本执行 substitute_vars 替换
+    3. 写 approval_pending 事件（data.prompt = 替换后的文本）
+    4. 返回 DispatchResult(outcome="approval_pending")
 
     人类 sign-off 后由 /workflow:approve 写 approval_approved 事件，
     F-007 的续跑逻辑再推进到 node_completed。
@@ -344,8 +365,12 @@ def _dispatch_approval_node(
     node_id: str = node.get("id", "<unknown>")
     approval_cfg = node.get("approval") or {}
 
-    # 替换 prompt 中的变量引用（$RUN_ID / $nodeId.output 等）
-    raw_prompt: str = approval_cfg.get("prompt", "")
+    # P1-a：schema 字段 message / gate_message 优先；legacy prompt 兜底
+    raw_prompt: str = (
+        approval_cfg.get("message")
+        or approval_cfg.get("gate_message")
+        or approval_cfg.get("prompt", "")
+    )
     # 传 run_state.node_outputs 让 prompt 中 $<nodeId>.output[.field] 引用能解析（env 走 ENV_VAR 路径覆盖不到 .output 后缀）
     rendered_prompt = substitute_vars(raw_prompt, run_state.node_outputs, env)
 

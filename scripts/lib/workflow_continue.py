@@ -353,6 +353,15 @@ def _main_loop(
         if not should_continue:
             break
 
+    # P1-c（codex round-3 2026-05-12）：所有节点跑完（current_node==None）且 state 仍为
+    # running 时，主动写 workflow_completed 事件 + 翻 state 到 completed。
+    # 旧实现遗漏导致顺利跑完的 run 永远卡在 state=running，/workflow:status 看不到终态。
+    # 仅在 state==running 时翻；approval_pending / sub_workflow_pending / failed 等
+    # 已被 _route_outcome break 跳出，不触发此分支。
+    if run_state.state == "running" and run_state.current_node is None:
+        append_event(jsonl_path, {"type": "workflow_completed", "data": {}})
+        run_state.state = "completed"
+
 
 def _setup_run(
     run_id: str,

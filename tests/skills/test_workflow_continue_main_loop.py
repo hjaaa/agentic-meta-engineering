@@ -287,9 +287,12 @@ def test_main_loop_completes_three_nodes_with_mocked_dispatch(tmp_path, jsonl_pa
 
         _main_loop(run_state, workflow, tmp_path, tmp_path, jsonl_path)
 
-    # main loop 应正常结束：state=running（无 workflow_completed 事件），current_node=None
-    assert run_state.state == "running"
+    # main loop 应正常结束：current_node=None；P1-c（codex round-3）修后 state 翻 completed
+    # 且写 workflow_completed 事件
     assert run_state.current_node is None
+    assert run_state.state == "completed", "末节点跑完应翻 state=completed（P1-c 修后）"
+    types = [e["type"] for e in read_events(jsonl_path)[0]]
+    assert "workflow_completed" in types, "P1-c：main loop 正常退出应写 workflow_completed 事件"
 
     # 全部 3 节点的 node_outputs 已记录
     assert "bootstrap-validate" in run_state.node_outputs

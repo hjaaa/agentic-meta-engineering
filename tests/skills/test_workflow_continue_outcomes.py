@@ -204,9 +204,9 @@ def test_main_loop_complete_flow_3nodes_with_approval_and_continue(
         run_state_2.state = "running"  # 模拟 approval_approved 后状态恢复
         _main_loop(run_state_2, mock_workflow_3nodes, tmp_path, tmp_path, jsonl_path)
 
-        # 期望：node-c 完成，state 回到 running（因为拓扑末尾，current_node=None 触发 while 退出）
-        assert run_state_2.state == "running"
+        # 期望：node-c 完成，current_node=None；P1-c（codex round-3）修后 state→completed
         assert run_state_2.current_node is None
+        assert run_state_2.state == "completed", "末节点跑完应翻 state=completed（P1-c 修后）"
         assert "node-b" in run_state_2.node_outputs
         assert "node-c" in run_state_2.node_outputs
 
@@ -254,9 +254,9 @@ def test_main_loop_loop_continue_updates_counter_and_keeps_current_node(
     # loop_counters 应更新（第 1 次 loop_continue 后计数为 1）
     assert run_state.loop_counters.get("node-a", 0) == 1
 
-    # 最终 current_node 应已推进（node-a completed 后 → node-b；node-b completed 后 → None）
+    # 最终 current_node 应已推进（node-a completed → node-b → None）；P1-c 修后 state→completed
     assert run_state.current_node is None
-    assert run_state.state == "running"
+    assert run_state.state == "completed", "末节点跑完应翻 state=completed（P1-c 修后）"
 
 
 # ============================================================================

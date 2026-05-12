@@ -224,6 +224,102 @@ def test_dispatch_approval_node_resolves_node_output_field(tmp_path):
     assert ap[0]["data"]["prompt"] == "verdict=approved"
 
 
+def test_dispatch_approval_node_reads_message_field_from_schema(tmp_path):
+    """P1-a（codex round-3）：schema 的 approval.message 必须被识别为审批文本来源。
+
+    schema 定义 message / gate_message 为 canonical key（workflow_loader.py:390-393），
+    standard-8phase.yaml 等所有真实 approval 节点都用 message。旧实现只读 .prompt 导致
+    所有按 schema 写的真实 approval 写出 approval_pending.data.prompt 全空。
+    """
+    jsonl_path = tmp_path / "run-state.jsonl"
+    rs = RunState(run_id="REQ-2026-010")
+    rs.node_outputs["req-quality-review"] = {
+        "output": '{"verdict": "approved"}',
+        "state": "completed",
+        "data": {},
+    }
+    node = {
+        "id": "req-signoff",
+        "approval": {
+            "message": "需求评审 verdict=$req-quality-review.output.verdict",
+        },
+    }
+    result = _dispatch_approval_node(node, {}, rs, jsonl_path)
+    assert result.outcome == "approval_pending"
+
+    events, _ = read_events(jsonl_path)
+    ap = [e for e in events if e.get("type") == "approval_pending"]
+    assert len(ap) == 1
+    # P1-a 关键回归：approval.message 被读取并渲染（旧版会写空串）
+    assert ap[0]["data"]["prompt"] == "需求评审 verdict=approved", (
+        f"应读取 approval.message 渲染，实际：{ap[0]['data']['prompt']!r}"
+    )
+
+
+def test_dispatch_approval_node_reads_gate_message_when_message_missing(tmp_path):
+    """P1-a：仅 approval.gate_message 存在时也应被识别（schema 允许 message 或 gate_message）。"""
+    jsonl_path = tmp_path / "run-state.jsonl"
+    rs = RunState(run_id="REQ-TEST-AB")
+    node = {
+        "id": "gated",
+        "approval": {
+            "gate_message": "gate=$RUN_ID",
+        },
+    }
+    result = _dispatch_approval_node(node, {"RUN_ID": "REQ-TEST-AB"}, rs, jsonl_path)
+    assert result.outcome == "approval_pending"
+
+    events, _ = read_events(jsonl_path)
+    ap = [e for e in events if e.get("type") == "approval_pending"]
+    assert ap[0]["data"]["prompt"] == "gate=REQ-TEST-AB"
+
+
+def test_dispatch_approval_node_legacy_prompt_field_still_works(tmp_path):
+    """P1-a：历史 approval.prompt 字段（不符合 schema 但旧测试在用）作为 legacy fallback 兼容。"""
+    jsonl_path = tmp_path / "run-state.jsonl"
+    rs = RunState(run_id="REQ-LEGACY")
+    node = {
+        "id": "old-style",
+        "approval": {"prompt": "legacy text $RUN_ID"},
+    }
+    result = _dispatch_approval_node(node, {"RUN_ID": "REQ-LEGACY"}, rs, jsonl_path)
+    assert result.outcome == "approval_pending"
+
+    events, _ = read_events(jsonl_path)
+    ap = [e for e in events if e.get("type") == "approval_pending"]
+    assert ap[0]["data"]["prompt"] == "legacy text REQ-LEGACY", "legacy prompt 字段应仍被识别"
+
+
+def test_dispatch_agent_node_writes_node_completed_event(tmp_path):
+    """P1-b（codex round-3）：agent stub 必须写 node_completed 事件，否则 crash 后
+    RunState.rebuild 把节点当 unfinished 重派——破坏 F-010 AC-05 mock fixture 保证。
+    """
+    from workflow_dispatcher import _dispatch_agent_node, dispatch_node
+
+    jsonl_path = tmp_path / "run-state.jsonl"
+    rs = RunState(run_id="REQ-AG-001")
+    node = {"id": "ac05-agent", "agent": {"name": "code-review-judge"}}
+
+    # 路径 1：直接调 _dispatch_agent_node
+    result = _dispatch_agent_node(node, {}, jsonl_path)
+    assert result.outcome == "completed"
+
+    events, _ = read_events(jsonl_path)
+    completed = [e for e in events if e.get("type") == "node_completed"]
+    assert len(completed) == 1, f"_dispatch_agent_node 应写 1 条 node_completed，实际 {events}"
+    assert completed[0]["node_id"] == "ac05-agent"
+
+    # 路径 2：经 dispatch_node 入口（同时写 node_started + node_completed）
+    jsonl_path2 = tmp_path / "run-state-2.jsonl"
+    dispatch_node(node, rs, tmp_path, tmp_path, {}, jsonl_path2)
+    events2, _ = read_events(jsonl_path2)
+    types = [e["type"] for e in events2]
+    assert "node_started" in types
+    assert "node_completed" in types, (
+        f"经 dispatch_node 入口的 agent 节点也必须含 node_completed，实际 {types}"
+    )
+
+
 def test_dispatch_approval_node_env_and_node_output_combined(tmp_path):
     """TC-D4 扩展：同一 prompt 中同时包含 $ENV_VAR 和 $<nodeId>.output.field，两者均正确替换。"""
     jsonl_path = tmp_path / "run-state.jsonl"
