@@ -213,6 +213,28 @@ def _handle_failure(
         return _handle_abort(run_state, node, jsonl_path, error, on_failure)
 
 
+def _finalize_if_topology_done(run_state: RunState, jsonl_path: Path) -> bool:
+    """末节点 outcome=completed/loop_done/sub_workflow_done 推进后，若 next_id is None
+    说明拓扑跑完——写 workflow_completed 事件 + 翻 state=completed，返回 True 让调用方 break。
+
+    P1-c v2（codex round-4 2026-05-12）修订：
+      旧实现把 workflow_completed 写在 _main_loop 退出后并以 `current_node is None` 判断完成，
+      存在 crash 窗口——dispatcher 已写 node_completed 但 _advance_after_completed 没跑（无
+      advance 事件），重启后 RunState.rebuild 在 node_completed 分支把 current_node 置 None
+      （rebuild 凭"current_node == node_id 则置 None"判定），与"自然跑完"无法区分，导致
+      workflow_completed 被误写、剩余节点被静默截断。
+      新实现把 workflow_completed 的写入下沉到 _route_outcome——只有真的从一次成功的
+      completed/loop_done/sub_workflow_done 路径推进且无 next 时才写，crash 路径不触发。
+
+    返回值：True 表示已写 workflow_completed（调用方应 break）；False 表示还有后继节点。
+    """
+    if run_state.current_node is None:
+        append_event(jsonl_path, {"type": "workflow_completed", "data": {}})
+        run_state.state = "completed"
+        return True
+    return False
+
+
 def _advance_after_completed(
     run_state: RunState,
     node: dict,
@@ -260,6 +282,8 @@ def _route_outcome(
     if outcome == "completed":
         # node_completed 事件已由 dispatcher 写入；仅更新 RunState + 推进指针
         _advance_after_completed(run_state, node, result)
+        if _finalize_if_topology_done(run_state, jsonl_path):
+            return False
         return True
 
     elif outcome == "loop_continue":
@@ -280,6 +304,8 @@ def _route_outcome(
     elif outcome in ("loop_done", "sub_workflow_done"):
         # 循环/子 workflow 完成：推进到下一节点
         _advance_after_completed(run_state, node, result)
+        if _finalize_if_topology_done(run_state, jsonl_path):
+            return False
         return True
 
     elif outcome == "approval_pending":
@@ -349,18 +375,13 @@ def _main_loop(
         result = dispatch_node(node, run_state, run_dir, root, env, jsonl_path)
 
         # 按 outcome 路由（False=break, True=继续循环）
+        # P1-c v2（codex round-4）：workflow_completed 由 _route_outcome 内的
+        # _finalize_if_topology_done 写入——只在真的从 completed/loop_done/sub_workflow_done
+        # outcome 推进且无 next 时触发。crash → rebuild 看到 current_node=None 的场景不会
+        # 误触发（main loop 直接因 while 失败退出，不进 _route_outcome）。
         should_continue = _route_outcome(run_state, node, result, jsonl_path)
         if not should_continue:
             break
-
-    # P1-c（codex round-3 2026-05-12）：所有节点跑完（current_node==None）且 state 仍为
-    # running 时，主动写 workflow_completed 事件 + 翻 state 到 completed。
-    # 旧实现遗漏导致顺利跑完的 run 永远卡在 state=running，/workflow:status 看不到终态。
-    # 仅在 state==running 时翻；approval_pending / sub_workflow_pending / failed 等
-    # 已被 _route_outcome break 跳出，不触发此分支。
-    if run_state.state == "running" and run_state.current_node is None:
-        append_event(jsonl_path, {"type": "workflow_completed", "data": {}})
-        run_state.state = "completed"
 
 
 def _setup_run(

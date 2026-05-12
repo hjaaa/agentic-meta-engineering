@@ -307,6 +307,60 @@ def test_main_loop_completes_three_nodes_with_mocked_dispatch(tmp_path, jsonl_pa
 
 
 # ============================================================================
+# codex P1（2026-05-12 round-4）：crash 在 _advance_after_completed 之前重启不应
+# 误写 workflow_completed（P1-c v2 回归）
+# ============================================================================
+
+class TestMainLoopCrashWindowDoesNotFinalize:
+    """codex round-4 P1：rebuild 看到 node_completed 后 current_node 会被置 None
+    （rebuild 凭"current_node == node_id 则置 None"判定），与"自然跑完"无法区分。
+    旧实现在 _main_loop 退出后凭 `current_node is None` 写 workflow_completed，
+    会把 crash 在 advance 之前的 run 误判为完成，截断剩余拓扑。
+
+    P1-c v2 修后：workflow_completed 只在 _route_outcome 内 outcome=completed/loop_done/
+    sub_workflow_done 推进且 next is None 时写——crash 路径根本不会进 _route_outcome，
+    不会误触发。
+    """
+
+    def test_main_loop_skips_finalize_when_rebuild_yields_none_current_node(
+        self,
+        jsonl_path,
+        tmp_path,
+    ):
+        """模拟 crash 场景：rebuild 把 current_node 置 None，但 state 仍为 running 且
+        拓扑还有未完成节点。重启后 _main_loop 直接因 while 失败退出，**不**写
+        workflow_completed，state 保持 running，让用户能介入修复。
+        """
+        # 模拟 crash 后 rebuild 的产物：current_node=None（rebuild 看到 node-a 已 completed），
+        # 但工作流还有 node-b 没跑完
+        workflow = {
+            "nodes": [
+                {"id": "node-a", "bash": "echo a", "next": "node-b"},
+                {"id": "node-b", "bash": "echo b"},
+            ]
+        }
+        run_state = RunState(
+            run_id="REQ-CRASH-001",
+            current_node=None,  # ← 关键：rebuild 后 current_node 已 None
+            state="running",     # 但 state 仍是 running（无 workflow_completed 事件）
+        )
+
+        _main_loop(run_state, workflow, tmp_path, tmp_path, jsonl_path)
+
+        # P1-c v2 关键回归：state 应保持 running，**不**翻 completed
+        assert run_state.state == "running", (
+            f"crash 窗口 rebuild 出的 current_node=None 不应触发 workflow_completed，"
+            f"state 应保持 running 让用户介入；实际 state={run_state.state!r}"
+        )
+        # jsonl 不应含 workflow_completed
+        events, _ = read_events(jsonl_path)
+        types = [e["type"] for e in events]
+        assert "workflow_completed" not in types, (
+            f"crash 窗口不应写 workflow_completed 事件，实际 jsonl events: {types}"
+        )
+
+
+# ============================================================================
 # codex P1（2026-05-12 round-2）：_load_workflow_for_run meta key 对齐
 # ============================================================================
 
