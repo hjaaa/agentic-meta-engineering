@@ -34,9 +34,9 @@ _LIB_DIR = _REPO_ROOT / "scripts" / "lib"
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
-from run_state import read_events  # noqa: E402
 import workflow_bootstrap as wb  # noqa: E402  bootstrap helper（F-002 主对象）
 import workflow_run as wr  # noqa: E402  仅 _generate_req_id 等顶层入口
+from run_state import read_events  # noqa: E402
 
 
 # ============================================================================

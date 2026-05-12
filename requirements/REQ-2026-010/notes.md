@@ -10,21 +10,22 @@ Window B 的 main loop 完整化与 bootstrap 流程补全延至本需求实施�
 
 - ~~**G-1（error-handling minor）**：`workflow_run.py` `else 998` 死分支~~ → 已在 `a6ab298` 修复
 - ~~**G-6（aux minor）**：`test_workflow_commands.py:873` `# TC-F1-3：` 全角冒号~~ → 已在 `a6ab298` 修复
-- **G-2（complexity follow-up）**：`tests/skills/test_workflow_commands.py` 902 行近 1000 硬阈值；F-005/F-008 启动前评估按 TestClass 拆分（test_workflow_run_id.py / test_workflow_commands_core.py 等）
-- **G-5（security follow-up）**：`scripts/lib/workflow_run.py:95` `os.scandir` 异常路径未 WorkflowError 包装；需与 `_generate_run_id` line 51 同步重构（独立议题）
+- ~~**G-2（complexity follow-up）**：`tests/skills/test_workflow_commands.py` 902 行近 1000 硬阈值~~ → 已闭合（F-007 rev3 拆 4 文件：happy 291 / advanced 338 / state 278 / reqgen 271，最大 338 ≤500）
+- **G-5（security follow-up）**：`scripts/lib/workflow_run.py:118` `os.scandir` / `:74` `iterdir` 异常路径未 WorkflowError 包装（独立议题——独立 PR 全仓 FS 异常治理时一起做）
 - **G-7/G-8（aux follow-up）**：测试文件 5+ 处方法内 `import workflow_run as wr` / `from datetime import ...` 风格统一上提（独立 PR 重构）
 - **G-9（concurrency info）**：TC-F1-2 `barrier.wait()` 防御性包入 try（实践不可触发）
-- **F-7 / F-11（rev1 旧 follow-up 延续）**：`results.append` GIL 依赖 / `except Exception` 过宽（与 TC-F5-G8 同款）
-- **F-1（history-context info）**：`tests/skills/test_workflow_commands.py` 30 天内 2 次 hotfix（7ffc8ad / ff16de2），关注后续是否仍频繁改并发逻辑
+- **F-7（info, drop）**：`results.append` GIL 依赖——CPython GIL 保证 list.append 原子，是被广泛接受的并发实践
+- **F-11（info, drop）**：测试代码 `except Exception` 过宽——测试本就要捕获所有意外，宽泛 except 是合理模式
+- **F-1（history-context info）**：`tests/skills/test_workflow_commands.py` 30 天内 2 次 hotfix（7ffc8ad / ff16de2）——已被 F-007 rev3 拆分自然降温
 
 ## F-002 review follow-up（rev2 looks_clean 后接受的非阻断项）
 
 ### rev2 keep minor（建议后续 feature 顺手清扫）
 
-- **G-3（complexity minor）**：`scripts/lib/workflow_bootstrap.py:243` `_bootstrap_requirement` 51 代码行 / 6 步骤，可抽 `_write_bootstrap_artifacts(req_dir, req_id, title, base_branch)` 合并 3 次 `_write_artifact_file` 调用，使主函数专注协调
-- **S-1（aux minor）**：`tests/skills/test_workflow_bootstrap.py:37` 同分组内 `from run_state import read_events` 出现在 `import workflow_bootstrap as wb` 之前，移行后符合 PEP8 isort 惯例
-- **S-3（aux minor）**：`scripts/lib/workflow_bootstrap.py:56` `BootstrapError.__init__` 无 docstring（类级 docstring 已说明语义），可选补 1 行 init docstring
-- **S-4（aux minor）**：`scripts/lib/workflow_bootstrap.py:94` `logging.debug("git rev-parse HEAD 失败 ...")` 行长 104 字符，拆 2 行或缩短变量名
+- ~~**G-3（complexity minor）**：`scripts/lib/workflow_bootstrap.py:243` `_bootstrap_requirement` 51 代码行 / 6 步骤~~ → 已闭合（REQ-2026-010 follow-up 清扫，抽 `_write_bootstrap_artifacts` helper，主函数缩到 ~35 行）
+- ~~**S-1（aux minor）**：`tests/skills/test_workflow_bootstrap.py:37` 同分组内 `from run_state import read_events` 出现在 `import workflow_bootstrap as wb` 之前~~ → 已闭合（REQ-2026-010 follow-up 清扫，from-import 移到 import-as 之后）
+- ~~**S-3（aux minor）**：`scripts/lib/workflow_bootstrap.py:56` `BootstrapError.__init__` 无 docstring~~ → 已闭合（REQ-2026-010 follow-up 清扫，补 3 行 docstring 说明 artifacts_created/branch_created 用途）
+- **S-4（aux minor, drop）**：`scripts/lib/workflow_bootstrap.py:94` `logging.debug("git rev-parse HEAD 失败 ...")` 行长 104 字符——项目 ruff `line-length=120` 未超限
 
 ### rev2 keep info（不强求修）
 
@@ -47,7 +48,7 @@ Window B 的 main loop 完整化与 bootstrap 流程补全延至本需求实施�
 
 ### rev2 keep follow-up
 
-- **F-5（error-handling minor）**：`scripts/lib/workflow_run.py:229` `workflow = load_result.workflow` 依赖 load_workflow 契约 errors==0 ⇒ workflow != None，调用方无 assert 防线。当前 :229 已用注释守门，参考 F-001 同款实践延续注释路径
+- ~~**F-5（error-handling minor）**：`scripts/lib/workflow_run.py:229` `workflow = load_result.workflow` 依赖 load_workflow 契约~~ → 已闭合（REQ-2026-010 follow-up 清扫核查：当前 :229 已有 `# dict，由 load_workflow 保证非 None` 注释守门，无需再改）
 
 ### rev2 D-014 横向扫描发现（独立议题，不在 F-003 范围）
 

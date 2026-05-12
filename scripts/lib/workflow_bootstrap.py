@@ -60,6 +60,11 @@ class BootstrapError(WorkflowError):
         artifacts_created: bool = False,
         branch_created: bool = False,
     ) -> None:
+        """记录 bootstrap 完成到第几步，供 _bootstrap_rollback 精确反向撤销。
+
+        artifacts_created=True 表示需 rmtree req_dir；branch_created=True 表示需切回
+        previous_branch + 删 feat 分支。两者独立，可任意组合。
+        """
         super().__init__(message)
         self.artifacts_created = artifacts_created
         self.branch_created = branch_created
@@ -206,6 +211,26 @@ def _write_artifact_file(
     logging.info("bootstrap req_id=%s step=write_%s done", req_id, step_name)
 
 
+def _write_bootstrap_artifacts(
+    req_dir: Path,
+    req_id: str,
+    title: str,
+    base_branch: str,
+) -> None:
+    """渲染并写 meta.yaml / plan.md / process.txt 三个 bootstrap 产物。
+
+    任一文件写失败时 _write_artifact_file 已抛 BootstrapError(artifacts_created=True,
+    branch_created=False)，本 helper 不再额外包装——保留原始 step_name 上下文。
+    process.txt 留空，由 Hook 首次触发时填充。
+    """
+    branch_name = f"feat/req-{_strip_req_prefix(req_id)}"
+    meta_content = _render_meta_yaml(req_id, title, branch_name, base_branch)
+    _write_artifact_file(req_dir / "meta.yaml", meta_content, req_id=req_id, step_name="meta.yaml")
+    plan_content = _render_plan_md(req_id, title)
+    _write_artifact_file(req_dir / "plan.md", plan_content, req_id=req_id, step_name="plan.md")
+    _write_artifact_file(req_dir / "process.txt", "", req_id=req_id, step_name="process.txt")
+
+
 def _checkout_feature_branch(req_id: str, repo_root: Path) -> str:
     """git checkout -b feat/req-<id>（id 已去前缀小写）。
 
@@ -278,13 +303,7 @@ def _bootstrap_requirement(
 
     # 步骤 2/3/4：渲染并写 meta.yaml / plan.md / process.txt
     # 失败语义统一通过 _write_artifact_file 包装为 BootstrapError(artifacts_created=True)
-    branch_name = f"feat/req-{_strip_req_prefix(req_id)}"
-    meta_content = _render_meta_yaml(req_id, title, branch_name, base_branch)
-    _write_artifact_file(req_dir / "meta.yaml", meta_content, req_id=req_id, step_name="meta.yaml")
-    plan_content = _render_plan_md(req_id, title)
-    _write_artifact_file(req_dir / "plan.md", plan_content, req_id=req_id, step_name="plan.md")
-    # process.tool.log 由 Hook 首次触发时生成，bootstrap 阶段只建空 process.txt
-    _write_artifact_file(req_dir / "process.txt", "", req_id=req_id, step_name="process.txt")
+    _write_bootstrap_artifacts(req_dir, req_id, title, base_branch)
 
     # 步骤 5：切 feature 分支（注意：本步骤先于 jsonl，是因为 jsonl 写失败比
     # 分支切换失败更罕见；分支切失败比写文件更可能（已有同名分支 / detached HEAD），
