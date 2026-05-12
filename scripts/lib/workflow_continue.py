@@ -132,9 +132,12 @@ def _setup_run(
     run_id: str,
     root: Path,
 ) -> tuple["RunState", Path, Path]:
-    """解析 run_dir、读取 jsonl 事件并重建 RunState。
+    """读 jsonl + rebuild RunState 的前置准备。
 
-    返回 (run_state, run_dir, jsonl_path)；失败时抛出 WorkflowError（由调用方转 exit 1）。
+    仅 _resolve_run_dir 失败时抛 WorkflowError；read_events 内部把 OSError 转为
+    warnings 列表返回，RunState.rebuild 不涉及 IO 也不抛异常。
+
+    返回: (run_state, run_dir, jsonl_path)
 
     注：状态矩阵校验（validate_state_for_cmd）和 run_resumed 事件写入由 _resume_run()
     统一承担，保持各步骤职责清晰。

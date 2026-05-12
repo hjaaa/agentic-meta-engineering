@@ -342,7 +342,7 @@ def test_main_loop_unknown_node_writes_workflow_failed_event(
 
 
 # ============================================================================
-# TC-F7-6 · 其他 outcome（stub）
+# TC-F7-6 · 其他 outcome（F-008/F-011 接入前：break 但不改 state）
 # ============================================================================
 
 
@@ -350,10 +350,12 @@ def test_main_loop_other_outcome_breaks_without_state_change(
     mock_workflow_2nodes,
     jsonl_path,
     tmp_path,
+    capsys,
 ):
-    """outcome 为 loop_continue / sub_workflow_pending 时，main loop break 但不改 state。
+    """TC-F7-6：未支持的 outcome 写 WARN 到 stderr 让调用方能感知。
 
-    这些由 F-008/F-011 处理；F-007 仅 break 并保持状态。
+    outcome 为 loop_continue / sub_workflow_pending 时，main loop break 但不改 state；
+    同时向 stderr 写 WARN 以便排查——F-008/F-011 接入前的兜底行为。
     """
     from workflow_dispatcher import DispatchResult
 
@@ -368,3 +370,8 @@ def test_main_loop_other_outcome_breaks_without_state_change(
         assert run_state.state == "running"
         # dispatch 仅被调用 1 次（node-a），因为 outcome != completed 时 break
         assert mock_dispatch.call_count == 1
+
+    # WARN 应写到 stderr，让调用方感知不支持的 outcome
+    captured = capsys.readouterr()
+    assert "WARN: F-007 阶段不支持的 outcome" in captured.err
+    assert "node-a" in captured.err
