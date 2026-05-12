@@ -1,0 +1,81 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-010-code-F-009-003",
+  "requirement_id": "REQ-2026-010",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-12 02:55:00",
+  "reviewed_commit": "d134624",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "4d7d69b5eaf2b28c8f49ad871c3f6bf101f5f7128bcece476b2a6ec65c832982"
+    },
+    {
+      "path": "artifacts/tasks/F-009.md",
+      "sha256": "522e2f61b974b805a792a69163230864263b8ceae27f1d4c0586a0c3b96efa53"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 82,
+  "dimensions": {
+    "design_consistency": {
+      "score": 100,
+      "issues": []
+    },
+    "security": {
+      "score": 100,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 100,
+      "issues": []
+    },
+    "complexity": {
+      "score": 100,
+      "issues": []
+    },
+    "error_handling": {
+      "score": 100,
+      "issues": []
+    },
+    "auxiliary_spec": {
+      "score": 72,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/workflow_status.py:41 注释写 'sub_runs/<node_id>/'，但目录名实际存放的是子 run 的 run_id（格式如 RUN-20260509-101），不是 node 标识符。测试 test_workflow_commands_advanced.py:96 用 child_id='RUN-20260509-101' 直接作为目录名，即目录名 = run_id。workflow_rollback_subrun.py docstring 策略2也写'<node_id>'但注释本身亦有同样失实（策略3 fallback 才按 run_id 前缀匹配）。workflow_status.py 注释应改为 'sub_runs/<sub_run_id>/'，与代码 sub_run_id = sub_run_dir.name 保持语义一致，避免误导读者将目录名理解为 node id（grep 验证：sub_run_id = sub_run_dir.name 命中 line 47；child_id='RUN-' 命中 test line 89-90）"
+        },
+        {
+          "severity": "minor",
+          "description": "tests/skills/test_workflow_commands_advanced.py:113 注释 '无论 resolve 成功与否都有相关输出' 是旧实现遗留描述。F-009 重构后 _render_status 不再经 _resolve_run_dir 解析子 run 目录，而是直接读 sub_run_dir/run-state.jsonl，'resolve' 概念在子 run 发现路径中已不存在。注释应改为反映新路径的描述，避免 trend-G-meta 同款注释失实固化（grep 验证：_resolve_run_dir 在 _render_status 函数体内 0 命中；仅 main() line 79 有调用）"
+        }
+      ]
+    },
+    "performance": {
+      "score": 100,
+      "issues": []
+    },
+    "history_context": {
+      "score": 90,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "循环变量命名与 rollback_subrun.py 不对齐：workflow_rollback_subrun.py:108 用 'for d in'，workflow_status.py:44 用 'for sub_run_dir in'，两者处理同一 sub_runs/ 目录结构但变量名不同。workflow_status.py 的 sub_run_dir 更具描述性，属于正向差异；记录供后续跨文件统一约定时参考，不强制修改"
+        }
+      ]
+    }
+  },
+  "required_fixes": [
+    "scripts/lib/workflow_status.py:41 注释 'sub_runs/<node_id>/' 改为 'sub_runs/<sub_run_id>/'（major：注释失实，目录名是 run_id 非 node_id）",
+    "tests/skills/test_workflow_commands_advanced.py:113 注释删除 'resolve' 相关旧描述，改为反映直接读 run-state.jsonl 的新路径（minor：旧实现遗留注释）"
+  ],
+  "suggestions": [
+    "import 检查结论：_resolve_run_dir 在 main() line 79 仍有合法使用（run_dir = _resolve_run_dir(run_id, root)），不是 dead import，无需清理；trend-G-meta dead import 同模式在本次增量未复现",
+    "trend-G-meta 防复发建议：F-009 注释失实与 F-008 docstring 失实同源（改实现未同步更新注释），建议开发者在 feature 交付前自检 checklist 增加一项：'注释/docstring 中的路径表达式和行为动词是否仍与当前实现一致'"
+  ],
+  "scope": {
+    "feature_id": "F-009"
+  },
+  "supersedes": "REV-REQ-2026-010-code-F-009-002"
+}

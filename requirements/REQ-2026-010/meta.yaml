@@ -1,7 +1,7 @@
 # ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-010
 title: workflow 引擎 main loop 与 bootstrap 完整化
-phase: task-planning
+phase: development
 gates_passed:
   - phase: definition
     at: "2026-05-11 11:34:20"
@@ -26,6 +26,11 @@ gates_passed:
     via: managing-requirement-lifecycle
     notes: detail-design-002 looks_clean（首轮 2 major + 4 minor 已闭环：AC-03 改造表扩到 10
       处 + $BRANCH_NAME 变量 + _handle_failure 完整实现 + RunState 扩展）
+  - phase: development
+    at: "2026-05-12 10:42:06"
+    via: managing-requirement-lifecycle
+    notes: phase 字段补登记——F-001~F-008 已实质在 development 推进；phase-transition gate 0 
+      error / 2 W002 carry-over
 created_at: "2026-05-11 11:25:44"
 branch: feat/req-2026-010
 base_branch: develop
@@ -197,4 +202,34 @@ reviews:
             4d7d69b5eaf2b28c8f49ad871c3f6bf101f5f7128bcece476b2a6ec65c832982
           artifacts/tasks/F-007.md: 
             173ee065736bf6aec2695cb29ca92f5791b9cbf531dfc3ca368d1141096f3f6b
+        stale: false
+      F-008:
+        history:
+          - REV-REQ-2026-010-code-F-008-001
+          - REV-REQ-2026-010-code-F-008-002
+          - REV-REQ-2026-010-code-F-008-003
+        latest: REV-REQ-2026-010-code-F-008-003
+        conclusion: looks_clean
+        reviewed_commit: 1698940
+        artifact_hashes:
+          artifacts/features.json: 
+            4d7d69b5eaf2b28c8f49ad871c3f6bf101f5f7128bcece476b2a6ec65c832982
+          artifacts/tasks/F-008.md: 
+            58e410e379ab3921c41016a53f2bd874ad972daa3b3bfae2daacb9a1c8f9c96f
+        stale: false
+      F-009:
+        history:
+          - REV-REQ-2026-010-code-F-009-001
+          - REV-REQ-2026-010-code-F-009-002
+          - REV-REQ-2026-010-code-F-009-003
+          - REV-REQ-2026-010-code-F-009-004
+          - REV-REQ-2026-010-code-F-009-005
+        latest: REV-REQ-2026-010-code-F-009-005
+        conclusion: looks_clean
+        reviewed_commit: fc31556
+        artifact_hashes:
+          artifacts/features.json:
+            4d7d69b5eaf2b28c8f49ad871c3f6bf101f5f7128bcece476b2a6ec65c832982
+          artifacts/tasks/F-009.md:
+            1be5252ff35117bd163493a13e3eb4cf5b46e78fb864596da1937bed19ce04c4
         stale: false
