@@ -1,0 +1,90 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-010-code-F-006-002",
+  "requirement_id": "REQ-2026-010",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-11 22:37:13",
+  "reviewed_commit": "c59aa6f",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "4d7d69b5eaf2b28c8f49ad871c3f6bf101f5f7128bcece476b2a6ec65c832982"
+    },
+    {
+      "path": "artifacts/tasks/F-006.md",
+      "sha256": "de643e6754552de9e8e6bd576225abf9b1471797cfde8d237f04344c118e05ec"
+    }
+  ],
+  "conclusion": "blocked",
+  "score": 65,
+  "dimensions": {
+    "design_consistency": {
+      "score": 60,
+      "issues": [
+        {
+          "severity": "blocker",
+          "description": "requirements/REQ-2026-010/artifacts/detailed-design.md:159-162 §1.5 dispatch_node 4 处调用签名（skill/prompt/bash/approval）未随 rev2 §1.6 更新同步：L159 skill 缺 run_state；L160 prompt 缺 run_state/run_dir/root；L161 bash 缺 run_state/root；L162 approval 缺 run_state——rev2 改 §1.6 时漏改 §1.5 调用点，文档自相矛盾"
+        },
+        {
+          "severity": "major",
+          "description": "scripts/lib/workflow_dispatcher.py:348 _dispatch_approval_node 调 substitute_vars 未传 escape_for_bash=True，与 rev2 改后的 detailed-design.md:331 §2.3『skill / prompt / approval 节点走默认 True（防注入）』矛盾；同文件 :204 skill / :248 prompt 都显式传 True，唯独 approval 漏掉"
+        }
+      ]
+    },
+    "security": {
+      "score": 90,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 90,
+      "issues": []
+    },
+    "complexity": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "tests/skills/test_workflow_dispatcher_bash_skill_prompt.py:39 DispatchResult 在 rev2 删 MagicMock 后变成 dead import（全文件 grep 仅 1 处 = 此 import 本身）"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 78,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "tests/skills/test_workflow_dispatcher_bash_skill_prompt.py:120-131 test_bash_node_nonzero_returncode_via_dispatch_node 未断言 result.error 内容；rev2 在 workflow_dispatcher.py:317 新增的兜底字符串 `exit code {returncode} (no stderr/stdout)` 无 CI 保护，下次回归改动无法被测试发现"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 85,
+      "issues": []
+    },
+    "performance": {
+      "score": 90,
+      "issues": []
+    },
+    "history_context": {
+      "score": 88,
+      "issues": []
+    }
+  },
+  "required_fixes": [
+    {
+      "description": "detailed-design.md §1.5:159-162 同步 §1.6 签名：L159 skill 加 run_state；L160 prompt 加 run_state, run_dir, root；L161 bash 加 run_state, root；L162 approval 加 run_state——rev2 改 §1.6 时漏改 §1.5，文档自相矛盾",
+      "location": "requirements/REQ-2026-010/artifacts/detailed-design.md:159-162",
+      "severity": "blocker"
+    }
+  ],
+  "suggestions": [
+    "trend-G-meta 第 2 次触发（rev1 keep 9 → rev2 自引入 1 blocker + 1 major + 2 minor）：与 F-005 rev2→rev3 同款模式；建议 rev3 严格只闭合本轮 keep + 跑全量测试，不引入新改动",
+    "F-4 approval escape 选 (a) 代码侧补 escape_for_bash=True 而非改 §2.3 文档：①与 skill/prompt 三节点对齐（防御一致性）②未来若有任何消费者把 data.prompt 拼进 shell 不会被注入 ③零成本（一行参数）",
+    "测试覆盖：dispatch_node 入口失败路径建议加 1 行断言『assert \"err\" in result.error or \"exit code\" in result.error』；stdout-only 路径（returncode!=0 + stderr=\"\" + stdout 非空）可在 rev3+ 视进度补；非紧急"
+  ],
+  "scope": {
+    "feature_id": "F-006"
+  },
+  "supersedes": "REV-REQ-2026-010-code-F-006-001"
+}
