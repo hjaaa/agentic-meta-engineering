@@ -60,7 +60,7 @@ title: workflow 引擎 main loop 与 bootstrap 完整化 · 技术预研
 - `tests/e2e/test_code_review_embedded.py:8`：文件头注释"外部依赖（subagent 调用）全部通过 monkeypatch / fixture 隔离，不真实启 subagent"
 - `tests/e2e/test_sub_workflow_lifecycle.py:12`：文件头注释"不真派 Agent（MockSubAgent + monkeypatch）"
 
-**成本测算**：若必须走真实 LLM，每次 e2e 估算消耗数百到数千 token（input），按 claude-sonnet 当前定价单次约 sub-cent 量级；两个测试以日常 CI 频度运行，月成本量级单位为美元个位数，财务可接受。具体数字属阶段 3 时点的估算（详见待澄清清单条目 1 关于 mock 方案的最终决定），最终以实际计费为准。
+**成本测算** [待用户确认]：若必须走真实 LLM，每次 e2e 估算消耗数百到数千 token（input），按 claude-sonnet 当前定价单次约 sub-cent 量级；两个测试以日常 CI 频度运行，月成本量级单位为美元个位数，财务可接受。具体数字属阶段 3 时点的估算（详见待澄清清单条目 1 关于 mock 方案的最终决定），最终以实际计费为准。
 
 **稳定性风险更关键**：LLM output 格式不确定（即使有 `output_format` 约束），网络超时与限流是非零概率事件，会导致 CI flaky rate 上升 [待用户确认]——具体抖动率以实际接入后 CI 统计为准。
 
@@ -182,7 +182,7 @@ AC-01（bootstrap 完整化）→ AC-03（yaml 路径参数化）→ AC-02（mai
 
 主要工作量集中在 AC-02 main loop dispatcher 框架与 AC-01 bootstrap 副作用补全，合计预估见 §3 工作量估算表（人天数字属预估，详见待澄清清单条目 2）。
 
-**关键风险点**：bootstrap、main loop、yaml 路径参数化三项的协同依赖顺序（bootstrap 副作用必须先于 main loop e2e）；建议拆两个 PR 控制合并风险。D-007 双轨期下父子路径分裂（`nodes/` vs `sub_runs/`）是已知的代码不一致，改动量小且无历史兼容负担。
+**关键风险点** [待用户确认]：bootstrap、main loop、yaml 路径参数化三项的协同依赖顺序（bootstrap 副作用必须先于 main loop e2e）；建议拆两个 PR 控制合并风险。D-007 双轨期下父子路径分裂（`nodes/` vs `sub_runs/`）是已知的代码不一致，改动量小且无历史兼容负担。
 
 ## 待澄清清单
 
