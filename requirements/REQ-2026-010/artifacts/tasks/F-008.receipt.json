@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "feature_id": "F-008",
   "status": "DONE",
-  "commit_sha": "TBD",
+  "commit_sha": "b9fcc3c",
   "files_changed": [
     "scripts/lib/workflow_continue.py (F-NEW-4: docstring 引用行改为 :185-200 _dispatch_skill_node; F-NEW-5: §1.2.2 → §1.7)",
     "tests/skills/test_workflow_continue_failure_handler.py (F-NEW-1: 删除 dead import; F-NEW-2: 加 capsys + WARN 断言; F-NEW-3: docstring _main_loop → _handle_failure)",
