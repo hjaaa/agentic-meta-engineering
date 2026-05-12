@@ -19,14 +19,16 @@ fail-open 理由：
     模式：5s timeout + 50ms 轮询；truncate+write+flush+fsync 原地写）
     —— 修复 review-001 F-4 RMW 锁分层盲点（detail-design §3.4 仅覆盖 .dispatch-state.json）
 
-过程产物白名单（hotfix REQ-2026-008）：
-  以下 6 类路径在当前 req_dir 范围内不计为 touches 越界（避免 SOP 必经写入被硬挡）：
+过程产物白名单（hotfix REQ-2026-008 + REQ-2026-010）：
+  以下 8 类路径在当前 req_dir 范围内不计为 touches 越界（避免 SOP 必经写入被硬挡）：
     1. <req_dir>/artifacts/tasks/<fid>.receipt.json — dispatch 回执（subagent 写）
     2. <req_dir>/artifacts/tasks/<fid>.md           — task.md 自指（主 Agent status 翻转）
     3. <req_dir>/plan.md                            — req-level 过程产物（ADR / 决策）
     4. <req_dir>/notes.md                           — req-level 过程产物（笔记）
     5. <req_dir>/meta.yaml                          — req-level 元数据（phase / signoff）
     6. <req_dir>/process.txt                        — req-level 时间线（progress logger）
+    7. <req_dir>/artifacts/review-*.md              — code-review-report 嵌入模式审查报告
+    8. <req_dir>/.dispatch-state.json               — dispatch lock 自身（acquire / release / cleanup）
   仅当前 req_dir 命中；跨需求的同名文件不豁免（白名单不过宽）。
 
 依赖：
@@ -363,18 +365,23 @@ def _extract_file_paths(tool_name: str, tool_input: dict) -> list[str]:
 
 
 def _is_process_artifact(fp: str, req_dir: Path, feature_id: str) -> bool:
-    """判断 fp 是否落在当前 req_dir 范围内的"过程产物白名单"中（hotfix REQ-2026-008）。
+    """判断 fp 是否落在当前 req_dir 范围内的"过程产物白名单"中（hotfix REQ-2026-008 + REQ-2026-010）。
 
-    覆盖 6 类（见模块 docstring）：
+    覆盖 8 类（见模块 docstring）：
       1. <req_dir>/artifacts/tasks/<fid>.receipt.json
       2. <req_dir>/artifacts/tasks/<fid>.md
       3. <req_dir>/plan.md
       4. <req_dir>/notes.md
       5. <req_dir>/meta.yaml
       6. <req_dir>/process.txt
+      7. <req_dir>/artifacts/review-*.md  ← code-review-report Skill 嵌入模式产物
+      8. <req_dir>/.dispatch-state.json   ← dispatch lock 自身（acquire / release / cleanup 写入）
 
-    仅当 fp 解析后的绝对路径与白名单中某条 resolve 后路径完全相等才返回 True。
-    跨需求同名文件（如 <other_req_dir>/plan.md）不豁免。
+    前 6 + 第 8 类按 resolve 后绝对路径精确匹配；第 7 类为 pattern（parent ==
+    <req_dir>/artifacts 且 name 形如 `review-*.md`），不依赖 IO（避免 glob 副作用）。
+
+    仅当 fp 解析后命中"当前 req_dir 内"任一条目才返回 True；
+    跨需求同名文件（如 <other_req_dir>/plan.md、<other_req_dir>/.dispatch-state.json）不豁免。
 
     任何 resolve 异常 → 返回 False（fail-open 回原行为：当作越界记录）。
     """
@@ -395,6 +402,7 @@ def _is_process_artifact(fp: str, req_dir: Path, feature_id: str) -> bool:
         req_resolved / "notes.md",
         req_resolved / "meta.yaml",
         req_resolved / "process.txt",
+        req_resolved / ".dispatch-state.json",
     ]
     for cand in candidates:
         try:
@@ -403,6 +411,21 @@ def _is_process_artifact(fp: str, req_dir: Path, feature_id: str) -> bool:
                 return True
         except Exception:
             continue
+
+    # 第 7 类（pattern）：<req_dir>/artifacts/review-*.md
+    # code-review-report Skill 嵌入模式写盘到 artifacts/review-YYYYMMDD-HHMMSS.md，
+    # 是 SOP 必经路径；用 parent + name 模式判定避免 glob/IO，跨需求自然不命中。
+    try:
+        artifacts_dir = (req_resolved / "artifacts").resolve()
+        if (
+            fp_resolved.parent == artifacts_dir
+            and fp_resolved.name.startswith("review-")
+            and fp_resolved.suffix == ".md"
+        ):
+            return True
+    except Exception:
+        pass
+
     return False
 
 
@@ -478,10 +501,11 @@ def _main_inner(stdin_data: str) -> None:
         return  # fail-open：无法读取 touches
 
     # 7. 检查每个 file_path，记录越界
-    #    过程产物白名单（hotfix REQ-2026-008）：6 类路径在当前 req_dir 范围内豁免，
-    #    避免 SOP 必经写入（receipt.json 自指 / task.md status 翻转 / plan.md ADR
-    #    落地 / notes.md 笔记 / meta.yaml signoff / process.txt 进度）被记为越界
-    #    硬挡 GATE-TOUCHES-VIOLATION。详见 _is_process_artifact docstring。
+    #    过程产物白名单（hotfix REQ-2026-008 + REQ-2026-010）：8 类路径在当前
+    #    req_dir 范围内豁免，避免 SOP 必经写入（receipt.json 自指 / task.md status
+    #    翻转 / plan.md ADR 落地 / notes.md 笔记 / meta.yaml signoff / process.txt
+    #    进度 / artifacts/review-*.md 审查报告 / .dispatch-state.json lock 自身）
+    #    被记为越界硬挡 GATE-TOUCHES-VIOLATION。详见 _is_process_artifact docstring。
     receipt_path = req_dir / "artifacts" / "tasks" / f"{feature_id}.receipt.json"
     for fp in file_paths:
         if not _is_in_touches(fp, touches):

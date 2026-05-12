@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-005",
+  "status": "DONE",
+  "commit_sha": "6c73e94",
+  "files_changed": [
+    "tests/skills/test_workflow_dispatcher.py (deleted)",
+    "tests/skills/test_workflow_dispatcher_dispatch.py (new)",
+    "tests/skills/test_workflow_dispatcher_build_env_and_state.py (new)"
+  ],
+  "test_summary": "rev3：27 passed（_dispatch.py 17 + _build_env_and_state.py 10）；回归 74 passed（test_workflow_commands.py + test_workflow_bootstrap.py）。拆分后两文件各 313/212 行均 ≤ 500 行。7 个 dead import 已清除（append_event + 6 个 _dispatch_*_node 私有函数）。",
+  "touches_violations": [
+    {
+      "path": "/tmp/F-005-rev3-verdict.json",
+      "ts": "2026-05-11T13:39:15+00:00",
+      "tool": "Write"
+    }
+  ],
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-11T23:30:00+08:00"
+}

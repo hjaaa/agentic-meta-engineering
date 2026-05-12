@@ -1,0 +1,211 @@
+{
+  "schema_version": "1.0",
+  "requirement_id": "REQ-2026-010",
+  "features": [
+    {
+      "id": "F-001",
+      "title": "_generate_req_id + REQ-YYYY-NNN 编号策略",
+      "description": "在 workflow_run.py 中新增 _generate_req_id 函数，扫 requirements/ 下现有 REQ-YYYY-NNN 取 max+1，原子化建顶层目录，EEXIST 重试 3 次。与已有 _generate_run_id 一致的并发安全策略。",
+      "modules": ["workflow_run"],
+      "touches": ["scripts/lib/workflow_run.py"],
+      "depends_on": [],
+      "depends_on_features": [],
+      "complexity": "light",
+      "acceptance": [
+        "调用返回 'REQ-2026-XXX' 格式的字符串",
+        "并发 3 个线程/进程同时调用，无 EEXIST 冲突未消化",
+        "max+1 策略与 _generate_run_id 一致；通过现有单测模式覆盖"
+      ],
+      "estimate_days": 0.5,
+      "pr_group": "PR-A",
+      "ac_refs": ["AC-01"]
+    },
+    {
+      "id": "F-002",
+      "title": "_bootstrap_requirement + _bootstrap_rollback",
+      "description": "完成需求类 bootstrap 副作用三步：建 requirements/<id>/artifacts/ + 写 meta.yaml/plan.md/process.txt + git checkout -b feat/req-<id> + jsonl workflow_started。任一步失败触发 _bootstrap_rollback 反向撤销（branch -D + rmtree），不吞掉原始异常。",
+      "modules": ["workflow_run", "templates"],
+      "touches": ["scripts/lib/workflow_run.py", "templates/plan.md.tmpl"],
+      "depends_on": [],
+      "depends_on_features": ["F-001"],
+      "complexity": "heavy",
+      "acceptance": [
+        "bootstrap 成功：requirements/<id>/{meta.yaml,plan.md,process.txt,artifacts/} 全部存在",
+        "bootstrap 成功后当前分支 = feat/req-<id>",
+        "故意触发 mkdir 失败：requirements/<id>/ 不残留",
+        "故意触发 git checkout 失败：分支与目录全部回滚到调用前状态",
+        "rollback 自身 IOError 不抛出，打 ERROR 日志"
+      ],
+      "estimate_days": 1.0,
+      "pr_group": "PR-A",
+      "ac_refs": ["AC-01"]
+    },
+    {
+      "id": "F-003",
+      "title": "挂载 load_workflow schema 校验",
+      "description": "workflow_run.py main() 在 glob 找到模板后、生成 ID 前插入 load_workflow(template_path) 调用；若 report.errors > 0 则打印 report.render() + exit 1。",
+      "modules": ["workflow_run"],
+      "touches": ["scripts/lib/workflow_run.py"],
+      "depends_on": [],
+      "depends_on_features": [],
+      "complexity": "trivial",
+      "acceptance": [
+        "构造 schema 不合法的 yaml，run 命令 exit 1 且 stderr 含校验报告",
+        "schema 合法的现有模板（standard-8phase / code-review-embedded）不被误判"
+      ],
+      "estimate_days": 0.25,
+      "pr_group": "PR-A",
+      "ac_refs": ["AC-01"]
+    },
+    {
+      "id": "F-004",
+      "title": "standard-8phase.yaml 7 处节点路径参数化",
+      "description": "把所有 'runs/$RUN_ID/' 字面量替换为 $RUN_DIR 或 $META_PATH（视上下文）；archive-finalize 节点的分支名也用 $RUN_ID 派生。引擎注入这些变量。",
+      "modules": ["workflow-templates"],
+      "touches": [".claude/workflows/requirement/standard-8phase.yaml"],
+      "depends_on": [],
+      "depends_on_features": ["F-002"],
+      "complexity": "light",
+      "acceptance": [
+        "grep 'runs/\\$RUN_ID/' .claude/workflows/requirement/standard-8phase.yaml 返回 0 个匹配",
+        "bash 节点替换后语义不变（yq 命令针对 $META_PATH 写入）",
+        "D-007 双路径下：requirements/<id>/ 与 runs/<id>/ 两种 run 都能跑过 archive-finalize"
+      ],
+      "estimate_days": 0.5,
+      "pr_group": "PR-A",
+      "ac_refs": ["AC-03"]
+    },
+    {
+      "id": "F-005",
+      "title": "workflow_dispatcher.py 框架（DispatchResult + 7 类节点 stub）",
+      "description": "新建 workflow_dispatcher.py：定义 DispatchOutcome / DispatchResult / dispatch_node 入口；为 7 类节点提供 stub 函数（先返回 DispatchResult(outcome='completed')），逐 feature 替换。配合 _build_env 注入变量。",
+      "modules": ["workflow_dispatcher", "run_state"],
+      "touches": ["scripts/lib/workflow_dispatcher.py", "scripts/lib/run_state.py"],
+      "depends_on": [],
+      "depends_on_features": ["F-004"],
+      "complexity": "medium",
+      "acceptance": [
+        "dispatch_node 7 类节点匹配正确（agent/skill/prompt/bash/approval/loop/sub_workflow）",
+        "每次调用写 node_started + node_completed 事件",
+        "未知节点类型抛 WorkflowError 并写 node_failed",
+        "_build_env 含 RUN_ID/RUN_DIR/META_PATH/ARTIFACTS_DIR/ARGUMENTS + 已 completed 节点 output"
+      ],
+      "estimate_days": 0.75,
+      "pr_group": "PR-B",
+      "ac_refs": ["AC-02"]
+    },
+    {
+      "id": "F-006",
+      "title": "bash/skill/prompt 节点完整实现",
+      "description": "实现 _dispatch_bash_node（subprocess.run + 变量预替换 escape_for_bash=False）/ _dispatch_skill_node（主 Claude 跑 skill）/ _dispatch_prompt_node（主 Claude 跑 prompt 字符串）。",
+      "modules": ["workflow_dispatcher"],
+      "touches": ["scripts/lib/workflow_dispatcher.py", "scripts/lib/run_state.py"],
+      "depends_on": [],
+      "depends_on_features": ["F-005"],
+      "complexity": "medium",
+      "acceptance": [
+        "bash 节点：subprocess returncode!=0 转 node_failed，error=stderr",
+        "bash 节点：$RUN_DIR/$META_PATH 等变量被预替换为裸字面值（escape_for_bash=False）",
+        "prompt/skill 节点：主 Claude 调用后 output 写入 node_completed.data.output"
+      ],
+      "estimate_days": 0.75,
+      "pr_group": "PR-B",
+      "ac_refs": ["AC-02", "AC-03"]
+    },
+    {
+      "id": "F-007",
+      "title": "approval 节点 + main loop break（方案 ii）",
+      "description": "_dispatch_approval_node 写 approval_pending 事件后立即返回 DispatchResult(outcome='approval_pending')；main loop 见此 outcome 时设置 state=approval_pending 并 break。用户敲 /workflow:approve 后由 /workflow:continue 续跑。",
+      "modules": ["workflow_dispatcher", "workflow_continue"],
+      "touches": ["scripts/lib/workflow_dispatcher.py", "scripts/lib/workflow_continue.py"],
+      "depends_on": [],
+      "depends_on_features": ["F-005"],
+      "complexity": "light",
+      "acceptance": [
+        "approval 节点 dispatch 后 jsonl 末尾事件 = approval_pending",
+        "main loop break 后 state = approval_pending（在 RunState 中可重建）",
+        "/workflow:approve 后调 /workflow:continue 能从下游节点接着派发"
+      ],
+      "estimate_days": 0.5,
+      "pr_group": "PR-B",
+      "ac_refs": ["AC-02"]
+    },
+    {
+      "id": "F-008",
+      "title": "main loop 替换 stub + 失败处理矩阵",
+      "description": "workflow_continue.py 的 _main_loop_stub 替换为真正的 while 循环；按 outcome 路由（completed → next；loop_continue → 保持 current_node；approval_pending/sub_workflow_pending → break；failed → _handle_failure 按 on_failure retry/skip/abort 分支）。",
+      "modules": ["workflow_continue"],
+      "touches": ["scripts/lib/workflow_continue.py"],
+      "depends_on": [],
+      "depends_on_features": ["F-006", "F-007"],
+      "complexity": "medium",
+      "acceptance": [
+        "main loop 至少跑通 standard-8phase 前 3 个节点（bootstrap-validate + req-input-normalize + req-draft）",
+        "on_failure=retry：同一节点连续失败 < max_retries 时重派",
+        "on_failure=skip：失败节点写 node_skipped，main loop 继续",
+        "on_failure=abort：state=failed 后 break；下次 continue 拒绝续跑"
+      ],
+      "estimate_days": 0.75,
+      "pr_group": "PR-B",
+      "ac_refs": ["AC-02"]
+    },
+    {
+      "id": "F-009",
+      "title": "workflow_status.py 父子路径收敛到 sub_runs/",
+      "description": "把 workflow_status.py 中 nodes/<id>/run_id 间接索引改为直接迭代 run_dir/sub_runs/<node_id>/，子 run id 取目录名。与 workflow_rollback_subrun.py 既有约定对齐。",
+      "modules": ["workflow_status"],
+      "touches": ["scripts/lib/workflow_status.py"],
+      "depends_on": [],
+      "depends_on_features": [],
+      "complexity": "trivial",
+      "acceptance": [
+        "status 输出的子 run 树与 rollback 跨父子归档前后看到的子 run 集合一致",
+        "无历史 nodes/ 残留路径（grep 确认）"
+      ],
+      "estimate_days": 0.25,
+      "pr_group": "PR-B",
+      "ac_refs": ["AC-04"]
+    },
+    {
+      "id": "F-010",
+      "title": "AC-05 mock_agent_dispatch fixture + 替换 2 条占位 e2e",
+      "description": "新建 tests/e2e/conftest.py 的 mock_agent_dispatch fixture（monkeypatch 替换 _dispatch_agent_node 返回预设 output）；重写 test_code_review_embedded.py 与 test_sub_workflow_lifecycle.py，删除文件头'不真启 subagent / 不真派 Agent'注释，断言 jsonl node_completed + output 非空。",
+      "modules": ["tests-e2e"],
+      "touches": [
+        "tests/e2e/conftest.py",
+        "tests/e2e/test_code_review_embedded.py",
+        "tests/e2e/test_sub_workflow_lifecycle.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": ["F-008"],
+      "complexity": "heavy",
+      "acceptance": [
+        "test_code_review_embedded.py 头部注释不再含'不真启 subagent'字样",
+        "test_sub_workflow_lifecycle.py 头部注释不再含'不真派 Agent'字样",
+        "至少一处断言：assert any(e['type']=='node_completed' and len(json.dumps(e['data']['output']))>0 ...)",
+        "mock fixture 不调用真实 Claude API"
+      ],
+      "estimate_days": 1.0,
+      "pr_group": "PR-B",
+      "ac_refs": ["AC-05"]
+    },
+    {
+      "id": "F-011",
+      "title": "loop / sub_workflow 节点最小实现（深度联动留后续）",
+      "description": "_dispatch_loop_node：根据 run_state.loop_counters 写 loop_iteration_started/completed，达到 max_iterations 后返回 loop_done。_dispatch_sub_workflow_node：派子 run 到 run_dir/sub_runs/<node_id>/，返回 sub_workflow_pending（等 main loop break，下次 continue 时检测子 run 状态）。",
+      "modules": ["workflow_dispatcher"],
+      "touches": ["scripts/lib/workflow_dispatcher.py"],
+      "depends_on": [],
+      "depends_on_features": ["F-005"],
+      "complexity": "light",
+      "acceptance": [
+        "loop 节点连续 dispatch N 次直到 max_iterations，outcome 依次为 loop_continue ×(N-1) + loop_done",
+        "sub_workflow 节点：子 run 目录建在 run_dir/sub_runs/<node_id>/，outcome=sub_workflow_pending",
+        "loop_counters 字段在 RunState.rebuild 时正确累计"
+      ],
+      "estimate_days": 0.5,
+      "pr_group": "PR-B",
+      "ac_refs": ["AC-02"]
+    }
+  ]
+}

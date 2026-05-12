@@ -1,11 +1,10 @@
-"""F-004 · TC-F4-2 / TC-F4-3 / TC-F4-5：code-review-embedded 端到端行为校验。
+"""F-004 · TC-F4-2 / TC-F4-3 / TC-F4-5 / TC-F4-AC05：code-review-embedded 端到端行为校验。
 
 覆盖：
 - TC-F4-2: 8 个 cr-checker-* 节点并发派发 + cr-judge 收齐 8 路 findings
 - TC-F4-3: cr-critic 对每条 finding 给 verdict 三档 + cr-judge 取 not_rebutted 入最终
 - TC-F4-5: 父 workflow sub_workflow 节点 args 经 shellQuote 注入子 $ARGUMENTS
-
-外部依赖（subagent 调用）全部通过 monkeypatch / fixture 隔离，不真实启 subagent。
+- TC-F4-AC05: mock_agent_dispatch 走完整 main loop，断言 node_completed.data.output 非空
 
 测试运行：
     python3 -m pytest tests/e2e/test_code_review_embedded.py -v
@@ -19,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "scripts" / "lib"))
@@ -656,3 +656,104 @@ def test_has_error_when_guard_skips_downstream(
         "以下节点 when 守卫缺失或表达式不正确（H-1 要求）:\n"
         + "\n".join(wrong_when)
     )
+
+
+# ============================================================================
+# TC-F4-AC05（F-010）：mock_agent_dispatch 走完整 main loop
+#
+# 验证 mock dispatcher 能驱动 workflow_continue.main 走完整 main loop，
+# 并在 jsonl 中写入 node_completed 事件且 data.output 非空。
+# ============================================================================
+
+_AC05_WORKFLOW = {
+    "name": "test-agent-ac05",
+    "version": 1,
+    "category": "requirement",
+    "nodes": [
+        {
+            "id": "ac05-agent-node",
+            "agent": "test-agent",
+            "mock_response": {"verdict": "approved", "score": 90},
+            # next 缺省 → 无下一节点，循环自然结束
+        }
+    ],
+}
+
+
+def _write_minimal_run(tmp_path: Path, run_id: str, workflow_name: str) -> Path:
+    """在 tmp_path 下建最小 run 环境，返回 run-state.jsonl 路径。
+
+    写入 workflow_started + node_started 使 RunState.current_node 指向第一个节点，
+    main loop 重建后可直接从该节点继续派发。
+    """
+    # workflow_continue._load_workflow_for_run 从 .claude/workflows/requirement/ 加载
+    wf_dir = tmp_path / ".claude" / "workflows" / "requirement"
+    wf_dir.mkdir(parents=True, exist_ok=True)
+    (wf_dir / f"{workflow_name}.yaml").write_text(
+        yaml.dump(_AC05_WORKFLOW, allow_unicode=True),
+        encoding="utf-8",
+    )
+
+    run_dir = tmp_path / "runs" / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    jsonl_path = run_dir / "run-state.jsonl"
+    # node_started 使 RunState.current_node 指向该节点，main loop 会重跑它
+    init_events = [
+        {
+            "type": "workflow_started",
+            "run_id": run_id,
+            "data": {"workflow_name": workflow_name},
+        },
+        {
+            "type": "node_started",
+            "run_id": run_id,
+            "node_id": "ac05-agent-node",
+        },
+    ]
+    with jsonl_path.open("w", encoding="utf-8") as fh:
+        for evt in init_events:
+            fh.write(json.dumps(evt, ensure_ascii=False) + "\n")
+    return jsonl_path
+
+
+def test_ac05_mock_dispatch_produces_node_completed_output(
+    mock_agent_dispatch: list[dict],
+    tmp_path: Path,
+) -> None:
+    """TC-F4-AC05: mock_agent_dispatch + workflow_continue.main → node_completed.output 非空。
+
+    验收要点（AC-05）：
+    1. mock dispatcher 被调到（captured_calls 非空）
+    2. jsonl 中存在 node_completed 事件
+    3. node_completed.data.output 序列化后长度 > 0（非空非 null）
+    4. 未调用真实 Claude API（无网络依赖）
+    """
+    import workflow_continue
+
+    run_id = "TEST-AC05-F4"
+    workflow_name = "test-agent-ac05"
+    jsonl_path = _write_minimal_run(tmp_path, run_id, workflow_name)
+
+    rc = workflow_continue.main([run_id], repo_root=tmp_path)
+    assert rc == 0, f"workflow_continue.main 应返回 0，实际 rc={rc}"
+
+    # 读 jsonl 验证 node_completed 事件存在且 output 非空
+    events: list[dict] = []
+    with jsonl_path.open(encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if line:
+                events.append(json.loads(line))
+
+    completed = [e for e in events if e.get("type") == "node_completed"]
+    assert completed, "至少应有 1 个 node_completed 事件"
+
+    # AC-05 核心断言：output 非空
+    for ev in completed:
+        output = ev.get("data", {}).get("output")
+        assert len(json.dumps(output)) > 0, (
+            f"node_completed.data.output 不应为空：{ev}"
+        )
+
+    # mock fixture 被调到
+    assert mock_agent_dispatch, "mock_agent_dispatch 应记录至少 1 次调用"

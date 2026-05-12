@@ -1,0 +1,94 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-010-code-F-008-002",
+  "requirement_id": "REQ-2026-010",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-12 10:08:46",
+  "reviewed_commit": "71ce9b0",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "4d7d69b5eaf2b28c8f49ad871c3f6bf101f5f7128bcece476b2a6ec65c832982"
+    },
+    {
+      "path": "artifacts/tasks/F-008.md",
+      "sha256": "70723cf817a9f69a3ed8fb56af04d23df43fe00967ab050f8ec64b6cea9b5aab"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 78,
+  "dimensions": {
+    "design_consistency": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_continue.py:9 模块 docstring 引 '详细设计 §1.2.2 / §1.7'，但 detailed-design.md 仅有 §1.2 无 §1.2.2 — spec 锚点不存在"
+        }
+      ]
+    },
+    "security": {
+      "score": 90,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 90,
+      "issues": []
+    },
+    "complexity": {
+      "score": 82,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "tests/skills/test_workflow_continue_main_loop.py:520 行数超 spec 500 行建议上限 20 行（4%）— rev1 follow-up（拆 3-4 个测试文件）已部分落地（拆出 failure_handler），但主文件仍超阈值；建议 rev3 再拆 loop_* 或 approval_pending 路由测试"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "tests/skills/test_workflow_continue_failure_handler.py:255-256 TC-F8-7 函数体内 dead import io / unittest.mock as mock，未在后续代码使用 — 与 rev1 follow-up-1 同模式 dead import（trend-G-meta 第 4 次循环本 rev 未终结的直接证据）"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 78,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "tests/skills/test_workflow_continue_failure_handler.py:217-239 TC-F8-6 实际已正确使用 capsys（critic 原列 F-NEW-2 经独立调研已落实），但 TC-F8-7（line 247-269）声称 stderr 含 WARN 却未注入 capsys 也未断言 stderr 内容 — assertion 缺失"
+        },
+        {
+          "severity": "minor",
+          "description": "tests/skills/test_workflow_continue_failure_handler.py:281 TC-F8-8 docstring 写 '_main_loop 默认走 retry 路径'，但函数体调 _handle_failure（不是 _main_loop），表述与测试对象错位"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_continue.py:64/123/165 _handle_retry/_skip/_abort docstring 参照 workflow_dispatcher.py:173-184 — 但 :173-184 实际是 _dispatch_agent_node 2 行 stub，与新函数多段 docstring 风格不匹配"
+        }
+      ]
+    },
+    "performance": {
+      "score": 90,
+      "issues": []
+    },
+    "history_context": {
+      "score": 90,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "trend-G-meta 第 4 次循环本 rev 未终结：rev1 follow-up-1 刚清掉 test_workflow_commands_advanced.py:36 顶层 dead import，rev2 在新增 TC-F8-7 时（test_workflow_continue_failure_handler.py:255-256）又引入函数体内 dead import — 改一处同模式应全文 grep 同模式，建议把 'dead import 自检' 纳入 PR 自检清单",
+    "跨维度叠加：F-NEW-1 (dead import) × F-NEW-2 (TC-F8-7 缺 capsys 断言) 在同一测试用例 — 该用例 docstring 承诺验证 stderr 但既无 capsys 注入也未断言，叠加 dead import 表明 TC-F8-7 编写时未完整执行 'docstring → 断言 → 清理 import' 闭环，建议 rev3 先补 capsys+stderr 断言再删 dead import",
+    "spec-lag follow-up（独立 PR）：(1) detailed-design.md §1.7 line 230-260 _handle_failure 签名 -> None 与 F-008 实现 -> bool 不一致；(2) §2.1 vs §1.7 workflow_failed 事件结构在 rev1 已对齐但 spec 未补 'node_id 在 data 内' 明文；建议 F-008 完成后开 SD 单元更新 PR 同步 spec",
+    "rev3 修复指引（5 minor 全闭合）：(1) workflow_continue.py:9 改 '§1.2.2 / §1.7' → '§1.2 / §1.7'；(2) TC-F8-7 删 import io/mock + 注入 capsys 并 assert 'WARN' in captured.err；(3) TC-F8-8 docstring '_main_loop' → '_handle_failure'；(4) _handle_retry/_skip/_abort docstring '参照 workflow_dispatcher.py:173-184' → 改引 :185-200 _dispatch_skill_node（多段 docstring 风格匹配）或直接删该行；(5) test_workflow_continue_main_loop.py 520 行拆分（按 outcome 路由切分 approval_pending / loop_* / sub_workflow_* 至独立文件）"
+  ],
+  "scope": {
+    "feature_id": "F-008"
+  },
+  "supersedes": "REV-REQ-2026-010-code-F-008-001"
+}

@@ -40,7 +40,7 @@
 
 ## 生成命令
 
-`.review-scope.json` 由 `code_review_routing.py` 统一生成（含 diff 扫描 + 路由建议 + trivial-skip 短路逻辑 + tty 确认 + 写盘）：
+`.review-scope.json` 由 `code_review_routing.py` 统一生成（含 diff 扫描 + 路由建议 + trivial-skip 短路逻辑 + 自动决策 + 写盘）。自 F-014 起取消人类 tty 卡点 A：
 
 ```bash
 python3 scripts/lib/code_review_routing.py --mode embedded --requirement-id <id> --base-sha <sha> --head-sha <sha> --base-branch develop --current-branch <branch>
@@ -84,12 +84,12 @@ python3 scripts/lib/code_review_routing.py --mode embedded --requirement-id <id>
     // ... 共 8 项，除 skipped=true 外 len(skipped_checkers) == 8
   ],
 
-  // 路由确认元信息（替代旧 routing_confirmed_by）
+  // 路由元信息（自 F-014 起由 routing.py 自动决策填充）
   "routing_decision": {
-    "decision": "accept",          // accept / all / custom / trivial-skipped
+    "decision": "accept",          // accept / all / trivial-skipped；F-014 后 custom/abort 不再产生
     "confirmed_at": "2026-04-30 21:23:50",   // YYYY-MM-DD HH:MM:SS Asia/Shanghai
-    "confirmed_by": "user@example.com",      // git config user.email
-    "tty_verified": true,                    // 必须 true
+    "confirmed_by": "user@example.com",      // git config user.email（最近一次 git 操作者）
+    "tty_verified": true,                    // 标记 scope 通过 routing.py 完整流水校验（含自动路由）
     "files_must_hit": 3,                     // 触发 must 命中的文件数（审计用）
     "files_suggest_hit": 5,
     "files_trivial": 0,
@@ -106,10 +106,10 @@ python3 scripts/lib/code_review_routing.py --mode embedded --requirement-id <id>
 | checker_route | 是 | 本次实际执行的 checker 名称列表；元素 ∈ 8-checker 全集；决策为 trivial-skipped 时为空数组 |
 | skipped_checkers | 是 | 被跳过的 checker 列表；每项含 `name` + `reason`；总长必须 == 8 |
 | routing_decision | 是 | 路由确认元信息子段，见下方不变量说明 |
-| routing_decision.decision | 是 | `accept` / `all` / `custom` / `trivial-skipped`；`abort` 时不写盘 |
+| routing_decision.decision | 是 | `accept` / `all` / `trivial-skipped`（F-014 后 `custom` / `abort` 不再产生，保留枚举供回滚） |
 | routing_decision.confirmed_at | 是 | YYYY-MM-DD HH:MM:SS Asia/Shanghai 时间戳 |
 | routing_decision.confirmed_by | 是 | git config user.email；必须匹配 `^[^@\s]+@[^@\s]+\.[^@\s]+$` |
-| routing_decision.tty_verified | 是 | 必须为 `true`；非 tty 路径拒绝写盘 |
+| routing_decision.tty_verified | 是 | 必须为 `true`；表示 scope 由 routing.py 完整流水生成并通过 I1-I8 校验 |
 | routing_decision.files_must_hit | 是 | 命中 must 规则的文件数 |
 | routing_decision.files_suggest_hit | 是 | 命中 suggest 规则的文件数 |
 | routing_decision.files_trivial | 是 | 命中 trivial 白名单的文件数 |
@@ -123,7 +123,7 @@ python3 scripts/lib/code_review_routing.py --mode embedded --requirement-id <id>
 | I2 | `decision="all"` ⇔ `skipped=false` ∧ `checker_route` 等于 `ALL_CHECKERS`（顺序敏感） |
 | I3 | `decision="custom"` → `checker_route` 必含 plan 中所有 must 命中 checker（用户不可去掉 must） |
 | I4 | `decision="abort"` → 不应有 scope 文件（routing.py 不写盘） |
-| I5 | `routing_decision.tty_verified` 必须 `true`（routing.py 不接受非 tty 路径写盘） |
+| I5 | `routing_decision.tty_verified` 必须 `true`（F-014 后含义放宽为"由 routing.py 完整流水写盘"） |
 | I6 | `confirmed_by` 必须匹配 `^[^@\s]+@[^@\s]+\.[^@\s]+$`，否则 routing.py 退码 1 |
 | I7 | `skipped=true` ⇒ `checker_route=[]` 且 `len(skipped_checkers)==8` |
 | I8 | `len(checker_route) + len(skipped_checkers) == 8`（除 trivial-skip 外严格成立） |

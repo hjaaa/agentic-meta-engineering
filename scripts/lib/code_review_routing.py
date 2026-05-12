@@ -1013,18 +1013,47 @@ def _git_diff_stats(base_sha: str, head_sha: str) -> tuple[dict, str]:
     return stats, diff_summary
 
 
+def _auto_decide(plan: RoutingPlan, confirmed_by: str) -> RoutingDecision:
+    """自动路由决策：推荐集非空 → accept，空 → 升 8 全集。
+
+    取代旧的 _prompt_user 交互流程——不再要求人类按键确认，路由器按 plan 直接出决策。
+    返回的 RoutingDecision.tty_verified 保留为 True，含义从「人类在 tty 卡点 A 已确认」放宽为
+    「scope 由 routing.py 完整流水生成且通过 I1-I8 校验」；下游 critic/judge/report 的契约不变。
+    """
+    recommended = [
+        c for c in ALL_CHECKERS
+        if c in plan.must_checkers or c in plan.suggest_checkers
+    ]
+    if recommended:
+        return RoutingDecision(
+            decision="accept",
+            confirmed_at=_now_shanghai_display(),
+            confirmed_by=confirmed_by,
+            tty_verified=True,
+            final_route=recommended,
+        )
+    # 推荐集为空（diff 全是灰色文件）→ 升全集，避免「跑 0 个 checker 但又非 trivial」的真空态
+    return RoutingDecision(
+        decision="all",
+        confirmed_at=_now_shanghai_display(),
+        confirmed_by=confirmed_by,
+        tty_verified=True,
+        final_route=list(ALL_CHECKERS),
+    )
+
+
 def _handle_routing_result(
     plan: RoutingPlan,
     args: argparse.Namespace,
     confirmed_by: str,
 ) -> None:
-    """处理 routing 结果的四个分支（trivial-skipped / accept / all / custom）。
+    """处理 routing 结果的三个分支（trivial-skipped / accept / all）。
 
-    H-4 fix：从 main() 抽出，降低 main 嵌套层级，使 main 只保留 8 步骨架。
-    abort 路径由 _prompt_user 内部 raise RoutingAbort，由 main 的 except 捕获。
+    自 F-014 起取消人类卡点 A：非 trivial 路径走 _auto_decide 直接产出决策；
+    旧的 _prompt_user / _check_tty / RoutingAbort 保留为死代码以便回滚。
     """
     if plan.trivial_only:
-        # 全 trivial，自动跳过，无需人工确认
+        # 全 trivial，自动跳过
         decision = RoutingDecision(
             decision="trivial-skipped",
             confirmed_at=_now_shanghai_display(),
@@ -1039,27 +1068,12 @@ def _handle_routing_result(
         )
         return
 
-    # 需要人工确认；abort 路径由 _prompt_user 内部 raise RoutingAbort
-    decision_raw = _prompt_user(plan, req_id=args.requirement_id)
-
-    # 补充 confirmed_by（_prompt_user 不做 git 调用，避免在交互过程中阻塞）
-    decision = RoutingDecision(
-        decision=decision_raw.decision,
-        confirmed_at=_now_shanghai_display(),
-        confirmed_by=confirmed_by,
-        tty_verified=True,
-        final_route=decision_raw.final_route,
-    )
-
+    decision = _auto_decide(plan, confirmed_by)
     _write_scope(plan, decision, args)
 
-    if decision.decision == "custom":
-        checker_list = ", ".join(decision.final_route)
-        _audit_log(
-            args.requirement_id,
-            f"[code-review-route-custom] 用户自定义子集：{checker_list}",
-        )
-    # accept / all 不写 audit（§8.4）
+    # accept / all 不写 process.txt audit（沿用 REQ-2026-003 detailed-design §8.4 静默约定，
+    # 避免污染 process.txt；trivial-skipped 仍写以追踪短路）。
+    # scope.json.routing_decision 已含 decision/confirmed_at/files_* 全量信息，可追溯性不依赖 audit。
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1072,8 +1086,8 @@ def main(argv: list[str] | None = None) -> int:
         # 步骤 1：解析参数
         args = _parse_args(argv)
 
-        # 步骤 2：tty 校验
-        _check_tty()
+        # 步骤 2：tty 校验——F-014 取消人类卡点 A 后跳过，让 AI / CI / 管道也能跑
+        # _check_tty() 函数保留以便回滚；EXIT_NON_TTY (2) 退码也保留供文档兼容
 
         # 步骤 3：加载 yaml
         raw = _load_yaml(ROUTING_YAML_PATH)
@@ -1164,6 +1178,7 @@ __all__ = [
     "_parse_custom_input",
     "_classify_input",
     "_prompt_user",
+    "_auto_decide",
     "_assert_scope_invariants",
     "_handle_routing_result",
     "_write_scope",

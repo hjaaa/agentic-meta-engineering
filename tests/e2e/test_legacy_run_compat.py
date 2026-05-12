@@ -193,6 +193,7 @@ def test_legacy_run_continue_path_no_error(tmp_path: Path) -> None:
     )
 
     # ── 真调 workflow_continue.main() 验证 _resolve_run_dir / validate_state_for_cmd 路径 ──
+    import shutil
     from workflow_continue import main as wf_continue_main
 
     # 在 tmp_path 下建 runs/<run_id>/run-state.jsonl（_resolve_run_dir D-007 新路径）
@@ -203,6 +204,14 @@ def test_legacy_run_continue_path_no_error(tmp_path: Path) -> None:
     with run_state_jsonl.open("w", encoding="utf-8") as f:
         for evt in events:
             f.write(json.dumps(evt, ensure_ascii=False) + "\n")
+
+    # fixture events 头条 workflow_started.data.workflow_name=standard-8phase；
+    # workflow_continue 会按 repo_root/.claude/workflows/requirement/<name>.yaml 取模板，
+    # tmp_path 默认空，需把真模板拷过去（F-011 引擎硬依赖）
+    workflow_yaml_src = REPO_ROOT / ".claude" / "workflows" / "requirement" / "standard-8phase.yaml"
+    workflow_yaml_dst = tmp_path / ".claude" / "workflows" / "requirement" / "standard-8phase.yaml"
+    workflow_yaml_dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy(workflow_yaml_src, workflow_yaml_dst)
 
     rc = wf_continue_main([run_id], repo_root=tmp_path)
     assert rc == 0, (

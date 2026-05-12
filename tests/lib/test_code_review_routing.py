@@ -564,19 +564,24 @@ def _subprocess_env(repo: Path) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# T6: non-pty 场景（stdin 是 pipe → 退码 2 + stderr 含退码 2 模板）
+# F-014：自 cancel 人类卡点 A 起，routing.py 直接走自动决策
+# 旧 T1-T6 pty / non-tty 集成测试已删除；保留 _setup_test_repo / _build_argv /
+# _subprocess_env 三个辅助函数作为新自动模式 E2E 测试的基础设施。
 # ---------------------------------------------------------------------------
 
-class TestNonTtyRejection:
-    """T6: stdin 不是 tty 时，进程退码 2，stderr 含 §6 退码 2 模板关键词。"""
 
-    def test_given_pipe_stdin_then_exit_code_2_and_stderr_contains_non_tty_message(
+class TestAutoRouteEndToEnd:
+    """A1-A4: 自动路由 E2E——以 subprocess 跑 main()，AI/pipe 均可通过。"""
+
+    def test_a1_given_must_hit_when_run_then_decision_accept_and_recommended(
         self, tmp_path: Path
     ):
+        """A1: src/main.py 命中 must（security-checker）→ decision=accept，checker_route=[security-checker]。"""
+        import json
+
         repo, base_sha, head_sha = _setup_test_repo(tmp_path)
         argv = _build_argv(base_sha, head_sha)
 
-        # 通过 subprocess 以 pipe 方式调用（stdin 非 tty）
         proc = subprocess.run(
             [sys.executable, "-m", "scripts.lib.code_review_routing"] + argv,
             stdin=subprocess.PIPE,
@@ -585,172 +590,175 @@ class TestNonTtyRejection:
             cwd=str(repo),
             env=_subprocess_env(repo),
         )
-        assert proc.returncode == 2, f"期望退码 2，实际 {proc.returncode}\nstderr: {proc.stderr}"
-        assert "非 tty" in proc.stderr or "tty" in proc.stderr.lower(), (
-            f"stderr 应含 tty 相关提示，实际: {proc.stderr!r}"
+        assert proc.returncode == 0, (
+            f"期望退码 0，实际 {proc.returncode}\nstderr: {proc.stderr}"
         )
+        scope = json.loads((repo / ".review-scope.json").read_text(encoding="utf-8"))
+        assert scope["routing_decision"]["decision"] == "accept"
+        assert scope["checker_route"] == ["security-checker"]
+        assert scope["routing_decision"]["tty_verified"] is True
 
+    def test_a2_given_grey_diff_when_run_then_decision_all_with_8_checkers(
+        self, tmp_path: Path
+    ):
+        """A2: diff 全是灰色文件（未命中任何规则）→ 自动升 8 全集，decision=all。"""
+        import json
 
-# ---------------------------------------------------------------------------
-# T1-T5: pty 集成测试（真实 tty，模拟用户键盘输入）
-# ---------------------------------------------------------------------------
+        repo, base_sha, head_sha = _setup_grey_repo(tmp_path)
+        argv = _build_argv(base_sha, head_sha)
 
-# pty 仅在 Unix 系统可用
-pytestmark_pty = pytest.mark.skipif(
-    sys.platform == "win32", reason="pty 仅在 Unix 系统可用"
-)
-
-
-def _run_with_pty(
-    repo: Path,
-    argv: list[str],
-    user_input: str,
-    timeout: float = 10.0,
-) -> tuple[int, str, str]:
-    """使用 pty.openpty() 启动子进程，向 master 端写模拟用户输入。
-
-    返回 (returncode, stdout_text, stderr_text)。
-    使用 pty 而非 pipe 是因为 _check_tty() 严格校验 sys.stdin.isatty()，
-    只有真实 pty 才能通过该校验。
-    """
-    import pty
-    import select
-    import signal
-
-    master_fd, slave_fd = pty.openpty()
-    try:
-        proc = subprocess.Popen(
+        proc = subprocess.run(
             [sys.executable, "-m", "scripts.lib.code_review_routing"] + argv,
-            stdin=slave_fd,
-            stdout=slave_fd,
-            stderr=subprocess.PIPE,
+            stdin=subprocess.PIPE,
+            capture_output=True,
+            text=True,
             cwd=str(repo),
-            close_fds=True,
             env=_subprocess_env(repo),
         )
-        # slave_fd 已传给子进程，父进程关闭以避免阻塞
-        os.close(slave_fd)
-        slave_fd = -1
-
-        # 小延迟等待子进程展示提示符
-        import time
-        time.sleep(0.5)
-
-        # 写入用户输入到 master 端（带 \n 模拟回车）
-        os.write(master_fd, user_input.encode())
-
-        # 读取 master 端输出，直到进程结束
-        stdout_chunks: list[bytes] = []
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            try:
-                rlist, _, _ = select.select([master_fd], [], [], 0.2)
-                if rlist:
-                    chunk = os.read(master_fd, 4096)
-                    if chunk:
-                        stdout_chunks.append(chunk)
-            except OSError:
-                break
-            if proc.poll() is not None:
-                # 进程已结束，再读一次确保缓冲区清空
-                try:
-                    rlist, _, _ = select.select([master_fd], [], [], 0.2)
-                    if rlist:
-                        chunk = os.read(master_fd, 4096)
-                        if chunk:
-                            stdout_chunks.append(chunk)
-                except OSError:
-                    pass
-                break
-
-        if proc.poll() is None:
-            proc.kill()
-        proc.wait()
-
-        stdout_text = b"".join(stdout_chunks).decode(errors="replace")
-        _, stderr_bytes = proc.communicate(timeout=2) if proc.stderr else (None, b"")
-        stderr_text = (stderr_bytes or b"").decode(errors="replace")
-        return proc.returncode, stdout_text, stderr_text
-
-    finally:
-        os.close(master_fd)
-        if slave_fd != -1:
-            os.close(slave_fd)
-
-
-@pytestmark_pty
-class TestPtyIntegration:
-    """T1-T5: pty 集成测试，验证 4 档热键 + abort 场景。"""
-
-    def should_write_accept_decision_when_user_presses_enter(self, tmp_path: Path):
-        """T1: 直接回车 → .review-scope.json 中 decision=accept，退码 0。"""
-        repo, base_sha, head_sha = _setup_test_repo(tmp_path)
-        argv = _build_argv(base_sha, head_sha)
-
-        returncode, stdout, stderr = _run_with_pty(repo, argv, "\n")
-
-        assert returncode == 0, f"期望退码 0，实际 {returncode}\nstdout: {stdout}\nstderr: {stderr}"
-        scope_file = repo / ".review-scope.json"
-        assert scope_file.exists(), ".review-scope.json 应被写入"
-        import json
-        scope = json.loads(scope_file.read_text(encoding="utf-8"))
-        assert scope["routing_decision"]["decision"] == "accept", (
-            f"期望 decision=accept，实际: {scope['routing_decision']['decision']}"
+        assert proc.returncode == 0, (
+            f"期望退码 0，实际 {proc.returncode}\nstderr: {proc.stderr}"
         )
-
-    def should_write_all_decision_when_user_presses_a(self, tmp_path: Path):
-        """T2: 输入 'a' → decision=all，final_route 包含全 8 个 checker。"""
-        repo, base_sha, head_sha = _setup_test_repo(tmp_path)
-        argv = _build_argv(base_sha, head_sha)
-
-        returncode, stdout, stderr = _run_with_pty(repo, argv, "a\n")
-
-        assert returncode == 0, f"期望退码 0，实际 {returncode}\nstderr: {stderr}"
-        import json
         scope = json.loads((repo / ".review-scope.json").read_text(encoding="utf-8"))
         assert scope["routing_decision"]["decision"] == "all"
         assert set(scope["checker_route"]) == set(ALL_CHECKERS)
 
-    def should_force_keep_must_when_user_picks_custom_subset(self, tmp_path: Path):
-        """T3: 输入 '1' → decision=custom，security-checker (must) 强制保留。"""
+    def test_a3_given_pipe_stdin_when_run_then_still_succeeds(self, tmp_path: Path):
+        """A3: 非 tty（pipe stdin）调用不再被拒绝——AI/CI 可直接跑。"""
         repo, base_sha, head_sha = _setup_test_repo(tmp_path)
         argv = _build_argv(base_sha, head_sha)
 
-        returncode, stdout, stderr = _run_with_pty(repo, argv, "1\n")
-
-        assert returncode == 0, f"期望退码 0，实际 {returncode}\nstdout: {stdout}\nstderr: {stderr}"
-        import json
-        scope = json.loads((repo / ".review-scope.json").read_text(encoding="utf-8"))
-        assert scope["routing_decision"]["decision"] == "custom"
-        # security-checker 是 must，必须在 final_route
-        assert "security-checker" in scope["checker_route"]
-
-    def should_exit_5_with_audit_when_user_presses_q(self, tmp_path: Path):
-        """T4: 输入 'q' → 退码 5，stdout 含 §6 取消提示，audit 含 '用户主动取消'。"""
-        repo, base_sha, head_sha = _setup_test_repo(tmp_path)
-        argv = _build_argv(base_sha, head_sha)
-
-        returncode, stdout, stderr = _run_with_pty(repo, argv, "q\n")
-
-        assert returncode == 5, f"期望退码 5，实际 {returncode}\nstdout: {stdout}\nstderr: {stderr}"
-        # audit 应含 "用户主动取消"
-        process_txt = repo / "requirements" / "REQ-2099-001" / "process.txt"
-        assert process_txt.exists(), "process.txt 应存在"
-        content = process_txt.read_text(encoding="utf-8")
-        assert "用户主动取消" in content, f"process.txt 应含 '用户主动取消'，实际: {content!r}"
-
-    def should_exit_5_with_audit_when_three_invalid_inputs(self, tmp_path: Path):
-        """T5: 连续 3 次无效输入 → 退码 5，audit 含 '连续 3 次无效输入'。"""
-        repo, base_sha, head_sha = _setup_test_repo(tmp_path)
-        argv = _build_argv(base_sha, head_sha)
-
-        # 3 次无效输入
-        returncode, stdout, stderr = _run_with_pty(repo, argv, "xxx\nyyy\nzzz\n")
-
-        assert returncode == 5, f"期望退码 5，实际 {returncode}\nstdout: {stdout}\nstderr: {stderr}"
-        process_txt = repo / "requirements" / "REQ-2099-001" / "process.txt"
-        assert process_txt.exists(), "process.txt 应存在"
-        content = process_txt.read_text(encoding="utf-8")
-        assert "连续 3 次无效输入" in content, (
-            f"process.txt 应含 '连续 3 次无效输入'，实际: {content!r}"
+        proc = subprocess.run(
+            [sys.executable, "-m", "scripts.lib.code_review_routing"] + argv,
+            stdin=subprocess.PIPE,
+            capture_output=True,
+            text=True,
+            cwd=str(repo),
+            env=_subprocess_env(repo),
         )
+        assert proc.returncode == 0, (
+            f"期望退码 0（自动模式不再校验 tty），实际 {proc.returncode}\n"
+            f"stderr: {proc.stderr}"
+        )
+
+    def test_a4_given_accept_decision_when_run_then_audit_silent(
+        self, tmp_path: Path
+    ):
+        """A4: accept / all 路径**不写** process.txt（沿用 REQ-2026-003 §8.4 静默约定）。
+
+        可追溯性由 scope.json.routing_decision 承担，包含 decision/confirmed_at/
+        files_must_hit/files_suggest_hit/files_trivial/files_total 全量字段。
+        process.txt 仅记录 trivial-skipped / aborted 等异常路径，避免噪音污染。
+        """
+        repo, base_sha, head_sha = _setup_test_repo(tmp_path)
+        argv = _build_argv(base_sha, head_sha)
+
+        proc = subprocess.run(
+            [sys.executable, "-m", "scripts.lib.code_review_routing"] + argv,
+            stdin=subprocess.PIPE,
+            capture_output=True,
+            text=True,
+            cwd=str(repo),
+            env=_subprocess_env(repo),
+        )
+        assert proc.returncode == 0, f"stderr: {proc.stderr}"
+        process_txt = repo / "requirements" / "REQ-2099-001" / "process.txt"
+        if process_txt.exists():
+            content = process_txt.read_text(encoding="utf-8")
+            assert "[code-review-route-auto]" not in content, (
+                f"accept 路径不应写 [code-review-route-auto]（§8.4 静默），实际: {content!r}"
+            )
+
+
+def _setup_grey_repo(tmp_path: Path) -> tuple[Path, str, str]:
+    """build 仓库时改 .changes/unknown.bin（不命中 must/suggest/trivial 任何一段）。
+
+    用于 A2：验证「推荐集为空 → 升 8 全集」分支。
+    """
+    repo = tmp_path / "repo-grey"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+
+    claude_dir = repo / ".claude"
+    claude_dir.mkdir()
+    (claude_dir / "code-review-routing.yaml").write_text(
+        """version: 1
+must:
+  - pattern: "src/**"
+    checkers:
+      - security-checker
+suggest:
+  - pattern: "**/*.sql"
+    checkers:
+      - performance-checker
+trivial_whitelist:
+  - "**/*.md"
+""",
+        encoding="utf-8",
+    )
+
+    (repo / "README.md").write_text("hello", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=repo, check=True, capture_output=True)
+    base_sha = subprocess.run(
+        ["git", "rev-parse", "--short", "HEAD"],
+        cwd=repo, capture_output=True, text=True, check=True,
+    ).stdout.strip()
+
+    # head commit：build/output.bin 不命中 must/suggest/trivial 任何规则 → 灰色
+    build_dir = repo / "build"
+    build_dir.mkdir()
+    (build_dir / "output.bin").write_text("grey", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "add grey file"], cwd=repo, check=True, capture_output=True)
+    head_sha = subprocess.run(
+        ["git", "rev-parse", "--short", "HEAD"],
+        cwd=repo, capture_output=True, text=True, check=True,
+    ).stdout.strip()
+
+    (repo / "requirements" / "REQ-2099-001").mkdir(parents=True)
+    return repo, base_sha, head_sha
+
+
+class TestAutoDecideUnit:
+    """A5-A6: _auto_decide 纯函数单测。"""
+
+    def _make_plan(
+        self,
+        must_checkers: set[str] | None = None,
+        suggest_checkers: set[str] | None = None,
+        files_total: int = 1,
+    ) -> "RoutingPlan":
+        from scripts.lib.code_review_routing import RoutingPlan
+        must = must_checkers or set()
+        sugg = suggest_checkers or set()
+        return RoutingPlan(
+            must_checkers=must,
+            suggest_checkers=sugg,
+            trivial_only=False,
+            files_total=files_total,
+            files_trivial=0,
+            files_must_hit={c: ["x.py"] for c in must},
+            files_suggest_hit={c: ["y.py"] for c in sugg},
+        )
+
+    def test_a5_given_must_and_suggest_then_decision_accept_with_union(self):
+        """A5: must ∪ suggest 非空 → decision=accept，final_route 按 ALL_CHECKERS 顺序。"""
+        from scripts.lib.code_review_routing import _auto_decide
+        plan = self._make_plan(
+            must_checkers={"security-checker"},
+            suggest_checkers={"performance-checker"},
+        )
+        decision = _auto_decide(plan, confirmed_by="test@example.com")
+        assert decision.decision == "accept"
+        # security-checker (idx=1) 在 performance-checker (idx=3) 之前
+        assert decision.final_route == ["security-checker", "performance-checker"]
+
+    def test_a6_given_empty_recommended_then_decision_all_with_full_set(self):
+        """A6: must/suggest 全空 → decision=all，final_route=ALL_CHECKERS（升 8 全集）。"""
+        from scripts.lib.code_review_routing import _auto_decide
+        plan = self._make_plan(files_total=3)
+        decision = _auto_decide(plan, confirmed_by="test@example.com")
+        assert decision.decision == "all"
+        assert decision.final_route == list(ALL_CHECKERS)

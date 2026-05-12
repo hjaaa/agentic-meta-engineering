@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-003",
+  "status": "DONE",
+  "commit_sha": "cbd7672",
+  "files_changed": [
+    "scripts/lib/workflow_run.py",
+    "tests/skills/test_workflow_commands.py"
+  ],
+  "test_summary": "pytest tests/skills/test_workflow_commands.py 63 passed（rev2 F-8 critical + F-10 minor 闭合）",
+  "touches_violations": [],
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-11T16:59:15+08:00"
+}

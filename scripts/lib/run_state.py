@@ -16,6 +16,7 @@
 - node_started / node_completed / node_failed / node_skipped / node_retried
 - approval_pending / approval_approved / approval_rejected
 - loop_iteration_started / loop_iteration_completed / loop_completed / loop_max_iterations_exceeded
+- loop_counter_advanced
 - parent_cancelled / parent_rolled_back
 
 注：cancel_taskstop_failed / run_resumed / save 三个事件**不**映射 WORKFLOW_EVENT_TO_STATE，
@@ -68,6 +69,9 @@ VALID_EVENT_TYPES: set[str] = {
     # loop
     "loop_iteration_started", "loop_iteration_completed",
     "loop_completed", "loop_max_iterations_exceeded",
+    # loop_counters 持久化（workflow_continue loop_continue 路径递增后写入；
+    # 仅承载 loop_counters，不映射 WORKFLOW_EVENT_TO_STATE，不改 state）
+    "loop_counter_advanced",
     # 父子联动（子侧事件，子 subagent 自身写入）
     "parent_cancelled", "parent_rolled_back",
     # 父侧子结局事件（父 run 观测子 subagent 结果后写入，不映射 WORKFLOW_EVENT_TO_STATE）
@@ -110,6 +114,7 @@ class RunState:
     - pending_approval：当前 approval_pending 节点 id（state == approval_pending 时设置）
     - last_event_ts：最后一条合法事件的 ts
     - warnings：反扫期间收集的 warn（损坏行 / 残缺对）
+    - loop_counters：{node_id: 当前迭代次数}（由 loop_iteration_started/completed 维护）
     """
 
     run_id: str | None = None
@@ -121,6 +126,8 @@ class RunState:
     pending_approval: str | None = None
     last_event_ts: str | None = None
     warnings: list[str] = field(default_factory=list)
+    # F-005：循环节点迭代计数器；key = node_id，value = 最近一次 iteration 编号
+    loop_counters: dict[str, int] = field(default_factory=dict)
 
     @classmethod
     def rebuild(
@@ -199,6 +206,19 @@ class RunState:
                     state.pending_approval = None
                 if state.state == "approval_pending":
                     state.state = "running"
+            elif ev_type in ("loop_iteration_started", "loop_iteration_completed") and node_id:
+                # 更新循环节点的当前迭代编号（F-005：loop_counters 字段）
+                # data["iteration"] 由 _dispatch_loop_node 在写事件时设置
+                iteration = data.get("iteration")
+                if iteration is not None:
+                    state.loop_counters[node_id] = int(iteration)
+            elif ev_type == "loop_counter_advanced" and node_id:
+                # workflow_continue loop_continue 路径递增后写入：data.new_value 为
+                # 递增后的"下一轮迭代编号"。crash 后 rebuild 必须看到此事件才能正确
+                # 还原 loop_counters，否则 dispatcher 会用旧 iteration 重派同一轮。
+                new_value = data.get("new_value")
+                if new_value is not None:
+                    state.loop_counters[node_id] = int(new_value)
 
         # 残缺对处理（spec §13）：node_started 无对应 node_completed → 标 warn
         for node_id, started_ts in node_started_at.items():

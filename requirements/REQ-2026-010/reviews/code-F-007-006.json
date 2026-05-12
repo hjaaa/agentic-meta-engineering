@@ -1,0 +1,77 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-010-code-F-007-006",
+  "requirement_id": "REQ-2026-010",
+  "phase": "code",
+  "scope": {
+    "feature_id": "F-007"
+  },
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-12 09:00:00",
+  "reviewed_commit": "a89f3b6",
+  "supersedes": "REV-REQ-2026-010-code-F-007-005",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/tasks/F-007.receipt.json",
+      "sha256": "cff6b86c79a3c2a12542022e4c8f5ed530de23e1f5a519855ff0c38ba82f397f"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 92,
+  "dimensions": {
+    "design_consistency": {
+      "score": 90,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_continue.py:36-52 _next_node 签名从 spec §1.7 伪代码（:216）中的 _next_node(node, node_map, result.next_node_hint) 三参数变为 _next_node(current_node, hint) 两参数（F-11 fix 删除 dead node_map 参数）。删除 dead parameter 是正确重构，但 detailed-design.md §1.7 伪代码仍保留旧签名，形成 doc/code 不一致。属 spec-lag follow-up，不阻断合并。",
+          "suggestion": "在 detailed-design.md §1.7 伪代码（约 :216 行）将调用更新为 _next_node(node, result.next_node_hint)，同步函数签名定义，消除文档/代码字面不符。"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_continue.py:97-103 node_outputs 条目写入三键 dict {output, state, data}，而 detailed-design.md §1.7 伪代码（:215）写 run_state.node_outputs[node_id] = result.output（裸值）。此为 rev1 F-12/F-13 已记录的 spec-lag，rev2 未修（属 task scope 外），需后续同步设计文档 §1.7。",
+          "suggestion": "同步 detailed-design.md §1.7 伪代码 node_outputs 赋值为 {output: result.output, state: \"completed\", data: {output: result.output}}，与 §2.2 rebuild 算法保持一致。"
+        },
+        {
+          "severity": "minor",
+          "description": "detailed-design.md §1.7 伪代码（:214）在 main loop completed 分支显式调用 append_event node_completed，但 rev2 实现将该事件写入权完全下放至各 _dispatch_*_node（workflow_continue.py:96-103 注释说明），main loop 不再重复写。此为 rev1 F-12 已记录的良性偏离，rev2 未改动（spec-lag），后续需同步设计文档。",
+          "suggestion": "在 detailed-design.md §1.7 伪代码中注释掉 main loop 内的 append_event node_completed 调用，改为说明「事件已由 _dispatch_*_node 负责写入，main loop 仅更新 RunState」。"
+        }
+      ]
+    },
+    "security": {
+      "score": 95,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 95,
+      "issues": []
+    },
+    "complexity": {
+      "score": 92,
+      "issues": []
+    },
+    "error_handling": {
+      "score": 93,
+      "issues": []
+    },
+    "auxiliary_spec": {
+      "score": 92,
+      "issues": []
+    },
+    "performance": {
+      "score": 95,
+      "issues": []
+    },
+    "history_context": {
+      "score": 92,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "三处 minor spec-lag（§1.7 _next_node 签名 / node_outputs 三键格式 / node_completed 双写）均已在 rev1 F-12/F-13 记录，建议在 F-008 PR 同步更新 detailed-design.md §1.7 伪代码，保持 doc/code 对齐。",
+    "rev2 修复的三个目标（F-1 拆 _setup_run/_resume_run/_load_workflow_for_run / F-3 _main_loop try/except WorkflowError / F-11 _next_node 删 node_map dead parameter）均已正确落地，与设计意图一致。",
+    "_setup_run 和 _load_workflow_for_run 均为 detailed-design.md 未显式定义的新增私有 helper，签名和行为与 §1.2.2 / §1.7 语义吻合，不构成 spec 偏离。"
+  ]
+}

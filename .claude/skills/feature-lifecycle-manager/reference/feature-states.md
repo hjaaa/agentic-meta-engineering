@@ -43,4 +43,4 @@ review_report: null         # done 时填 artifacts/review-*.md 路径
 | 变更 | 同步动作 |
 |---|---|
 | → `in-progress` | 更新 `updated_at`；写 `process.txt` [development] F-001 开始 |
-| → `done` | 更新 `updated_at` + 填 `review_report`；写 `process.txt` [development] F-001 完成（review: xxx.md） |
+| → `done` | 更新 `updated_at` + 填 `review_report`；写 `process.txt` [development] F-001 完成（review: xxx.md）；**调 `python3 scripts/lib/dispatch_state_cleanup.py --req-dir requirements/<id>` 释放 dispatch lock**（避免 lock 残留导致后续 Edit 被 touches_guard 误记到本 feature 头上） |

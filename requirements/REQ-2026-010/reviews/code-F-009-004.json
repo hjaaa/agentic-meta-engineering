@@ -1,0 +1,78 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-010-code-F-009-004",
+  "requirement_id": "REQ-2026-010",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-12 10:40:00",
+  "reviewed_commit": "d134624",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "4d7d69b5eaf2b28c8f49ad871c3f6bf101f5f7128bcece476b2a6ec65c832982"
+    },
+    {
+      "path": "artifacts/tasks/F-009.md",
+      "sha256": "522e2f61b974b805a792a69163230864263b8ceae27f1d4c0586a0c3b96efa53"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 80,
+  "dimensions": {
+    "error_handling": {
+      "score": 75,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "workflow_status.py:48-54 的 except WorkflowError 在新代码中是死代码：read_events 永不抛 WorkflowError（OSError → 写入 warnings 列表后 return，JSON 解析失败 → warn + continue），RunState.rebuild 也永不抛 WorkflowError（纯计算）。旧代码中 try 块内含 _resolve_run_dir 调用，该函数才是 WorkflowError 的唯一来源；F-009 删除 _resolve_run_dir 后 catch 块已无法触发，变成误导性的僵尸代码。实际 OSError（如文件读权限不足）被 read_events 静默转为 sub_state.warnings，从而在 status 输出中混入 WARN 行但不触发 except 分支——行为与代码意图不符。"
+        },
+        {
+          "severity": "minor",
+          "description": "workflow_status.py:44 sorted(sub_runs_dir.iterdir()) 在 try/except 块之外，若 sub_runs/ 目录存在 PermissionError（OSError），异常会越过第 48 行的 WorkflowError catch，经 _render_status → main() 向上传播；main() 第 78-83 行同样只 catch WorkflowError，最终在 __main__ 第 109-112 行也只 catch WorkflowError，导致原始 OSError traceback 暴露给终端用户。旧代码 nodes_dir.iterdir() 有同等结构缺陷，属继承问题，本次重构未修复。"
+        },
+        {
+          "severity": "minor",
+          "description": "边界条件：sub_runs/<id>/ 目录存在但 run-state.jsonl 缺失时，read_events 规范性返回 ([], [])，RunState.rebuild 产出 state='running' 的空快照，_render_status 将其作为合法子 run 渲染。用户看到子 run 树中出现一个无任何节点信息的 running 条目，但无任何警告提示文件缺失，属静默降级行为。测试集中无对应 missing-jsonl 覆盖（test_workflow_commands_advanced.py 仅有 happy-path 子 run 测试）。"
+        }
+      ]
+    },
+    "design_consistency": {
+      "score": 90,
+      "issues": []
+    },
+    "security": {
+      "score": 90,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 90,
+      "issues": []
+    },
+    "complexity": {
+      "score": 88,
+      "issues": []
+    },
+    "auxiliary_spec": {
+      "score": 85,
+      "issues": []
+    },
+    "performance": {
+      "score": 90,
+      "issues": []
+    },
+    "history_context": {
+      "score": 88,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "except WorkflowError 死代码处理建议（三选一）：(1) 最简：保留 catch 但改注释说明当前 read_events/rebuild 不抛 WorkflowError，保留作防御性兜底；(2) 精确：把 catch 改为 except (WorkflowError, OSError) 并补 _render_status 顶层 iterdir 的 OSError 保护，与 read_events 的 OSError→warning 策略对齐；(3) 与 read_events 行为一致：删除 try/except，依赖 read_events 的 warning 机制——但需在外层 iterdir 补 OSError catch",
+    "missing run-state.jsonl 场景建议：在 read_events 返回空 events 时，_render_status 可检查 not (sub_run_dir / 'run-state.jsonl').exists()，若真缺文件则 append 一条警告行，避免静默渲染成空 running 状态",
+    "建议补一个 test_status_sub_run_missing_jsonl 测试：创建 sub_runs/<id>/ 目录但不写 run-state.jsonl，断言 status 输出中出现可识别的降级提示（或至少 rc==0 且 sub run 相关信息可见），覆盖 read_events 文件不存在分支在 status 渲染路径的行为"
+  ],
+  "scope": {
+    "feature_id": "F-009"
+  },
+  "supersedes": null
+}

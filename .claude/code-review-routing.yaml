@@ -52,6 +52,15 @@ suggest:
   - pattern: ".github/workflows/**"
     checkers: [design-consistency-checker]
 
+  # workflow engine 主链路（workflow_run / workflow_bootstrap / workflow_loader / workflow_dispatcher / workflow_continue / workflow_approve / workflow_reject / workflow_rollback / workflow_save 等）
+  # 非鉴权，所以不进 must；但属于审查管道的"主进程"，纯灰色 diff 会触发 I1 invariant
+  - pattern: "scripts/lib/workflow_*.py"
+    checkers: [complexity-checker, error-handling-checker, design-consistency-checker]
+
+  # Skill / 引擎相关单测（避免业务文件 + 测试都落空触发 I1 invariant）
+  - pattern: "tests/skills/**"
+    checkers: [auxiliary-spec-checker]
+
 # ─────── trivial_whitelist：100% 命中即 skipped=true，跳过整个 review ───────
 trivial_whitelist:
   - "**/*.md"                       # 所有 Markdown 默认豁免

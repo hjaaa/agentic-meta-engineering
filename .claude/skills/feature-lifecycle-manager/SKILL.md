@@ -53,6 +53,9 @@ pending → in-progress → done
    - 退出码 0 → human_signoff.decision ∈ {approved, approved-trivial} → 转 done
    - 退出码 1 → 未签字 / decision=rejected / 缺字段 → 保持 in-progress，提示开发者执行 /code-review:signoff
    - `needs_revision` / `blocked` → status 保持 `in-progress`，把 review 结果交给**同一 subagent 重派修复**（不是主 Agent 亲自修）
+5. **转 done 后必须释放 dispatch lock**（hotfix REQ-2026-010 follow-up）：
+   - `python3 scripts/lib/dispatch_state_cleanup.py --req-dir requirements/<REQ-ID>`
+   - CLI 幂等，重复调安全；漏调会导致 `.dispatch-state.json.current_feature` 一直停在本 feature，后续主 Agent 任何 Edit 都会被 `touches_guard` 误记到该 feature.receipt.json，触发 `GATE-TOUCHES-VIOLATION` 硬挡 phase-transition / submit
 
 ## 硬约束
 

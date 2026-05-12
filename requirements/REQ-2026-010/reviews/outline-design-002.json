@@ -1,0 +1,75 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-010-outline-design-002",
+  "requirement_id": "REQ-2026-010",
+  "phase": "outline-design",
+  "reviewer": "outline-design-quality-reviewer",
+  "reviewed_at": "2026-05-11 12:25:53",
+  "reviewed_commit": "8e2de0e",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "99da579f50722ec9f646f01f085159b2563134edc6027877af1a5402ed532933"
+    },
+    {
+      "path": "artifacts/requirement.md",
+      "sha256": "25dafe20a6af9809a73530ed8a3df41851ea5693c799c5fed47259f865870067"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 92,
+  "dimensions": {
+    "alignment_with_requirement": {
+      "score": 95,
+      "issues": []
+    },
+    "module_decomposition": {
+      "score": 95,
+      "issues": []
+    },
+    "tech_choice_rationale": {
+      "score": 92,
+      "issues": []
+    },
+    "scalability": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 203-206 行：§4.3 dispatch_node 内的 _dispatch_loop_node / _dispatch_sub_workflow_node 已纳入 outcome 枚举，但本期占位实现策略（loop 是否仅跑 1 轮即 loop_done / sub_workflow 是否同步返回 sub_workflow_done）仍未在接口注释中标注，首轮 suggestion 未采纳；不阻塞 approved，但建议详细设计阶段补齐"
+        }
+      ]
+    },
+    "integration_with_existing": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 136 行：§3 父子路径决策仍未回引 tech-research §AC-04 'nodes/ 是未运行过的展望代码' 结论，首轮 suggestion 未采纳；建议加一句 '若发现 nodes/ 目录则 ignore' 或显式回引"
+        },
+        {
+          "severity": "minor",
+          "description": "第 242-247 行：§5.2.1 bootstrap 回滚仅按 mkdir / 分支 / jsonl 三类分述，但未给回滚步骤的偏序约束（建议顺序：先 git checkout - → branch -D → rmtree；任一步 IOError 至少 ERROR 日志后 exit 1 已有但偏序仍缺）；首轮 suggestion 未采纳"
+        },
+        {
+          "severity": "minor",
+          "description": "第 276-281 行：§5.4 测试策略仅明确 agent 节点 mock（AC-05 决策），其余 6 类节点（bash/skill/prompt/approval/loop/sub_workflow）的 mock vs 真跑取舍仍未表态；首轮 suggestion 未采纳，建议在详细设计阶段补齐"
+        }
+      ]
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "§4.3 增加注释，明确 _dispatch_loop_node / _dispatch_sub_workflow_node 在本期为占位实现的行为（如 loop 仅跑 1 轮返回 loop_done / sub_workflow 仅写 sub_workflow_done 不实际派子）",
+    "§3 父子路径决策回引 tech-research §AC-04 'nodes/ 是未运行过的展望代码' 结论",
+    "§5.2.1 bootstrap 回滚补一句偏序约束（建议顺序：先 git checkout - 切回原分支 → git branch -D 删新建分支 → shutil.rmtree 已建目录）",
+    "§5.4 测试策略表补 bash / skill / prompt / approval / loop / sub_workflow 6 类节点的 mock/真跑取舍"
+  ],
+  "scope": null,
+  "supersedes": "REV-REQ-2026-010-outline-design-001",
+  "architectural_concerns": [
+    "dispatcher 单文件起步在 7 类节点 + loop / sub_workflow 完整实现后预计 600-800 行；详细设计阶段需规划拆模块边界（参考 workflow_rollback 4 子模块的拆法）",
+    "approval 方案 ii 反扫 jsonl 重建 RunState 的 O(n) 开销在 10-50 节点级无忧，但若未来大规模 loop 迭代或深嵌套 sub_workflow 出现，扫文件成本可能成为瓶颈——建议详细设计阶段标注该假设的有效区间",
+    "§5.2.2 on_failure 引入了 retry / skip / abort 三档配置，详细设计阶段需要在 yaml schema 上落地该字段；同时 retry 的 max_retries 默认 3、计数复位时机（跨 /workflow:continue 调用是否累计）需明确"
+  ]
+}

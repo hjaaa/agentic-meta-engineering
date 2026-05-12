@@ -38,22 +38,17 @@ def _render_status(run_state: RunState, run_dir: Path, indent: int = 0) -> str:
         for w in run_state.warnings:
             lines.append(f"{prefix}  WARN: {w}")
 
-    # 递归子 run（扫 run_dir/nodes/*/run_id）
-    nodes_dir = run_dir / "nodes"
-    if nodes_dir.is_dir():
-        for node_dir in sorted(nodes_dir.iterdir()):
-            sub_run_id_file = node_dir / "run_id"
-            if sub_run_id_file.is_file():
-                sub_run_id = sub_run_id_file.read_text().strip()
-                try:
-                    sub_dir = _resolve_run_dir(sub_run_id, run_dir.parent.parent)
-                    sub_jsonl = sub_dir / "run-state.jsonl"
-                    sub_events, sub_warnings = read_events(sub_jsonl)
-                    sub_state = RunState.rebuild(sub_events, run_id=sub_run_id, warnings=sub_warnings)
-                    lines.append(f"{prefix}  └─ 子 run:")
-                    lines.append(_render_status(sub_state, sub_dir, indent + 2))
-                except WorkflowError as exc:
-                    lines.append(f"{prefix}  └─ 子 run {sub_run_id!r} 解析失败: {exc}")
+    # 递归子 run（扫 run_dir/sub_runs/<node_id>/，目录名即子 run id）
+    sub_runs_dir = run_dir / "sub_runs"
+    if sub_runs_dir.is_dir():
+        for sub_run_dir in sorted(sub_runs_dir.iterdir()):
+            if not sub_run_dir.is_dir():
+                continue
+            sub_run_id = sub_run_dir.name  # 目录名即子 run id（与 rollback_subrun 约定一致）
+            sub_events, sub_warnings = read_events(sub_run_dir / "run-state.jsonl")
+            sub_state = RunState.rebuild(sub_events, run_id=sub_run_id, warnings=sub_warnings)
+            lines.append(f"{prefix}  └─ 子 run:")
+            lines.append(_render_status(sub_state, sub_run_dir, indent + 2))
 
     return "\n".join(lines)
 

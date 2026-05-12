@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-001",
+  "status": "DONE",
+  "commit_sha": "f10afb4",
+  "files_changed": [
+    "scripts/lib/workflow_run.py",
+    "tests/skills/test_workflow_commands.py"
+  ],
+  "test_summary": "pytest tests/skills/test_workflow_commands.py 60 passed",
+  "touches_violations": [],
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-11T14:43:48+08:00"
+}
