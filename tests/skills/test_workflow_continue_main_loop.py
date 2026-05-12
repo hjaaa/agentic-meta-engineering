@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -128,24 +128,21 @@ def test_build_node_map_skips_nodes_without_id():
 def test_next_node_prioritizes_hint():
     """_next_node：hint 非 None 时优先返回 hint。"""
     node = {"id": "a", "next": "b"}
-    node_map = {"a": node, "b": {}, "override": {}}
-    result = _next_node(node, node_map, "override")
+    result = _next_node(node, "override")
     assert result == "override"
 
 
 def test_next_node_falls_back_to_next_field():
     """_next_node：hint 为 None 时返回 node.next。"""
     node = {"id": "a", "next": "b"}
-    node_map = {"a": node, "b": {}}
-    result = _next_node(node, node_map, None)
+    result = _next_node(node, None)
     assert result == "b"
 
 
 def test_next_node_returns_none_when_no_next():
     """_next_node：无 next 字段且无 hint 时返回 None。"""
     node = {"id": "a"}
-    node_map = {"a": node}
-    result = _next_node(node, node_map, None)
+    result = _next_node(node, None)
     assert result is None
 
 
@@ -167,25 +164,7 @@ def test_main_loop_approval_pending_breaks_and_sets_state(
     """
     from workflow_dispatcher import DispatchResult
 
-    # 模拟 dispatch_node 返回 approval_pending
-    # dispatch_node 是在 _main_loop 内导入的，所以 patch 路径为 workflow_dispatcher.dispatch_node
-    with patch("workflow_dispatcher.dispatch_node") as mock_dispatch:
-        # node-a 返回 completed
-        mock_dispatch.return_value = DispatchResult(
-            outcome="completed",
-            output="hello",
-        )
-
-        # 先跑 node-a（完成）
-        base_run_state.state = "running"
-        base_run_state.current_node = "node-a"
-        _main_loop(base_run_state, mock_workflow_2nodes, tmp_path, tmp_path, jsonl_path)
-
-        # 此时应进入 node-b，但 mock_dispatch 被调用 2 次
-        # 第一次 node-a 返回 completed，current_node 推进到 node-b
-        # 第二次 node-b... 但 mock 仍返回 completed，我们需要改进 mock
-
-    # 改进版：使用 side_effect 根据 node_id 返回不同结果
+    # 使用 side_effect 根据 node_id 返回不同结果
     with patch("workflow_dispatcher.dispatch_node") as mock_dispatch:
 
         def dispatch_side_effect(node, *args, **kwargs):
@@ -351,8 +330,6 @@ def test_main_loop_unknown_node_writes_workflow_failed_event(
     """current_node 指向不存在的节点，写 workflow_failed 事件并设 state=failed。"""
     workflow = {"nodes": []}  # 空节点列表
     run_state = RunState(run_id="REQ-2026-010", current_node="nonexistent", state="running")
-
-    from run_state import append_event
 
     _main_loop(run_state, workflow, tmp_path, tmp_path, jsonl_path)
 

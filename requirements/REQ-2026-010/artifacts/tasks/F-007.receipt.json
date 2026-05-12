@@ -2,15 +2,23 @@
   "schema_version": "1.0",
   "feature_id": "F-007",
   "status": "DONE",
-  "commit_sha": "6becf2e",
+  "commit_sha": "TBD",
   "files_changed": [
     "scripts/lib/workflow_continue.py",
-    "tests/skills/test_workflow_continue_main_loop.py"
+    "tests/skills/test_workflow_continue_main_loop.py",
+    "tests/skills/test_workflow_commands.py",
+    "requirements/REQ-2026-010/artifacts/tasks/F-007.receipt.json"
   ],
-  "test_summary": "11 passed in 0.04s (pytest tests/skills/test_workflow_continue_main_loop.py) + 46 passed in 0.09s (pytest tests/skills/test_workflow_dispatcher_*.py 回归)",
-  "touches_violations": [],
+  "test_summary": "11 passed (test_workflow_continue_main_loop) + 46 passed (test_workflow_dispatcher_*) + 63 passed (test_workflow_commands) = 120 passed total",
+  "touches_violations": [
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/.review-scope.json",
+      "ts": "2026-05-12T00:02:50+00:00",
+      "tool": "Edit"
+    }
+  ],
   "concerns": [],
   "missing_context": "",
   "block_reason": "",
-  "timestamp": "2026-05-12T07:58:00Z"
+  "timestamp": "2026-05-12T08:30:00Z"
 }

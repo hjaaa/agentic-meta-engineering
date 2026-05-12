@@ -134,15 +134,23 @@ class TestHappyPath:
         types = [e["type"] for e in events]
         assert "workflow_started" in types, f"期望 workflow_started 事件，实际事件：{types}"
 
-    def test_continue_in_running_state_calls_main_loop_stub(self, tmp_repo: Path):
-        """given_run_state_running_when_continue_then_main_loop_stub_called。"""
+    def test_continue_in_running_state_calls_main_loop(self, tmp_repo: Path):
+        """given_run_state_running_when_continue_then_main_loop_called_returns_0。
+
+        F-007 用真实 _main_loop 替换了原 stub；本用例 mock _load_workflow_for_run 返回
+        最小 workflow dict、mock _main_loop 避免实际派发，只验证 main() 正确编排并返回 0。
+        """
         run_id = "RUN-20260509-001"
         _make_run_dir(tmp_repo, run_id, "running")
 
-        with _patch_git_branch(run_id):
+        _fake_workflow = {"id": "fake", "nodes": []}
+        with _patch_git_branch(run_id), \
+                patch("workflow_continue._load_workflow_for_run", return_value=_fake_workflow), \
+                patch("workflow_continue._main_loop") as mock_loop:
             rc = workflow_continue.main([], repo_root=tmp_repo)
 
         assert rc == 0, f"continue 在 running 状态应返回 0，实际 rc={rc}"
+        assert mock_loop.call_count == 1, "main() 应调用 _main_loop 一次"
 
     def test_save_in_running_state_writes_event(self, tmp_repo: Path):
         """given_run_state_running_when_save_then_checkpoint_event_written。"""
@@ -341,21 +349,28 @@ class TestInvalidStateRejected:
 # ============================================================
 
 class TestContinueResumeThreeStates:
-    """TC-F5-3：running / paused / failed 三状态续跑 main loop stub。"""
+    """TC-F5-3：running / paused / failed 三状态续跑 main loop（F-007 已替换原 stub）。"""
 
     @pytest.mark.parametrize("state", ["running", "paused", "failed"])
     def test_continue_allows_state(self, state: str, tmp_repo: Path, capsys):
-        """given_state_in_allowed_set_when_continue_then_exit_0_and_stub_output。"""
+        """given_state_in_allowed_set_when_continue_then_exit_0_and_main_loop_called。
+
+        F-007 用真实 _main_loop 替换了 stub，测试改为 mock _load_workflow_for_run
+        和 _main_loop，只验证状态矩阵通过且 main() 返回 0。
+        """
         run_id = f"RUN-20260509-03{state[:1]}"
         _make_run_dir(tmp_repo, run_id, state)
 
-        with _patch_git_branch(run_id):
+        _fake_workflow = {"id": "fake", "nodes": []}
+        with _patch_git_branch(run_id), \
+                patch("workflow_continue._load_workflow_for_run", return_value=_fake_workflow), \
+                patch("workflow_continue._main_loop"):
             rc = workflow_continue.main([], repo_root=tmp_repo)
 
         assert rc == 0, f"continue 在 {state!r} 状态应返回 0，实际 rc={rc}"
         captured = capsys.readouterr()
-        assert "main loop stub" in captured.out, (
-            f"continue 应调 main loop stub，输出：{captured.out}"
+        assert "恢复 workflow run" in captured.out, (
+            f"continue 应打印恢复信息，实际输出：{captured.out}"
         )
 
     @pytest.mark.parametrize("state", ["completed", "approval_pending", "cancelled"])
@@ -444,7 +459,11 @@ class TestChainCommands:
         run_id = run_dirs[0].name
 
         # 步骤 2: continue（running 状态）✓
-        with _patch_git_branch(run_id):
+        # mock _main_loop 避免加载真实 workflow 文件（链路测试关注事件序列，不验证派发）
+        _fake_workflow = {"id": "fake", "nodes": []}
+        with _patch_git_branch(run_id), \
+                patch("workflow_continue._load_workflow_for_run", return_value=_fake_workflow), \
+                patch("workflow_continue._main_loop"):
             rc_continue = workflow_continue.main([], repo_root=tmp_repo)
         assert rc_continue == 0, f"continue 应返回 0，实际 rc={rc_continue}"
 
