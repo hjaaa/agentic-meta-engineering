@@ -1,6 +1,6 @@
 id: REQ-2026-010
 title: workflow 引擎 main loop 与 bootstrap 完整化
-phase: testing
+phase: completed
 gates_passed:
 - phase: definition
   at: '2026-05-11 11:34:20'
@@ -56,8 +56,8 @@ tags:
 - main-loop
 - bootstrap
 - dispatcher
-outcome: ''
-completed_at: ''
+outcome: shipped
+completed_at: '2026-05-12 20:50:14'
 lessons_extracted: true
 reviews:
   definition:
@@ -232,3 +232,4 @@ reviews:
           artifacts/features.json: 4d7d69b5eaf2b28c8f49ad871c3f6bf101f5f7128bcece476b2a6ec65c832982
           artifacts/tasks/F-010.md: b9b1992e18c0bd45679ca6c7b499cf3b28b881ca1e0642165d6b72ea8fe1a0b0
         stale: false
+archived_at: '2026-05-12 20:50:14'
