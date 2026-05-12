@@ -386,14 +386,12 @@ def _dispatch_loop_node(
     append_event(jsonl_path, {
         "type": "loop_iteration_started",
         "node_id": node_id,
-        "run_id": run_state.run_id,
         "data": {"iteration": current_iteration},
     })
 
     append_event(jsonl_path, {
         "type": "loop_iteration_completed",
         "node_id": node_id,
-        "run_id": run_state.run_id,
         "data": {"iteration": current_iteration},
     })
 
