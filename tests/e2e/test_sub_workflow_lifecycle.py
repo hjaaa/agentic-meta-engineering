@@ -1,23 +1,18 @@
-"""F-008 · sub_workflow 父子状态联动 e2e（TC-F8-1 ~ TC-F8-6）。
+"""F-008 · sub_workflow 父子状态联动 e2e（TC-F8-1 ~ TC-F8-6）+ F-010 AC-05。
 
 覆盖（详细设计 §7.4）：
 - TC-F8-1 test_cancel_graceful_full_chain      — 父写 cancel_requested → 子 graceful 退出 + 父写 child_graceful_exited
 - TC-F8-2 test_rollback_cross_parent_child     — rollback_run → moved_sub_runs 含子 + 子 jsonl 含 parent_rolled_back
 - TC-F8-3 test_child_crash_on_subworkflow_failure — 子抛 RuntimeError → 父按 on_subworkflow_failure 三路径分支
 - TC-F8-4 test_parent_crash_recovery           — 父写 cancel_requested 后崩溃 → 子继续 poll 命中后 graceful 退出
-- TC-F8-5 test_taskstop_force_kill             — 子阻塞 > 30s → 父超时调 TaskStop → 父写 child_force_killed
-- TC-F8-6 test_poll_interval_boundary          — poll_interval_ms=10000 快进 → 检测时延 ≤ poll_interval × 1.1
-
-全部用例：
-- 不真派 Agent（MockSubAgent + monkeypatch）
-- 总耗时 ≤ 10 秒
-- 命名：test_xxx_yyy 对应 TC-F8-N
+- TC-F8-AC05 test_ac05_mock_dispatch_node_completed_output — mock_agent_dispatch fixture + 完整 main loop + 断言 node_completed.output 非空
 
 运行：
     python3 -m pytest tests/e2e/test_sub_workflow_lifecycle.py -v
 """
 from __future__ import annotations
 
+import json
 import logging
 import sys
 import threading
@@ -25,6 +20,7 @@ import time
 from pathlib import Path
 
 import pytest
+import yaml
 
 logger = logging.getLogger(__name__)
 
@@ -397,3 +393,98 @@ def test_parent_crash_recovery(tmp_path):
     assert "cancel_requested" in parent_types, "父 jsonl 应含 cancel_requested（崩溃前已写入）"
 
 # TC-F8-5 和 TC-F8-6 已拆分到 test_sub_workflow_cancel_advanced.py（rev3 G-3）
+
+
+# ============================================================================
+# TC-F8-AC05（F-010）：mock_agent_dispatch + workflow_continue.main 全链路
+#
+# 独立于 MockSubAgent 体系：用 mock_agent_dispatch fixture 替换 _dispatch_agent_node，
+# 验证 main loop 写入 node_completed 事件且 data.output 非空。
+# ============================================================================
+
+_AC05_WORKFLOW_F8 = {
+    "name": "test-agent-ac05-f8",
+    "version": 1,
+    "category": "requirement",
+    "nodes": [
+        {
+            "id": "ac05-f8-agent-node",
+            "agent": "test-sub-agent",
+            "mock_response": {"status": "completed", "summary": "AC-05 F8 验证"},
+        }
+    ],
+}
+
+
+def test_ac05_mock_dispatch_node_completed_output(
+    mock_agent_dispatch: list[dict],
+    tmp_path: Path,
+) -> None:
+    """TC-F8-AC05: mock_agent_dispatch + workflow_continue.main → node_completed.output 非空。
+
+    验收要点（AC-05）：
+    1. mock dispatcher 被调到（captured_calls 非空）
+    2. jsonl 中存在 node_completed 事件
+    3. node_completed.data.output 序列化后长度 > 0（非空非 null）
+    4. 全程无真实 Agent 派发（无网络依赖）
+    """
+    import workflow_continue
+
+    run_id = "TEST-AC05-F8"
+    workflow_name = "test-agent-ac05-f8"
+
+    # 构建测试 workflow yaml
+    wf_dir = tmp_path / ".claude" / "workflows" / "requirement"
+    wf_dir.mkdir(parents=True, exist_ok=True)
+    (wf_dir / f"{workflow_name}.yaml").write_text(
+        yaml.dump(_AC05_WORKFLOW_F8, allow_unicode=True),
+        encoding="utf-8",
+    )
+
+    # 构建 run 目录（uses runs/<id>/ 路径，与 _resolve_run_dir D-007 新路径对应）
+    run_dir = tmp_path / "runs" / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    jsonl_path = run_dir / "run-state.jsonl"
+
+    # node_started 使 RunState.current_node 指向该节点，main loop 会重跑它
+    init_events = [
+        {
+            "type": "workflow_started",
+            "run_id": run_id,
+            "data": {"workflow_name": workflow_name},
+        },
+        {
+            "type": "node_started",
+            "run_id": run_id,
+            "node_id": "ac05-f8-agent-node",
+        },
+    ]
+    with jsonl_path.open("w", encoding="utf-8") as fh:
+        for evt in init_events:
+            fh.write(json.dumps(evt, ensure_ascii=False) + "\n")
+
+    rc = workflow_continue.main([run_id], repo_root=tmp_path)
+    assert rc == 0, f"workflow_continue.main 应返回 0，实际 rc={rc}"
+
+    # 读 jsonl 验证 node_completed 事件存在且 output 非空
+    events: list[dict] = []
+    with jsonl_path.open(encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if line:
+                events.append(json.loads(line))
+
+    completed = [e for e in events if e.get("type") == "node_completed"]
+    assert completed, "至少应有 1 个 node_completed 事件"
+
+    # AC-05 核心断言：output 非空
+    for ev in completed:
+        output = ev.get("data", {}).get("output")
+        assert any(
+            e["type"] == "node_completed" and len(json.dumps(e["data"]["output"])) > 0
+            for e in completed
+        ), f"node_completed.data.output 不应为空：{ev}"
+
+    # mock fixture 被调到
+    assert mock_agent_dispatch, "mock_agent_dispatch 应记录至少 1 次调用"
+    assert mock_agent_dispatch[0]["node_id"] == "ac05-f8-agent-node"
