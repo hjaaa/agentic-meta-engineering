@@ -251,3 +251,29 @@ def test_sub_workflow_main_failure_raises(tmp_path: Path, tmp_jsonl: Path) -> No
 
         with pytest.raises(WorkflowError, match="启动子 run 失败"):
             _dispatch_sub_workflow_node(node, {}, run_dir, tmp_path, tmp_jsonl)
+
+
+# ============================================================================
+# TC-F11-6：loop 节点连续 N 次序列断言（features.json F-011 acceptance #1）
+# ============================================================================
+
+def test_loop_dispatch_until_done_sequence(tmp_jsonl: Path) -> None:
+    """max_iterations=3 时连续调用应产生 [loop_continue, loop_continue, loop_done] 序列。
+
+    每次调用之间模拟 workflow_continue.py:266 的 loop_counters[node_id] += 1 行为。
+    断言 outcomes 列表与 acceptance #1 要求的 [loop_continue]*(N-1) + [loop_done] 一致。
+    """
+    node_id = "seq-loop"
+    node = {"id": node_id, "loop": {"max_iterations": 3}}
+    outcomes: list[str] = []
+
+    run_state = _make_run_state()  # loop_counters 初始为空（iteration=0）
+    for _ in range(3):
+        result = _dispatch_loop_node(node, {}, run_state, tmp_jsonl)
+        outcomes.append(result.outcome)
+        # 模拟 workflow_continue.py:266 内存递增（iteration +1）
+        run_state.loop_counters[node_id] = run_state.loop_counters.get(node_id, 0) + 1
+
+    assert outcomes == ["loop_continue", "loop_continue", "loop_done"], (
+        f"连续 3 轮 outcome 序列错误，期望 ['loop_continue', 'loop_continue', 'loop_done']，实际 {outcomes}"
+    )
