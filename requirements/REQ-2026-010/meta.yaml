@@ -29,14 +29,15 @@ gates_passed:
   - phase: development
     at: "2026-05-12 10:42:06"
     via: managing-requirement-lifecycle
-    notes: phase 字段补登记——F-001~F-008 已实质在 development 推进；phase-transition gate 0
+    notes: phase 字段补登记——F-001~F-008 已实质在 development 推进；phase-transition gate 0 
       error / 2 W002 carry-over
   - phase: testing
     at: "2026-05-12 14:08:00"
     via: managing-requirement-lifecycle
-    notes: F-001~F-011 共 11/11 done；phase-transition gate 11 候选全过 0 error / 2 W002
-      carry-over（含 GATE-POST-DEV-RECEIPT / GATE-TOUCHES-VIOLATION / GATE-FEATURES-SCHEMA /
-      GATE-TASK-FRONTMATTER / GATE-TRACEABILITY 4+1 硬挡均 pass）
+    notes: F-001~F-011 共 11/11 done；phase-transition gate 11 候选全过 0 error / 2 
+      W002 carry-over（含 GATE-POST-DEV-RECEIPT / GATE-TOUCHES-VIOLATION / 
+      GATE-FEATURES-SCHEMA / GATE-TASK-FRONTMATTER / GATE-TRACEABILITY 4+1 硬挡均 
+      pass）
 created_at: "2026-05-11 11:25:44"
 branch: feat/req-2026-010
 base_branch: develop
@@ -89,19 +90,20 @@ reviews:
       - REV-REQ-2026-010-outline-design-002
     stale: false
   detail-design:
-    latest: REV-REQ-2026-010-detail-design-002
+    latest: REV-REQ-2026-010-detail-design-003
     conclusion: looks_clean
-    reviewed_commit: e45abbe
+    reviewed_commit: 99a250d
     artifact_hashes:
       artifacts/detailed-design.md: 
-        79c0abfac5cc94031db33a64518fe989245c245af81dd5e3cad210695588a867
+        c278ef377de9d23ac4ebce40565e239372338142e68a1742c83a4be906b0b089
       artifacts/features.json: 
-        55dce39a6470931b0e777d3a83453f90c273f67b7c91f9144536524b6cb71563
+        4d7d69b5eaf2b28c8f49ad871c3f6bf101f5f7128bcece476b2a6ec65c832982
       artifacts/outline-design.md: 
         99da579f50722ec9f646f01f085159b2563134edc6027877af1a5402ed532933
     history:
       - REV-REQ-2026-010-detail-design-001
       - REV-REQ-2026-010-detail-design-002
+      - REV-REQ-2026-010-detail-design-003
     stale: false
   code:
     by_feature:

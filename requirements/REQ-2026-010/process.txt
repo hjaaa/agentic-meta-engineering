@@ -106,3 +106,5 @@
 2026-05-12 14:07:27 [phase-transition] development → testing（F-001~F-011 共 11/11 done；phase-transition gate 11 候选 0 error / 2 W002 carry-over；GATE-POST-DEV-RECEIPT/TOUCHES-VIOLATION/FEATURES-SCHEMA/TASK-FRONTMATTER/TRACEABILITY 4+1 硬挡 pass；meta.yaml.phase=testing 已切；dispatch lock 已释放）
 2026-05-12 14:17:05 [save] testing 阶段全套测试通过（1312 total / 1301 passed / 3 pre-existing fail / 8 skip / 44.30s）：0 regression；3 fail 全在登记清单（dispatcher_dispatch loop/sub_workflow 2 项 F-006 起红 + legacy_run_compat 1 项 tmp_path 模板缺）独立 PR 跟踪；AC-01~AC-05 自动化覆盖到位；verdict READY_FOR_SUBMIT；下一步建议直接 submit（默认 --codex）或先做 AC-01/AC-03 人工冒烟
 2026-05-12 14:32:21 [submitted] PR #69 → develop (https://github.com/hjaaa/agentic-meta-engineering/pull/69)；--bypass-review-blockers 命中 GATE-REVIEW-VERDICT（detail-design 历史 signoff 漏跑 + 产物微调累积；11/11 feature 已逐项 code-review signoff approved）；submit gate 6 候选执行——前 5 个 0 error / 2 W001+W003 warning（plan.md 模板占位未填，不阻断），第 6 个 GATE-REVIEW-VERDICT 被 review-verdict tag bypass 短路；剩余 11 gate 未运行（escape-hatch 提前退出）
+2026-05-12 14:33:01 [codex-review-triggered] round=1 pr=#69
+2026-05-12 14:37:26 [codex-review-received] verdict=not_passed round=1
