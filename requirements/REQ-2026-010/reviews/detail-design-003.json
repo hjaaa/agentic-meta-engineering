@@ -79,5 +79,11 @@
       "features.json F-005 ~ F-011 接口签名在 detailed-design.md §1.5-1.7 已完整冻结且全部 done，建议归档前补 interfaces_frozen: true 标记便于检索",
       "features.json F-011 depends_on_features 建议补 F-008（与上一轮 review 一致，实施层已 resolve）"
     ]
+  },
+  "human_signoff": {
+    "decision": "approved-trivial",
+    "signed_at": "2026-05-12T15:01:01.832939+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
   }
 }
