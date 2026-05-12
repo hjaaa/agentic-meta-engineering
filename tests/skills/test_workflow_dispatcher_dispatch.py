@@ -136,18 +136,24 @@ def test_dispatch_node_bash_returns_completed(jsonl_path, base_run_state, tmp_pa
     assert result.outcome == "completed"
 
 
-def test_dispatch_node_loop_returns_completed(jsonl_path, base_run_state, tmp_path):
-    """loop 键存在时，派发到 _dispatch_loop_node → outcome=completed。"""
+def test_dispatch_node_loop_default_returns_loop_done(jsonl_path, base_run_state, tmp_path):
+    """loop 键存在且 max_iterations 默认为 1 时，首次迭代后 outcome=loop_done（F-011）。
+
+    `_node("loop")` 产出空 `loop: {}` dict，max_iterations 缺省视为 1；
+    current_iteration=0 + 1 >= 1 触发 loop_done 分支（workflow_dispatcher.py:399）。
+    """
     node = _node("loop")
     result = dispatch_node(node, base_run_state, tmp_path, tmp_path, {}, jsonl_path)
-    assert result.outcome == "completed"
+    assert result.outcome == "loop_done"
 
 
-def test_dispatch_node_sub_workflow_returns_completed(jsonl_path, base_run_state, tmp_path):
-    """sub_workflow 键存在时，派发到 _dispatch_sub_workflow_node → outcome=completed。"""
+def test_dispatch_node_sub_workflow_missing_template_returns_failed(jsonl_path, base_run_state, tmp_path):
+    """sub_workflow 键存在但缺 template 字段时，_dispatch_sub_workflow_node 抛 WorkflowError，
+    被 dispatch_node 入口的 except 兜底为 outcome=failed（workflow_dispatcher.py:425）。
+    """
     node = _node("sub_workflow")
     result = dispatch_node(node, base_run_state, tmp_path, tmp_path, {}, jsonl_path)
-    assert result.outcome == "completed"
+    assert result.outcome == "failed"
 
 
 # ============================================================================
