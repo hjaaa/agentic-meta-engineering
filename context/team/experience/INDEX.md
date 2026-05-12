@@ -37,6 +37,9 @@
 - [`historical-touches-violations-clear-template.md`](historical-touches-violations-clear-template.md) — 流程性产物（review-*.md / .dispatch-state.json / 临时 verdict）的 historical touches_violations 清零模板（D-013）；不扩 features.json touches
 - [`local-ruff-scope-vs-ci-fullset.md`](local-ruff-scope-vs-ci-fullset.md) — 本地 ruff 改动文件 scope vs CI 全仓 `--select=F` 漂移；subagent 自检命令必须对齐 CI 命令
 - [`detail-design-stale-after-development-needs-pre-testing-rev.md`](detail-design-stale-after-development-needs-pre-testing-rev.md) — detail-design.md 在 development 长跨度回填后必 stale；testing 切换前主 Agent 自检 `reviews.detail-design.stale` 字段并预审解锁 R005
+- [`ai-writes-code-by-assumed-field-name.md`](ai-writes-code-by-assumed-field-name.md) — AI 写消费方代码时凭直觉用字段名（prompt / workflow_template_path）与 schema/产出方实际名（message / template_path）脱节；`.get(default)` 掩盖错误从硬失败降为静默缺失，必跨文件 grep 验证
+- [`in-memory-state-without-jsonl-event-breaks-rebuild.md`](in-memory-state-without-jsonl-event-breaks-rebuild.md) — 任何对 RunState 持久化字段的 in-memory 修改必须配对写 jsonl 事件，否则 crash 后 rebuild 看不到变更，重派同一步
+- [`event-driven-completion-must-write-on-outcome.md`](event-driven-completion-must-write-on-outcome.md) — 工作流终结事件（workflow_completed 等）只能由 outcome 处理函数显式写入，不能凭"loop 退出后 current_node is None"投影推断——rebuild 出同样投影会让自然完成 / crash 两类场景被误并
 
 ## 什么值得沉淀
 
