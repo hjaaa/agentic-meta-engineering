@@ -38,7 +38,12 @@
   },
   "trend_g_meta_termination": {
     "grep_stub_scan": {
-      "scanned": ["tests/skills/", "scripts/lib/workflow_continue.py", "scripts/lib/workflow_dispatcher.py", "requirements/REQ-2026-010/artifacts/tasks/F-007.md"],
+      "scanned": [
+        "tests/skills/",
+        "scripts/lib/workflow_continue.py",
+        "scripts/lib/workflow_dispatcher.py",
+        "requirements/REQ-2026-010/artifacts/tasks/F-007.md"
+      ],
       "findings": [
         "tests/skills/test_workflow_commands_happy.py:105: 'F-007 用真实 _main_loop 替换了原 stub' → 历史说明，准确",
         "tests/skills/test_workflow_dispatcher_dispatch.py 多处: mock 函数 stub，F-006 scope，非误标",
@@ -74,6 +79,11 @@
       "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/.review-scope.json",
       "ts": "2026-05-12T00:02:50+00:00",
       "tool": "Edit"
+    },
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/requirements/REQ-2026-010/.dispatch-state.json",
+      "ts": "2026-05-12T01:21:09+00:00",
+      "tool": "Write"
     }
   ],
   "concerns": [],

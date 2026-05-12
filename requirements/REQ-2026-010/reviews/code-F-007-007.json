@@ -1,0 +1,82 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-010-code-F-007-007",
+  "requirement_id": "REQ-2026-010",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-12 08:45:00",
+  "reviewed_commit": "a89f3b6",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/tasks/F-007.md",
+      "sha256": "cfbdc14939e46574587d086204f64992040237f62e48fff6f2369f6f83a1321b"
+    },
+    {
+      "path": "artifacts/tasks/F-007.receipt.json",
+      "sha256": "cff6b86c79a3c2a12542022e4c8f5ed530de23e1f5a519855ff0c38ba82f397f"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 78,
+  "dimensions": {
+    "complexity": {
+      "score": 72,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "tests/skills/test_workflow_commands.py 总行数 1025（阈值 ≤ 500）。rev1 时已约 997 行，rev2 +28 行后破 1000 线。rev2 新增的 TC 是 rev2 修复验证所必需，但文件已严重超标——长期需拆分为 test_workflow_commands_happy.py / test_workflow_commands_state.py / test_workflow_commands_chain.py 等子文件，每文件覆盖不超过 3 个 TestClass（约 300 行）。当前：1025 行，阈值：500 行"
+        },
+        {
+          "severity": "minor",
+          "description": "tests/skills/test_workflow_commands.py:L448-L488 test_chain_run_continue_save_status CC=12（assert 分支 × 8 + with × 2 + if × 1 + comprehension × 1）。CC 超标 20%，当前：12，阈值：10。建议把步骤 2-4 各拆为 _assert_continue / _assert_save / _assert_status 私有辅助函数，减少单函数断言密度，CC 可降至 ≤ 6"
+        },
+        {
+          "severity": "minor",
+          "description": "tests/skills/test_workflow_continue_main_loop.py:L197-L260 test_main_loop_complete_flow_3nodes_with_approval_and_continue CC=14（with × 2 + assert × 8 + if × 4）。当前：14，阈值：10。建议拆为 test_first_continuation_approval_pending + test_second_continuation_completes，每个函数独立验证一次 _main_loop 调用，CC 各降至 ≤ 7"
+        },
+        {
+          "severity": "minor",
+          "description": "tests/skills/test_workflow_commands.py:L75-L106 _make_run_dir 嵌套深度 6（函数体 → if/elif 链内 append_event dict literal 内再嵌 dict）。当前：6，阈值：4。建议将 approval_pending / cancel_requested / cancelled 事件 dict 提取为模块级常量或辅助函数，降低字面量嵌套层数"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 90,
+      "issues": []
+    },
+    "design_consistency": {
+      "score": 90,
+      "issues": []
+    },
+    "security": {
+      "score": 90,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 90,
+      "issues": []
+    },
+    "auxiliary_spec": {
+      "score": 90,
+      "issues": []
+    },
+    "performance": {
+      "score": 90,
+      "issues": []
+    },
+    "history_context": {
+      "score": 90,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "test_workflow_commands.py 已严重超标（1025 行 / 阈值 500），建议在 F-008 PR 前或 F-008 PR 内按 TestClass 边界拆分为多个文件，避免继续膨胀",
+    "test_chain_run_continue_save_status 和 test_main_loop_complete_flow_3nodes CC 超标均由测试中 assert 语句密集导致——测试文件的 assert 也计入 CC，若 assert 密度高应提取辅助断言函数",
+    "_make_run_dir 嵌套深度问题是遗留问题（rev2 未触碰该函数），可随文件拆分一并清理"
+  ],
+  "scope": {
+    "feature_id": "F-007"
+  },
+  "supersedes": "REV-REQ-2026-010-code-F-007-005"
+}
