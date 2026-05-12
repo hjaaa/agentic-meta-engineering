@@ -246,15 +246,13 @@ def test_handle_retry_jsonl_warnings_printed_to_stderr(
 
 def test_handle_abort_unknown_on_failure_degrades_and_writes_workflow_failed(
     jsonl_path,
+    capsys,
 ):
     """未知 on_failure 策略时，_handle_abort 打 WARN 并走 abort 路径写 workflow_failed。
 
     场景：传入 on_failure='invalid_strategy'
     期望：stderr 含 WARN，state=failed，写 workflow_failed 事件（node_id 在 data 内）
     """
-    import io
-    import unittest.mock as mock
-
     run_state = RunState(run_id="REQ-2026-010", current_node="node-a", state="running")
     node = {"id": "node-a", "bash": "cmd", "next": "node-b"}
 
@@ -268,6 +266,10 @@ def test_handle_abort_unknown_on_failure_degrades_and_writes_workflow_failed(
     assert len(failed_events) == 1
     assert failed_events[0]["data"]["node_id"] == "node-a"
 
+    # 验证 _handle_abort 在未知 on_failure 策略时向 stderr 打印 WARN
+    captured = capsys.readouterr()
+    assert "WARN" in captured.err
+
 
 # ============================================================================
 # TC-F8-8 · 无 on_failure 字段节点（默认 retry 路径）
@@ -278,7 +280,7 @@ def test_handle_failure_default_on_failure_is_retry(
     node_no_on_failure,
     jsonl_path,
 ):
-    """节点不含 on_failure 字段时，_main_loop 默认走 retry 路径（F-1 修复验证）。
+    """节点不含 on_failure 字段时，_handle_failure 默认走 retry 路径（F-1 修复验证）。
 
     此处直接测试默认值路径：_handle_failure("retry", ...) 在未达上限时返回 False 且 state=running。
     确认 on_failure 默认为 retry（不是 abort）。

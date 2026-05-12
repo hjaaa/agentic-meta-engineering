@@ -1,16 +1,18 @@
-"""F-007/F-008 · workflow_continue.py main loop 单测。
+"""F-007/F-008 · workflow_continue.py main loop 单测（happy path + 辅助函数 + 端到端）。
 
-覆盖范围（main loop 行为 + 端到端场景）：
-  TC-F7-1  approval_pending 场景：节点派发返回 approval_pending，main loop 设状态 + break
-  TC-F7-2  完整链路：bash → approval → bash，能续跑到第二个 bash
+覆盖范围（_main_loop 主循环 + 辅助函数 + dispatcher 集成 e2e）：
+  TC build_node_map  _build_node_map 辅助函数单测（映射构造 + 跳过无 id 节点）
+  TC next_node       _next_node 辅助函数单测（hint 优先 / 无 hint 用 next / 无 next 返 None）
   TC-F7-3  failed outcome：节点派发返回 failed，main loop 调 _handle_failure
   TC-F7-4  node_outputs 结构正确：completed 时含 output / state / data 三键
   TC-F7-5  unknown node 容错：写 workflow_failed + state=failed
-  TC-F7-6  loop_continue：更新计数器，current_node 保持不变
-  TC-F7-7  sub_workflow_pending：state 保持 running，break
   TC-F8-5  main loop 端到端：mock dispatch_node，standard-8phase 前 3 节点 completed × 3
 
-_handle_failure 的 retry/skip/abort 单测移至 test_workflow_continue_failure_handler.py。
+outcome 路由（approval_pending / loop_continue / sub_workflow_pending）单测移至：
+  test_workflow_continue_outcomes.py（F-NEW-7 拆分，按 outcome 维度独立归档）
+
+_handle_failure 的 retry/skip/abort 单测移至：
+  test_workflow_continue_failure_handler.py
 
 外部依赖（jsonl IO）使用 tmp_path；mock workflow doc。
 pytest 命名规范：test_<场景>_<期望>（CLAUDE.md §7）。
@@ -46,12 +48,6 @@ def jsonl_path(tmp_path: Path) -> Path:
 
 
 @pytest.fixture()
-def base_run_state() -> RunState:
-    """最小化 RunState，run_id + current_node。"""
-    return RunState(run_id="REQ-2026-010", current_node="node-a")
-
-
-@pytest.fixture()
 def mock_workflow_2nodes() -> dict:
     """2 节点 workflow：node-a (bash) → node-b (approval)。"""
     return {
@@ -68,33 +64,6 @@ def mock_workflow_2nodes() -> dict:
             {
                 "id": "node-b",
                 "approval": {"prompt": "Approve?"},
-            },
-        ],
-    }
-
-
-@pytest.fixture()
-def mock_workflow_3nodes() -> dict:
-    """3 节点 workflow：node-a (bash) → node-b (approval) → node-c (bash)。"""
-    return {
-        "id": "test-wf",
-        "name": "test-workflow",
-        "version": "1.0",
-        "category": "requirement",
-        "nodes": [
-            {
-                "id": "node-a",
-                "bash": "echo 'step-a'",
-                "next": "node-b",
-            },
-            {
-                "id": "node-b",
-                "approval": {"prompt": "Approve $RUN_ID?"},
-                "next": "node-c",
-            },
-            {
-                "id": "node-c",
-                "bash": "echo 'step-c'",
             },
         ],
     }
@@ -151,120 +120,6 @@ def test_next_node_returns_none_when_no_next():
     node = {"id": "a"}
     result = _next_node(node, None)
     assert result is None
-
-
-# ============================================================================
-# TC-F7-1 · approval_pending 场景（break）
-# ============================================================================
-
-
-def test_main_loop_approval_pending_breaks_and_sets_state(
-    mock_workflow_2nodes,
-    base_run_state,
-    jsonl_path,
-    tmp_path,
-):
-    """main loop 派发 approval 节点，返回 approval_pending，设状态 + break。
-
-    场景：node-a (completed) → node-b (approval, outcome=approval_pending)
-    期望：state 变为 approval_pending，current_node=node-b，loop break
-    """
-    from workflow_dispatcher import DispatchResult
-
-    # 使用 side_effect 根据 node_id 返回不同结果
-    with patch("workflow_dispatcher.dispatch_node") as mock_dispatch:
-
-        def dispatch_side_effect(node, *args, **kwargs):
-            node_id = node.get("id")
-            if node_id == "node-a":
-                return DispatchResult(outcome="completed", output="hello")
-            elif node_id == "node-b":
-                return DispatchResult(outcome="approval_pending")
-            return DispatchResult(outcome="failed", error="unexpected node")
-
-        mock_dispatch.side_effect = dispatch_side_effect
-
-        base_run_state.state = "running"
-        base_run_state.current_node = "node-a"
-        _main_loop(base_run_state, mock_workflow_2nodes, tmp_path, tmp_path, jsonl_path)
-
-        # 期望：state 变为 approval_pending，current_node 仍为 node-b
-        assert base_run_state.state == "approval_pending"
-        assert base_run_state.current_node == "node-b"
-
-        # dispatch 应被调用 2 次（node-a + node-b）
-        assert mock_dispatch.call_count == 2
-
-
-# ============================================================================
-# TC-F7-2 · 完整链路：bash → approval → bash（续跑场景）
-# ============================================================================
-
-
-def test_main_loop_complete_flow_3nodes_with_approval_and_continue(
-    mock_workflow_3nodes,
-    jsonl_path,
-    tmp_path,
-):
-    """3 节点 workflow，第二节点（approval）后续跑。
-
-    初始运行（first continuation）：
-      node-a → completed
-      node-b → approval_pending，state=approval_pending，break
-
-    写 approval_approved 事件后续跑（second continuation）：
-      从 node-b 恢复，应完成 node-b（approval）并推进到 node-c
-
-    注：本用例验证的是单次 _main_loop 调用的行为，不跨越多次 continue 命令。
-        actual 跨 continue 的完整链路由集成测试验证。
-    """
-    from workflow_dispatcher import DispatchResult
-
-    # 第一次续跑：node-a completed，node-b approval_pending
-    run_state_1 = RunState(run_id="REQ-2026-010", current_node="node-a", state="running")
-
-    with patch("workflow_dispatcher.dispatch_node") as mock_dispatch:
-
-        def dispatch_side_effect_1(node, *args, **kwargs):
-            node_id = node.get("id")
-            if node_id == "node-a":
-                return DispatchResult(outcome="completed", output="output-a")
-            elif node_id == "node-b":
-                return DispatchResult(outcome="approval_pending")
-            return DispatchResult(outcome="failed")
-
-        mock_dispatch.side_effect = dispatch_side_effect_1
-        _main_loop(run_state_1, mock_workflow_3nodes, tmp_path, tmp_path, jsonl_path)
-
-        assert run_state_1.state == "approval_pending"
-        assert run_state_1.current_node == "node-b"
-        assert "node-a" in run_state_1.node_outputs
-
-    # 第二次续跑：node-b 和 node-c 都应成功（approval 实际上由用户手工 approve）
-    # 模拟 approval_approved 后状态回到 running，继续派发
-    run_state_2 = RunState(run_id="REQ-2026-010", current_node="node-b", state="approval_pending")
-    run_state_2.node_outputs = run_state_1.node_outputs.copy()
-
-    with patch("workflow_dispatcher.dispatch_node") as mock_dispatch:
-
-        def dispatch_side_effect_2(node, *args, **kwargs):
-            node_id = node.get("id")
-            if node_id == "node-b":
-                # approval 节点实际上仅写事件，不返回 output；但这里我们让它返回 completed 表示审批流程完成
-                return DispatchResult(outcome="completed", output=None)
-            elif node_id == "node-c":
-                return DispatchResult(outcome="completed", output="output-c")
-            return DispatchResult(outcome="failed")
-
-        mock_dispatch.side_effect = dispatch_side_effect_2
-        run_state_2.state = "running"  # 模拟 approval_approved 后状态恢复
-        _main_loop(run_state_2, mock_workflow_3nodes, tmp_path, tmp_path, jsonl_path)
-
-        # 期望：node-c 完成，state 回到 running（因为拓扑末尾，current_node=None 触发 while 退出）
-        assert run_state_2.state == "running"
-        assert run_state_2.current_node is None
-        assert "node-b" in run_state_2.node_outputs
-        assert "node-c" in run_state_2.node_outputs
 
 
 # ============================================================================
@@ -367,78 +222,6 @@ def test_main_loop_unknown_node_writes_workflow_failed_event(
     workflow_failed_events = [e for e in events if e.get("type") == "workflow_failed"]
     assert len(workflow_failed_events) == 1
     assert "未知节点" in workflow_failed_events[0]["data"]["error"]
-
-
-# ============================================================================
-# TC-F7-6 · loop_continue outcome（F-008 接入后：更新计数器，current_node 不变，继续循环）
-# ============================================================================
-
-
-def test_main_loop_loop_continue_updates_counter_and_keeps_current_node(
-    jsonl_path,
-    tmp_path,
-):
-    """TC-F7-6（更新）：F-008 接入后 loop_continue 正确处理——更新计数器，current_node 保持。
-
-    场景：node-a 第一次返回 loop_continue，第二次返回 completed（退出循环）
-    期望：loop_counters[node-a] = 1；最终 current_node 推进（node-b 或 None）
-    """
-    from workflow_dispatcher import DispatchResult
-
-    workflow = {
-        "nodes": [
-            {"id": "node-a", "bash": "loop cmd", "next": "node-b"},
-            {"id": "node-b", "bash": "final"},
-        ]
-    }
-    run_state = RunState(run_id="REQ-2026-010", current_node="node-a", state="running")
-
-    call_count = {"n": 0}
-
-    with patch("workflow_dispatcher.dispatch_node") as mock_dispatch:
-
-        def side_effect(node, *args, **kwargs):
-            call_count["n"] += 1
-            if node.get("id") == "node-a":
-                if call_count["n"] == 1:
-                    return DispatchResult(outcome="loop_continue")
-                return DispatchResult(outcome="completed", output="done")
-            return DispatchResult(outcome="completed", output="final")
-
-        mock_dispatch.side_effect = side_effect
-
-        _main_loop(run_state, workflow, tmp_path, tmp_path, jsonl_path)
-
-    # loop_counters 应更新（第 1 次 loop_continue 后计数为 1）
-    assert run_state.loop_counters.get("node-a", 0) == 1
-
-    # 最终 current_node 应已推进（node-a completed 后 → node-b；node-b completed 后 → None）
-    assert run_state.current_node is None
-    assert run_state.state == "running"
-
-
-# ============================================================================
-# TC-F7-7 · sub_workflow_pending（F-008 接入后：state 保持 running，break）
-# ============================================================================
-
-
-def test_main_loop_sub_workflow_pending_breaks_without_state_change(
-    mock_workflow_2nodes,
-    jsonl_path,
-    tmp_path,
-):
-    """sub_workflow_pending：state 保持 running，main loop break，等待回调续跑。"""
-    from workflow_dispatcher import DispatchResult
-
-    run_state = RunState(run_id="REQ-2026-010", current_node="node-a", state="running")
-
-    with patch("workflow_dispatcher.dispatch_node") as mock_dispatch:
-        mock_dispatch.return_value = DispatchResult(outcome="sub_workflow_pending")
-
-        _main_loop(run_state, mock_workflow_2nodes, tmp_path, tmp_path, jsonl_path)
-
-        assert run_state.state == "running"
-        assert mock_dispatch.call_count == 1
 
 
 # ============================================================================

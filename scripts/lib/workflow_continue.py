@@ -6,7 +6,7 @@
 completed / failed / approval_pending / loop_continue / loop_done / sub_workflow_pending /
 sub_workflow_done；F-008 接入失败矩阵 retry/skip/abort；F-011 接入 loop / sub_workflow）。
 
-详细设计 §1.2.2 / §1.7。
+详细设计 §1.7。
 """
 from __future__ import annotations
 
@@ -61,7 +61,7 @@ def _handle_retry(
 ) -> bool:
     """retry 策略：统计已失败次数，未达上限则静默等待下次续跑，超出则升级为 abort。
 
-    参照 workflow_dispatcher.py:173-184 _dispatch_*_node 风格编写。
+    参照 workflow_dispatcher.py:185-200 _dispatch_skill_node 风格编写。
 
     返回值：False（调用方应 break，等待下次 continue 或因 abort 终结）。
 
@@ -120,7 +120,7 @@ def _handle_skip(
 ) -> bool:
     """skip 策略：写 node_skipped 事件，推进 current_node，返回 True（主循环继续）。
 
-    参照 workflow_dispatcher.py:173-184 _dispatch_*_node 风格编写。
+    参照 workflow_dispatcher.py:185-200 _dispatch_skill_node 风格编写。
 
     返回值：True（调用方应继续循环，推进到下一节点）。
 
@@ -162,7 +162,7 @@ def _handle_abort(
 ) -> bool:
     """abort 策略（或未知策略降级为 abort）：写 workflow_failed 事件，终结 run。
 
-    参照 workflow_dispatcher.py:173-184 _dispatch_*_node 风格编写。
+    参照 workflow_dispatcher.py:185-200 _dispatch_skill_node 风格编写。
 
     返回值：False（调用方应 break，run 终结）。
 

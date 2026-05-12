@@ -1,85 +1,65 @@
 {
   "schema_version": "1.0",
   "feature_id": "F-008",
-  "status": "DONE_WITH_CONCERNS",
-  "commit_sha": "4db3915",
+  "status": "DONE",
+  "commit_sha": "TBD",
   "files_changed": [
-    "scripts/lib/workflow_continue.py",
-    "tests/skills/test_workflow_continue_main_loop.py",
-    "tests/skills/test_workflow_continue_failure_handler.py (new)",
-    "tests/skills/test_workflow_commands_advanced.py (dead import removed)",
-    "requirements/REQ-2026-010/artifacts/tasks/F-008.md (touches updated)"
+    "scripts/lib/workflow_continue.py (F-NEW-4: docstring 引用行改为 :185-200 _dispatch_skill_node; F-NEW-5: §1.2.2 → §1.7)",
+    "tests/skills/test_workflow_continue_failure_handler.py (F-NEW-1: 删除 dead import; F-NEW-2: 加 capsys + WARN 断言; F-NEW-3: docstring _main_loop → _handle_failure)",
+    "tests/skills/test_workflow_continue_main_loop.py (F-NEW-7: 移出 TC-F7-1/F7-2/F7-6/F7-7，更新 docstring)",
+    "tests/skills/test_workflow_continue_outcomes.py (F-NEW-7: 新建，含 4 个 outcome 路由 TC)",
+    "requirements/REQ-2026-010/artifacts/tasks/F-008.md (touches 追加 outcomes 新文件)"
   ],
-  "test_summary": "rev2: test_workflow_continue_main_loop.py 13 passed + test_workflow_continue_failure_handler.py 7 passed = 20 passed；回归 tests/skills/ 共 202 passed, 7 skipped in 1.54s",
-  "split_stats": {
-    "before_wc_l": 641,
-    "after_files": {
-      "test_workflow_continue_main_loop.py": 520,
-      "test_workflow_continue_failure_handler.py": 302
+  "test_summary": "rev3 拆分后：test_workflow_continue_main_loop.py 9 passed + test_workflow_continue_failure_handler.py 7 passed + test_workflow_continue_outcomes.py 4 passed = 20 passed（与拆前等量）；回归 tests/skills/test_workflow_continue_*.py tests/skills/test_workflow_dispatcher_*.py tests/skills/test_workflow_commands_*.py 共 129 passed in 0.27s",
+  "split_stats_rev3": {
+    "before_wc_l": {
+      "test_workflow_continue_main_loop.py": 520
     },
-    "test_count_before_main_loop_file": 17,
-    "test_count_after_combined": 20,
-    "note": "拆分净增 3 个新测试（TC-F8-6 warnings、TC-F8-7 unknown on_failure 降级、TC-F8-8 default retry）"
+    "after_files": {
+      "test_workflow_continue_main_loop.py": 303,
+      "test_workflow_continue_failure_handler.py": 304,
+      "test_workflow_continue_outcomes.py": 283
+    },
+    "note": "F-NEW-7 拆分：approval_pending / loop_continue / sub_workflow_pending 相关 TC 移至 outcomes；拆分后三文件均 ≤ 400 行，满足门禁"
   },
   "keeps_closed": {
-    "F-1": "on_failure 默认值改为 'retry'（workflow_continue.py:283）；TC-F7-3 更新为显式 on_failure=abort 场景",
-    "F-2": "删除 elif outcome=='skipped' 死分支（line 267-269）；模块 docstring 改为 '7 outcome 覆盖'；_main_loop docstring 已去除 skipped；_advance_after_completed docstring 已去除 skipped",
-    "F-3": "workflow_failed 事件结构修正：node_id 移入 data 内（_handle_retry:100-110、_handle_abort:177-188、_route_outcome:~行290）",
-    "F-4": "node_skipped data.reason 改为 error or '无具体错误'（实际错误信息）；删除 original_error 字段；TC-F8-2 断言同步更新",
-    "F-5": "_handle_retry 保留 warnings 并打 WARN（workflow_continue.py:73-78）",
-    "F-6": "_handle_failure 拆 3 个私有助手：_handle_retry / _handle_skip / _handle_abort；_handle_failure 退化为 3 行路由",
-    "F-7": "test_workflow_continue_main_loop.py（520 行）+ test_workflow_continue_failure_handler.py（302 行）",
-    "F-8": "_advance_after_completed docstring 去除 skipped 场景描述",
-    "F-9": "与 F-2 合并处理完成",
-    "F-10": "F-008.md frontmatter touches 扩展为 4 个文件",
-    "F-11": "_route_outcome else 分支改为写 workflow_failed + state=failed（消除静默死循环）",
-    "F-13": "_route_outcome 函数承接 outcome 路由重构（从 _main_loop 拆出，CC 降低）",
-    "F-15": "test_workflow_continue_failure_handler.py 所有 TC 含 '# ===' 区块分隔符",
-    "F-follow-up-1": "tests/skills/test_workflow_commands_advanced.py:36 dead import workflow_run 已删除"
+    "rev1_F-1_to_F-13_F-follow-up-1": "继承 rev1 13 项 keep 闭合，详见 rev1 receipt",
+    "rev2_F-NEW-1": "继承 rev2：dead import workflow_run 已在 test_workflow_commands_advanced.py 删除",
+    "F-NEW-1": "rev3: 删除 TC-F8-7 函数体内 dead import io + unittest.mock as mock（test_workflow_continue_failure_handler.py:255-256）",
+    "F-NEW-2": "rev3: TC-F8-7 签名追加 capsys fixture，函数体末尾追加 capsys.readouterr() + assert 'WARN' in captured.err",
+    "F-NEW-3": "rev3: TC-F8-8 docstring '_main_loop 默认走 retry 路径' → '_handle_failure 默认走 retry 路径'",
+    "F-NEW-4": "rev3: _handle_retry/_skip/_abort docstring 引用行号从 'py:173-184 _dispatch_agent_node stub' 改为 'py:185-200 _dispatch_skill_node'（风格匹配的多段 docstring 函数）",
+    "F-NEW-5": "rev3: 模块 docstring line 9 '详细设计 §1.2.2 / §1.7' → '详细设计 §1.7'（§1.2.2 节点在 detailed-design.md 中不存在）",
+    "F-NEW-7": "rev3: test_workflow_continue_main_loop.py 从 520 行拆至 303 行；TC-F7-1/F7-2（approval_pending）/ TC-F7-6（loop_continue）/ TC-F7-7（sub_workflow_pending）移至 test_workflow_continue_outcomes.py（283 行）"
   },
   "trend_g_meta_termination": {
-    "grep_skipped_scan": {
-      "command": "grep -rn 'skipped' scripts/lib/workflow_continue.py tests/skills/test_workflow_continue_*.py",
-      "findings": [
-        "workflow_continue.py:144: 'state': 'skipped' → node_outputs 状态字符串，非 DispatchOutcome，合法",
-        "workflow_continue.py 多处: 'node_skipped' → 事件类型字符串，合法",
-        "test_workflow_continue_failure_handler.py 多处: 'node_skipped' 事件类型测试，合法"
-      ],
-      "verdict": "0 误用 DispatchOutcome skipped；trend-G-meta 第 4 次循环 F-2 闭合"
-    },
     "grep_stub_scan": {
-      "command": "grep -rn 'stub|占位|待实现|待落地|placeholder' scripts/lib/workflow_continue.py tests/skills/test_workflow_continue_*.py",
-      "verdict": "0 命中"
-    },
-    "grep_append_event_structure": {
-      "command": "grep -A5 'append_event' scripts/lib/workflow_continue.py",
-      "findings": [
-        "_handle_retry:100 workflow_failed: node_id 在 data 内 ✓",
-        "_handle_skip:131 node_skipped: node_id 在顶层（与 run_state.rebuild 一致）✓",
-        "_handle_abort:177 workflow_failed: node_id 在 data 内 ✓",
-        "_route_outcome:290 workflow_failed（未知 outcome）: node_id 在 data 内 ✓",
-        "_main_loop:326 workflow_failed（未知节点）: 无 node_id（节点不存在）✓",
-        "_resume_run:383 run_resumed: 无 node_id（workflow 级事件）✓"
+      "scanned": [
+        "1. dead import 全文扫：grep -rn import 范围: scripts/lib/workflow_continue.py + tests/skills/test_workflow_continue_*.py",
+        "2. docstring 行号引用全文扫：grep -n 'py:[0-9]' 同范围",
+        "3. docstring 章节锚点扫：grep -nE '§[0-9]+...' 同范围",
+        "4. docstring 与函数体一致性扫：人工检查 TC docstring 中被测对象 vs 函数体调用",
+        "5. 文件行数扫：wc -l 同范围",
+        "6. 失实标签扫：grep -rn 'stub|占位|待实现|待落地|placeholder' 同范围"
       ],
-      "verdict": "所有 workflow_failed 事件 node_id 在 data 内；node_skipped/node_failed 在顶层（与 run_state.rebuild 一致）"
+      "findings": [
+        "1. dead import: 发现 test_workflow_continue_failure_handler.py:255-256 内 import io / import unittest.mock → 已删除（F-NEW-1）；function-level import io/mock 已全消；其余文件 import 全为已使用",
+        "2. py 引用: scripts/lib/workflow_continue.py:64/123/165 三处 'py:173-184' → 已改为 'py:185-200 _dispatch_skill_node' (F-NEW-4)；:386 cancel.py:93 为行内注释，已确认目标为实现代码（非 docstring 失实引用）",
+        "3. §章节锚点: workflow_continue.py:9 '§1.2.2 / §1.7' → 已改为 '§1.7'（F-NEW-5）；:381 '§1.2.2' → 现有文件行 381 是代码注释引用 detailed-design.md §1.2.2（_bootstrap_requirement），该节存在（detailed-design.md:32 '### 1.2 `_bootstrap_requirement`'），已确认引用合法；test_workflow_continue_failure_handler.py:143/160/169 引用 spec §2.1 已验证（detailed-design.md:264 '### 2.1 jsonl 新增事件类型' 存在）",
+        "4. docstring-函数体一致性: TC-F8-8 docstring 已从 '_main_loop' 改为 '_handle_failure'（F-NEW-3）；TC-F8-7 docstring 承诺 stderr 含 WARN → 已补 capsys 断言（F-NEW-2）；所有其他测试 docstring 与函数体调用一致",
+        "5. 文件行数: workflow_continue.py=492 ✓；main_loop.py=303 ✓；failure_handler.py=304 ✓；outcomes.py=283 ✓；全部 ≤ 500",
+        "6. stub/占位标签: 0 命中（dispatcher.py 中 stub 注释不在本 feature 范围）"
+      ]
     },
-    "wc_l_check": {
-      "workflow_continue.py": 492,
-      "test_workflow_continue_main_loop.py": 520,
-      "test_workflow_continue_failure_handler.py": 302,
-      "verdict": "main_loop 520 轻微超 500 建议上限（超出 20 行），内容无冗余，accept；failure_handler 302 ✓；workflow_continue.py 492 ✓"
-    }
+    "summary": "rev2 5 项 keep（F-NEW-1 dead import + F-NEW-2 capsys 断言 + F-NEW-3 docstring 失实 + F-NEW-4 行号引用失实 + F-NEW-5 §锚点失实）全闭合 + F-NEW-7 文件行数超限已拆分；rev3 自引入 0 keep（确认）；trend-G-meta 第 4 次循环正式终结"
   },
-  "concerns": [
-    "spec §1.7 路由表仍含 skipped 行（与 DispatchOutcome 7 项不一致，是 spec 自身债）——本 PR 不改 spec，留独立 follow-up PR 闭合",
-    "test_workflow_continue_main_loop.py 520 行，超出 500 行建议上限 20 行；内容无冗余，接受现状"
-  ],
+  "concerns": [],
   "out_of_scope_notes": [
-    "spec §1.7 skipped 行 → 留 follow-up PR 修 spec",
-    "workflow_dispatcher.py 中 except Exception（pre-existing）→ F-006 范围，不修"
+    "spec §1.7 skipped 行 → 留 follow-up PR 修 spec（F-SL-1，rev2 verdict 已标注，不在 rev3 范围）",
+    "workflow_continue.py:381 §1.2.2 注释引用 _bootstrap_requirement，该节存在，合法，不修"
   ],
   "touches_violations": [],
   "missing_context": "",
   "block_reason": "",
-  "timestamp": "2026-05-12T10:00:00+08:00"
+  "timestamp": "2026-05-12T20:00:00+08:00"
 }
