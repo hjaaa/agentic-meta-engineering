@@ -1,0 +1,99 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-010-code-F-005-001",
+  "requirement_id": "REQ-2026-010",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-11 21:12:06",
+  "reviewed_commit": "5d1f7c3",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "4d7d69b5eaf2b28c8f49ad871c3f6bf101f5f7128bcece476b2a6ec65c832982"
+    },
+    {
+      "path": "artifacts/tasks/F-005.md",
+      "sha256": "e212f436fc57ab5cf4146deccc116b4c15ce9be24eb54f02c2187e452f428a66"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 62,
+  "dimensions": {
+    "design_consistency": {
+      "score": 60,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "F-10 scripts/lib/workflow_dispatcher.py:241 — _dispatch_approval_node 调用 substitute_vars(raw_prompt, None, env) 把 node_outputs 参数置 None；substitute_vars 用 VAR_REF_RE 从 node_outputs 字典取 $<nodeId>.output[.field]，ENV_VAR_RE 又用负向 lookahead (?!\\.output) 主动跳过含 .output 的 token，导致 _build_env 注入的扁平 <nodeId>.output env 键根本不被命中。standard-8phase.yaml 中 9 处 approval message 使用此引用（如 :139 $req-quality-review.output.verdict），rev1 下这些占位全部渲染为空串，approval_pending 事件 data.prompt 将丢失关键判断信息。修复：(1) _dispatch_approval_node 签名补 run_state: RunState 参数；(2) dispatch_node:143 同步传 run_state；(3) 调用改为 substitute_vars(raw_prompt, run_state.node_outputs, env)；(4) TC-D4 新增 node_outputs 替换断言。"
+        },
+        {
+          "severity": "minor",
+          "description": "F-13 requirements/REQ-2026-010/artifacts/tasks/F-005.md:27 — DispatchOutcome 列 skipped 是笔误，应为 sub_workflow_done（与 detailed-design §1.5 + workflow_dispatcher.py:34-42 7 枚举一致）。修复：把任务文档枚举改为 completed / failed / approval_pending / loop_continue / loop_done / sub_workflow_pending / sub_workflow_done。"
+        }
+      ]
+    },
+    "security": {
+      "score": 95,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 95,
+      "issues": []
+    },
+    "complexity": {
+      "score": 80,
+      "issues": []
+    },
+    "error_handling": {
+      "score": 78,
+      "issues": []
+    },
+    "auxiliary_spec": {
+      "score": 72,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "F-15 scripts/lib/workflow_dispatcher.py:15 — `from dataclasses import dataclass, field` 中 field 全文未使用（grep 验证仅出现在 import 自身），dataclass 字段用类型注解默认值（如 outcome: DispatchOutcome）未用 field()。修复：改为 `from dataclasses import dataclass`。"
+        },
+        {
+          "severity": "minor",
+          "description": "F-17 scripts/lib/workflow_dispatcher.py:239 — 行内注释 `# substitute_vars 签名：(text, node_outputs, env)` 是 WHAT 描述且签名不准（实际 4 参含 escape_for_bash），违反 CLAUDE.md 注释规范。修复：与 F-10 调整一并删除该 WHAT 注释或改为说明传 run_state.node_outputs 的 WHY。"
+        },
+        {
+          "severity": "minor",
+          "description": "F-20 scripts/lib/workflow_dispatcher.py:224 — `_dispatch_approval_node` docstring 首行 'Approval 节点 stub（不是纯 stub，F-007 依赖此事件写入）' 括号自我否定，对读者形成噪音。修复：改为 'Approval 节点：写 approval_pending 事件供 F-007 续跑消费'。"
+        },
+        {
+          "severity": "minor",
+          "description": "F-21 scripts/lib/workflow_dispatcher.py:149 — `raise WorkflowError(f\"未知节点类型：{node_id}\")` 用全角冒号，同模块 run_state.py:284 等错误信息用半角 `:`。修复：rev2 全模块横扫全角冒号统一改半角（按 D-014 经验避免风格双标）。"
+        }
+      ]
+    },
+    "performance": {
+      "score": 95,
+      "issues": []
+    },
+    "history_context": {
+      "score": 95,
+      "issues": []
+    }
+  },
+  "required_fixes": [
+    "F-10：scripts/lib/workflow_dispatcher.py:241 把 substitute_vars(raw_prompt, None, env) 改为 substitute_vars(raw_prompt, run_state.node_outputs, env)；_dispatch_approval_node 签名补 run_state 参数；dispatch_node:143 同步传 run_state；TC-D4 增加 $<nodeId>.output.field 替换断言",
+    "F-13：requirements/REQ-2026-010/artifacts/tasks/F-005.md:27 DispatchOutcome 列表把 skipped 改为 sub_workflow_done",
+    "F-15：scripts/lib/workflow_dispatcher.py:15 去掉冗余 import field（改为 from dataclasses import dataclass）",
+    "F-17：scripts/lib/workflow_dispatcher.py:239 删除或改写 substitute_vars WHAT 注释（与 F-10 修复同步调整）",
+    "F-20：scripts/lib/workflow_dispatcher.py:224 _dispatch_approval_node docstring 改为正向描述（去掉 stub/不是纯 stub 自相矛盾）",
+    "F-21：rev2 全模块横扫全角冒号统一改半角（按 D-014 经验扫同模式风格双标）"
+  ],
+  "suggestions": [
+    "F-5 / F-6：dispatch_node 入口 append_event(node_started/node_failed) 的 IO 异常加固（包入 try/except + stderr 兜底）— 纳入 F-006 IO 加固议题",
+    "F-7：run_state.py:208-210 int(iteration) 加 try/except (ValueError, TypeError) + warnings 兜底 — F-011 真实写入 loop 事件时一并处理",
+    "F-9（major→minor）：错误路径测试覆盖（append_event 抛异常 / iteration 非整数）— F-006/F-011 加固时一并补",
+    "F-12：node_started/node_failed 事件加顶层 run_id 与既有约定一致但 detailed-design §2.1 表格未明示 — F-006/F-007 落地时由 spec 侧统一对齐"
+  ],
+  "scope": {
+    "feature_id": "F-005"
+  },
+  "supersedes": null
+}

@@ -1,0 +1,83 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-010-code-F-005-002",
+  "requirement_id": "REQ-2026-010",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-11 21:29:19",
+  "reviewed_commit": "382e54a",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "4d7d69b5eaf2b28c8f49ad871c3f6bf101f5f7128bcece476b2a6ec65c832982"
+    },
+    {
+      "path": "artifacts/tasks/F-005.md",
+      "sha256": "32b61ef1ef702a5d6365acd1253253c31cb317a21a4aa3dbb59915ccc899f207"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 70,
+  "dimensions": {
+    "design_consistency": {
+      "score": 95,
+      "issues": []
+    },
+    "security": {
+      "score": 95,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 95,
+      "issues": []
+    },
+    "complexity": {
+      "score": 78,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "F-NEW-1 tests/skills/test_workflow_dispatcher.py 实测 505 行 > 500 阈值；rev1 follow-up '超阈再拆' 已现实化。rev3 修复：按 TC 分组拆为 test_workflow_dispatcher_dispatch.py (TC-D1~D6+D9, ~280 行) + test_workflow_dispatcher_build_env_and_state.py (TC-D7~D8, ~225 行)。"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 88,
+      "issues": []
+    },
+    "auxiliary_spec": {
+      "score": 72,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "F-NEW-2 tests/skills/test_workflow_dispatcher.py:33 'from run_state import RunState, read_events, append_event' 中 append_event 全文未调用（仅 docstring 文字引用不构成 Python 名字解析使用）。rev3 修复：删除 append_event 导入。"
+        },
+        {
+          "severity": "minor",
+          "description": "F-NEW-3 tests/skills/test_workflow_dispatcher.py:37-43 6 个私有函数 import 全部 dead（_dispatch_agent_node / _dispatch_skill_node / _dispatch_bash_node / _dispatch_prompt_node / _dispatch_loop_node / _dispatch_sub_workflow_node），实际通过 patch('workflow_dispatcher._dispatch_xxx_node', ...) 字符串路径打补丁不依赖本地 import。rev3 修复：删除整段 6 个 _dispatch_*_node import，保留 DispatchOutcome/DispatchResult/dispatch_node/_build_env 等真实使用项。"
+        }
+      ]
+    },
+    "performance": {
+      "score": 95,
+      "issues": []
+    },
+    "history_context": {
+      "score": 95,
+      "issues": []
+    }
+  },
+  "required_fixes": [
+    "F-NEW-1: tests/skills/test_workflow_dispatcher.py 按 TC 分组拆为 2 文件（test_workflow_dispatcher_dispatch.py ~280 行 + test_workflow_dispatcher_build_env_and_state.py ~225 行），单文件 ≤ 500 行",
+    "F-NEW-2: tests/skills/test_workflow_dispatcher.py:33 删除未使用的 append_event 导入",
+    "F-NEW-3: tests/skills/test_workflow_dispatcher.py:37-43 删除 6 个 _dispatch_*_node 私有函数 dead imports"
+  ],
+  "suggestions": [
+    "rev1 follow-up 继续沿用：F-5/F-6（dispatch_node IO 异常加固 → F-006）/ F-7（rebuild int(iteration) → F-011）/ F-9（错误路径测试 → F-006/F-011）/ F-12（事件 run_id 字段对齐 → F-006/F-007）",
+    "rev2 follow-up：测试文件拆分后，F-006/F-007/F-011 各自新增测试可挂到对应文件，控制单文件 ≤ 500 行",
+    "rev3 D-014 横扫硬要求：派发前必须 grep 全文 dead import (from .* import 块每个名字 grep 调用)；trend-G-meta 目标 0 自引入"
+  ],
+  "scope": {
+    "feature_id": "F-005"
+  },
+  "supersedes": "REV-REQ-2026-010-code-F-005-001"
+}
