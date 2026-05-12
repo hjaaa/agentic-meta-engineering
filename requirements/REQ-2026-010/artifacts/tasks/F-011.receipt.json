@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-011",
+  "status": "DONE_WITH_CONCERNS",
+  "commit_sha": "1d009512becf43cc3bd583d60e80002fa7d60a93",
+  "files_changed": [
+    "scripts/lib/workflow_dispatcher.py",
+    "tests/lib/test_workflow_dispatcher_f011.py"
+  ],
+  "test_summary": "11 passed in 0.05s（pytest tests/lib/test_workflow_dispatcher_f011.py）；全量 304 passed in 13.40s（pytest tests/lib/）",
+  "touches_violations": [
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/tests/lib/test_workflow_dispatcher_f011.py",
+      "ts": "2026-05-12T03:43:08+00:00",
+      "tool": "Write"
+    }
+  ],
+  "concerns": [
+    "touches_guard 对测试文件路径 tests/lib/test_workflow_dispatcher_f011.py 记录了 violation（任务 touches 仅含 scripts/lib/workflow_dispatcher.py）。实际情况：项目不存在 tests/unit/ 目录，测试均在 tests/lib/；文件系全新建立（非修改已有测试），符合任务说明中「只新增不改既有 test」原则，验收方 gate 可酌情放行。"
+  ],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-12T12:00:00+08:00"
+}
