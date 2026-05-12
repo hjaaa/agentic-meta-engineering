@@ -433,20 +433,43 @@ def _delete_local_branch(
         result.local_branch = "kept"
         return
 
-    # F-7（codex round-3 P2）：删除前先确认 HEAD 不在目标分支上
-    # —— 否则 `git branch -d <branch>` 必报 "branch used by worktree"，
-    # 这是用户最常见的归档姿势（PR merge 后还在 feat/req-* 分支上跑 archive）。
-    # 不自动切走 base_branch（可能 base 也是 detached 或本地缺失）；给清晰可执行错误。
+    # 自动切走 base_branch 再删 feat（2026-05-12 spec 修订）：
+    # 旧实现要求用户手动 `git switch <base>` 再重跑 archive，造成"二次跑命令"的奇怪
+    # 用户体验。改为 archive_runner 内部检测 current==branch 时主动 `git switch
+    # <base_branch>`，让删本地分支真正成为整个 archive 的最后一步（"所有归档操作在
+    # 开发分支上进行，删除开发分支是最后操作"）。
+    # 安全约束：base_branch 必须非空且能 switch 成功；任一失败 fail-soft，本地分支
+    # outcome=failed，archive 整体仍 exit 0（与现有副作用降级矩阵一致）。
     current = _current_branch()
     if current == branch:
-        msg = (
-            f"local_branch: 当前 HEAD 在 {branch!r}，git branch -d 会报 "
-            f"'used by worktree'；请先 `git switch {base_branch}` 再重跑 archive"
-        )
-        result.local_branch = "failed"
-        result.error_messages.append(msg)
-        print(f"⚠️  {msg}", file=sys.stderr)
-        return
+        if not base_branch:
+            msg = (
+                f"local_branch: 当前 HEAD 在 {branch!r} 但 base_branch 为空，"
+                f"无法自动切走；请先 `git switch <base>` 再重跑 archive"
+            )
+            result.local_branch = "failed"
+            result.error_messages.append(msg)
+            print(f"⚠️  {msg}", file=sys.stderr)
+            return
+        try:
+            switch_proc = _run(
+                ["git", "switch", base_branch], cwd=REPO_ROOT,
+            )
+        except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
+            result.local_branch = "failed"
+            result.error_messages.append(
+                f"local_branch: 自动切 {base_branch!r} 失败（{exc}）；"
+                f"请手动 `git switch {base_branch}` 再重跑 archive"
+            )
+            return
+        if switch_proc.returncode != 0:
+            err = (switch_proc.stderr or switch_proc.stdout or "").strip() or f"exit={switch_proc.returncode}"
+            result.local_branch = "failed"
+            result.error_messages.append(
+                f"local_branch: 自动切 {base_branch!r} 失败：{err}；"
+                f"请手动 `git switch {base_branch}` 再重跑 archive"
+            )
+            return
 
     try:
         proc = _run(["git", "branch", "-d", branch], cwd=REPO_ROOT)
@@ -640,19 +663,22 @@ def archive_requirement(
 
     branch = (meta.get("branch") or "").strip()
     base_branch = (meta.get("base_branch") or "").strip()
-    _delete_local_branch(
-        branch,
-        base_branch,
-        keep_branch=keep_branch,
-        yes_local=yes_local_branch,
-        callback=prompts_callback,
-        result=result,
-    )
+    # 2026-05-12 spec 修订：删除顺序改 远程 → 本地，让"删本地分支"成为整个 archive 的
+    # 最后操作（本地删需要先 git switch <base_branch>，远程删不需要切走）。这样
+    # archive 所有 bookkeeping 操作都在原 feat 分支上进行，最后才离开 feat。
     _delete_remote_branch(
         branch,
         base_branch,
         keep_branch=keep_branch,
         yes_remote=yes_remote_branch,
+        callback=prompts_callback,
+        result=result,
+    )
+    _delete_local_branch(
+        branch,
+        base_branch,
+        keep_branch=keep_branch,
+        yes_local=yes_local_branch,
         callback=prompts_callback,
         result=result,
     )

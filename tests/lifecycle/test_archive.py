@@ -321,9 +321,11 @@ def test_three_prompts_yes_path(
     assert result.remote_branch == "deleted"
     assert result.phase == "completed"
     assert result.archived_at  # 非空
-    # 三个 prompt kind 都被问到
+    # 三个 prompt kind 都被问到（2026-05-12 spec 修订：先远程后本地，让本地删成为
+    # archive 的最后一步——本地删需要先 git switch 切走 feat，放最后才能让前面所有
+    # bookkeeping 操作都在 feat 分支完成）
     kinds = [p.kind for p in callback_calls]
-    assert kinds == ["experience", "local_branch", "remote_branch"]
+    assert kinds == ["experience", "remote_branch", "local_branch"]
     # process.txt 写入了 [archived]
     process = (req_dir / "process.txt").read_text(encoding="utf-8")
     assert "[archived]" in process
@@ -768,33 +770,95 @@ def test_append_process_event_creates_file_when_missing(fake_repo: Path) -> None
 # ---------- codex round-3 P2 finding F-7 回归 ----------
 
 
-def test_local_branch_delete_refused_when_head_on_target(
+def test_local_branch_delete_auto_switches_when_head_on_target(
     fake_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """codex F-7 (P2) 回归：HEAD 当前在目标 branch 时，archive 必须先报错让用户切走，
-    不应直接跑 `git branch -d` 撞上 'used by worktree'。
+    """2026-05-12 spec 修订：HEAD 当前在目标 branch 时，archive_runner 应内部自动跑
+    `git switch <base_branch>` 然后 `git branch -d <feat>`，用户不需要分两次跑命令。
+
+    旧行为（codex F-7）：报错让用户手动切走 + 重跑 archive；
+    新行为：所有 archive bookkeeping 操作在 feat 分支完成 + 删本地分支自动切走作为最后一步。
     """
-    req_dir = _make_meta(fake_repo, branch="feat/req-2099-007", base_branch="develop")
-    plan = {
-        ("git", "status", "--porcelain"): _ok(),
-        ("gh", "pr", "view"): _ok(stdout=json.dumps({"state": "MERGED"})),
-        # 故意命中 _current_branch 的命令，返回与 meta.branch 同名
-        ("git", "rev-parse", "--abbrev-ref", "HEAD"): _ok(stdout="feat/req-2099-007\n"),
-    }
-    monkeypatch.setattr(archive_runner, "_run", _make_run_stub(plan))
+    _make_meta(fake_repo, branch="feat/req-2099-007", base_branch="develop")
+    switch_calls: list[tuple] = []
+    delete_calls: list[tuple] = []
+
+    def _stub(cmd, **kwargs):
+        if cmd[:3] == ["git", "rev-parse", "--abbrev-ref"]:
+            return _ok(stdout="feat/req-2099-007\n")
+        if cmd[:2] == ["git", "switch"]:
+            switch_calls.append(tuple(cmd))
+            return _ok()
+        if cmd[:3] == ["git", "branch", "-d"]:
+            delete_calls.append(tuple(cmd))
+            return _ok()
+        if cmd[:3] == ["git", "status", "--porcelain"]:
+            return _ok()
+        if cmd[:3] == ["gh", "pr", "view"]:
+            return _ok(stdout=json.dumps({"state": "MERGED"}))
+        return _ok()
+
+    monkeypatch.setattr(archive_runner, "_run", _stub)
 
     result = archive_requirement(
         "REQ-2099-007",
         no_experience=True,
-        yes_local_branch=True,    # 显式同意删，但应被前置检测拦下
+        yes_local_branch=True,
+        yes_remote_branch=False,
         keep_branch=False,
     )
 
-    assert result.local_branch == "failed", f"HEAD 在目标分支应失败，实际 {result.local_branch}"
+    assert result.local_branch == "deleted", (
+        f"HEAD 在目标分支时 archive_runner 应自动切 base 后删，实际 outcome={result.local_branch}"
+    )
+    # 自动切 base 被调用且参数正确
+    assert switch_calls == [("git", "switch", "develop")], (
+        f"应自动跑 `git switch develop`，实际：{switch_calls}"
+    )
+    # 删除命令最后被调用
+    assert delete_calls == [("git", "branch", "-d", "feat/req-2099-007")], (
+        f"应跑 `git branch -d feat/req-2099-007`，实际：{delete_calls}"
+    )
+
+
+def test_local_branch_delete_fails_when_auto_switch_fails(
+    fake_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """2026-05-12 spec 修订：自动 `git switch <base>` 失败（base 缺失 / detached 等）时
+    fail-soft，outcome=failed，archive 仍 exit 0；**不**自动 `-D` 强删。
+    """
+    _make_meta(fake_repo, branch="feat/req-2099-007", base_branch="develop")
+
+    def _stub(cmd, **kwargs):
+        if cmd[:3] == ["git", "rev-parse", "--abbrev-ref"]:
+            return _ok(stdout="feat/req-2099-007\n")
+        if cmd[:2] == ["git", "switch"]:
+            # 模拟 base_branch 本地缺失
+            return _ok(returncode=1, stderr="fatal: invalid reference: develop\n")
+        if cmd[:3] == ["git", "branch", "-d"]:
+            pytest.fail("auto-switch 失败时不应继续调 `git branch -d`")
+        if cmd[:3] == ["git", "status", "--porcelain"]:
+            return _ok()
+        if cmd[:3] == ["gh", "pr", "view"]:
+            return _ok(stdout=json.dumps({"state": "MERGED"}))
+        return _ok()
+
+    monkeypatch.setattr(archive_runner, "_run", _stub)
+
+    result = archive_requirement(
+        "REQ-2099-007",
+        no_experience=True,
+        yes_local_branch=True,
+        yes_remote_branch=False,
+        keep_branch=False,
+    )
+
+    assert result.local_branch == "failed", f"自动切失败应 outcome=failed，实际 {result.local_branch}"
     joined = " | ".join(result.error_messages)
-    assert "used by worktree" in joined or "git switch develop" in joined, (
-        f"错误文案应提示用户先切 base_branch，实际：{joined}"
+    assert "invalid reference" in joined or "自动切" in joined, (
+        f"错误消息应包含自动切失败原因，实际：{joined}"
     )
 
 
