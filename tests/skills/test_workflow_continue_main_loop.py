@@ -332,7 +332,15 @@ class TestMainLoopCrashWindowDoesNotFinalize:
         workflow_completed，state 保持 running，让用户能介入修复。
         """
         # 模拟 crash 后 rebuild 的产物：current_node=None（rebuild 看到 node-a 已 completed），
-        # 但工作流还有 node-b 没跑完
+        # 但工作流还有 node-b 没跑完——必须在 jsonl 写 node-a 的 node_completed 让
+        # round-5 finalize helper 能看到"最后完成的节点仍有 next"
+        from run_state import append_event as _append
+        _append(jsonl_path, {
+            "type": "node_completed",
+            "node_id": "node-a",
+            "data": {"output": "ok"},
+        })
+
         workflow = {
             "nodes": [
                 {"id": "node-a", "bash": "echo a", "next": "node-b"},
@@ -349,14 +357,58 @@ class TestMainLoopCrashWindowDoesNotFinalize:
 
         # P1-c v2 关键回归：state 应保持 running，**不**翻 completed
         assert run_state.state == "running", (
-            f"crash 窗口 rebuild 出的 current_node=None 不应触发 workflow_completed，"
-            f"state 应保持 running 让用户介入；实际 state={run_state.state!r}"
+            f"crash 窗口 rebuild 出的 current_node=None + 最后 completed 的节点仍有 next，"
+            f"应保持 running 让用户介入；实际 state={run_state.state!r}"
         )
         # jsonl 不应含 workflow_completed
         events, _ = read_events(jsonl_path)
         types = [e["type"] for e in events]
         assert "workflow_completed" not in types, (
-            f"crash 窗口不应写 workflow_completed 事件，实际 jsonl events: {types}"
+            f"非末节点 crash 不应写 workflow_completed 事件，实际 jsonl events: {types}"
+        )
+
+    def test_main_loop_auto_finalizes_when_rebuild_yields_none_after_last_node(
+        self,
+        jsonl_path,
+        tmp_path,
+    ):
+        """codex round-5 P2：crash 在 _advance_after_completed 与 _finalize_if_topology_done
+        之间——末节点 node_completed 已落盘 + current_node 置 None，但 workflow_completed
+        没写。重启后 _main_loop 入口的 _finalize_after_rebuild_if_last_topology_node
+        helper 检测到"最后 completed 节点无 next"，补写 workflow_completed 把 state 翻
+        completed。
+        """
+        from run_state import append_event as _append
+        # 末节点（node-b 无 next）的 node_completed 已落盘
+        _append(jsonl_path, {
+            "type": "node_completed",
+            "node_id": "node-b",
+            "data": {"output": "final"},
+        })
+
+        workflow = {
+            "nodes": [
+                {"id": "node-a", "bash": "echo a", "next": "node-b"},
+                {"id": "node-b", "bash": "echo b"},
+            ]
+        }
+        run_state = RunState(
+            run_id="REQ-CRASH-002",
+            current_node=None,  # rebuild 在 node_completed 分支把 current_node 置 None
+            state="running",     # 但还没人写 workflow_completed
+        )
+
+        _main_loop(run_state, workflow, tmp_path, tmp_path, jsonl_path)
+
+        # round-5 P2 关键回归：补写后 state 应翻 completed
+        assert run_state.state == "completed", (
+            f"末节点 completed 后 crash 应被 finalize helper 补救，"
+            f"state 应翻 completed；实际 state={run_state.state!r}"
+        )
+        events, _ = read_events(jsonl_path)
+        types = [e["type"] for e in events]
+        assert "workflow_completed" in types, (
+            f"finalize helper 应补写 workflow_completed 事件，实际 jsonl events: {types}"
         )
 
 

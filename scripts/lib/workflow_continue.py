@@ -338,6 +338,45 @@ def _route_outcome(
         return False
 
 
+def _finalize_after_rebuild_if_last_topology_node(
+    run_state: RunState,
+    node_map: dict,
+    jsonl_path: Path,
+) -> bool:
+    """main_loop 入口的回填补救（codex round-5 2026-05-12 P2）：
+
+    P1-c v2 把 workflow_completed 写入下沉到 _route_outcome 后，引入对称 crash 窗口：
+      _advance_after_completed 已把 current_node 置 None 但 _finalize_if_topology_done
+      append_event 之前 crash → 重启时 rebuild 出 current_node=None / state=running，
+      main_loop 因 while 失败立刻退出，永远不进 _route_outcome，run 卡死。
+
+    本 helper 在 main_loop 进入循环前补救：若 current_node is None ∧ state==running
+    ∧ jsonl 最后一条 node_completed 对应的节点在拓扑上没有 next（即"末节点"），说明
+    crash 发生在自然完成的窗口里，补写 workflow_completed 把 state 翻 completed。
+    若最后 completed 的节点仍有 next（真 crash mid-stream），保留 running 状态让用户介入。
+
+    返回：True 表示已补写 workflow_completed（调用方应跳过 while）；False 表示无需补救。
+    """
+    if run_state.current_node is not None or run_state.state != "running":
+        return False
+    events, _ = read_events(jsonl_path)
+    last_completed_node_id: str | None = None
+    for evt in events:
+        if evt.get("type") == "node_completed":
+            last_completed_node_id = evt.get("node_id")
+    if not last_completed_node_id:
+        return False
+    last_node = node_map.get(last_completed_node_id)
+    if last_node is None:
+        return False
+    # 末节点判定：_next_node(last_node, None) is None 表示拓扑上无后继
+    if _next_node(last_node, None) is None:
+        append_event(jsonl_path, {"type": "workflow_completed", "data": {}})
+        run_state.state = "completed"
+        return True
+    return False
+
+
 def _main_loop(
     run_state: RunState,
     workflow: dict,
@@ -348,6 +387,7 @@ def _main_loop(
     """主循环（F-008）：完整 7 outcome 路由表 + 失败矩阵。
 
     算法：
+      0. 入口先调 _finalize_after_rebuild_if_last_topology_node 补救 round-5 P2 窗口
       while state == running and current_node:
         - 按 node 类型派发（dispatch_node 已写 node_started + node_completed/node_failed 事件）
         - 调用 _route_outcome 按 outcome 路由处理；返回 False 则 break
@@ -355,6 +395,10 @@ def _main_loop(
     from workflow_dispatcher import _build_env, dispatch_node
 
     node_map = _build_node_map(workflow)
+
+    # round-5 P2：crash 在 advance 之后 / finalize 之前的窗口补救
+    if _finalize_after_rebuild_if_last_topology_node(run_state, node_map, jsonl_path):
+        return
 
     while run_state.state == "running" and run_state.current_node:
         node = node_map.get(run_state.current_node)
