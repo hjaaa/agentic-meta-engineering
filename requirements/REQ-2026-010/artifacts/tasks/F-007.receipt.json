@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "feature_id": "F-007",
   "status": "DONE",
-  "commit_sha": "TBD",
+  "commit_sha": "de9cbf5",
   "files_changed": [
     "scripts/lib/workflow_continue.py",
     "tests/skills/test_workflow_continue_main_loop.py",
