@@ -70,3 +70,20 @@ Window B 的 main loop 完整化与 bootstrap 流程补全延至本需求实施�
 ### 任务边界外，不修，仅留痕
 - `_dispatch_agent_node`（F-010）/ `_dispatch_loop_node`（F-011）/ `_dispatch_sub_workflow_node`（F-011）的 stub docstring 准确描述了其待实现状态，**不属于失实**——F-006 rev2 正确识别为不修
 - `_dispatch_loop_node` / `_dispatch_sub_workflow_node` 签名与实际实现一致（stub 返回 completed），无需在 F-006 触碰（各自由 F-011 接管）
+
+## REQ-2026-010 follow-up hotfix · dispatch lock 残留污染（2026-05-12）
+
+**触发场景**：F-009 done 之后做 review follow-up minor 清扫期间，主 Agent 编辑 `workflow_bootstrap.py` / `test_workflow_bootstrap.py` / `.gitignore` / `F-008.receipt.json` 共 6 文件，全部被 `touches_guard` 记到 `F-009.receipt.json` 的 `touches_violations[]`——因为 dispatch lock `current_feature=F-009` 没在 done 时释放。
+
+**根因（双重）**：
+1. `feature-lifecycle-manager` SKILL 的 done 转换流程未提调 `dispatch_state_cleanup.py`——CLI 写好且 docstring 明确说"feature 完成后清理"，但 `grep -rln dispatch_state_cleanup` **全仓零调用**。F-001~F-009 全程 lock 一直停在最后一个派发的 feature，靠下次 dispatch_precheck 覆盖才"被动重置"
+2. `.dispatch-state.json` 自身写入也会被 touches_guard 记为 violation（白名单 7 类不覆盖 lock 文件本身）
+
+**修复（A+B+C 组合）**：
+- (a) **流程层**：`feature-lifecycle-manager/SKILL.md` 阶段 7 完成触发加第 5 步 + `reference/feature-states.md` 状态变更同步动作表加 `python3 scripts/lib/dispatch_state_cleanup.py --req-dir requirements/<id>`（CLI 幂等，重复调安全）
+- (b) **兜底层**：`touches_guard._is_process_artifact` 白名单从 7 类扩到 8 类，新增 `<req_dir>/.dispatch-state.json` 精确路径匹配（与 plan/notes/meta/process.txt 同模式）
+- (c) **测试**：新增 TL-WL-011（sandbox 内 `.dispatch-state.json` 豁免）+ TL-WL-012（跨需求不豁免，白名单不过宽）；hooks 全套 40 → 42 passed
+
+**验证**：tests/hooks/ + tests/lib/test_dispatch_state.py 共 58 passed
+
+**遗留议题**（独立追踪）：cleanup CLI 调用是文档级约束，依赖 AI 阅读 SKILL；若未来发现仍漏调可考虑加 PostToolUse Hook 自动触发（task.md status=done 翻转时调），但当前不引入新 hook 维护负担
