@@ -281,3 +281,93 @@ def test_main_loop_sub_workflow_pending_breaks_without_state_change(
 
         assert run_state.state == "running"
         assert mock_dispatch.call_count == 1
+
+
+# ============================================================================
+# F-011 rev2 follow-up：loop_continue 写 loop_counter_advanced + crash 后恢复
+# ============================================================================
+
+
+def test_loop_continue_writes_counter_advanced_event(jsonl_path, tmp_path):
+    """_route_outcome 收到 loop_continue 后必须写 loop_counter_advanced 事件。
+
+    若只在内存 +1 不写事件，crash 后 rebuild 漏读 → dispatcher 用旧 iteration 重派同轮。
+    """
+    from run_state import read_events
+    from workflow_dispatcher import DispatchResult
+
+    workflow = {
+        "nodes": [
+            {"id": "node-a", "bash": "loop cmd", "next": "node-b"},
+            {"id": "node-b", "bash": "final"},
+        ],
+    }
+    run_state = RunState(run_id="REQ-2026-010", current_node="node-a", state="running")
+    call_count = {"n": 0}
+
+    with patch("workflow_dispatcher.dispatch_node") as mock_dispatch:
+
+        def side_effect(node, *args, **kwargs):
+            call_count["n"] += 1
+            if node.get("id") == "node-a":
+                if call_count["n"] == 1:
+                    return DispatchResult(outcome="loop_continue")
+                return DispatchResult(outcome="completed", output="done")
+            return DispatchResult(outcome="completed", output="final")
+
+        mock_dispatch.side_effect = side_effect
+        _main_loop(run_state, workflow, tmp_path, tmp_path, jsonl_path)
+
+    events, warnings = read_events(jsonl_path)
+    advanced = [e for e in events if e.get("type") == "loop_counter_advanced"]
+    assert len(advanced) == 1, [e.get("type") for e in events]
+    assert advanced[0].get("node_id") == "node-a"
+    assert advanced[0].get("data", {}).get("new_value") == 1
+
+
+def test_loop_continue_persists_counters_across_crash_recovery(jsonl_path, tmp_path):
+    """crash 后 rebuild 必须从 jsonl 还原 loop_counters，dispatcher 不重派同 iteration。
+
+    模拟：run-1 派 node-a 1 次 → loop_continue → 进程结束（不在 main loop 内再次 dispatch）。
+    crash 恢复：从 jsonl rebuild RunState → loop_counters[node-a] 应为 1（不是 0）。
+    再续跑：dispatch_node 接收的 run_state.loop_counters["node-a"] = 1，dispatcher 据此
+    把下一次 loop_iteration_started.iteration 写成 1，证明不重派 iteration=0。
+    """
+    from run_state import read_events
+    from workflow_dispatcher import DispatchResult
+
+    workflow = {
+        "nodes": [
+            {"id": "node-a", "bash": "loop cmd", "next": "node-b"},
+            {"id": "node-b", "bash": "final"},
+        ],
+    }
+
+    # ---------- run-1：node-a 派一次，loop_continue 后 break（模拟 crash 前停在此处） ----------
+    run_state_1 = RunState(run_id="REQ-2026-010", current_node="node-a", state="running")
+    with patch("workflow_dispatcher.dispatch_node") as mock_dispatch:
+        call_count_1 = {"n": 0}
+
+        def side_effect_1(node, *args, **kwargs):
+            call_count_1["n"] += 1
+            # 第 1 次 loop_continue 之后立即把 state 设为 paused 让 main loop 退出
+            # （模拟用户 Ctrl-C / crash 落点）
+            run_state_1.state = "paused"
+            return DispatchResult(outcome="loop_continue")
+
+        mock_dispatch.side_effect = side_effect_1
+        _main_loop(run_state_1, workflow, tmp_path, tmp_path, jsonl_path)
+
+    # crash 前：内存 loop_counters 已 +1，事件也已写盘
+    assert run_state_1.loop_counters["node-a"] == 1
+
+    # ---------- crash 后：从 jsonl rebuild ----------
+    events, warnings = read_events(jsonl_path)
+    bad = [w for w in warnings if "不在白名单" in w or "解析失败" in w]
+    assert not bad, bad
+    run_state_2 = RunState.rebuild(events, run_id="REQ-2026-010")
+
+    # 关键断言：rebuild 后 loop_counters 等于 crash 前内存值，没有漏读 +1
+    assert run_state_2.loop_counters.get("node-a") == 1, (
+        f"crash 恢复后 loop_counters 漏读 +1：{run_state_2.loop_counters}"
+    )

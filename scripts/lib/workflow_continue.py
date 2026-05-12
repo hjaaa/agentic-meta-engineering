@@ -245,7 +245,8 @@ def _route_outcome(
 
     路由表（dispatcher 已写的事件不在此重复）：
       completed          → _advance_after_completed（推进 current_node）→ True
-      loop_continue      → loop_counters += 1，current_node 不变 → True
+      loop_continue      → loop_counters += 1 + 写 loop_counter_advanced 事件，
+                           current_node 不变 → True
       loop_done          → _advance_after_completed（推进 current_node）→ True
       sub_workflow_done  → _advance_after_completed（推进 current_node）→ True
       approval_pending   → state=approval_pending → False
@@ -262,8 +263,18 @@ def _route_outcome(
         return True
 
     elif outcome == "loop_continue":
-        # 循环节点继续迭代：更新计数器，current_node 保持不变（下次继续同节点）
-        run_state.loop_counters[node_id] = run_state.loop_counters.get(node_id, 0) + 1
+        # 循环节点继续迭代：递增计数器并写 loop_counter_advanced 事件。
+        # 仅内存 +1 在 crash 后会被 rebuild 漏读，导致 dispatcher 用旧 iteration 重派同一轮。
+        new_value = run_state.loop_counters.get(node_id, 0) + 1
+        run_state.loop_counters[node_id] = new_value
+        append_event(
+            jsonl_path,
+            {
+                "type": "loop_counter_advanced",
+                "node_id": node_id,
+                "data": {"new_value": new_value},
+            },
+        )
         return True
 
     elif outcome in ("loop_done", "sub_workflow_done"):

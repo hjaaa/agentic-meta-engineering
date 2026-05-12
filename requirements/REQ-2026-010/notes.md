@@ -103,3 +103,19 @@ Window B 的 main loop 完整化与 bootstrap 流程补全延至本需求实施�
 - (b) `dispatcher` 在写 `loop_iteration_started` 时记录"将要执行的 iteration"（即 `current_iteration + 1`），`workflow_continue` 不再内存 +1，由 rebuild 推算
 
 **引用**：review F-8（`requirements/REQ-2026-010/artifacts/review-20260512-115731.md`）
+
+### 闭合记录（2026-05-12，选方向 a）
+
+- `scripts/lib/run_state.py`：`VALID_EVENT_TYPES` 加 `loop_counter_advanced`；`RunState.rebuild` 增分支：`data.new_value` → `state.loop_counters[node_id]`
+- `scripts/lib/workflow_continue.py`：`_route_outcome` `loop_continue` 分支递增后 `append_event(loop_counter_advanced, data={new_value})`
+- 测试：
+  - `tests/lib/test_run_state.py` 加 3 个：枚举围栏 / rebuild 消费 / advanced 覆盖 iteration 事件
+  - `tests/skills/test_workflow_continue_outcomes.py` 加 2 个：loop_continue 写事件断言 + crash 后 rebuild 不漏读 +1
+- 全套测试：**552 passed / 7 skipped / 2 pre-existing failures**（见下方独立议题）
+
+### 独立议题（不在本 scope，留痕）
+
+- `tests/skills/test_workflow_dispatcher_dispatch.py` 两个旧 stub 断言已与 F-006/F-011 真实现脱节：
+  - `test_dispatch_node_loop_returns_completed` 期望 `outcome == "completed"`，真实现 max_iterations=1 缺省返 `loop_done`
+  - `test_dispatch_node_sub_workflow_returns_completed` 期望 `completed`，真实现返 `sub_workflow_pending`
+  - 自 F-006 commit `659137c`（2026-05-11 21:58）起即红，跨 F-007/F-008/F-009/F-011 全周期未修——独立 PR 把断言更新为真实现即可

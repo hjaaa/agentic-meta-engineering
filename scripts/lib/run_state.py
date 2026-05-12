@@ -16,6 +16,7 @@
 - node_started / node_completed / node_failed / node_skipped / node_retried
 - approval_pending / approval_approved / approval_rejected
 - loop_iteration_started / loop_iteration_completed / loop_completed / loop_max_iterations_exceeded
+- loop_counter_advanced
 - parent_cancelled / parent_rolled_back
 
 注：cancel_taskstop_failed / run_resumed / save 三个事件**不**映射 WORKFLOW_EVENT_TO_STATE，
@@ -68,6 +69,9 @@ VALID_EVENT_TYPES: set[str] = {
     # loop
     "loop_iteration_started", "loop_iteration_completed",
     "loop_completed", "loop_max_iterations_exceeded",
+    # loop_counters 持久化（workflow_continue loop_continue 路径递增后写入；
+    # 仅承载 loop_counters，不映射 WORKFLOW_EVENT_TO_STATE，不改 state）
+    "loop_counter_advanced",
     # 父子联动（子侧事件，子 subagent 自身写入）
     "parent_cancelled", "parent_rolled_back",
     # 父侧子结局事件（父 run 观测子 subagent 结果后写入，不映射 WORKFLOW_EVENT_TO_STATE）
@@ -208,6 +212,13 @@ class RunState:
                 iteration = data.get("iteration")
                 if iteration is not None:
                     state.loop_counters[node_id] = int(iteration)
+            elif ev_type == "loop_counter_advanced" and node_id:
+                # workflow_continue loop_continue 路径递增后写入：data.new_value 为
+                # 递增后的"下一轮迭代编号"。crash 后 rebuild 必须看到此事件才能正确
+                # 还原 loop_counters，否则 dispatcher 会用旧 iteration 重派同一轮。
+                new_value = data.get("new_value")
+                if new_value is not None:
+                    state.loop_counters[node_id] = int(new_value)
 
         # 残缺对处理（spec §13）：node_started 无对应 node_completed → 标 warn
         for node_id, started_ts in node_started_at.items():

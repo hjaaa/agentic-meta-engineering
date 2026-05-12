@@ -305,3 +305,97 @@ def test_event_enum_three_events_in_valid_set():
 
     for event_type in ("cancel_requested", "parent_cancelled", "parent_rolled_back"):
         assert event_type in VALID_EVENT_TYPES, f"事件 {event_type} 缺失于 VALID_EVENT_TYPES"
+
+
+# ============================================================================
+# F-011 rev2 follow-up：loop_counter_advanced 持久化
+# ============================================================================
+
+def test_loop_counter_advanced_in_valid_set():
+    """围栏：loop_counter_advanced 必须存在于 VALID_EVENT_TYPES。
+
+    若被误删，workflow_continue.py 写事件会被 append_event 的白名单校验拒绝，
+    crash 后 rebuild 又会退化回"漏读 +1 → 重派同 iteration"的 bug。
+    """
+    from run_state import VALID_EVENT_TYPES
+
+    assert "loop_counter_advanced" in VALID_EVENT_TYPES, (
+        "loop_counter_advanced 缺失于 VALID_EVENT_TYPES"
+    )
+
+
+def test_rebuild_consumes_loop_counter_advanced(tmp_path):
+    """rebuild 消费 loop_counter_advanced.data.new_value 覆盖 loop_counters。
+
+    场景：crash 前 dispatcher 写过 iteration=0 的 started/completed，
+    workflow_continue.loop_continue 路径写过 loop_counter_advanced.new_value=1。
+    crash 后 rebuild 必须把 loop_counters[node-a] 还原成 1（"下一轮迭代编号"），
+    否则 dispatcher 会读到 0 重派同一轮。
+    """
+    jsonl = tmp_path / "run-state.jsonl"
+
+    append_event(jsonl, {
+        "ts": "2026-05-12T13:00:00Z",
+        "type": "workflow_started",
+        "run_id": "REQ-2026-010",
+        "data": {"workflow_name": "loop-test", "arguments": ""},
+    })
+    append_event(jsonl, {
+        "ts": "2026-05-12T13:00:01Z",
+        "type": "loop_iteration_started",
+        "run_id": "REQ-2026-010",
+        "node_id": "node-a",
+        "data": {"iteration": 0},
+    })
+    append_event(jsonl, {
+        "ts": "2026-05-12T13:00:02Z",
+        "type": "loop_iteration_completed",
+        "run_id": "REQ-2026-010",
+        "node_id": "node-a",
+        "data": {"iteration": 0},
+    })
+    append_event(jsonl, {
+        "ts": "2026-05-12T13:00:03Z",
+        "type": "loop_counter_advanced",
+        "run_id": "REQ-2026-010",
+        "node_id": "node-a",
+        "data": {"new_value": 1},
+    })
+
+    events, warnings = read_events(jsonl)
+    bad = [w for w in warnings if "不在白名单" in w or "解析失败" in w]
+    assert not bad, bad
+
+    state = RunState.rebuild(events, run_id="REQ-2026-010")
+    assert state.loop_counters.get("node-a") == 1, state.loop_counters
+
+
+def test_rebuild_loop_counter_advanced_overrides_iteration_event(tmp_path):
+    """loop_counter_advanced 出现在 loop_iteration_completed 之后时必须覆盖。
+
+    rebuild 按时间序处理事件；loop_iteration_completed.iteration=0 先把
+    loop_counters[node-a]=0，紧接着的 loop_counter_advanced.new_value=1 必须覆盖到 1。
+    若覆盖失败 → 漏读 +1 → 同 iteration 重派。
+    """
+    jsonl = tmp_path / "run-state.jsonl"
+    append_event(jsonl, {
+        "type": "workflow_started",
+        "run_id": "REQ-2026-010",
+        "data": {"workflow_name": "loop-test", "arguments": ""},
+    })
+    append_event(jsonl, {
+        "type": "loop_iteration_completed",
+        "run_id": "REQ-2026-010",
+        "node_id": "node-a",
+        "data": {"iteration": 0},
+    })
+    append_event(jsonl, {
+        "type": "loop_counter_advanced",
+        "run_id": "REQ-2026-010",
+        "node_id": "node-a",
+        "data": {"new_value": 1},
+    })
+
+    events, _ = read_events(jsonl)
+    state = RunState.rebuild(events, run_id="REQ-2026-010")
+    assert state.loop_counters["node-a"] == 1
