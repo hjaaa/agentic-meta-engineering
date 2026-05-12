@@ -92,11 +92,18 @@ class TestStatusParentChildTree:
         # 创建父 run
         parent_dir = _make_run_dir(tmp_repo, parent_id, "running")
 
-        # 创建子 run（nodes/<node-id>/run_id 文件）
-        child_dir = _make_run_dir(tmp_repo, child_id, "completed")
-        nodes_dir = parent_dir / "nodes" / "code-review-node"
-        nodes_dir.mkdir(parents=True)
-        (nodes_dir / "run_id").write_text(child_id, encoding="utf-8")
+        # 创建子 run（sub_runs/<child_id>/ 直挂父 run 目录，目录名即子 run id）
+        sub_run_dir = parent_dir / "sub_runs" / child_id
+        sub_run_dir.mkdir(parents=True)
+        append_event(sub_run_dir / "run-state.jsonl", {
+            "type": "workflow_started",
+            "run_id": child_id,
+            "data": {"workflow_name": "test-template", "arguments": ""},
+        })
+        append_event(sub_run_dir / "run-state.jsonl", {
+            "type": "workflow_completed",
+            "run_id": child_id,
+        })
 
         rc = workflow_status.main([parent_id], repo_root=tmp_repo)
         assert rc == 0
