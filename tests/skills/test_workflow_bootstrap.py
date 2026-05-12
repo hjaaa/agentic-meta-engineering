@@ -156,6 +156,72 @@ class TestBootstrapRequirementHappyPath:
 
 
 # ============================================================================
+# P1-1（codex 2026-05-12）：bootstrap 在非 develop 分支上跑时，新分支应从 base_branch fork
+# ============================================================================
+
+class TestBootstrapBaseBranchAsCheckoutStartPoint:
+    """codex P1-1：_checkout_feature_branch 必须以 base_branch 为新分支起点，
+    避免在 feature/hotfix 分支上跑 bootstrap 时把不相关 commit 拉进需求分支。
+    """
+
+    def test_bootstrap_new_branch_starts_from_base_not_current_head(
+        self, real_git_repo: Path,
+    ):
+        """given_on_other_branch_with_extra_commit_when_bootstrap_then_new_branch_lacks_that_commit."""
+        # 1. 在 develop 上有 init commit（_init_real_git_repo 已建）
+        develop_head = _git(
+            ["git", "rev-parse", "HEAD"], real_git_repo,
+        ).stdout.strip()
+
+        # 2. 切到另一个 feature 分支并加一条不相关 commit
+        _git(["git", "checkout", "-b", "feat/other-work"], real_git_repo)
+        (real_git_repo / "other.txt").write_text("polluting commit\n", encoding="utf-8")
+        _git(["git", "add", "other.txt"], real_git_repo)
+        _git(["git", "commit", "-q", "-m", "polluting commit on other branch"],
+             real_git_repo)
+        other_head = _git(
+            ["git", "rev-parse", "HEAD"], real_git_repo,
+        ).stdout.strip()
+        assert other_head != develop_head, "前置：other 分支 HEAD 应已偏离 develop"
+
+        # 3. 在 other 分支上跑 bootstrap
+        req_id = wr._generate_req_id(real_git_repo)
+        with patch("workflow_bootstrap.REPO_ROOT", _REPO_ROOT):
+            wb._bootstrap_requirement(
+                req_id=req_id,
+                title="P1-1 测试需求",
+                template_id="standard-8phase",
+                template_path=real_git_repo / "fake.yaml",
+                arguments="",
+                repo_root=real_git_repo,
+            )
+
+        # 4. 新建的 feat/req-<id> 分支应从 develop fork（HEAD 上多了 bootstrap 自身写的
+        #    workflow_started jsonl + 三件 artifacts，但起点是 develop_head 而非 other_head）
+        expected_branch = f"feat/req-{req_id[len('REQ-'):].lower()}"
+        result = _git(["git", "rev-parse", "--abbrev-ref", "HEAD"], real_git_repo)
+        assert result.stdout.strip() == expected_branch
+
+        # merge-base(new, develop) == develop_head（新分支祖先链包含 develop）
+        merge_base = _git(
+            ["git", "merge-base", expected_branch, "develop"], real_git_repo,
+        ).stdout.strip()
+        assert merge_base == develop_head, (
+            f"新分支应从 develop fork，merge-base 应为 develop_head={develop_head[:8]}，"
+            f"实际 {merge_base[:8]}"
+        )
+
+        # merge-base(new, other) 严格早于 other_head（新分支不含 other 上的污染 commit）
+        merge_base_other = _git(
+            ["git", "merge-base", expected_branch, "feat/other-work"], real_git_repo,
+        ).stdout.strip()
+        assert merge_base_other == develop_head, (
+            f"新分支不应继承 other 分支的污染 commit，merge-base 应回退到 develop_head，"
+            f"实际 {merge_base_other[:8]}"
+        )
+
+
+# ============================================================================
 # AC3：mkdir 失败回滚
 # ============================================================================
 

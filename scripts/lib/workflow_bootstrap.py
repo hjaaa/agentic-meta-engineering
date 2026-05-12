@@ -231,16 +231,24 @@ def _write_bootstrap_artifacts(
     _write_artifact_file(req_dir / "process.txt", "", req_id=req_id, step_name="process.txt")
 
 
-def _checkout_feature_branch(req_id: str, repo_root: Path) -> str:
-    """git checkout -b feat/req-<id>（id 已去前缀小写）。
+def _checkout_feature_branch(req_id: str, repo_root: Path, base_branch: str = "") -> str:
+    """git checkout -b feat/req-<id> [<base_branch>]（id 已去前缀小写）。
+
+    base_branch 非空时显式作为新分支起点（`git checkout -b <new> <start>`），
+    避免在其他 feature/hotfix 分支上跑 /workflow:run 时把不相关 commit 拉进新需求分支
+    （codex review 2026-05-12 P1-1）。base_branch 空字符串时退化为旧行为
+    （从当前 HEAD fork），保留对 _resolve_base_branch 返回空串这一极端场景的兼容。
 
     返回新分支名；失败抛 BootstrapError(branch_created=False)，由调用方决定是否
     回滚。本函数不负责 fetch / pull——base_branch 选择已发生在调用前。
     """
     branch = f"feat/req-{_strip_req_prefix(req_id)}"
+    cmd = ["git", "checkout", "-b", branch]
+    if base_branch:
+        cmd.append(base_branch)
     try:
         result = subprocess.run(
-            ["git", "checkout", "-b", branch],
+            cmd,
             capture_output=True,
             text=True,
             cwd=str(repo_root),
@@ -308,9 +316,10 @@ def _bootstrap_requirement(
     # 步骤 5：切 feature 分支（注意：本步骤先于 jsonl，是因为 jsonl 写失败比
     # 分支切换失败更罕见；分支切失败比写文件更可能（已有同名分支 / detached HEAD），
     # 让"高风险动作"靠后能减少回滚频度）
-    _checkout_feature_branch(req_id, repo_root)
+    _checkout_feature_branch(req_id, repo_root, base_branch=base_branch)
     branch_created = True
-    logging.info("bootstrap req_id=%s step=checkout_branch done", req_id)
+    logging.info("bootstrap req_id=%s step=checkout_branch done base=%s",
+                 req_id, base_branch or "<current-HEAD>")
 
     # 步骤 6：写 workflow_started jsonl 事件（顶层 run-state.jsonl）
     jsonl_path = req_dir / "run-state.jsonl"

@@ -254,6 +254,67 @@ def test_sub_workflow_main_failure_raises(tmp_path: Path, tmp_jsonl: Path) -> No
 
 
 # ============================================================================
+# codex P1-2（2026-05-12）：sub_workflow 重复派发守卫
+# ============================================================================
+
+def test_sub_workflow_dispatch_guard_skips_when_marker_exists(
+    tmp_path: Path, tmp_jsonl: Path,
+) -> None:
+    """二次进入同一 sub_workflow 节点时，应不再调 workflow_run.main，避免重复 spawn 子 run。
+
+    场景：main loop 在 outcome=sub_workflow_pending 后 break，state=running，下一轮
+    /workflow:continue 重入 main_loop → 再次派同一 sub_workflow 节点。
+    """
+    node_id = "guarded-sub"
+    node = {"id": node_id, "sub_workflow": {"template": "standard-8phase"}}
+    run_dir = tmp_path / "runs" / "RUN-20260512-P12"
+    run_dir.mkdir(parents=True)
+
+    with patch("workflow_dispatcher.workflow_run") as mock_wr:
+        mock_wr.main.return_value = 0
+
+        # 第 1 次派发：调 workflow_run.main 1 次 + 写 .dispatched 标记
+        r1 = _dispatch_sub_workflow_node(node, {}, run_dir, tmp_path, tmp_jsonl)
+        assert r1.outcome == "sub_workflow_pending"
+        assert mock_wr.main.call_count == 1
+
+        # 第 2 次派发：标记存在 → 跳过 workflow_run.main，仍回 pending
+        r2 = _dispatch_sub_workflow_node(node, {}, run_dir, tmp_path, tmp_jsonl)
+        assert r2.outcome == "sub_workflow_pending"
+        assert mock_wr.main.call_count == 1, (
+            f"二次派发不应再调 workflow_run.main，实际调用 {mock_wr.main.call_count} 次"
+        )
+
+    # 标记文件落地
+    marker = run_dir / "sub_runs" / node_id / ".dispatched"
+    assert marker.exists(), f"派发标记 {marker} 应被写入"
+    assert marker.read_text(encoding="utf-8") == "standard-8phase"
+
+
+def test_sub_workflow_dispatch_skips_when_main_returns_nonzero_does_not_write_marker(
+    tmp_path: Path, tmp_jsonl: Path,
+) -> None:
+    """workflow_run.main 失败（rc≠0）时抛 WorkflowError，标记不应被写入——
+    保证调用方可以 retry 而不会被守卫卡死。"""
+    from common import WorkflowError  # noqa: PLC0415
+
+    node_id = "retry-sub"
+    node = {"id": node_id, "sub_workflow": {"template": "standard-8phase"}}
+    run_dir = tmp_path / "runs" / "RUN-20260512-P12B"
+    run_dir.mkdir(parents=True)
+
+    with patch("workflow_dispatcher.workflow_run") as mock_wr:
+        mock_wr.main.return_value = 1
+        with pytest.raises(WorkflowError, match="启动子 run 失败"):
+            _dispatch_sub_workflow_node(node, {}, run_dir, tmp_path, tmp_jsonl)
+
+    marker = run_dir / "sub_runs" / node_id / ".dispatched"
+    assert not marker.exists(), (
+        f"workflow_run.main 失败路径不应写入标记 {marker}，否则 retry 会被守卫错跳过"
+    )
+
+
+# ============================================================================
 # TC-F11-6：loop 节点连续 N 次序列断言（features.json F-011 acceptance #1）
 # ============================================================================
 

@@ -413,8 +413,13 @@ def _dispatch_sub_workflow_node(
     逻辑（F-011 最小实现）：
     1. 解析 node["sub_workflow"]["template"] 取模板 ID
     2. 子 run 目录固定为 run_dir / "sub_runs" / node_id（与 workflow_status / rollback 约定一致）
-    3. 调 workflow_run.main 启动子 run（复用 Python 入口，不走 subprocess）
-    4. 返回 outcome="sub_workflow_pending"（等 /workflow:continue 时检测子 run 状态）
+    3. **重复派发守卫**（codex 2026-05-12 P1-2）：若 sub_run_dir/.dispatched 标记存在，
+       说明上一轮 /workflow:continue 已派过子 run，本次只回传 pending 不再调
+       workflow_run.main，避免 main loop 在 state=running 下重复入节点导致子 run
+       重复 spawn。
+    4. 调 workflow_run.main 启动子 run（复用 Python 入口，不走 subprocess）
+    5. 写 .dispatched 标记 + 返回 outcome="sub_workflow_pending"
+       （等 /workflow:continue 时检测子 run 状态）
 
     深度联动（多级嵌套 + 子 run 完成回填）留后续 REQ，本 feature 仅最小实现。
     """
@@ -428,6 +433,11 @@ def _dispatch_sub_workflow_node(
     sub_run_dir = run_dir / "sub_runs" / node_id
     sub_run_dir.mkdir(parents=True, exist_ok=True)
 
+    # P1-2 重复派发守卫：标记文件存在 → 子 run 已派发过，直接回 pending
+    dispatched_marker = sub_run_dir / ".dispatched"
+    if dispatched_marker.exists():
+        return DispatchResult(outcome="sub_workflow_pending")
+
     # 复用 workflow_run.main Python 入口派子 run（不走 subprocess，避免路径/环境耦合）
     args = sub_cfg.get("args", "")
     args_list = [template_id] + (args.split() if isinstance(args, str) and args else [])
@@ -435,6 +445,16 @@ def _dispatch_sub_workflow_node(
     if rc != 0:
         raise WorkflowError(
             f"sub_workflow 节点 {node_id!r} 启动子 run 失败（exit={rc}，template={template_id!r}）"
+        )
+
+    # 写标记文件（best-effort：失败仅打 warn，不阻断本次成功的派发）
+    try:
+        dispatched_marker.write_text(template_id, encoding="utf-8")
+    except OSError as exc:
+        print(
+            f"WARN: 写 sub_workflow 派发标记 {dispatched_marker} 失败：{exc}；"
+            f"重复派发守卫退化为下一轮 continue 时仍可能重复入节点",
+            file=sys.stderr,
         )
 
     return DispatchResult(outcome="sub_workflow_pending")
