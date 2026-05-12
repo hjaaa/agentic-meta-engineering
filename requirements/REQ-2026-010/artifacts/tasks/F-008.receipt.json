@@ -1,0 +1,85 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-008",
+  "status": "DONE_WITH_CONCERNS",
+  "commit_sha": "TBD",
+  "files_changed": [
+    "scripts/lib/workflow_continue.py",
+    "tests/skills/test_workflow_continue_main_loop.py",
+    "tests/skills/test_workflow_continue_failure_handler.py (new)",
+    "tests/skills/test_workflow_commands_advanced.py (dead import removed)",
+    "requirements/REQ-2026-010/artifacts/tasks/F-008.md (touches updated)"
+  ],
+  "test_summary": "rev2: test_workflow_continue_main_loop.py 13 passed + test_workflow_continue_failure_handler.py 7 passed = 20 passed；回归 tests/skills/ 共 202 passed, 7 skipped in 1.54s",
+  "split_stats": {
+    "before_wc_l": 641,
+    "after_files": {
+      "test_workflow_continue_main_loop.py": 520,
+      "test_workflow_continue_failure_handler.py": 302
+    },
+    "test_count_before_main_loop_file": 17,
+    "test_count_after_combined": 20,
+    "note": "拆分净增 3 个新测试（TC-F8-6 warnings、TC-F8-7 unknown on_failure 降级、TC-F8-8 default retry）"
+  },
+  "keeps_closed": {
+    "F-1": "on_failure 默认值改为 'retry'（workflow_continue.py:283）；TC-F7-3 更新为显式 on_failure=abort 场景",
+    "F-2": "删除 elif outcome=='skipped' 死分支（line 267-269）；模块 docstring 改为 '7 outcome 覆盖'；_main_loop docstring 已去除 skipped；_advance_after_completed docstring 已去除 skipped",
+    "F-3": "workflow_failed 事件结构修正：node_id 移入 data 内（_handle_retry:100-110、_handle_abort:177-188、_route_outcome:~行290）",
+    "F-4": "node_skipped data.reason 改为 error or '无具体错误'（实际错误信息）；删除 original_error 字段；TC-F8-2 断言同步更新",
+    "F-5": "_handle_retry 保留 warnings 并打 WARN（workflow_continue.py:73-78）",
+    "F-6": "_handle_failure 拆 3 个私有助手：_handle_retry / _handle_skip / _handle_abort；_handle_failure 退化为 3 行路由",
+    "F-7": "test_workflow_continue_main_loop.py（520 行）+ test_workflow_continue_failure_handler.py（302 行）",
+    "F-8": "_advance_after_completed docstring 去除 skipped 场景描述",
+    "F-9": "与 F-2 合并处理完成",
+    "F-10": "F-008.md frontmatter touches 扩展为 4 个文件",
+    "F-11": "_route_outcome else 分支改为写 workflow_failed + state=failed（消除静默死循环）",
+    "F-13": "_route_outcome 函数承接 outcome 路由重构（从 _main_loop 拆出，CC 降低）",
+    "F-15": "test_workflow_continue_failure_handler.py 所有 TC 含 '# ===' 区块分隔符",
+    "F-follow-up-1": "tests/skills/test_workflow_commands_advanced.py:36 dead import workflow_run 已删除"
+  },
+  "trend_g_meta_termination": {
+    "grep_skipped_scan": {
+      "command": "grep -rn 'skipped' scripts/lib/workflow_continue.py tests/skills/test_workflow_continue_*.py",
+      "findings": [
+        "workflow_continue.py:144: 'state': 'skipped' → node_outputs 状态字符串，非 DispatchOutcome，合法",
+        "workflow_continue.py 多处: 'node_skipped' → 事件类型字符串，合法",
+        "test_workflow_continue_failure_handler.py 多处: 'node_skipped' 事件类型测试，合法"
+      ],
+      "verdict": "0 误用 DispatchOutcome skipped；trend-G-meta 第 4 次循环 F-2 闭合"
+    },
+    "grep_stub_scan": {
+      "command": "grep -rn 'stub|占位|待实现|待落地|placeholder' scripts/lib/workflow_continue.py tests/skills/test_workflow_continue_*.py",
+      "verdict": "0 命中"
+    },
+    "grep_append_event_structure": {
+      "command": "grep -A5 'append_event' scripts/lib/workflow_continue.py",
+      "findings": [
+        "_handle_retry:100 workflow_failed: node_id 在 data 内 ✓",
+        "_handle_skip:131 node_skipped: node_id 在顶层（与 run_state.rebuild 一致）✓",
+        "_handle_abort:177 workflow_failed: node_id 在 data 内 ✓",
+        "_route_outcome:290 workflow_failed（未知 outcome）: node_id 在 data 内 ✓",
+        "_main_loop:326 workflow_failed（未知节点）: 无 node_id（节点不存在）✓",
+        "_resume_run:383 run_resumed: 无 node_id（workflow 级事件）✓"
+      ],
+      "verdict": "所有 workflow_failed 事件 node_id 在 data 内；node_skipped/node_failed 在顶层（与 run_state.rebuild 一致）"
+    },
+    "wc_l_check": {
+      "workflow_continue.py": 492,
+      "test_workflow_continue_main_loop.py": 520,
+      "test_workflow_continue_failure_handler.py": 302,
+      "verdict": "main_loop 520 轻微超 500 建议上限（超出 20 行），内容无冗余，accept；failure_handler 302 ✓；workflow_continue.py 492 ✓"
+    }
+  },
+  "concerns": [
+    "spec §1.7 路由表仍含 skipped 行（与 DispatchOutcome 7 项不一致，是 spec 自身债）——本 PR 不改 spec，留独立 follow-up PR 闭合",
+    "test_workflow_continue_main_loop.py 520 行，超出 500 行建议上限 20 行；内容无冗余，接受现状"
+  ],
+  "out_of_scope_notes": [
+    "spec §1.7 skipped 行 → 留 follow-up PR 修 spec",
+    "workflow_dispatcher.py 中 except Exception（pre-existing）→ F-006 范围，不修"
+  ],
+  "touches_violations": [],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-12T10:00:00+08:00"
+}

@@ -33,7 +33,6 @@ if str(_SKILLS_TEST_DIR) not in sys.path:
 # ---------- 被测模块 ----------
 
 from run_state import append_event, read_events  # noqa: E402
-import workflow_run  # noqa: E402
 import workflow_continue  # noqa: E402
 import workflow_status  # noqa: E402
 import workflow_cancel  # noqa: E402

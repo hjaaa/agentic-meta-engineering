@@ -1,14 +1,16 @@
 """F-007/F-008 · workflow_continue.py main loop 单测。
 
-覆盖范围：
+覆盖范围（main loop 行为 + 端到端场景）：
   TC-F7-1  approval_pending 场景：节点派发返回 approval_pending，main loop 设状态 + break
   TC-F7-2  完整链路：bash → approval → bash，能续跑到第二个 bash
-  TC-F7-3  failed outcome：节点派发返回 failed，main loop 设状态 + break（F-007 兜底行为）
-  TC-F8-1  _handle_failure retry 未达上限：current_node 保持，state=running，return False
-  TC-F8-2  _handle_failure skip：写 node_skipped，推进 current_node，return True
-  TC-F8-3  _handle_failure abort：写 workflow_failed，state=failed，return False
-  TC-F8-4  _handle_failure retry 超上限：升级 abort，写 workflow_failed，state=failed
-  TC-F8-5  main loop 端到端：mock dispatch_node，按 standard-8phase 前 3 节点顺序返 completed × 3
+  TC-F7-3  failed outcome：节点派发返回 failed，main loop 调 _handle_failure
+  TC-F7-4  node_outputs 结构正确：completed 时含 output / state / data 三键
+  TC-F7-5  unknown node 容错：写 workflow_failed + state=failed
+  TC-F7-6  loop_continue：更新计数器，current_node 保持不变
+  TC-F7-7  sub_workflow_pending：state 保持 running，break
+  TC-F8-5  main loop 端到端：mock dispatch_node，standard-8phase 前 3 节点 completed × 3
+
+_handle_failure 的 retry/skip/abort 单测移至 test_workflow_continue_failure_handler.py。
 
 外部依赖（jsonl IO）使用 tmp_path；mock workflow doc。
 pytest 命名规范：test_<场景>_<期望>（CLAUDE.md §7）。
@@ -29,7 +31,7 @@ if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
 from run_state import RunState, append_event, read_events  # noqa: E402
-from workflow_continue import _handle_failure, _main_loop, _build_node_map, _next_node  # noqa: E402
+from workflow_continue import _main_loop, _build_node_map, _next_node  # noqa: E402
 
 
 # ============================================================================
@@ -270,14 +272,35 @@ def test_main_loop_complete_flow_3nodes_with_approval_and_continue(
 # ============================================================================
 
 
-def test_main_loop_failed_outcome_sets_state_and_breaks(
-    mock_workflow_2nodes,
+def test_main_loop_failed_outcome_with_abort_sets_state_failed_and_breaks(
     jsonl_path,
     tmp_path,
 ):
-    """节点派发返回 failed，main loop 设 state=failed 并 break。"""
+    """节点设 on_failure=abort 时，派发返回 failed → main loop 写 workflow_failed + state=failed + break。
+
+    场景：node-a 带 on_failure=abort，dispatch 返回 failed
+    期望：state 变为 failed，loop break，current_node 保持 node-a
+    """
     from workflow_dispatcher import DispatchResult
 
+    workflow = {
+        "id": "test-wf",
+        "name": "test-workflow",
+        "version": "1.0",
+        "category": "requirement",
+        "nodes": [
+            {
+                "id": "node-a",
+                "bash": "echo 'hello'",
+                "next": "node-b",
+                "on_failure": "abort",  # 显式 abort，保证 state=failed
+            },
+            {
+                "id": "node-b",
+                "approval": {"prompt": "Approve?"},
+            },
+        ],
+    }
     run_state = RunState(run_id="REQ-2026-010", current_node="node-a", state="running")
 
     with patch("workflow_dispatcher.dispatch_node") as mock_dispatch:
@@ -286,7 +309,7 @@ def test_main_loop_failed_outcome_sets_state_and_breaks(
             error="node-a execution failed",
         )
 
-        _main_loop(run_state, mock_workflow_2nodes, tmp_path, tmp_path, jsonl_path)
+        _main_loop(run_state, workflow, tmp_path, tmp_path, jsonl_path)
 
         # 期望：state 变为 failed，loop break，current_node 保持不变
         assert run_state.state == "failed"
@@ -416,149 +439,6 @@ def test_main_loop_sub_workflow_pending_breaks_without_state_change(
 
         assert run_state.state == "running"
         assert mock_dispatch.call_count == 1
-
-
-# ============================================================================
-# F-008 · _handle_failure 单测
-# ============================================================================
-
-
-@pytest.fixture()
-def node_with_retry() -> dict:
-    """带 on_failure=retry + max_retries=2 的节点。"""
-    return {
-        "id": "node-a",
-        "bash": "echo 'step'",
-        "next": "node-b",
-        "on_failure": "retry",
-        "max_retries": 2,
-    }
-
-
-@pytest.fixture()
-def node_with_skip() -> dict:
-    """带 on_failure=skip 的节点。"""
-    return {
-        "id": "node-a",
-        "bash": "echo 'step'",
-        "next": "node-b",
-        "on_failure": "skip",
-    }
-
-
-@pytest.fixture()
-def node_with_abort() -> dict:
-    """带 on_failure=abort 的节点。"""
-    return {
-        "id": "node-a",
-        "bash": "echo 'step'",
-        "next": "node-b",
-        "on_failure": "abort",
-    }
-
-
-# TC-F8-1 · retry 未达上限
-def test_handle_failure_retry_below_max_retries_keeps_current_node(
-    node_with_retry,
-    jsonl_path,
-):
-    """retry 场景：失败次数 < max_retries，current_node 保持，state=running，返回 False。
-
-    场景：max_retries=2，当前只失败 1 次（写 1 条 node_failed 事件）
-    期望：_handle_failure 返回 False（main loop 应 break，等待下次 continue 重派）
-          run_state.state 保持 running，current_node 保持 node-a
-    """
-    run_state = RunState(run_id="REQ-2026-010", current_node="node-a", state="running")
-
-    # 预写 1 条 node_failed 事件（模拟已失败 1 次）
-    append_event(jsonl_path, {"type": "node_failed", "node_id": "node-a", "data": {"error": "err"}})
-
-    result = _handle_failure(run_state, node_with_retry, "retry", jsonl_path, "some error")
-
-    assert result is False  # main loop 应 break
-    assert run_state.state == "running"  # state 保持 running（等下次 continue 重派）
-    assert run_state.current_node == "node-a"  # current_node 不变
-
-
-# TC-F8-2 · skip 场景
-def test_handle_failure_skip_writes_node_skipped_and_advances(
-    node_with_skip,
-    jsonl_path,
-):
-    """skip 场景：写 node_skipped 事件，推进 current_node 到 node-b，返回 True。
-
-    期望：_handle_failure 返回 True（main loop 继续循环）
-          jsonl 中写入 node_skipped 事件
-          run_state.current_node 推进为 node-b
-    """
-    run_state = RunState(run_id="REQ-2026-010", current_node="node-a", state="running")
-
-    result = _handle_failure(run_state, node_with_skip, "skip", jsonl_path, "some error")
-
-    assert result is True  # main loop 应继续循环
-    assert run_state.current_node == "node-b"  # 推进到 node-b
-
-    # 验证 node_skipped 事件已写入
-    events, _ = read_events(jsonl_path)
-    skipped_events = [e for e in events if e.get("type") == "node_skipped"]
-    assert len(skipped_events) == 1
-    assert skipped_events[0]["node_id"] == "node-a"
-    assert skipped_events[0]["data"]["reason"] == "on_failure=skip"
-
-
-# TC-F8-3 · abort 场景
-def test_handle_failure_abort_writes_workflow_failed(
-    node_with_abort,
-    jsonl_path,
-):
-    """abort 场景：写 workflow_failed 事件，state=failed，返回 False。
-
-    期望：_handle_failure 返回 False（main loop 应 break）
-          run_state.state = "failed"
-          jsonl 中写入 workflow_failed 事件
-    """
-    run_state = RunState(run_id="REQ-2026-010", current_node="node-a", state="running")
-
-    result = _handle_failure(run_state, node_with_abort, "abort", jsonl_path, "fatal error")
-
-    assert result is False  # main loop 应 break
-    assert run_state.state == "failed"
-
-    # 验证 workflow_failed 事件已写入
-    events, _ = read_events(jsonl_path)
-    failed_events = [e for e in events if e.get("type") == "workflow_failed"]
-    assert len(failed_events) == 1
-    assert failed_events[0]["node_id"] == "node-a"
-
-
-# TC-F8-4 · retry 超上限升级为 abort
-def test_handle_failure_retry_exhausted_upgrades_to_abort(
-    node_with_retry,
-    jsonl_path,
-):
-    """retry 超上限场景：已达 max_retries，升级为 abort，写 workflow_failed，state=failed。
-
-    场景：max_retries=2，当前已失败 2 次（写 2 条 node_failed 事件）
-    期望：_handle_failure 返回 False
-          run_state.state = "failed"
-          jsonl 中写入 workflow_failed 事件（reason=retry_exhausted）
-    """
-    run_state = RunState(run_id="REQ-2026-010", current_node="node-a", state="running")
-
-    # 预写 2 条 node_failed 事件（模拟已达上限）
-    append_event(jsonl_path, {"type": "node_failed", "node_id": "node-a", "data": {"error": "err1"}})
-    append_event(jsonl_path, {"type": "node_failed", "node_id": "node-a", "data": {"error": "err2"}})
-
-    result = _handle_failure(run_state, node_with_retry, "retry", jsonl_path, "err3")
-
-    assert result is False  # main loop 应 break
-    assert run_state.state == "failed"
-
-    # 验证 workflow_failed 事件已写入（reason=retry_exhausted）
-    events, _ = read_events(jsonl_path)
-    failed_events = [e for e in events if e.get("type") == "workflow_failed"]
-    assert len(failed_events) == 1
-    assert failed_events[0]["data"]["reason"] == "retry_exhausted"
 
 
 # ============================================================================
