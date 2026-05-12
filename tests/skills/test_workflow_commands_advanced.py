@@ -110,7 +110,7 @@ class TestStatusParentChildTree:
 
         captured = capsys.readouterr()
         assert parent_id in captured.out, f"输出应含 parent run_id：{captured.out}"
-        # 子 run 嵌套（无论 resolve 成功与否都有相关输出）
+        # 子 run 嵌套渲染应输出 child_id 或 "子 run" 字样
         assert child_id in captured.out or "子 run" in captured.out, (
             f"输出应含子 run 嵌套信息：{captured.out}"
         )

@@ -45,13 +45,10 @@ def _render_status(run_state: RunState, run_dir: Path, indent: int = 0) -> str:
             if not sub_run_dir.is_dir():
                 continue
             sub_run_id = sub_run_dir.name  # 目录名即子 run id（与 rollback_subrun 约定一致）
-            try:
-                sub_events, sub_warnings = read_events(sub_run_dir / "run-state.jsonl")
-                sub_state = RunState.rebuild(sub_events, run_id=sub_run_id, warnings=sub_warnings)
-                lines.append(f"{prefix}  └─ 子 run:")
-                lines.append(_render_status(sub_state, sub_run_dir, indent + 2))
-            except WorkflowError as exc:
-                lines.append(f"{prefix}  └─ 子 run {sub_run_id!r} 解析失败: {exc}")
+            sub_events, sub_warnings = read_events(sub_run_dir / "run-state.jsonl")
+            sub_state = RunState.rebuild(sub_events, run_id=sub_run_id, warnings=sub_warnings)
+            lines.append(f"{prefix}  └─ 子 run:")
+            lines.append(_render_status(sub_state, sub_run_dir, indent + 2))
 
     return "\n".join(lines)
 
