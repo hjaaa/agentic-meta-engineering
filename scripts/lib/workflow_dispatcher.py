@@ -433,7 +433,7 @@ def _dispatch_sub_workflow_node(
     # 复用 workflow_run.main Python 入口派子 run（不走 subprocess，避免路径/环境耦合）
     args = sub_cfg.get("args", "")
     args_list = [template_id] + (args.split() if isinstance(args, str) and args else [])
-    rc = workflow_run.main(args_list, repo_root=sub_run_dir)
+    rc = workflow_run.main(args_list, repo_root=root)
     if rc != 0:
         raise WorkflowError(
             f"sub_workflow 节点 {node_id!r} 启动子 run 失败（exit={rc}，template={template_id!r}）"

@@ -215,11 +215,12 @@ def test_sub_workflow_creates_sub_run_dir(tmp_path: Path, tmp_jsonl: Path) -> No
 
 
 def test_sub_workflow_passes_correct_repo_root_to_main(tmp_path: Path, tmp_jsonl: Path) -> None:
-    """workflow_run.main 的 repo_root 参数应为 sub_run_dir（子 run 隔离于父 run）。"""
+    """workflow_run.main 的 repo_root 参数应为仓库根（root），而非子 run 目录。"""
     node_id = "isolated-sub"
     node = {"id": node_id, "sub_workflow": {"template": "standard-8phase"}}
     run_dir = tmp_path / "runs" / "RUN-20260512-004"
     run_dir.mkdir(parents=True)
+    root = tmp_path  # 仓库根
 
     captured_kwargs: dict = {}
 
@@ -230,11 +231,10 @@ def test_sub_workflow_passes_correct_repo_root_to_main(tmp_path: Path, tmp_jsonl
     with patch("workflow_dispatcher.workflow_run") as mock_wr:
         mock_wr.main.side_effect = mock_main
 
-        _dispatch_sub_workflow_node(node, {}, run_dir, tmp_path, tmp_jsonl)
+        _dispatch_sub_workflow_node(node, {}, run_dir, root, tmp_jsonl)
 
-    expected_sub_run_dir = run_dir / "sub_runs" / node_id
-    assert captured_kwargs.get("repo_root") == expected_sub_run_dir, (
-        f"repo_root 传值错误：期望 {expected_sub_run_dir}，实际 {captured_kwargs.get('repo_root')}"
+    assert captured_kwargs.get("repo_root") == root, (
+        f"repo_root 传值错误：期望仓库根 {root}，实际 {captured_kwargs.get('repo_root')}"
     )
 
 
