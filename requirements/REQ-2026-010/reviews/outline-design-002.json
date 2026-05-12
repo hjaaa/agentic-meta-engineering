@@ -71,5 +71,11 @@
     "dispatcher 单文件起步在 7 类节点 + loop / sub_workflow 完整实现后预计 600-800 行；详细设计阶段需规划拆模块边界（参考 workflow_rollback 4 子模块的拆法）",
     "approval 方案 ii 反扫 jsonl 重建 RunState 的 O(n) 开销在 10-50 节点级无忧，但若未来大规模 loop 迭代或深嵌套 sub_workflow 出现，扫文件成本可能成为瓶颈——建议详细设计阶段标注该假设的有效区间",
     "§5.2.2 on_failure 引入了 retry / skip / abort 三档配置，详细设计阶段需要在 yaml schema 上落地该字段；同时 retry 的 max_retries 默认 3、计数复位时机（跨 /workflow:continue 调用是否累计）需明确"
-  ]
+  ],
+  "human_signoff": {
+    "decision": "approved-trivial",
+    "signed_at": "2026-05-12T21:01:09.104529+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
+  }
 }

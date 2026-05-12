@@ -6,6 +6,10 @@
 
 - [areas.yaml](areas.yaml) — 骨架功能区白名单（驱动 `meta.yaml.feature_area` 校验）
 
+## 经验沉淀（项目特有）
+
+- [`experience/dispatch-lock-cleanup-must-fire-on-feature-done.md`](experience/dispatch-lock-cleanup-must-fire-on-feature-done.md) — feature done 转换必须显式调 `dispatch_state_cleanup.py`；只靠 docstring 不进流程文件就是全仓零调用
+
 ## 备注
 
 - 骨架本身是「面向开发流程」的项目，没有业务域（auth/payment 等）；`areas.yaml` 列的是骨架自身的功能区（hooks / commands / skills / agents 等）

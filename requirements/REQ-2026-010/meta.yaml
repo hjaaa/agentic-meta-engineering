@@ -1,44 +1,43 @@
-# ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-010
 title: workflow 引擎 main loop 与 bootstrap 完整化
-phase: testing
+phase: completed
 gates_passed:
   - phase: definition
-    at: "2026-05-11 11:34:20"
+    at: '2026-05-11 11:34:20'
     via: managing-requirement-lifecycle
     notes: check-sourcing 0 error / check-meta 0 error
   - phase: tech-research
-    at: "2026-05-11 11:38:23"
+    at: '2026-05-11 11:38:23'
     via: managing-requirement-lifecycle
     notes: requirement-quality-reviewer looks_clean (88 分 / 5 minor 已闭环 4)
   - phase: outline-design
-    at: "2026-05-11 11:49:07"
+    at: '2026-05-11 11:49:07'
     via: managing-requirement-lifecycle
     notes: tech-research.md 完成，4 条待澄清 user 已确认；feasibility=high；工作量 9.8 天，PR 拆分 
       PR-A/PR-B 锁定
   - phase: detail-design
-    at: "2026-05-11 12:26:40"
+    at: '2026-05-11 12:26:40'
     via: managing-requirement-lifecycle
     notes: outline-design-002 looks_clean（首轮 2 required_fix 已闭环：DispatchResult 7
       outcome 枚举 + §5.2 三小节）
   - phase: task-planning
-    at: "2026-05-11 13:12:09"
+    at: '2026-05-11 13:12:09'
     via: managing-requirement-lifecycle
     notes: detail-design-002 looks_clean（首轮 2 major + 4 minor 已闭环：AC-03 改造表扩到 10
       处 + $BRANCH_NAME 变量 + _handle_failure 完整实现 + RunState 扩展）
   - phase: development
-    at: "2026-05-12 10:42:06"
+    at: '2026-05-12 10:42:06'
     via: managing-requirement-lifecycle
     notes: phase 字段补登记——F-001~F-008 已实质在 development 推进；phase-transition gate 0 
       error / 2 W002 carry-over
   - phase: testing
-    at: "2026-05-12 14:08:00"
+    at: '2026-05-12 14:08:00'
     via: managing-requirement-lifecycle
     notes: F-001~F-011 共 11/11 done；phase-transition gate 11 候选全过 0 error / 2 
       W002 carry-over（含 GATE-POST-DEV-RECEIPT / GATE-TOUCHES-VIOLATION / 
       GATE-FEATURES-SCHEMA / GATE-TASK-FRONTMATTER / GATE-TRACEABILITY 4+1 硬挡均 
       pass）
-created_at: "2026-05-11 11:25:44"
+created_at: '2026-05-11 11:25:44'
 branch: feat/req-2026-010
 base_branch: develop
 project: agentic-meta-engineering
@@ -46,8 +45,6 @@ services: []
 pr_url: https://github.com/hjaaa/agentic-meta-engineering/pull/69
 pr_number: 69
 log_layout: split
-
-# ============ 语义组（definition 阶段补齐，供跨需求检索） ============
 feature_area: scripts
 change_type: feature
 affected_modules:
@@ -60,21 +57,20 @@ tags:
   - main-loop
   - bootstrap
   - dispatcher
-
-# ============ 结果组（completed 时才填） ============
-outcome: ""
-completed_at: ""
-lessons_extracted: false
+outcome: shipped
+completed_at: '2026-05-12 20:50:14'
+lessons_extracted: true
 reviews:
   definition:
-    latest: REV-REQ-2026-010-definition-001
+    latest: REV-REQ-2026-010-definition-002
     conclusion: looks_clean
-    reviewed_commit: ce7bef2
+    reviewed_commit: 89a20e2
     artifact_hashes:
       artifacts/requirement.md: 
-        766181bf1c849e23759be304af2ed7cefa3ee6fbe61294ca53f748804965b3eb
+        25dafe20a6af9809a73530ed8a3df41851ea5693c799c5fed47259f865870067
     history:
       - REV-REQ-2026-010-definition-001
+      - REV-REQ-2026-010-definition-002
     stale: false
   outline-design:
     latest: REV-REQ-2026-010-outline-design-002
@@ -266,3 +262,4 @@ reviews:
           artifacts/tasks/F-010.md: 
             b9b1992e18c0bd45679ca6c7b499cf3b28b881ca1e0642165d6b72ea8fe1a0b0
         stale: false
+archived_at: '2026-05-12 20:50:14'
