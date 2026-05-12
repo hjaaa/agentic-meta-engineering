@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-010",
+  "status": "DONE",
+  "commit_sha": "7d3cc77",
+  "files_changed": [
+    "tests/e2e/conftest.py",
+    "tests/e2e/test_code_review_embedded.py",
+    "tests/e2e/test_sub_workflow_lifecycle.py"
+  ],
+  "test_summary": "2 passed in 0.04s（AC-05 专项）；88 passed / 1 pre-existing failed in 0.49s（e2e 全套）",
+  "touches_violations": [],
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-12T14:30:00+08:00"
+}
