@@ -28,6 +28,9 @@ requirements/**/process.tool.log
 # /loop 调度运行时锁文件（非持久化状态，不入库）
 .claude/scheduled_tasks.lock
 
+# Claude Code dispatch agent isolated worktree（git worktree 创建的临时副本，不入库）
+.claude/worktrees/
+
 # 统一门禁 audit 日志（运行时产出，仅保留目录占位）
 # 旧路径（保留 .gitkeep 占位）
 scripts/gates/audit/*
