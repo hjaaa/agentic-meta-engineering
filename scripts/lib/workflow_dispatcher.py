@@ -26,6 +26,7 @@ if str(_LIB_DIR) not in sys.path:
 from common import WorkflowError  # noqa: E402（WorkflowError 统一定义在 common，禁止本地重定义）
 from run_state import RunState, append_event  # noqa: E402
 from substitute_vars import substitute_vars  # noqa: E402
+import workflow_run  # noqa: E402（F-011：sub_workflow 节点派子 run 用；顶层导入便于测试 mock）
 
 
 # ============================================================================
@@ -362,11 +363,44 @@ def _dispatch_loop_node(
     run_state: RunState,
     jsonl_path: Path,
 ) -> DispatchResult:
-    """Loop 节点 stub。
+    """Loop 节点：迭代计数从 run_state.loop_counters[node_id] 读取。
 
-    真实逻辑在 F-011 实现（迭代控制 + loop_iteration_started/completed 事件写入）。
+    逻辑（F-011）：
+    1. 读取当前迭代次数（loop_counters[node_id]，首次为 0）
+    2. 写 loop_iteration_started 事件（data.iteration = current_iteration）
+    3. 写 loop_iteration_completed 事件（data.iteration = current_iteration）
+    4. 若 current_iteration + 1 >= max_iterations → outcome="loop_done"
+       否则 → outcome="loop_continue"（workflow_continue.py 负责递增计数器并继续同节点）
+
+    约束：
+    - data["iteration"] 必须存在，供 RunState.rebuild 中 loop_counters 累计消费
+    - max_iterations 取自 node["loop"]["max_iterations"]；缺省视为 1
     """
-    return DispatchResult(outcome="completed")
+    node_id: str = node.get("id", "<unknown>")
+    loop_cfg: dict = node.get("loop") or {}
+    max_iterations: int = int(loop_cfg.get("max_iterations", 1))
+
+    # 当前迭代索引（0-based）：首次不在 loop_counters 中，取 0
+    current_iteration: int = run_state.loop_counters.get(node_id, 0)
+
+    append_event(jsonl_path, {
+        "type": "loop_iteration_started",
+        "node_id": node_id,
+        "run_id": run_state.run_id,
+        "data": {"iteration": current_iteration},
+    })
+
+    append_event(jsonl_path, {
+        "type": "loop_iteration_completed",
+        "node_id": node_id,
+        "run_id": run_state.run_id,
+        "data": {"iteration": current_iteration},
+    })
+
+    # 已完成 current_iteration 轮（0-based），下一轮编号为 current_iteration + 1
+    if current_iteration + 1 >= max_iterations:
+        return DispatchResult(outcome="loop_done")
+    return DispatchResult(outcome="loop_continue")
 
 
 def _dispatch_sub_workflow_node(
@@ -376,8 +410,33 @@ def _dispatch_sub_workflow_node(
     root: Path,
     jsonl_path: Path,
 ) -> DispatchResult:
-    """Sub-workflow 节点 stub。
+    """Sub-workflow 节点：派子 run 到 run_dir/sub_runs/<node_id>/。
 
-    真实逻辑在 F-011 实现（启动子 workflow run、等待结果、写 child_* 事件）。
+    逻辑（F-011 最小实现）：
+    1. 解析 node["sub_workflow"]["template"] 取模板 ID
+    2. 子 run 目录固定为 run_dir / "sub_runs" / node_id（与 workflow_status / rollback 约定一致）
+    3. 调 workflow_run.main 启动子 run（复用 Python 入口，不走 subprocess）
+    4. 返回 outcome="sub_workflow_pending"（等 /workflow:continue 时检测子 run 状态）
+
+    深度联动（多级嵌套 + 子 run 完成回填）留后续 REQ，本 feature 仅最小实现。
     """
-    return DispatchResult(outcome="completed")
+    node_id: str = node.get("id", "<unknown>")
+    sub_cfg: dict = node.get("sub_workflow") or {}
+    template_id: str = sub_cfg.get("template", "")
+    if not template_id:
+        raise WorkflowError(f"sub_workflow 节点 {node_id!r} 缺少 template 字段")
+
+    # 子 run 目录：与 workflow_status / workflow_rollback_subrun 约定一致
+    sub_run_dir = run_dir / "sub_runs" / node_id
+    sub_run_dir.mkdir(parents=True, exist_ok=True)
+
+    # 复用 workflow_run.main Python 入口派子 run（不走 subprocess，避免路径/环境耦合）
+    args = sub_cfg.get("args", "")
+    args_list = [template_id] + (args.split() if isinstance(args, str) and args else [])
+    rc = workflow_run.main(args_list, repo_root=sub_run_dir)
+    if rc != 0:
+        raise WorkflowError(
+            f"sub_workflow 节点 {node_id!r} 启动子 run 失败（exit={rc}，template={template_id!r}）"
+        )
+
+    return DispatchResult(outcome="sub_workflow_pending")
