@@ -87,3 +87,19 @@ Window B 的 main loop 完整化与 bootstrap 流程补全延至本需求实施�
 **验证**：tests/hooks/ + tests/lib/test_dispatch_state.py 共 58 passed
 
 **遗留议题**（独立追踪）：cleanup CLI 调用是文档级约束，依赖 AI 阅读 SKILL；若未来发现仍漏调可考虑加 PostToolUse Hook 自动触发（task.md status=done 翻转时调），但当前不引入新 hook 维护负担
+
+## F-011 rev2 follow-up · loop_counters 内存递增不写事件导致崩溃恢复后重复执行 iteration（F-8 收口前修复）
+
+**问题位置**：
+- `scripts/lib/workflow_continue.py:266`：`loop_counters[node_id] += 1` 仅在内存中递增，不写任何事件到 jsonl
+- `scripts/lib/run_state.py:208-210`：`RunState.rebuild` 只从 jsonl 中的 `loop_iteration_completed.data.iteration` 重建 `loop_counters`
+
+**影响**：崩溃后 rebuild 重放 jsonl，`loop_counters` 比实际运行时少 1（`workflow_continue` 递增的那次未持久化）→ `_dispatch_loop_node` 重派已执行的同一 iteration → loop 崩溃恢复后重复执行同轮。
+
+**修复时机**：F-008 收口前，与 loop 事件流驱动 rebuild 一并落地。
+
+**修复方向（任选其一）**：
+- (a) `workflow_continue.py` 递增后写 `loop_counter_advanced` 事件（`data.node_id + data.new_value`）供 `RunState.rebuild` 消费，重建时以该事件为准
+- (b) `dispatcher` 在写 `loop_iteration_started` 时记录"将要执行的 iteration"（即 `current_iteration + 1`），`workflow_continue` 不再内存 +1，由 rebuild 推算
+
+**引用**：review F-8（`requirements/REQ-2026-010/artifacts/review-20260512-115731.md`）
