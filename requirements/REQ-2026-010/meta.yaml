@@ -42,8 +42,8 @@ branch: feat/req-2026-010
 base_branch: develop
 project: agentic-meta-engineering
 services: []
-pr_url: ""
-pr_number: 0
+pr_url: https://github.com/hjaaa/agentic-meta-engineering/pull/69
+pr_number: 69
 log_layout: split
 
 # ============ 语义组（definition 阶段补齐，供跨需求检索） ============
