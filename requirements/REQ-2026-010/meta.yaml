@@ -145,3 +145,56 @@ reviews:
           artifacts/tasks/F-004.md: 
             af06f51875c2fa3a77ce6394ecf33e4bdfc2610014d8d05032e427c8b1978ec6
         stale: false
+      F-005:
+        history:
+          - REV-REQ-2026-010-code-F-005-001
+          - REV-REQ-2026-010-code-F-005-002
+          - REV-REQ-2026-010-code-F-005-003
+        latest: REV-REQ-2026-010-code-F-005-003
+        conclusion: looks_clean
+        reviewed_commit: 517c090
+        artifact_hashes:
+          artifacts/features.json: 
+            4d7d69b5eaf2b28c8f49ad871c3f6bf101f5f7128bcece476b2a6ec65c832982
+          artifacts/tasks/F-005.md: 
+            5d20033b834dd9a4919d472375f301b8492d57a962b76e8184208666f67d306b
+        stale: false
+      F-006:
+        history:
+          - REV-REQ-2026-010-code-F-006-001
+          - REV-REQ-2026-010-code-F-006-002
+          - REV-REQ-2026-010-code-F-006-003
+        latest: REV-REQ-2026-010-code-F-006-003
+        conclusion: looks_clean
+        reviewed_commit: 514685c
+        artifact_hashes:
+          artifacts/features.json: 
+            4d7d69b5eaf2b28c8f49ad871c3f6bf101f5f7128bcece476b2a6ec65c832982
+          artifacts/tasks/F-006.md: 
+            de643e6754552de9e8e6bd576225abf9b1471797cfde8d237f04344c118e05ec
+        stale: false
+      F-007:
+        history:
+          - REV-REQ-2026-010-code-F-007-001
+          - REV-REQ-2026-010-code-F-007-002
+          - REV-REQ-2026-010-code-F-007-003
+          - REV-REQ-2026-010-code-F-007-004
+          - REV-REQ-2026-010-code-F-007-005
+          - REV-REQ-2026-010-code-F-007-006
+          - REV-REQ-2026-010-code-F-007-007
+          - REV-REQ-2026-010-code-F-007-008
+          - REV-REQ-2026-010-code-F-007-009
+          - REV-REQ-2026-010-code-F-007-010
+          - REV-REQ-2026-010-code-F-007-011
+          - REV-REQ-2026-010-code-F-007-012
+          - REV-REQ-2026-010-code-F-007-013
+          - REV-REQ-2026-010-code-F-007-014
+        latest: REV-REQ-2026-010-code-F-007-014
+        conclusion: looks_clean
+        reviewed_commit: aaa3e76
+        artifact_hashes:
+          artifacts/features.json: 
+            4d7d69b5eaf2b28c8f49ad871c3f6bf101f5f7128bcece476b2a6ec65c832982
+          artifacts/tasks/F-007.md: 
+            173ee065736bf6aec2695cb29ca92f5791b9cbf531dfc3ca368d1141096f3f6b
+        stale: false
