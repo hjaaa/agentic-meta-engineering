@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "feature_id": "F-008",
   "status": "DONE",
-  "commit_sha": "b9fcc3c",
+  "commit_sha": "7f70d18",
   "files_changed": [
     "scripts/lib/workflow_continue.py (F-NEW-4: docstring 引用行改为 :185-200 _dispatch_skill_node; F-NEW-5: §1.2.2 → §1.7)",
     "tests/skills/test_workflow_continue_failure_handler.py (F-NEW-1: 删除 dead import; F-NEW-2: 加 capsys + WARN 断言; F-NEW-3: docstring _main_loop → _handle_failure)",
@@ -10,7 +10,7 @@
     "tests/skills/test_workflow_continue_outcomes.py (F-NEW-7: 新建，含 4 个 outcome 路由 TC)",
     "requirements/REQ-2026-010/artifacts/tasks/F-008.md (touches 追加 outcomes 新文件)"
   ],
-  "test_summary": "rev3 拆分后：test_workflow_continue_main_loop.py 9 passed + test_workflow_continue_failure_handler.py 7 passed + test_workflow_continue_outcomes.py 4 passed = 20 passed（与拆前等量）；回归 tests/skills/test_workflow_continue_*.py tests/skills/test_workflow_dispatcher_*.py tests/skills/test_workflow_commands_*.py 共 129 passed in 0.27s",
+  "test_summary": "rev3 终结后 47 passed in 0.09s（main_loop 9 + failure_handler 7 + outcomes 4 + dispatcher 27）；主 Agent 手改 3 行（dead import ×2 + §1.2.2 ×1）后同模式 grep 0 残留",
   "split_stats_rev3": {
     "before_wc_l": {
       "test_workflow_continue_main_loop.py": 520
@@ -51,7 +51,19 @@
         "6. stub/占位标签: 0 命中（dispatcher.py 中 stub 注释不在本 feature 范围）"
       ]
     },
-    "summary": "rev2 5 项 keep（F-NEW-1 dead import + F-NEW-2 capsys 断言 + F-NEW-3 docstring 失实 + F-NEW-4 行号引用失实 + F-NEW-5 §锚点失实）全闭合 + F-NEW-7 文件行数超限已拆分；rev3 自引入 0 keep（确认）；trend-G-meta 第 4 次循环正式终结"
+    "summary": "rev2 5 项 keep（F-NEW-1 dead import + F-NEW-2 capsys 断言 + F-NEW-3 docstring 失实 + F-NEW-4 行号引用失实 + F-NEW-5 §锚点失实）全闭合 + F-NEW-7 文件行数超限已拆分；rev3 自引入 0 keep（确认）；trend-G-meta 第 4 次循环正式终结",
+    "final_termination": {
+      "method": "manual_intervention",
+      "agent": "main",
+      "commit": "7f70d18",
+      "reason": "AI subagent 三连未根治同模式（rev1/2/3 dead import 与 §1.2.2 漏扫反复），Judge 建议主 Agent 直接手改",
+      "final_grep_results": {
+        "§1.2.2 in workflow_continue.py + tests/skills/test_workflow_continue_*.py": "0 命中",
+        "dead import append_event/read_events in outcomes.py": "已删，仅 RunState 导入",
+        "dead import append_event in main_loop.py": "已删，仅 RunState + read_events 导入",
+        "pytest": "47 passed in 0.09s"
+      }
+    }
   },
   "concerns": [],
   "out_of_scope_notes": [
@@ -61,5 +73,5 @@
   "touches_violations": [],
   "missing_context": "",
   "block_reason": "",
-  "timestamp": "2026-05-12T20:00:00+08:00"
+  "timestamp": "2026-05-12T10:30:00+08:00"
 }
