@@ -40,17 +40,25 @@ PR merged ──┐
 
 ### 0.3 分支位置约束
 
+所有 archive bookkeeping 操作都在**原开发分支**（`meta.yaml.branch`，例 `feat/req-yyyy-nnn`）上进行；
+**删本地分支是整个 archive 的最后一步**——archive_runner 自动 `git switch <base_branch>` 后再删，
+用户不需要中途手动切分支也不需要分两次跑 archive 命令。
+
 | 步骤 | 应在哪个分支 |
 |---|---|
-| §1 预检 / §2.1 写 meta.yaml / §2.2 写 process.txt / §2.3 经验沉淀 | **原开发分支**（`meta.yaml.branch`，例 `feat/req-yyyy-nnn`）|
-| §2.4 删本地分支 | 由 archive_runner 内部判断；当前 HEAD == 目标分支时返回可执行错误（"先 `git switch <base_branch>` 再重跑"），主 Agent **不**预先切走 |
+| §1 预检 / §2.1 写 meta.yaml / §2.2 写 process.txt / §2.3 经验沉淀 / §2.4 删远程分支 | **原开发分支**（`feat/req-yyyy-nnn`）|
+| §2.4 删本地分支（最后一步） | archive_runner 内部自动 `git switch <base_branch>` 后删，无需用户操作 |
 
 为什么经验沉淀也在原 feat 分支：保留 git blame / file history 视角与开发期一致；切到 base_branch 后 `claude /knowledge:extract-experience` 会丢失分支上下文。
+
+为什么删本地分支放最后：删 feat 分支会强制离开 feat，把它放最后让前面的所有 bookkeeping
+操作都能享受 feat 分支上下文（git history / 文件视图）。远程删则不需要切走，因此放在
+本地删之前（§2.4 内 sub-step 顺序：远程 → 自动切 base → 本地）。
 
 主 Agent **禁止**在调 `/requirement:archive` 前主动 `git checkout`：
 
 - ❌ 错误：`PR merged → git checkout develop → /requirement:archive`
-- ✅ 正确：`PR merged → 留在 feat 分支等用户触发 → archive 跑 §1~§2.3 留在 feat → §2.4 报错引导切走 → 用户切 develop 后重跑 archive 完成 §2.4 → §2.5`
+- ✅ 正确：`PR merged → 留在 feat 分支等用户触发 → archive 一次跑完 §1~§2.5（最后一步自动切 base + 删 feat）`
 
 ---
 
@@ -108,19 +116,23 @@ YYYY-MM-DD HH:MM:SS [archived] (PR #<num> merged at <archived_at>)
 
 **fail-soft**：subprocess 不可用 / 退出非零 → `outcome=failed` + `error_messages` 记原因，archive 仍 exit 0。
 
-### 2.4 删本地分支 + 删远程分支（可选）
+### 2.4 删远程分支 → 自动切 base → 删本地分支（可选）
 
-两问串行（先本地后远程），任一为独立动作。`--keep-branch` flag 同时跳过两问，`outcome=skipped`。
+两问串行（**先远程后本地**），任一为独立动作。`--keep-branch` flag 同时跳过两问，`outcome=skipped`。
 
-**本地分支**（`kind="local_branch"`）：
-- 答 y → `git branch -d <branch>`（safe delete；**不允许 `-D` 强删**，D-014）
-- `<branch> == base_branch`（如 develop / main）→ `outcome=failed` + `error_messages` 记拒因，跳过实际 git 调用
-- git 拒绝（squash merge 后会被判 not fully merged）→ 透传 git 原始 error → `outcome=failed`
+顺序按 §0.3 规则：远程删不需要切走，故先做；本地删需要先 `git switch <base_branch>`，
+放最后让 archive 所有 bookkeeping 操作都在 feat 分支完成后再离开。
 
-**远程分支**（`kind="remote_branch"`）：
-- 答 y → `git push origin --delete <branch>`
+**远程分支**（`kind="remote_branch"`，先做）：
+- 答 y → `git push origin --delete <branch>`（仍在 feat 分支上执行）
 - 远程已被 GitHub「Automatically delete head branches」清掉 → stderr 含 `remote ref does not exist` → 折叠为 `outcome=already-deleted`，不报错
 - 网络 / 401 / 403 → 透传 error → `outcome=failed`
+
+**本地分支**（`kind="local_branch"`，最后做）：
+- 答 y → 若当前 HEAD == `<branch>`，archive_runner 自动跑 `git switch <base_branch>`，然后 `git branch -d <branch>`（safe delete；**不允许 `-D` 强删**，D-014）
+- `base_branch` 为空 / `git switch` 失败 → `outcome=failed` + `error_messages` 提示用户手动切走，**不**自动 `-D` 强删（避免误删尚未合并的提交）
+- `<branch> == base_branch`（如 develop / main）→ `outcome=failed` + `error_messages` 记拒因，跳过实际 git 调用
+- git 拒绝（squash merge 后会被判 not fully merged）→ 透传 git 原始 error → `outcome=failed`
 
 ### 2.5 终端反馈（6 行 + 可选 errors 段）
 
@@ -162,6 +174,8 @@ archive 命令始终 exit 0（除非 4 项预检挂）。
 | 经验沉淀 | `claude /knowledge:extract-experience` 调用失败 / 退出非零 | 打印 stderr 原因 → `outcome=failed`，archive 仍 exit 0 |
 | 本地分支 -d | git 拒绝（squash merge / 未合并 / `-d` 安全模式拒删） | 透传 git error → `outcome=failed` |
 | 本地分支 -d | `<branch> == base_branch` | `outcome=failed`，不调 git（防误删 develop） |
+| 本地分支自动切 base | `base_branch` 为空 | `outcome=failed` + 提示用户手动切；**不**自动 `-D` |
+| 本地分支自动切 base | `git switch <base_branch>` 失败（base 本地缺失 / detached / 工作目录脏） | 透传 git error → `outcome=failed` |
 | 远程分支删 | `remote ref does not exist` | 折叠为 `already-deleted`，**不报错** |
 | 远程分支删 | 网络 / 401 / 403 | 透传 error → `outcome=failed` |
 
