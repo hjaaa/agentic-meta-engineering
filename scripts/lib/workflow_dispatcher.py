@@ -15,6 +15,7 @@ import json
 import subprocess
 import sys
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
@@ -26,7 +27,6 @@ if str(_LIB_DIR) not in sys.path:
 from common import WorkflowError  # noqa: E402（WorkflowError 统一定义在 common，禁止本地重定义）
 from run_state import RunState, append_event  # noqa: E402
 from substitute_vars import substitute_vars  # noqa: E402
-import workflow_run  # noqa: E402（F-011：sub_workflow 节点派子 run 用；顶层导入便于测试 mock）
 
 
 # ============================================================================
@@ -148,7 +148,8 @@ def dispatch_node(
         elif "loop" in node:
             result = _dispatch_loop_node(node, env, run_state, jsonl_path)
         elif "sub_workflow" in node:
-            result = _dispatch_sub_workflow_node(node, env, run_dir, root, jsonl_path)
+            # env 当前未在 sub_workflow 节点使用；run_state 用于写 parent_run_id 入 sub run meta
+            result = _dispatch_sub_workflow_node(node, run_state, run_dir, root, jsonl_path)
         else:
             raise WorkflowError(f"未知节点类型: {node_id}")
 
@@ -403,25 +404,28 @@ def _dispatch_loop_node(
 
 def _dispatch_sub_workflow_node(
     node: dict,
-    env: dict[str, Any],
+    run_state: RunState,
     run_dir: Path,
     root: Path,
     jsonl_path: Path,
 ) -> DispatchResult:
-    """Sub-workflow 节点：派子 run 到 run_dir/sub_runs/<node_id>/。
+    """Sub-workflow 节点：派子 run **直接落在** run_dir/sub_runs/<node_id>/。
 
-    逻辑（F-011 最小实现）：
+    逻辑（F-011 最小实现 + codex 2026-05-12 P1-2 + P2 修订）：
     1. 解析 node["sub_workflow"]["template"] 取模板 ID
-    2. 子 run 目录固定为 run_dir / "sub_runs" / node_id（与 workflow_status / rollback 约定一致）
-    3. **重复派发守卫**（codex 2026-05-12 P1-2）：若 sub_run_dir/.dispatched 标记存在，
-       说明上一轮 /workflow:continue 已派过子 run，本次只回传 pending 不再调
-       workflow_run.main，避免 main loop 在 state=running 下重复入节点导致子 run
-       重复 spawn。
-    4. 调 workflow_run.main 启动子 run（复用 Python 入口，不走 subprocess）
+    2. 子 run 目录固定为 run_dir/sub_runs/<node_id>/（与 workflow_status:42 / workflow_rollback_subrun:81
+       共用约定：目录名即子 run id）
+    3. **重复派发守卫**（P1-2）：sub_run_dir/.dispatched 标记存在 → 直接回 pending，不再二次写 jsonl
+    4. **P2 修订**：不再调 workflow_run.main——后者会另起 runs/<auto_id>/ 目录与父子约定脱节，导致
+       /workflow:status 把 node_id 当 run_id 渲染却找不到真 jsonl，rollback 也无 run-state 可归档。
+       改为在 sub_run_dir 内直接写 meta.yaml + run-state.jsonl，sub_run_id=node_id，保持与
+       rollback_subrun:164（child_run_id = child_run_dir.name）一致。
     5. 写 .dispatched 标记 + 返回 outcome="sub_workflow_pending"
-       （等 /workflow:continue 时检测子 run 状态）
 
     深度联动（多级嵌套 + 子 run 完成回填）留后续 REQ，本 feature 仅最小实现。
+
+    参数 env 旧位置改为 run_state（携带父 run_id 写入 meta + jsonl 供追溯）；env 字典本身在
+    本节点暂未使用，回归通过 dispatch_node 调用点同步替换。
     """
     node_id: str = node.get("id", "<unknown>")
     sub_cfg: dict = node.get("sub_workflow") or {}
@@ -438,16 +442,54 @@ def _dispatch_sub_workflow_node(
     if dispatched_marker.exists():
         return DispatchResult(outcome="sub_workflow_pending")
 
-    # 复用 workflow_run.main Python 入口派子 run（不走 subprocess，避免路径/环境耦合）
-    args = sub_cfg.get("args", "")
-    args_list = [template_id] + (args.split() if isinstance(args, str) and args else [])
-    rc = workflow_run.main(args_list, repo_root=root)
-    if rc != 0:
+    # 校验模板存在性（不走全量 schema 校验——子 run 的 /workflow:continue 时再 load_workflow）
+    workflow_dir = root / ".claude" / "workflows"
+    candidates = list(workflow_dir.glob(f"**/{template_id}.yaml"))
+    if not candidates:
         raise WorkflowError(
-            f"sub_workflow 节点 {node_id!r} 启动子 run 失败（exit={rc}，template={template_id!r}）"
+            f"sub_workflow 节点 {node_id!r} 模板 {template_id!r} 未在 .claude/workflows/ 找到"
         )
+    template_path = candidates[0]
 
-    # 写标记文件（best-effort：失败仅打 warn，不阻断本次成功的派发）
+    args = sub_cfg.get("args", "")
+    sub_run_id = node_id  # 与 sub_runs/<node_id>/ 目录名一致
+    parent_run_id = run_state.run_id
+
+    # 子 run meta.yaml：key=template_path 与 _run_generic 对齐（P1 新 codex finding 已修
+    # workflow_continue._load_workflow_for_run 读取同名 key）
+    ts_now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    meta = {
+        "run_id": sub_run_id,
+        "template": template_id,
+        "template_path": str(template_path.relative_to(root)),
+        "arguments": args,
+        "state": "running",
+        "start_ts": ts_now,
+        "parent_run_id": parent_run_id,
+    }
+    try:
+        import yaml  # type: ignore  # yaml 已是项目硬依赖
+        with (sub_run_dir / "meta.yaml").open("w", encoding="utf-8") as fh:
+            yaml.safe_dump(meta, fh, allow_unicode=True, sort_keys=False)
+    except (OSError, ImportError) as exc:
+        raise WorkflowError(
+            f"sub_workflow 节点 {node_id!r} 写 meta.yaml 失败：{exc}"
+        ) from exc
+
+    # 写子 run run-state.jsonl 的 workflow_started 事件（让后续 /workflow:continue <node_id>
+    # 能正确 rebuild RunState）
+    sub_jsonl = sub_run_dir / "run-state.jsonl"
+    append_event(sub_jsonl, {
+        "type": "workflow_started",
+        "run_id": sub_run_id,
+        "data": {
+            "workflow_name": template_id,
+            "arguments": args,
+            "parent_run_id": parent_run_id,
+        },
+    })
+
+    # 写派发标记（best-effort：失败仅打 warn，不阻断本次成功的派发）
     try:
         dispatched_marker.write_text(template_id, encoding="utf-8")
     except OSError as exc:

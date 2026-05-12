@@ -425,13 +425,19 @@ def _load_workflow_for_run(
     # 约定路径：.claude/workflows/requirement/<name>.yaml
     workflow_path = root / ".claude" / "workflows" / "requirement" / f"{workflow_name}.yaml"
     if not workflow_path.exists():
-        # 降级查找：尝试从 requirements/<id>/meta.yaml 读 workflow_template_path
-        # 降级失败时写 WARN 到 stderr 留排查线索，但仍以原 workflow_path 兜底
+        # 降级查找：从 meta.yaml 读模板路径
+        # codex P1（2026-05-12）：writer 用的 key 是 template_path（见 workflow_run._run_generic
+        # workflow_bootstrap），旧版误读 workflow_template_path 导致 non-requirement run
+        # （如 review/code-review-embedded.yaml）resume 时拿不到真路径。优先 template_path，
+        # 兼容历史 workflow_template_path 字段。降级失败时写 WARN 到 stderr 留排查线索，
+        # 但仍以原 workflow_path 兜底。
         meta_path = run_dir / "meta.yaml"
         if meta_path.exists():
             try:
                 meta = yaml.safe_load(meta_path.read_text(encoding="utf-8"))
-                workflow_path = root / meta.get("workflow_template_path", str(workflow_path))
+                rel_path = meta.get("template_path") or meta.get("workflow_template_path")
+                if rel_path:
+                    workflow_path = root / rel_path
             except (OSError, yaml.YAMLError) as exc:
                 print(f"WARN: 读 meta.yaml 降级 workflow_path 失败：{exc}", file=sys.stderr)
 

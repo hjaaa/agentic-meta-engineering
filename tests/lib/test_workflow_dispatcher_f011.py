@@ -161,35 +161,62 @@ def test_loop_counters_rebuilt_from_events(tmp_jsonl: Path) -> None:
 
 
 # ============================================================================
-# TC-F11-4：sub_workflow 节点 outcome=sub_workflow_pending
+# TC-F11-4 / P2（codex 2026-05-12）：sub_workflow 直接落在 sub_runs/<node_id>/，
+# 不再走 workflow_run.main 另起 runs/<auto_id>/
 # ============================================================================
+
+def _make_fake_template(root: Path, template_id: str = "standard-8phase",
+                       category: str = "requirement") -> Path:
+    """在 tmp_path/.claude/workflows/<category>/<id>.yaml 写一份占位模板。
+
+    P2 修订后 _dispatch_sub_workflow_node 只校验模板文件存在，不再 load_workflow。
+    """
+    target_dir = root / ".claude" / "workflows" / category
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target = target_dir / f"{template_id}.yaml"
+    target.write_text(
+        "schema_version: '1.0'\nname: " + template_id + "\ncategory: " + category + "\n",
+        encoding="utf-8",
+    )
+    return target
+
 
 def test_sub_workflow_pending_outcome(tmp_path: Path, tmp_jsonl: Path) -> None:
     """_dispatch_sub_workflow_node 应返回 outcome=sub_workflow_pending。"""
+    _make_fake_template(tmp_path)
     node = {"id": "sub-req", "sub_workflow": {"template": "standard-8phase"}}
     run_dir = tmp_path / "runs" / "RUN-20260512-001"
     run_dir.mkdir(parents=True)
-    root = tmp_path
+    rs = _make_run_state()
 
-    # mock workflow_run.main 避免实际创建 requirement 目录 + git 操作
-    with patch("workflow_dispatcher.workflow_run") as mock_wr:
-        mock_wr.main.return_value = 0
-
-        result = _dispatch_sub_workflow_node(node, {}, run_dir, root, tmp_jsonl)
-
+    result = _dispatch_sub_workflow_node(node, rs, run_dir, tmp_path, tmp_jsonl)
     assert result.outcome == "sub_workflow_pending", f"应 sub_workflow_pending，实际 {result.outcome}"
 
 
 def test_sub_workflow_missing_template_raises(tmp_path: Path, tmp_jsonl: Path) -> None:
-    """缺少 template 字段应触发 WorkflowError（由 dispatch_node 转为 outcome=failed）。"""
+    """sub_workflow 字段缺 template 应触发 WorkflowError。"""
     from common import WorkflowError  # noqa: PLC0415
 
     node = {"id": "bad-sub", "sub_workflow": {}}  # 缺 template
     run_dir = tmp_path / "runs" / "RUN-20260512-002"
     run_dir.mkdir(parents=True)
+    rs = _make_run_state()
 
     with pytest.raises(WorkflowError, match="缺少 template 字段"):
-        _dispatch_sub_workflow_node(node, {}, run_dir, tmp_path, tmp_jsonl)
+        _dispatch_sub_workflow_node(node, rs, run_dir, tmp_path, tmp_jsonl)
+
+
+def test_sub_workflow_unknown_template_raises(tmp_path: Path, tmp_jsonl: Path) -> None:
+    """template 指向不存在的 yaml 时抛 WorkflowError。"""
+    from common import WorkflowError  # noqa: PLC0415
+
+    node = {"id": "ghost-sub", "sub_workflow": {"template": "no-such-template"}}
+    run_dir = tmp_path / "runs" / "RUN-20260512-005"
+    run_dir.mkdir(parents=True)
+    rs = _make_run_state()
+
+    with pytest.raises(WorkflowError, match="未在 .claude/workflows/ 找到"):
+        _dispatch_sub_workflow_node(node, rs, run_dir, tmp_path, tmp_jsonl)
 
 
 # ============================================================================
@@ -198,59 +225,69 @@ def test_sub_workflow_missing_template_raises(tmp_path: Path, tmp_jsonl: Path) -
 
 def test_sub_workflow_creates_sub_run_dir(tmp_path: Path, tmp_jsonl: Path) -> None:
     """子 run 目录必须建在 run_dir/sub_runs/<node_id>/（与 workflow_status 约定一致）。"""
+    _make_fake_template(tmp_path)
     node_id = "phase-sub"
     node = {"id": node_id, "sub_workflow": {"template": "standard-8phase"}}
     run_dir = tmp_path / "runs" / "RUN-20260512-003"
     run_dir.mkdir(parents=True)
     expected_sub_dir = run_dir / "sub_runs" / node_id
+    rs = _make_run_state()
 
-    with patch("workflow_dispatcher.workflow_run") as mock_wr:
-        mock_wr.main.return_value = 0
+    _dispatch_sub_workflow_node(node, rs, run_dir, tmp_path, tmp_jsonl)
+    assert expected_sub_dir.exists(), f"子 run 目录 {expected_sub_dir} 未被创建"
 
-        _dispatch_sub_workflow_node(node, {}, run_dir, tmp_path, tmp_jsonl)
 
-    assert expected_sub_dir.exists(), (
-        f"子 run 目录 {expected_sub_dir} 未被创建"
+def test_sub_workflow_writes_meta_and_jsonl_directly_into_sub_run_dir(
+    tmp_path: Path, tmp_jsonl: Path,
+) -> None:
+    """P2 修订关键回归：sub_runs/<node_id>/ 内必须含 meta.yaml + run-state.jsonl，
+    顶层 runs/ 不应被污染（不再调 workflow_run.main 另起 runs/<auto_id>/）。"""
+    import yaml as _yaml  # noqa: PLC0415
+
+    _make_fake_template(tmp_path)
+    node_id = "real-sub"
+    node = {
+        "id": node_id,
+        "sub_workflow": {"template": "standard-8phase", "args": "demo arg"},
+    }
+    parent_run_dir = tmp_path / "runs" / "PARENT-001"
+    parent_run_dir.mkdir(parents=True)
+    rs = _make_run_state()
+    rs.run_id = "PARENT-001"
+
+    _dispatch_sub_workflow_node(node, rs, parent_run_dir, tmp_path, tmp_jsonl)
+
+    # sub_runs/<node_id>/ 含 meta.yaml + run-state.jsonl
+    sub_dir = parent_run_dir / "sub_runs" / node_id
+    meta_path = sub_dir / "meta.yaml"
+    jsonl_path = sub_dir / "run-state.jsonl"
+    assert meta_path.is_file(), f"sub meta.yaml 未写入：{meta_path}"
+    assert jsonl_path.is_file(), f"sub run-state.jsonl 未写入：{jsonl_path}"
+
+    # meta key 与 _run_generic 对齐（template_path 而非 workflow_template_path）
+    meta = _yaml.safe_load(meta_path.read_text(encoding="utf-8"))
+    assert meta["run_id"] == node_id, "sub_run_id 应等于 node_id（status/rollback 约定）"
+    assert meta["template"] == "standard-8phase"
+    assert meta["template_path"].endswith(".yaml")
+    assert meta["arguments"] == "demo arg"
+    assert meta["parent_run_id"] == "PARENT-001", "meta 必须带 parent_run_id 供追溯"
+    assert meta["state"] == "running"
+
+    # jsonl 含 workflow_started 事件，data.parent_run_id 同步
+    events = _read_events(jsonl_path)
+    types = [e["type"] for e in events]
+    assert "workflow_started" in types, f"jsonl 缺 workflow_started，实际 {types}"
+    started = next(e for e in events if e["type"] == "workflow_started")
+    assert started["run_id"] == node_id
+    assert started["data"]["workflow_name"] == "standard-8phase"
+    assert started["data"]["parent_run_id"] == "PARENT-001"
+
+    # 顶层 runs/ 不应被污染（P2 关键回归）
+    top_runs = tmp_path / "runs"
+    sibling_runs = [p.name for p in top_runs.iterdir() if p.is_dir()]
+    assert sibling_runs == ["PARENT-001"], (
+        f"顶层 runs/ 不应再生成 RUN-<auto>/ 兄弟目录，实际 {sibling_runs}"
     )
-
-
-def test_sub_workflow_passes_correct_repo_root_to_main(tmp_path: Path, tmp_jsonl: Path) -> None:
-    """workflow_run.main 的 repo_root 参数应为仓库根（root），而非子 run 目录。"""
-    node_id = "isolated-sub"
-    node = {"id": node_id, "sub_workflow": {"template": "standard-8phase"}}
-    run_dir = tmp_path / "runs" / "RUN-20260512-004"
-    run_dir.mkdir(parents=True)
-    root = tmp_path  # 仓库根
-
-    captured_kwargs: dict = {}
-
-    def mock_main(args, repo_root=None):
-        captured_kwargs["repo_root"] = repo_root
-        return 0
-
-    with patch("workflow_dispatcher.workflow_run") as mock_wr:
-        mock_wr.main.side_effect = mock_main
-
-        _dispatch_sub_workflow_node(node, {}, run_dir, root, tmp_jsonl)
-
-    assert captured_kwargs.get("repo_root") == root, (
-        f"repo_root 传值错误：期望仓库根 {root}，实际 {captured_kwargs.get('repo_root')}"
-    )
-
-
-def test_sub_workflow_main_failure_raises(tmp_path: Path, tmp_jsonl: Path) -> None:
-    """workflow_run.main 返回非 0 时应抛 WorkflowError。"""
-    from common import WorkflowError  # noqa: PLC0415
-
-    node = {"id": "fail-sub", "sub_workflow": {"template": "standard-8phase"}}
-    run_dir = tmp_path / "runs" / "RUN-20260512-005"
-    run_dir.mkdir(parents=True)
-
-    with patch("workflow_dispatcher.workflow_run") as mock_wr:
-        mock_wr.main.return_value = 1
-
-        with pytest.raises(WorkflowError, match="启动子 run 失败"):
-            _dispatch_sub_workflow_node(node, {}, run_dir, tmp_path, tmp_jsonl)
 
 
 # ============================================================================
@@ -260,57 +297,53 @@ def test_sub_workflow_main_failure_raises(tmp_path: Path, tmp_jsonl: Path) -> No
 def test_sub_workflow_dispatch_guard_skips_when_marker_exists(
     tmp_path: Path, tmp_jsonl: Path,
 ) -> None:
-    """二次进入同一 sub_workflow 节点时，应不再调 workflow_run.main，避免重复 spawn 子 run。
-
-    场景：main loop 在 outcome=sub_workflow_pending 后 break，state=running，下一轮
-    /workflow:continue 重入 main_loop → 再次派同一 sub_workflow 节点。
-    """
+    """二次进入同一 sub_workflow 节点时，标记文件存在 → 跳过 meta + jsonl 重写。"""
+    _make_fake_template(tmp_path)
     node_id = "guarded-sub"
     node = {"id": node_id, "sub_workflow": {"template": "standard-8phase"}}
     run_dir = tmp_path / "runs" / "RUN-20260512-P12"
     run_dir.mkdir(parents=True)
+    rs = _make_run_state()
 
-    with patch("workflow_dispatcher.workflow_run") as mock_wr:
-        mock_wr.main.return_value = 0
+    # 第 1 次派发：写 meta + jsonl + .dispatched 标记
+    r1 = _dispatch_sub_workflow_node(node, rs, run_dir, tmp_path, tmp_jsonl)
+    assert r1.outcome == "sub_workflow_pending"
 
-        # 第 1 次派发：调 workflow_run.main 1 次 + 写 .dispatched 标记
-        r1 = _dispatch_sub_workflow_node(node, {}, run_dir, tmp_path, tmp_jsonl)
-        assert r1.outcome == "sub_workflow_pending"
-        assert mock_wr.main.call_count == 1
+    sub_dir = run_dir / "sub_runs" / node_id
+    marker = sub_dir / ".dispatched"
+    jsonl_path = sub_dir / "run-state.jsonl"
+    assert marker.exists()
+    events_after_first = _read_events(jsonl_path)
+    assert len(events_after_first) == 1, "首次派发应写 1 条 workflow_started"
 
-        # 第 2 次派发：标记存在 → 跳过 workflow_run.main，仍回 pending
-        r2 = _dispatch_sub_workflow_node(node, {}, run_dir, tmp_path, tmp_jsonl)
-        assert r2.outcome == "sub_workflow_pending"
-        assert mock_wr.main.call_count == 1, (
-            f"二次派发不应再调 workflow_run.main，实际调用 {mock_wr.main.call_count} 次"
-        )
-
-    # 标记文件落地
-    marker = run_dir / "sub_runs" / node_id / ".dispatched"
-    assert marker.exists(), f"派发标记 {marker} 应被写入"
+    # 第 2 次派发：标记存在 → 不再追加事件
+    r2 = _dispatch_sub_workflow_node(node, rs, run_dir, tmp_path, tmp_jsonl)
+    assert r2.outcome == "sub_workflow_pending"
+    events_after_second = _read_events(jsonl_path)
+    assert len(events_after_second) == 1, (
+        f"二次派发不应追加新事件（守卫失效），实际事件数 {len(events_after_second)}"
+    )
     assert marker.read_text(encoding="utf-8") == "standard-8phase"
 
 
-def test_sub_workflow_dispatch_skips_when_main_returns_nonzero_does_not_write_marker(
+def test_sub_workflow_dispatch_template_missing_does_not_write_marker(
     tmp_path: Path, tmp_jsonl: Path,
 ) -> None:
-    """workflow_run.main 失败（rc≠0）时抛 WorkflowError，标记不应被写入——
-    保证调用方可以 retry 而不会被守卫卡死。"""
+    """模板不存在抛 WorkflowError 时，标记文件不应被写——保证 fix 后调用方可以 retry。"""
     from common import WorkflowError  # noqa: PLC0415
 
     node_id = "retry-sub"
-    node = {"id": node_id, "sub_workflow": {"template": "standard-8phase"}}
+    node = {"id": node_id, "sub_workflow": {"template": "missing-template"}}
     run_dir = tmp_path / "runs" / "RUN-20260512-P12B"
     run_dir.mkdir(parents=True)
+    rs = _make_run_state()
 
-    with patch("workflow_dispatcher.workflow_run") as mock_wr:
-        mock_wr.main.return_value = 1
-        with pytest.raises(WorkflowError, match="启动子 run 失败"):
-            _dispatch_sub_workflow_node(node, {}, run_dir, tmp_path, tmp_jsonl)
+    with pytest.raises(WorkflowError, match="未在 .claude/workflows/ 找到"):
+        _dispatch_sub_workflow_node(node, rs, run_dir, tmp_path, tmp_jsonl)
 
     marker = run_dir / "sub_runs" / node_id / ".dispatched"
     assert not marker.exists(), (
-        f"workflow_run.main 失败路径不应写入标记 {marker}，否则 retry 会被守卫错跳过"
+        f"模板缺失路径不应写入标记 {marker}，否则补建模板后 retry 会被守卫错跳过"
     )
 
 

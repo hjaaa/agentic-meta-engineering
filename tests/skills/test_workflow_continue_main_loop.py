@@ -301,3 +301,85 @@ def test_main_loop_completes_three_nodes_with_mocked_dispatch(tmp_path, jsonl_pa
 
     # dispatch 应被调用 3 次
     assert mock_dispatch.call_count == 3
+
+
+# ============================================================================
+# codex P1（2026-05-12 round-2）：_load_workflow_for_run meta key 对齐
+# ============================================================================
+
+class TestLoadWorkflowForRunMetaKey:
+    """codex P1：_load_workflow_for_run 旧版误读 meta["workflow_template_path"]，
+    但 workflow_run._run_generic 写 meta.yaml 时 key 是 template_path——
+    导致 non-requirement run（如 review/code-review-embedded.yaml）resume 时
+    拿不到真路径而走默认 .claude/workflows/requirement/<name>.yaml 找不到模板失败。
+
+    修后：优先 template_path，兼容历史 workflow_template_path 字段。
+    """
+
+    def _make_repo(self, tmp_path: Path, workflow_name: str, category: str = "review"):
+        """构造最小可用的 .claude/workflows/<category>/<name>.yaml 模板 + meta.yaml + jsonl。"""
+        # 真模板：放 review/ 子目录，避免命中 requirement/ 默认路径
+        wf_dir = tmp_path / ".claude" / "workflows" / category
+        wf_dir.mkdir(parents=True, exist_ok=True)
+        wf_path = wf_dir / f"{workflow_name}.yaml"
+        wf_path.write_text(
+            f"name: {workflow_name}\n"
+            "version: 1\n"
+            f"category: {category}\n"
+            "nodes:\n"
+            "  - id: stub-node\n"
+            "    bash: echo stub\n",
+            encoding="utf-8",
+        )
+
+        # 子 run 目录
+        run_dir = tmp_path / "runs" / "RUN-20260512-X"
+        run_dir.mkdir(parents=True)
+
+        return wf_path, run_dir
+
+    def test_load_workflow_for_run_reads_template_path_key(self, tmp_path: Path):
+        """meta.yaml 用 template_path（_run_generic 的实际 key）应被识别。"""
+        import yaml as _yaml  # noqa: PLC0415
+        from workflow_continue import _load_workflow_for_run  # noqa: PLC0415
+
+        wf_path, run_dir = self._make_repo(tmp_path, "code-review-embedded")
+        # 写 meta.yaml：key=template_path（_run_generic 实际写入的 key）
+        meta = {
+            "run_id": "RUN-20260512-X",
+            "template": "code-review-embedded",
+            "template_path": str(wf_path.relative_to(tmp_path)),
+            "state": "running",
+        }
+        (run_dir / "meta.yaml").write_text(
+            _yaml.safe_dump(meta, allow_unicode=True, sort_keys=False),
+            encoding="utf-8",
+        )
+
+        rs = RunState(run_id="RUN-20260512-X")
+        rs.workflow_name = "code-review-embedded"
+
+        workflow = _load_workflow_for_run(rs, run_dir, tmp_path)
+        assert workflow is not None, "P1 修后应能识别 template_path key 加载 workflow"
+        assert workflow.get("name") == "code-review-embedded"
+
+    def test_load_workflow_for_run_back_compat_workflow_template_path_key(self, tmp_path: Path):
+        """历史 meta.yaml 用 workflow_template_path 也应兼容识别。"""
+        import yaml as _yaml  # noqa: PLC0415
+        from workflow_continue import _load_workflow_for_run  # noqa: PLC0415
+
+        wf_path, run_dir = self._make_repo(tmp_path, "legacy-name")
+        meta = {
+            "run_id": "RUN-20260512-X",
+            "workflow_template_path": str(wf_path.relative_to(tmp_path)),  # 旧 key
+        }
+        (run_dir / "meta.yaml").write_text(
+            _yaml.safe_dump(meta, allow_unicode=True, sort_keys=False),
+            encoding="utf-8",
+        )
+
+        rs = RunState(run_id="RUN-20260512-X")
+        rs.workflow_name = "legacy-name"
+
+        workflow = _load_workflow_for_run(rs, run_dir, tmp_path)
+        assert workflow is not None, "向后兼容读取 workflow_template_path 失败"
