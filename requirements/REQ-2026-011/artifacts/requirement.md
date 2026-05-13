@@ -66,7 +66,7 @@ REQ-2026-009 完成了自定义 workflow 引擎的脚手架与设计、REQ-2026-
   1. dispatcher 写 `node_started` + `node_ready`（**新事件**），状态机入 `awaiting_claude_action`
   2. main loop **不立即写 `node_completed`**，return
   3. 主 Claude Code 真实执行该 skill 产出 artifact
-  4. 主 Claude Code 调用统一保存接口 [待用户确认]——接口名/路径待技术预研确认（候选：`scripts/lib/save_node_result.py` 或复用 `save_review.py` 模式）
+  4. 主 Claude Code 调用统一保存接口 `scripts/lib/save_node_result.py`（已确认，与 `save_review.py` 平级独立模块）
   5. 保存接口验证产物 + 写 `node_completed`，状态机回 `running`
 - 期望结果：jsonl 区分"派发完成"与"执行完成"两个事件；半执行场景可由 doctor 诊断 `awaiting_claude_action` 滞留过久。
 
@@ -89,7 +89,7 @@ REQ-2026-009 完成了自定义 workflow 引擎的脚手架与设计、REQ-2026-
   - 旧 `current_node.next` 字段保留为兼容路径：仅当 `depends_on` 为空时退化生效（避免破坏已有简单 yaml）。
 - **安全/合规**：
   - approval / reject CLI 的 tty 校验 + Hook 拦截 AI 自动调用（来源：context/team/ai-collaboration.md:38）必须保持不变；本期不放松任何 D-006 拦截。
-  - path-lock 文件需 atexit 清理 + 进程死亡兜底（stale 锁检测：pid 不存活则清理）[待用户确认]——细节策略（pid 文件 vs 仅 atexit）由技术预研阶段决定。
+  - path-lock 文件需 `pid 文件 + atexit + 失活 pid 自动清理 stale 锁` 三件套（已确认）：进程死亡时由 atexit 删锁；意外退出（kill -9 / power loss）残留的锁文件由下次取锁时检测 pid 是否存活，pid 不存在则视为 stale 自动清理。
 
 ## 范围
 
@@ -100,9 +100,9 @@ REQ-2026-009 完成了自定义 workflow 引擎的脚手架与设计、REQ-2026-
 | AC-01 | DAG `depends_on` ready-node scheduler：`_next_node` 升级为 `_ready_nodes`，按 Kahn 拓扑层从已完成事件推算 ready 集；保留 `next` 字段为退化兼容 | e2e：起一个仅用 `depends_on` 的最小 yaml（≥ 5 节点），跑过两层；`code-review-embedded.yaml` 8 个 checker 被识别为同层 ready | P0 |
 | AC-02 | `_dispatch_artifact_node` 实现：调用既有 artifact 校验入口（候选 `scripts/lib/check_*.py` [待用户确认]——技术预研阶段对比 check_meta / check_sourcing 等已有脚本后定稿）+ 写 node_started/node_completed/node_failed | e2e：`standard-8phase.yaml` 的 `bootstrap-validate` artifact 节点跑通 | P0 |
 | AC-03 | approval 闭环 + on_reject：**AC-03a** approve 后写当前 approval 节点 `node_completed` + 推进下游；**AC-03b** reject 后写 `node_failed` 并跳到 `on_reject` 节点；**AC-03c** attempt 计数（默认上限 N=3 [待用户确认]，可由节点 yaml `on_reject.max_attempts` override），达上限写 `workflow_failed` | e2e：AC-03a pending → approve → next node ready；AC-03b pending → reject → on_reject 节点跑；AC-03c 三次 reject 后 jsonl 末尾出现 `workflow_failed` 事件且 reason=`approval_attempts_exhausted` | P0 |
-| AC-04 | AI 节点完成契约：`skill/prompt/agent` dispatcher 写 `node_ready` + 状态机 `awaiting_claude_action`；新增统一保存接口 `save_node_result.py` 由主 Claude Code 调用写 `node_completed` | e2e：派发 skill 节点 → jsonl 含 node_ready → 调 save_node_result.py → 含 node_completed | P1 |
-| AC-05 | active-run / path-lock：`requirements/.locks/<req-id>.lock` 或 `runs/.locks/<run-id>.lock`，`fcntl.LOCK_EX`，进程死亡兜底；`/workflow:continue` 启动即取锁 | 并发测试：起两个 continue 子进程，第二个明确报错退出 | P1 |
-| AC-06 | `/workflow:status --verbose` + doctor 基础：输出 ready / running / blocked / paused 节点 + 阻塞原因；heartbeat 写入（每 dispatcher 调用前写一次） + stale 检测（> N 分钟未更新提示，N 默认值 [待用户确认]） | e2e（驱动方式细化）：用 pytest fixture 构造 3 类 stuck 场景：(a) 直接写一条 `approval_pending` 事件后 30 分钟前的 heartbeat 时间戳，调 `/workflow:status --verbose` 断言输出含 `stale: heartbeat outdated`；(b) 写一条 `node_started` 但无后续 `node_completed/failed`，断言输出含 `blocked: incomplete dispatch`；(c) 直接 `chmod 000` jsonl 模拟读失败，断言 `status --verbose` 退出码 != 0 且输出含 `error: jsonl unreadable` | P1 |
+| AC-04 | AI 节点完成契约：`skill/prompt/agent` dispatcher 写 `node_ready` + 状态机 `awaiting_claude_action`；新增 `scripts/lib/save_node_result.py`（已确认接口路径）由主 Claude Code 调用写 `node_completed` | e2e：派发 skill 节点 → jsonl 含 node_ready → 调 `python3 scripts/lib/save_node_result.py --run=<id> --node=<id> --output=<json>` → 含 node_completed | P1 |
+| AC-05 | active-run / path-lock：实锁 `runs/.locks/<run-id>.lock` + requirement 类 symlink `requirements/.locks/<req-id>.lock`（已确认双轨方案）；`fcntl.LOCK_EX` + `pid 文件 + atexit + 失活 pid 自清理` 三件套（已确认）；`/workflow:continue` 启动即取锁 | 并发测试：起两个 continue 子进程，第二个**在第一个写入第一条事件后 ≤ 100ms 内启动**，明确报错退出且输出含 `another continue is running, pid=N` | P1 |
+| AC-06 | `/workflow:status --verbose` + doctor 基础：**树形文本输出**（已确认，与现有 status 风格一致），呈现 ready / running / blocked / paused 节点 + 阻塞原因；heartbeat 写入（每 dispatcher 调用前写一次） + stale 检测（> N 分钟未更新提示，N 默认值 [待用户确认]——detail-design 阶段定稿） | e2e（驱动方式细化）：用 pytest fixture 构造 3 类 stuck 场景：(a) 直接写一条 `approval_pending` 事件后 30 分钟前的 heartbeat 时间戳，调 `/workflow:status --verbose` 断言输出含 `stale: heartbeat outdated`；(b) 写一条 `node_started` 但无后续 `node_completed/failed`，断言输出含 `blocked: incomplete dispatch`；(c) 直接 `chmod 000` jsonl 模拟读失败，断言 `status --verbose` 退出码 != 0 且输出含 `error: jsonl unreadable` | P1 |
 | AC-07 | loop 两步落地：第一步实现 `until_bash` + `max_iterations` 确定性 loop（AI loop / interactive 留待后续需求） | e2e：构造 `until_bash` loop yaml，跑 3 轮后退出 | P2 |
 | AC-08 | sub_workflow 父子完成回填：子 run completed/failed/cancelled 后，父 run 写 `child_*` 事件 + 父节点 `node_completed/node_failed`；尊重 `on_subworkflow_failure` | e2e：父 yaml 含 sub_workflow，子 run 完成后父 run status 显示父节点 completed | P2 |
 | AC-09 | 路由 fuzzy + `workflow list --json`：launcher 接 fuzzy 匹配（含模糊词典 / 编辑距离 ≤ 2），`workflow list --json` 输出可被外部脚本消费 | unit：fuzzy 词典 ≥ 10 词 hit；e2e：`workflow list --json` 输出有效 JSON | P2 |
@@ -134,10 +134,15 @@ REQ-2026-009 完成了自定义 workflow 引擎的脚手架与设计、REQ-2026-
 | PR 拆分 | 单 PR / 拆 3 PR (P0/P1/P2) | **单 PR**（用户已确认） | commit 内按 P0/P1/P2 分组便于 reviewer 阅读；不拆 PR-A/B/C |
 | NFR 性能指标硬度 | 硬指标（必测）/ 软约束（探针告警）/ 软约束 + 1 处 micro-benchmark | **软约束 + 1 处 micro-benchmark**（用户已确认） | 本期目标是"能闭环"而非"高性能"；硬指标会扩大测试面；micro-benchmark 单测可控 |
 | D-007 双轨延续 | 延续双轨 / 收口到 `runs/` 单轨 | **延续双轨**（用户已确认） | 与 REQ-010 一致；不在本需求做物理迁移 |
+| AC-04 AI 节点完成接口 | A 新建独立 `save_node_result.py` / B 扩展 `save_review.py` 子命令 / C 仅内部函数不暴露 CLI | **A 新建独立模块**（用户已确认） | 与 `save_review.py` 平级，职责单一；主 Claude Code 有明确 CLI 入口 |
+| `/workflow:status --verbose` 输出格式 | A 树形文本 / B JSON / C 表格 / D 树形 + `--json` flag | **A 树形文本**（用户已确认） | 与现有 status 风格一致，父子 run 自然嵌套；JSON 后续按需新增 |
+| path-lock 死亡兜底 | A 三件套 / B 仅 atexit / C 三件套 + mtime 超时 | **A 三件套**（用户已确认） | robust：意外退出残锁可由下次取锁的 pid 检测自动清理 |
+| DAG scheduler feature flag | A 引入 env 双跑期 / B 不引入靠 `next` 退化 / C meta.yaml per-run 开关 | **B 不引入**（用户已确认） | 已有兼容路径（`depends_on` 为空 → 退化 `next`），加 flag 反增清理成本 |
+| 档位字段是否进 features.json | A 加 `priority: P0\|P1\|P2` / B 不加只看 AC 表 / C 加 `tier` 中性命名 | **A 加 `priority` 字段**（用户已确认） | task-planning 拆 task 时按 priority 分组；与 issue tracker 语义相通 |
 
 ## 待澄清清单
 
-> 前缀 ✅ 表示用户已确认（2026-05-13）；未带前缀为仍待澄清项（留给技术预研 / task-planning 阶段定稿）。
+> 前缀 ✅ 表示用户已确认；前缀 ⏳ 表示留给指定下游阶段定稿（不阻塞 definition → tech-research 切换）。
 
 1. ✅ **C-01 范围切割**：P0+P1+P2 全做（AC-01~10 共 10 条全部纳入本需求）。
 2. ✅ **C-03 approval 关闭时机**：A 方案 = approve CLI 内一并写 `node_completed`。
@@ -150,8 +155,11 @@ REQ-2026-009 完成了自定义 workflow 引擎的脚手架与设计、REQ-2026-
 9. ✅ **C-11 P2 节奏**：随 C-01 纳入本需求。
 10. ✅ **C-13 NFR 验证时机**：micro-benchmark 单测覆盖（不进 CI 增量回归）。
 11. ✅ **C-14 锁路径与单轨耦合**：C-08 选双轨延续后此项消解。
-12. **AC-04 AI 节点完成接口名** [待用户确认]：候选 `scripts/lib/save_node_result.py`；或复用既有 `save_review.py` 的 pattern。技术预研阶段对比既有 save_*.py 模式后定稿。
-13. **`/workflow:status --verbose` 输出格式** [待用户确认]：JSON / 表格 / 树形——技术预研阶段 grep 既有 status 输出风格后确定。
-14. **path-lock 进程死亡兜底策略** [待用户确认]："pid 文件 + atexit + 失活 pid 自动清理 stale 锁" 三件套 vs 仅 atexit——技术预研阶段实测两种方案鲁棒性后定稿。
-15. **DAG scheduler 升级是否需要 feature flag** [待用户确认]：runtime 主路径变更，`meta.yaml` 或环境变量加 `workflow.dag_scheduler=true` 双跑期——若兼容性测试覆盖足够则可不引入 flag；技术预研阶段评估。
-16. **档位字段是否进 features.json** [待用户确认]：包含表的"档位"列 P0/P1/P2 是否进一步写进 features.json 字段——task-planning 阶段拆分时再决定，不阻塞 tech-research。
+12. ✅ **C-15 AC-04 AI 节点完成接口名**：新建独立模块 `scripts/lib/save_node_result.py`。
+13. ✅ **C-16 `/workflow:status --verbose` 输出格式**：树形文本（与现有 status 风格一致）。
+14. ✅ **C-17 path-lock 进程死亡兜底策略**：`pid 文件 + atexit + 失活 pid 自动清理 stale 锁` 三件套。
+15. ✅ **C-18 DAG scheduler feature flag**：不引入；靠 `next` 退化兼容 + 回归测试覆盖。
+16. ✅ **C-19 档位字段进 features.json**：加 `priority: P0|P1|P2` 字段，task-planning 阶段按 priority 分组。
+17. ⏳ **D-01 AC-02 artifact dispatcher 复用入口** [待用户确认]：候选 `scripts/lib/check_*.py`，detail-design 阶段对比 `check_meta.py` / `check_sourcing.py` / `check_index.py` 等已有 must_exist / format 校验脚本后定稿具体复用对象。
+18. ⏳ **D-02 AC-03 approval attempt 默认上限 N** [待用户确认]：当前文档暂用 N=3，detail-design 阶段评审节点 yaml `on_reject.max_attempts` override 机制后定稿默认值。
+19. ⏳ **D-03 AC-06 stale 阈值默认 N 分钟** [待用户确认]：detail-design 阶段调研既有 CI 节点平均运行时长后定稿（候选 15 / 30 / 60 min）。
