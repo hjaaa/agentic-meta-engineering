@@ -10,3 +10,4 @@ REQ-2026-011 语义事件日志
 2026-05-13 09:10:14 [save] definition 收口：16 项已确认 + 3 项 ⏳ 归 detail-design（D-01 artifact 复用入口 / D-02 approval attempt N / D-03 stale 阈值 N），sourcing 0/0 + reviewer looks_clean(85)，待切 tech-research
 2026-05-13 10:00:35 [save] plan.md 落 D-001~D-005 五条 ADR（user-confirm-5 ADR 化）+ 风险 2 同步 D-004；sourcing strict 0/0
 2026-05-13 10:13:42 [signoff] REV-REQ-2026-011-definition-002 approved by hj19961223@gmail.com
+2026-05-13 10:15:06 [phase-transition] definition → tech-research（11 gate 全过；REV-002 looks_clean 92 + tty signoff approved）
