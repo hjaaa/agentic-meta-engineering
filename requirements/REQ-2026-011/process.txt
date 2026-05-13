@@ -8,3 +8,4 @@ REQ-2026-011 语义事件日志
 2026-05-13 09:04:13 [review:approved] requirement-quality-reviewer looks_clean (85 分；major: spec 命名补 -design 后缀 + AC-06 e2e 驱动细化已闭环；minor 9 条多数已闭环 / 余 5 条留 detail-design + task-planning 阶段处理)
 2026-05-13 09:08:39 [save] user-confirm-5: AC-04 接口=save_node_result.py / status=树形 / path-lock=三件套 / 不引 feature flag / features.json 加 priority
 2026-05-13 09:10:14 [save] definition 收口：16 项已确认 + 3 项 ⏳ 归 detail-design（D-01 artifact 复用入口 / D-02 approval attempt N / D-03 stale 阈值 N），sourcing 0/0 + reviewer looks_clean(85)，待切 tech-research
+2026-05-13 10:00:35 [save] plan.md 落 D-001~D-005 五条 ADR（user-confirm-5 ADR 化）+ 风险 2 同步 D-004；sourcing strict 0/0
