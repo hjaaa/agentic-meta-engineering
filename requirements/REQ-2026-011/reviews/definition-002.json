@@ -75,5 +75,11 @@
   "supersedes": "REV-REQ-2026-011-definition-001",
   "project_specific_issues": [
     "项目索引（context/project/agentic-meta-engineering/INDEX.md + areas.yaml）只声明骨架自身的功能区白名单（hooks/commands/skills/agents/scripts），未声明特殊业务约束或 SLA；本需求 meta.yaml feature_area=scripts 在白名单内，无额外动态维度需叠加；与第一轮 project_specific_issues 结论一致"
-  ]
+  ],
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-13T10:13:42.882466+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
+  }
 }
