@@ -11,9 +11,10 @@ gates_passed:
   - phase: definition
     at: '2026-05-13 08:42:31'
     via: managing-requirement-lifecycle
-    notes: bootstrap → definition gate 全过（GATE-META-SCHEMA / INDEX-INTEGRITY / SOURCING
-      / PLAN-FRESHNESS / WORKSPACE-CLEAN / REVIEW-VERDICT / FEATURES-SCHEMA /
-      TASK-FRONTMATTER / POST-DEV-RECEIPT / TRACEABILITY / TOUCHES-VIOLATION 共 11 个）
+    notes: bootstrap → definition gate 全过（GATE-META-SCHEMA / INDEX-INTEGRITY / 
+      SOURCING / PLAN-FRESHNESS / WORKSPACE-CLEAN / REVIEW-VERDICT / 
+      FEATURES-SCHEMA / TASK-FRONTMATTER / POST-DEV-RECEIPT / TRACEABILITY / 
+      TOUCHES-VIOLATION 共 11 个）
 pr_url: ""                             # /requirement:submit 成功后回写
 pr_number: 0                           # /requirement:submit 成功后回写
 log_layout: split                      # split（默认，工具日志→process.tool.log / 语义事件→process.txt） | legacy（老格式，全写 process.txt）
@@ -41,3 +42,14 @@ tags:
 outcome: ""                            # shipped / abandoned / rolled-back
 completed_at: ""                       # ISO8601，completed 时填
 lessons_extracted: false               # /knowledge:extract-experience 是否已跑
+reviews:
+  definition:
+    latest: REV-REQ-2026-011-definition-001
+    conclusion: looks_clean
+    reviewed_commit: 56988d8
+    artifact_hashes:
+      artifacts/requirement.md: 
+        60b6c674a500527a6191c574ed394ae000b21fe10b04d2a4e10d2bc47a2df1ce
+    history:
+      - REV-REQ-2026-011-definition-001
+    stale: false

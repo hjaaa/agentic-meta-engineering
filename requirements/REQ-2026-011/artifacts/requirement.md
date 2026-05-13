@@ -20,7 +20,7 @@ REQ-2026-009 完成了自定义 workflow 引擎的脚手架与设计、REQ-2026-
 
 参照 `/Users/richardhuang/open-source/Archon` 的 `packages/workflows/src/dag-executor.ts` Kahn-拓扑层并发执行 + workflow_runs/events 表 + path-lock 设计（来源：requirements/REQ-2026-011/artifacts/research.md:17）（来源：requirements/REQ-2026-011/artifacts/research.md:39），本项目应在**保持 Claude Code 本地、jsonl 轻量、可审计**定位的前提下，定向补齐上述差距，让 `standard-8phase.yaml` / `code-review-embedded.yaml` / 含 `sub_workflow` 的 yaml 能基于 `depends_on` DAG 跑出完整闭环。
 
-需求最终交付物之一是设计留档 `context/team/engineering-spec/specs/2026-05-13-workflow-runtime-dag-completion.md`（沿用既有命名 `YYYY-MM-DD-<topic>-design.md`，来源：context/team/engineering-spec/specs/INDEX.md）；spec 文档在阶段 4-5 概要/详细设计阶段产出，不在本 requirement 主体验收标准里。
+需求最终交付物之一是设计留档 `context/team/engineering-spec/specs/2026-05-13-workflow-runtime-dag-completion-design.md`（沿用既有命名 `YYYY-MM-DD-<topic>-design.md`，来源：context/team/engineering-spec/specs/INDEX.md）；spec 文档在阶段 4-5 概要/详细设计阶段产出，不在本 requirement 主体验收标准里。
 
 ## 目标
 
@@ -29,7 +29,7 @@ REQ-2026-009 完成了自定义 workflow 引擎的脚手架与设计、REQ-2026-
   - 明确并实现 AI 节点的完成契约（`node_ready` / `awaiting_claude_action`），消除"未真执行就 node_completed"。
   - 引入轻量 run-level path-lock，覆盖非 requirement 类 run 的并发隔离场景。
   - 强化 `/workflow:status` 输出粒度与 heartbeat / stale 检测，给 doctor 类排障奠基。
-  - P2 体验项（loop 两步落地 / subworkflow 完成回填 / 路由 fuzzy / Claude 运行参数白名单）按拆分策略入栈 [待用户确认]。
+  - P2 体验项（loop 两步落地 / subworkflow 完成回填 / 路由 fuzzy / Claude 运行参数白名单）一并落地（已确认 P0+P1+P2 全做）。
 
 ## 用户场景
 
@@ -81,15 +81,15 @@ REQ-2026-009 完成了自定义 workflow 引擎的脚手架与设计、REQ-2026-
 
 ## 非功能需求
 
-- **性能**：
-  - DAG ready-node 计算（首层 + 增量）≤ 50ms（节点 ≤ 50 个的 yaml）[待用户确认]——是否作为硬指标？影响是否在测试中加 micro-benchmark。
-  - path-lock 抢占判定 ≤ 100ms [待用户确认]。
-- **兼容性**：
-  - 保留 D-007 双轨期（`runs/<id>/` 与 `requirements/<id>/` 都合法），新增能力沿用 `_resolve_run_dir`（来源：requirements/REQ-2026-010/artifacts/requirement.md）（来源：scripts/lib/workflow_loader.py）[待用户确认]——是否本期延续 / 还是收口到 `runs/` 单轨。
+- **性能**（已确认：软约束 + 1 处 micro-benchmark 验证）：
+  - DAG ready-node 计算（首层 + 增量）≤ 50ms（节点 ≤ 50 个的 yaml）——软约束，micro-benchmark 单测覆盖即可，不进 CI 增量回归。
+  - path-lock 抢占判定 ≤ 100ms——同上软约束。
+- **兼容性**（已确认延续 D-007 双轨）：
+  - 保留 D-007 双轨期（`runs/<id>/` 与 `requirements/<id>/` 都合法），新增能力沿用 `_resolve_run_dir`（来源：requirements/REQ-2026-010/artifacts/requirement.md）（来源：scripts/lib/workflow_loader.py）。
   - 旧 `current_node.next` 字段保留为兼容路径：仅当 `depends_on` 为空时退化生效（避免破坏已有简单 yaml）。
 - **安全/合规**：
   - approval / reject CLI 的 tty 校验 + Hook 拦截 AI 自动调用（来源：context/team/ai-collaboration.md:38）必须保持不变；本期不放松任何 D-006 拦截。
-  - path-lock 文件需 atexit 清理 + 进程死亡兜底（stale 锁检测：pid 不存活则清理）[待用户确认]。
+  - path-lock 文件需 atexit 清理 + 进程死亡兜底（stale 锁检测：pid 不存活则清理）[待用户确认]——细节策略（pid 文件 vs 仅 atexit）由技术预研阶段决定。
 
 ## 范围
 
@@ -98,17 +98,19 @@ REQ-2026-009 完成了自定义 workflow 引擎的脚手架与设计、REQ-2026-
 | AC | 内容 | 验证手段 | 档位 |
 |---|---|---|---|
 | AC-01 | DAG `depends_on` ready-node scheduler：`_next_node` 升级为 `_ready_nodes`，按 Kahn 拓扑层从已完成事件推算 ready 集；保留 `next` 字段为退化兼容 | e2e：起一个仅用 `depends_on` 的最小 yaml（≥ 5 节点），跑过两层；`code-review-embedded.yaml` 8 个 checker 被识别为同层 ready | P0 |
-| AC-02 | `_dispatch_artifact_node` 实现：调用既有 artifact 校验入口（候选 `scripts/lib/check_*.py`）+ 写 node_started/node_completed/node_failed | e2e：`standard-8phase.yaml` 的 `bootstrap-validate` artifact 节点跑通 | P0 |
-| AC-03 | approval 闭环 + on_reject：approve 后**写当前 approval 节点 `node_completed`** + 推进下游；reject 后写 `node_failed` 并跳到 `on_reject` 节点；attempt 计数 + 上限失败 | e2e：pending → approve → next；pending → reject → on_reject 节点跑；attempt 上限达到则 workflow_failed | P0 |
+| AC-02 | `_dispatch_artifact_node` 实现：调用既有 artifact 校验入口（候选 `scripts/lib/check_*.py` [待用户确认]——技术预研阶段对比 check_meta / check_sourcing 等已有脚本后定稿）+ 写 node_started/node_completed/node_failed | e2e：`standard-8phase.yaml` 的 `bootstrap-validate` artifact 节点跑通 | P0 |
+| AC-03 | approval 闭环 + on_reject：**AC-03a** approve 后写当前 approval 节点 `node_completed` + 推进下游；**AC-03b** reject 后写 `node_failed` 并跳到 `on_reject` 节点；**AC-03c** attempt 计数（默认上限 N=3 [待用户确认]，可由节点 yaml `on_reject.max_attempts` override），达上限写 `workflow_failed` | e2e：AC-03a pending → approve → next node ready；AC-03b pending → reject → on_reject 节点跑；AC-03c 三次 reject 后 jsonl 末尾出现 `workflow_failed` 事件且 reason=`approval_attempts_exhausted` | P0 |
 | AC-04 | AI 节点完成契约：`skill/prompt/agent` dispatcher 写 `node_ready` + 状态机 `awaiting_claude_action`；新增统一保存接口 `save_node_result.py` 由主 Claude Code 调用写 `node_completed` | e2e：派发 skill 节点 → jsonl 含 node_ready → 调 save_node_result.py → 含 node_completed | P1 |
 | AC-05 | active-run / path-lock：`requirements/.locks/<req-id>.lock` 或 `runs/.locks/<run-id>.lock`，`fcntl.LOCK_EX`，进程死亡兜底；`/workflow:continue` 启动即取锁 | 并发测试：起两个 continue 子进程，第二个明确报错退出 | P1 |
-| AC-06 | `/workflow:status --verbose` + doctor 基础：输出 ready / running / blocked / paused 节点 + 阻塞原因；heartbeat 写入（每 dispatcher 调用前写一次） + stale 检测（> N 分钟未更新提示） | e2e：人为构造 stuck 场景，`status --verbose` 输出阻塞原因 | P1 |
+| AC-06 | `/workflow:status --verbose` + doctor 基础：输出 ready / running / blocked / paused 节点 + 阻塞原因；heartbeat 写入（每 dispatcher 调用前写一次） + stale 检测（> N 分钟未更新提示，N 默认值 [待用户确认]） | e2e（驱动方式细化）：用 pytest fixture 构造 3 类 stuck 场景：(a) 直接写一条 `approval_pending` 事件后 30 分钟前的 heartbeat 时间戳，调 `/workflow:status --verbose` 断言输出含 `stale: heartbeat outdated`；(b) 写一条 `node_started` 但无后续 `node_completed/failed`，断言输出含 `blocked: incomplete dispatch`；(c) 直接 `chmod 000` jsonl 模拟读失败，断言 `status --verbose` 退出码 != 0 且输出含 `error: jsonl unreadable` | P1 |
 | AC-07 | loop 两步落地：第一步实现 `until_bash` + `max_iterations` 确定性 loop（AI loop / interactive 留待后续需求） | e2e：构造 `until_bash` loop yaml，跑 3 轮后退出 | P2 |
 | AC-08 | sub_workflow 父子完成回填：子 run completed/failed/cancelled 后，父 run 写 `child_*` 事件 + 父节点 `node_completed/node_failed`；尊重 `on_subworkflow_failure` | e2e：父 yaml 含 sub_workflow，子 run 完成后父 run status 显示父节点 completed | P2 |
 | AC-09 | 路由 fuzzy + `workflow list --json`：launcher 接 fuzzy 匹配（含模糊词典 / 编辑距离 ≤ 2），`workflow list --json` 输出可被外部脚本消费 | unit：fuzzy 词典 ≥ 10 词 hit；e2e：`workflow list --json` 输出有效 JSON | P2 |
 | AC-10 | Claude 运行参数白名单：在 yaml 节点中保守接 `allowed_tools / denied_tools / mcp / skills / agents / idle_timeout / output_format` 字段透传到 Claude Code | schema 测：白名单字段被 loader 校验通过；e2e：派发节点时这些字段传入 Claude Code 调用 | P2 |
 
-> **拆分策略 [待用户确认]**：建议 PR-A(AC-01~03 P0) / PR-B(AC-04~06 P1) / PR-C(AC-07~10 P2)。也可单 PR 上线、或仅做 P0+P1。
+> **拆分策略（已确认：单 PR 上线）**：AC-01~10 全部归入同一 PR；commit 内按 P0 / P1 / P2 三组分组，便于 reviewer 分块阅读；不拆 PR-A/B/C。
+>
+> **降级条款（弹性兜底）**：若 P2（AC-07~10）在实施阶段（detail-design / development）被发现成本失控或外部依赖未就绪，可降级为后续需求 REQ-XXXX，不阻塞 P0+P1 合入；降级触发时需写 ADR D-NNN 记录原因 + 留 follow-up issue。
 
 ### 不包含
 
@@ -116,38 +118,40 @@ REQ-2026-009 完成了自定义 workflow 引擎的脚手架与设计、REQ-2026-
 - **DB 状态存储**（Archon 的 `workflow_runs`/`workflow_events` 表）——保留 jsonl + RunState.rebuild 反扫模型，**不引入** SQLite/Postgres。
 - **AI loop / interactive gate / session resume**（智能循环）——P2 仅做确定性 loop，AI loop 留给后续需求。
 - **Archon-style AI router**（基于 description 的 AI 路由）——保留关键词 launcher + 新增 fuzzy，**不引入** AI 路由。
-- **REQ-2026-010 已完成的工作**：bootstrap 完整化 / 7 类节点 dispatcher 框架 / 模板路径参数化 / 父子 run 路径收敛 / 2 条占位 e2e 替换。**不在本需求重做**。
+- **REQ-2026-010 已完成的工作**：bootstrap 完整化 / 7 类节点 dispatcher 框架 / 模板路径参数化 / 父子 run 路径收敛 / 2 条占位 e2e 替换。**不在本需求重做**。本需求是在 REQ-010 已落地的"框架可用"基础上补**具体语义**：DAG ready-node 推进、`artifact` 第 8 类 dispatcher、approval 节点真正闭环、AI 节点完成契约、`sub_workflow` 完成回填等；不重写 dispatcher 框架本身。
 - **`/workflow:next` 命令落地**：F-012 的阶段切换归一化由独立需求处理（来源：CLAUDE.md:23）。
-- **历史目录 `runs/` ↔ `requirements/` 物理迁移**：延续 D-007 双轨期 [待用户确认]。
+- **历史目录 `runs/` ↔ `requirements/` 物理迁移**：延续 D-007 双轨期（已确认）。
 
 ## 关键决策记录
 
 | 决策点 | 选项 | 选择 | 依据 |
 |---|---|---|---|
-| DAG 推进路径 | A: 新增 `_ready_nodes` 函数 + 保留 `_next_node` 兼容；B: 直接重写 `_next_node` 为返回集合；C: 引入新 main loop 文件 | **A** | 最小破坏面：现有仅含 `next` 的简单 yaml 自动退化；scripts/lib/workflow_continue.py:37-53 风格保留 |
+| DAG 推进路径 | A: 新增 `_ready_nodes` 函数 + 保留 `_next_node` 兼容；B: 直接重写 `_next_node` 为返回集合；C: 引入新 main loop 文件 | **A** | 最小破坏面：现有仅含 `next` 的简单 yaml 自动退化；scripts/lib/workflow_continue.py:37 风格保留 |
 | `artifact` dispatcher 复用层 | A: 调用既有 `scripts/lib/check_*.py`；B: 写新 `_dispatch_artifact_node` 内部 must_exist 逻辑 | **A** | 既有 check 脚本已被 hook / CI 复用，避免双实现；artifact 校验语义稳定 |
-| approval 节点关闭时机 | A: approve CLI 内一并写 `node_completed`；B: 等下次 continue 由 main loop 关闭 | **A** | 与"approve 是状态机推进事件"语义自然契合；避免 continue 时还得识别"pending → 实际 done"的隐藏状态 [待用户确认] |
-| AI 节点中间态命名 | `node_ready` / `awaiting_claude_action` vs 新 `node_pending_external` | **node_ready + state=awaiting_claude_action** | 与现有事件命名 `node_started/completed/failed` 风格一致；状态机已有 paused/approval_pending 等 awaiting 类 [待用户确认] |
-| path-lock 锁路径 | A: `requirements/.locks/`；B: `runs/.locks/`；C: 仓库根 `.locks/` | **B + 软链 A** | 与 D-007 双轨保持兼容：实际锁文件在 `runs/.locks/<run-id>.lock`，对 requirement 类 run 自动 symlink 到 `requirements/.locks/<req-id>.lock` [待用户确认] |
-| PR 拆分 | 单 PR / 拆 3 PR (P0/P1/P2) | **拆 3 PR（建议）** | 与 REQ-010 拆 PR-A/PR-B 风格一致；review 与回滚粒度可控 [待用户确认] |
-| NFR 性能指标硬度 | 硬指标（必测）/ 软约束（探针告警） | **软约束 + 1 处 micro-benchmark** | 本期目标是"能闭环"而非"高性能"；硬指标会扩大测试面 [待用户确认] |
-| D-007 双轨延续 | 延续双轨 / 收口到 `runs/` 单轨 | **延续双轨** | 与 REQ-010 一致；不在本需求做物理迁移 [待用户确认] |
+| approval 节点关闭时机 | A: approve CLI 内一并写 `node_completed`；B: 等下次 continue 由 main loop 关闭 | **A** | 与"approve 是状态机推进事件"语义自然契合；避免 continue 时还得识别"pending → 实际 done"的隐藏状态 |
+| AI 节点中间态命名 | `node_ready` / `awaiting_claude_action` vs 新 `node_pending_external` | **node_ready + state=awaiting_claude_action**（用户已确认） | 与现有事件命名 `node_started/completed/failed` 风格一致；状态机已有 paused/approval_pending 等 awaiting 类 |
+| path-lock 锁路径 | A: `requirements/.locks/`；B: `runs/.locks/`；C: 仓库根 `.locks/` | **`runs/.locks/` 实锁 + `requirements/.locks/` 软链**（用户已确认） | 与 D-007 双轨保持兼容：实际锁文件在 `runs/.locks/<run-id>.lock`，对 requirement 类 run 自动 symlink 到 `requirements/.locks/<req-id>.lock` |
+| PR 拆分 | 单 PR / 拆 3 PR (P0/P1/P2) | **单 PR**（用户已确认） | commit 内按 P0/P1/P2 分组便于 reviewer 阅读；不拆 PR-A/B/C |
+| NFR 性能指标硬度 | 硬指标（必测）/ 软约束（探针告警）/ 软约束 + 1 处 micro-benchmark | **软约束 + 1 处 micro-benchmark**（用户已确认） | 本期目标是"能闭环"而非"高性能"；硬指标会扩大测试面；micro-benchmark 单测可控 |
+| D-007 双轨延续 | 延续双轨 / 收口到 `runs/` 单轨 | **延续双轨**（用户已确认） | 与 REQ-010 一致；不在本需求做物理迁移 |
 
 ## 待澄清清单
 
-1. **范围切割**：AC-01~10 共 10 条，建议 P0 (AC-01~03) + P1 (AC-04~06) + P2 (AC-07~10) 三档；用户认可哪些进、哪些不进？是否需要进一步剥离某条？（决定后端 PR 数量与工作量估算）
-2. **AC-04 AI 节点完成接口名**：候选 `scripts/lib/save_node_result.py`；或复用既有 `save_review.py` 的 pattern。命名/路径待定。
-3. **AC-03 approval 节点关闭时机**：A（approve CLI 内一并写 node_completed）vs B（等下次 continue 由 main loop 关闭）——A 倾向已选，请确认。
-4. **AC-04 中间态命名**：`node_ready + state=awaiting_claude_action` vs 新事件 `node_pending_external`——前者倾向已选，请确认。
-5. **AC-05 path-lock 锁路径**：实锁 `runs/.locks/<run-id>.lock` + 对 requirement 类 run symlink 到 `requirements/.locks/`，是否接受这一双轨兼容方案？
-6. **PR 拆分**：3 PR (P0/P1/P2) vs 单 PR vs 仅做 P0+P1（P2 留作后续需求）。
-7. **NFR 性能指标硬度**：DAG ready-node 计算 ≤ 50ms / path-lock 抢占 ≤ 100ms 是否作为硬指标？还是只设软约束？
-8. **D-007 双轨延续**：本期是否延续双轨？还是借机收口到 `runs/` 单轨？（关键决策表与"不包含"段同时引用本条）
-9. **`/workflow:status --verbose` 输出格式**：JSON / 表格 / 树形——具体格式细节待技术预研阶段 grep 二次确认。
-10. **状态机扩展**：`awaiting_claude_action` 是否新增为合法 state？还是用现有 `paused` 复用？
-11. **P2 体验项纳入节奏**：AC-07~10 是否按"拆分策略入栈"在本需求内一并落地？或拆为后续需求？（与第 1 条范围切割联动）
-12. **path-lock 进程死亡兜底策略**：是否采用 "pid 文件 + atexit + 失活 pid 自动清理 stale 锁" 三件套？或仅 atexit 不做 stale 清理？
-13. **NFR 性能验证时机**：硬指标场景下，验证放在 micro-benchmark / 阶段 8 性能基准 / CI 增量回归 三选一？
-14. **AC-05 锁路径方案 B 与 D-007 单轨收口的耦合**：若条 8 选"收口单轨"，path-lock 是否同步收口到 `runs/.locks/`？
-15. **DAG scheduler 升级是否需要 feature flag**：runtime 主路径变更，是否在 `meta.yaml` 或环境变量加 `workflow.dag_scheduler=true` 双跑期？
-16. **拆分策略表头标注**：包含表"档位"列示意 P0/P1/P2，是否进一步把档位写进 meta 或 features.json 字段（影响 task-planning 阶段拆分粒度）？
+> 前缀 ✅ 表示用户已确认（2026-05-13）；未带前缀为仍待澄清项（留给技术预研 / task-planning 阶段定稿）。
+
+1. ✅ **C-01 范围切割**：P0+P1+P2 全做（AC-01~10 共 10 条全部纳入本需求）。
+2. ✅ **C-03 approval 关闭时机**：A 方案 = approve CLI 内一并写 `node_completed`。
+3. ✅ **C-04 AI 中间态命名**：`node_ready + state=awaiting_claude_action`。
+4. ✅ **C-05 path-lock 锁路径**：B + 软链 A（实锁 `runs/.locks/`，requirement 类 symlink 到 `requirements/.locks/`）。
+5. ✅ **C-06 PR 拆分**：单 PR，commit 内按 P0/P1/P2 分组。
+6. ✅ **C-07 NFR 性能硬度**：软约束 + 1 处 micro-benchmark。
+7. ✅ **C-08 D-007 双轨延续**：延续双轨，不做物理迁移。
+8. ✅ **C-10 状态机扩展**：与 C-04 联动，`awaiting_claude_action` 作为合法新 state。
+9. ✅ **C-11 P2 节奏**：随 C-01 纳入本需求。
+10. ✅ **C-13 NFR 验证时机**：micro-benchmark 单测覆盖（不进 CI 增量回归）。
+11. ✅ **C-14 锁路径与单轨耦合**：C-08 选双轨延续后此项消解。
+12. **AC-04 AI 节点完成接口名** [待用户确认]：候选 `scripts/lib/save_node_result.py`；或复用既有 `save_review.py` 的 pattern。技术预研阶段对比既有 save_*.py 模式后定稿。
+13. **`/workflow:status --verbose` 输出格式** [待用户确认]：JSON / 表格 / 树形——技术预研阶段 grep 既有 status 输出风格后确定。
+14. **path-lock 进程死亡兜底策略** [待用户确认]："pid 文件 + atexit + 失活 pid 自动清理 stale 锁" 三件套 vs 仅 atexit——技术预研阶段实测两种方案鲁棒性后定稿。
+15. **DAG scheduler 升级是否需要 feature flag** [待用户确认]：runtime 主路径变更，`meta.yaml` 或环境变量加 `workflow.dag_scheduler=true` 双跑期——若兼容性测试覆盖足够则可不引入 flag；技术预研阶段评估。
+16. **档位字段是否进 features.json** [待用户确认]：包含表的"档位"列 P0/P1/P2 是否进一步写进 features.json 字段——task-planning 阶段拆分时再决定，不阻塞 tech-research。

@@ -15,9 +15,10 @@
 > 内容转成 `context/team/engineering-spec/specs/` 中的文档」
 
 也就是说：本需求最终交付物之一是一份 spec 文档，位于
-`context/team/engineering-spec/specs/2026-05-13-workflow-runtime-dag-completion.md`
-（或对齐既有命名习惯的等价名），承载 P0/P1/P2 优化方案的设计正文。该交付物预计在
-**outline-design / detail-design 阶段**产出。
+`context/team/engineering-spec/specs/2026-05-13-workflow-runtime-dag-completion-design.md`
+（已对齐 specs/INDEX.md 既有 `YYYY-MM-DD-<topic>-design.md` 命名 pattern；
+原拟定 `*-completion.md` 由 reviewer 在 definition 评审中纠正），承载 P0/P1/P2
+优化方案的设计正文。该交付物预计在 **outline-design / detail-design 阶段**产出。
 
 ## research.md P0/P1/P2 摘要
 
