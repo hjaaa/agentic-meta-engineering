@@ -3,3 +3,4 @@ REQ-2026-011 语义事件日志
 格式：[YYYY-MM-DD HH:MM:SS CST] PHASE | EVENT | detail
 
 [2026-05-13 08:36:31 CST] bootstrap | created | 需求初始化，分支 feat/req-2026-011 从 develop 切出
+2026-05-13 08:39:31 [save] research-imported: findings.md → artifacts/research.md（来源 planning-with-files 2026-05-13），notes.md 补 P0/P1/P2 摘要与边界待确认项
