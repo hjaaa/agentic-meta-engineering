@@ -36,3 +36,15 @@
 
 - 风险：与 REQ-2026-010 高度重叠，需求 definition 阶段必须明确"增量范围"，避免重做已 ship 的工作
 - 风险：Archon 是远程平台架构，照搬会破坏本项目"轻量本地 Claude Code 集成"的定位；P0/P1/P2 已做取舍说明，definition 阶段要把"不照搬什么"写清楚（如多 provider / DB 状态存储）
+
+## 回退记录
+
+### 2026-05-13 11:25 · tech-research → definition
+
+- **回退原因**：需要重新讨论需求
+- **归档位置**：`artifacts/.rollback-20260513-112537/tech-research.md`
+- **保留**：requirement.md / research.md / plan.md（D-001~D-005 ADR）/ reviews/（definition-001 + definition-002 含 sign-off）
+- **下游影响**：
+  - tech-research 产出（feasibility=high / 17~23 天估算 / D-01/D-02 关闭结论 / D-03 延期、Q-01~Q-05 新发现）全部作废，重做时需重审
+  - reviews.definition.latest = REV-002 looks_clean(92) + tty signoff approved 状态保留；若 requirement.md 在 definition 重做时再次变更，会触发 R005 stale，需要走第三轮评审
+  - meta.yaml.gates_passed 历史保留 bootstrap→definition / definition→tech-research 两条；下次切换 phase 时门禁 runner `_validate_phase_args` 会基于当前 phase（已回到 definition）做相邻校验
