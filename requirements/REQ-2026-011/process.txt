@@ -1,0 +1,5 @@
+REQ-2026-011 语义事件日志
+================================
+格式：[YYYY-MM-DD HH:MM:SS CST] PHASE | EVENT | detail
+
+[2026-05-13 08:36:31 CST] bootstrap | created | 需求初始化，分支 feat/req-2026-011 从 develop 切出
