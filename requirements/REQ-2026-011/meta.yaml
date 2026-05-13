@@ -44,12 +44,13 @@ completed_at: ""                       # ISO8601，completed 时填
 lessons_extracted: false               # /knowledge:extract-experience 是否已跑
 reviews:
   definition:
-    latest: REV-REQ-2026-011-definition-001
+    latest: REV-REQ-2026-011-definition-002
     conclusion: looks_clean
-    reviewed_commit: 56988d8
+    reviewed_commit: 5a27b98
     artifact_hashes:
       artifacts/requirement.md: 
-        60b6c674a500527a6191c574ed394ae000b21fe10b04d2a4e10d2bc47a2df1ce
+        69ba062d2014a8c629fa72d497393ea226989338cec112b31a28afe3cbabd33e
     history:
       - REV-REQ-2026-011-definition-001
+      - REV-REQ-2026-011-definition-002
     stale: false
