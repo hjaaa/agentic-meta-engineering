@@ -49,5 +49,11 @@
   "architectural_concerns": [
     "AC-A1 应对策略中『reject reason 落 separate 文件 + jsonl 仅记 sha256 + 摘要』是事件流可扩展的稳健通用模式（manifest-pointer 模式），detail-design 落地时可考虑将该模式作为『所有 data 字段 > N 字节自动外挂』的通用 helper，而非仅 reject reason 专用——可降低未来其它新事件类型再次触发 4KB 边界的概率。",
     "AC-A2 的『子状态字段 vs KindHandler 类』两条迁移路径目前并列陈述，未来真正触发时（kind ≥ 3 且分支 LoC 差异 > 30%）需要 ADR 二选一；建议在触发阈值满足时由 plan.md 直接补 D-NNN ADR 而非另起 follow-up requirement——架构演化决策本质是 ADR 范畴而非 feature 范畴。"
-  ]
+  ],
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-14T10:06:23.585532+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
+  }
 }
