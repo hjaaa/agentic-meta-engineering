@@ -91,6 +91,9 @@ TERMINAL_WORKFLOW_EVENTS: set[str] = {
     "workflow_completed", "workflow_failed", "workflow_cancelled",
 }
 
+# 终态 state 集合（state 字符串，非事件名）；用于新 elif 分支的终态守卫。
+TERMINAL_STATES: frozenset[str] = frozenset({"completed", "failed", "cancelled"})
+
 # state 派生表（最近一次 workflow 级事件 → state 字符串）
 WORKFLOW_EVENT_TO_STATE: dict[str, str] = {
     "workflow_started": "running",
@@ -165,13 +168,13 @@ class RunState:
             # 注意：下方 3 个新 elif 必须在 WORKFLOW_EVENT_TO_STATE 分支之前——
             # 这些事件的副作用依赖 current_node / pending_approval 字段，
             # 无法通过扁平字典表达（对抗审阅 P1-1 教训）
-            elif ev_type == "node_ready" and node_id:
+            elif ev_type == "node_ready" and node_id and state.state not in TERMINAL_STATES:
                 state.current_node = node_id
                 state.state = "awaiting_claude_action"
-            elif ev_type == "approval_repair_started" and node_id:
+            elif ev_type == "approval_repair_started" and node_id and state.state not in TERMINAL_STATES:
                 state.pending_approval = node_id
                 state.state = "awaiting_claude_action"
-            elif ev_type == "approval_repair_completed":
+            elif ev_type == "approval_repair_completed" and node_id and state.state not in TERMINAL_STATES:
                 # pending_approval 保留（仍在等下一次 approve/reject）
                 state.state = "approval_pending"
             elif ev_type in WORKFLOW_EVENT_TO_STATE:

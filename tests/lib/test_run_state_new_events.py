@@ -212,3 +212,55 @@ def test_新事件不在WORKFLOW_EVENT_TO_STATE():
         assert ev not in WORKFLOW_EVENT_TO_STATE, (
             f"事件 {ev!r} 不应出现在 WORKFLOW_EVENT_TO_STATE（P1-1 教训：扁平映射无法表达字段副作用）"
         )
+
+
+# ============================================================================
+# rev2 · F-005 守卫：approval_repair_completed 无 node_id 不改变 state
+# ============================================================================
+
+def test_rebuild_approval_repair_completed_无node_id_不改变state():
+    """F-005：approval_repair_completed 缺 node_id 时不应把 state 覆盖为 approval_pending。"""
+    events = [
+        {"type": "workflow_started", "run_id": "R-F005", "data": {"workflow_name": "x"}},
+        {"type": "approval_repair_completed", "ts": "2026-05-14T10:00:00Z",
+         "node_id": None, "data": {"attempt": 1}},
+    ]
+    state = RunState.rebuild(events, run_id="R-F005")
+    assert state.state == "running", (
+        f"approval_repair_completed 无 node_id 不应改变 state，实际 {state.state}"
+    )
+
+
+# ============================================================================
+# rev2 · F-007 终态守卫：node_ready / approval_repair_started 在终态后不覆盖 state
+# ============================================================================
+
+def test_rebuild_node_ready_在终态后不覆盖state():
+    """F-007：workflow_failed 后出现 node_ready（损坏 jsonl）不应把 state 覆盖回 awaiting_claude_action。"""
+    events = [
+        {"type": "workflow_started", "run_id": "R-F007a", "data": {"workflow_name": "x"}},
+        {"type": "workflow_failed", "data": {"reason": "internal error"}},
+        {"type": "node_ready", "node_id": "N1",
+         "data": {"node_kind": "skill", "external_action_contract": {}}},
+    ]
+    state = RunState.rebuild(events, run_id="R-F007a")
+    assert state.state == "failed", (
+        f"终态 failed 后 node_ready 不应覆盖 state，实际 {state.state}"
+    )
+    assert state.current_node is None, (
+        f"终态后 current_node 不应被 node_ready 覆盖，实际 {state.current_node}"
+    )
+
+
+def test_rebuild_approval_repair_started_在终态后不覆盖state():
+    """F-007：workflow_completed 后出现 approval_repair_started（损坏 jsonl）不应覆盖 state。"""
+    events = [
+        {"type": "workflow_started", "run_id": "R-F007b", "data": {"workflow_name": "x"}},
+        {"type": "workflow_completed", "data": {}},
+        {"type": "approval_repair_started", "node_id": "N1",
+         "data": {"attempt": 1, "max_attempts": 3, "prompt_ref": "p.md", "reason": "fix"}},
+    ]
+    state = RunState.rebuild(events, run_id="R-F007b")
+    assert state.state == "completed", (
+        f"终态 completed 后 approval_repair_started 不应覆盖 state，实际 {state.state}"
+    )
