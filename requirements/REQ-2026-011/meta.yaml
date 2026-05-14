@@ -37,11 +37,11 @@ gates_passed:
   - phase: detail-design
     at: '2026-05-14 10:09:00'
     via: managing-requirement-lifecycle
-    notes: outline-design → detail-design 门禁 11/11 全过（GATE-META-SCHEMA /
-      INDEX-INTEGRITY / SOURCING / PLAN-FRESHNESS / WORKSPACE-CLEAN /
-      REVIEW-VERDICT / FEATURES-SCHEMA / TASK-FRONTMATTER / POST-DEV-RECEIPT /
-      TRACEABILITY / TOUCHES-VIOLATION）；REV-outline-design-004 looks_clean(92)
-      5 维 [94/92/93/92/91] + hj19961223@gmail.com tty signoff approved；
+    notes: outline-design → detail-design 门禁 11/11 全过（GATE-META-SCHEMA / 
+      INDEX-INTEGRITY / SOURCING / PLAN-FRESHNESS / WORKSPACE-CLEAN / 
+      REVIEW-VERDICT / FEATURES-SCHEMA / TASK-FRONTMATTER / POST-DEV-RECEIPT / 
+      TRACEABILITY / TOUCHES-VIOLATION）；REV-outline-design-004 looks_clean(92) 5
+      维 [94/92/93/92/91] + hj19961223@gmail.com tty signoff approved； 
       arch-concerns 全闭环（AC-A1/A2/A3）；6 条待澄清 + 新 O-04/O-05 全部归入 detail-design
 pr_url: ""                             # /requirement:submit 成功后回写
 pr_number: 0                           # /requirement:submit 成功后回写
@@ -96,4 +96,18 @@ reviews:
       - REV-REQ-2026-011-outline-design-002
       - REV-REQ-2026-011-outline-design-003
       - REV-REQ-2026-011-outline-design-004
+    stale: false
+  detail-design:
+    latest: REV-REQ-2026-011-detail-design-001
+    conclusion: needs_attention
+    reviewed_commit: 52c268f
+    artifact_hashes:
+      artifacts/detailed-design.md: 
+        cf26a492d7448e35abeba11126a876c5cdfaa7c7a34ec4cd89a7df594b4b299c
+      artifacts/features.json: 
+        3e3e182a85ef24b54a1fe9518d204a354f72c15de036ed42f741a50f2740f67f
+      artifacts/outline-design.md: 
+        379fb36d2192c590533fc52c8e25e76a52735b10536e57e54d1f980aac8288a5
+    history:
+      - REV-REQ-2026-011-detail-design-001
     stale: false

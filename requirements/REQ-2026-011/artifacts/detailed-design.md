@@ -22,7 +22,7 @@ outline-design v4 给出 6 层架构（CLI / State / Lock / Loader / Scheduler /
 
 | 项 | outline-design v4 | detailed-design v1 |
 |---|---|---|
-| 新增模块 | 2 个（`save_node_result.py` / `workflow_lock.py`） | 3 个（追加 `append_events.py`，承载 D-014 4KB 上限 + manifest-pointer） |
+| 新增模块 | 2 个（`save_node_result.py` / `workflow_lock.py`） | 3 个（追加 `append_events.py`，承载 D-014 4KB 上限 + manifest-pointer）；**`workflow_lock.py` 在本文档统一改名为 `path_lock.py`**（更准确反映 D-003 三件套 path-lock 语义；outline-design v4 仍用旧名，detail-design 阶段起改名） |
 | 事件 payload | 仅命名（`node_ready` / `approval_repair_started/completed`） | 给出每条事件 payload JSON schema + 必填字段（§2.2） |
 | 接口签名 | 仅列函数名 | 全部带 Python type hints + 异常声明（§3.x） |
 | 数据结构 | RunState 字段微调 | `RunState.last_event_ts` 用法 / lock 文件格式 / manifest 文件格式 / features.json `priority` 字段（§2.x） |
@@ -155,7 +155,7 @@ WORKFLOW_EVENT_TO_STATE: dict[str, str] = {
 #### 2.2.4 既有事件 payload 微调（无 schema 破坏）
 
 - `approval_rejected` 事件 `data.reason` 受 D-014 同样规则约束（≥ 3.5KB 自动 manifest fallback）。
-- `node_failed` 事件 `data.reason` 字段含义补：当因 `approval_attempts_exhausted` 触发时（AC-03c），`data.reason = "approval_attempts_exhausted"`，`data.attempts = max_attempts`，`workflow_failed` 紧随其后写入（由 reject CLI 一次原子三事件）。
+- `node_failed` 事件 `data.reason` 字段含义补：当因 `approval_attempts_exhausted` 触发时（AC-03c），`data.reason = "approval_attempts_exhausted"`，`data.attempt = max_attempts`（**单数 `attempt` 与 approval_rejected / approval_repair_started/completed 事件命名统一**，消费方可用单一 key 反扫；不再使用复数 `attempts` 字段），`workflow_failed` 紧随其后写入（由 reject CLI 一次原子三事件）。
 
 ### 2.3 lock 文件格式（对应 ADR D-003 / D-005）
 
@@ -166,8 +166,7 @@ WORKFLOW_EVENT_TO_STATE: dict[str, str] = {
   "pid": 12345,
   "created_at": "2026-05-14T10:30:00Z",
   "path_target": "/abs/path/to/runs/REQ-2026-011",
-  "host": "Darwin-25.4.0",
-  "claude_session": null
+  "host": "Darwin-25.4.0"
 }
 ```
 
@@ -250,7 +249,7 @@ CLI 形态：
 
 D-001：与 save_review.py 平级独立模块；
 D-012：不抽公共 helper，两份 _validate_inputs 独立维护。
-D-006 hook 拦截边界：本模块不在拦截列表（AI 主 Claude 允许调用）。
+AI-CMD-LOCK 拦截边界（§6.1）：本模块不在拦截列表（AI 主 Claude 允许调用）。
 """
 from __future__ import annotations
 
@@ -400,7 +399,7 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
         events_to_write = [
             {"type": "approval_rejected", "node_id": node_id, "data": {"reason": reason, "attempt": current_attempt}},
             {"type": "node_failed", "node_id": node_id,
-             "data": {"reason": "approval_attempts_exhausted", "attempts": current_attempt}},
+             "data": {"reason": "approval_attempts_exhausted", "attempt": current_attempt}},
             {"type": "workflow_failed",
              "data": {"reason": "approval_attempts_exhausted", "node_id": node_id}},
         ]
@@ -1276,20 +1275,28 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
+    participant U as 用户 (tty)
     participant CLI as workflow_continue (父 run)
+    participant ML as main loop
     participant Poll as _poll_sub_workflows
     participant SubFS as sub_runs/<node>/run-state.jsonl
     participant FS as 父 jsonl
     participant Sched as _ready_nodes
 
-    CLI->>Poll: _poll_sub_workflows(run_state, workflow, run_dir)
+    U->>CLI: /workflow:continue (父 run_id)
+    CLI->>ML: main loop iter 入口（参考 REQ-010 已有 main loop）
+    ML->>Poll: _poll_sub_workflows(run_state, workflow, run_dir)
     Poll->>SubFS: read_events(每个 sub_runs/<node_id>/run-state.jsonl)
     SubFS-->>Poll: 子末位事件 = workflow_completed
     Poll->>FS: append_event(child_graceful_exited, node_id=<sub_node>)
     Poll->>FS: append_event(node_completed, node_id=<sub_node>)
     Note over FS: 父 RunState.node_outputs[<sub_node>] = completed
-    Poll-->>CLI: True (有推进)
-    CLI->>Sched: _ready_nodes → 下游父节点
+    Poll-->>ML: True (有推进)
+    ML->>Sched: _ready_nodes → 下游父节点
+    Sched-->>ML: ready_ids
+    ML->>FS: dispatch 下游节点（参考 §4.1 / §4.3 / §4.4）
+    ML-->>CLI: continue iter 结束
+    CLI-->>U: 输出树形 status
 ```
 
 `on_subworkflow_failure` 处理：
@@ -1308,7 +1315,9 @@ sequenceDiagram
     Poll->>FS: append_event(workflow_failed)
 ```
 
-### 4.6 流程 F：path-lock 三件套（正常 + 残锁清理，AC-05，对应 ADR D-003）
+### 4.6 流程 F：path-lock 三件套（AC-05，对应 ADR D-003）
+
+#### 4.6.1 子图 1：并发竞争场景（P1 持锁正常 release，P2 被拒）
 
 ```mermaid
 sequenceDiagram
@@ -1316,31 +1325,42 @@ sequenceDiagram
     participant P2 as 进程 2 (continue, 100ms 后启动)
     participant Lock as runs/.locks/REQ-2026-011.lock
     participant SymLk as requirements/.locks/REQ-2026-011.lock
-    participant FS as jsonl
 
     P1->>Lock: open + fcntl.LOCK_EX|LOCK_NB
     Lock-->>P1: ok
     P1->>Lock: write JSON {pid:N1, created_at:T1, path_target:...}
     P1->>SymLk: os.symlink(实锁, symlink) if requirement-class
     P1->>P1: atexit.register(release)
-    P1->>FS: 正常工作...
+    P1->>P1: 正常工作 ...
 
     P2->>Lock: open + fcntl.LOCK_EX|LOCK_NB
     Lock-->>P2: BlockingIOError (EWOULDBLOCK)
     P2->>Lock: read JSON → {pid:N1, created_at:T1}
     P2->>P2: _is_pid_alive(N1) → True (kill -0 ok)
-    P2-->>P2: raise LockBusyError → print "another continue is running, pid=N1, started_at=T1" → exit 1
+    P2-->>P2: raise LockBusyError → exit 1
 
     P1->>P1: main loop 完成
     P1->>Lock: release (fcntl.LOCK_UN + delete .lock file)
     Note over SymLk: symlink 不删（dangling 容忍）
+```
 
-    Note over Lock: 残锁场景（kill -9）：P1 死，.lock 文件残留 pid=N1
-    P2->>Lock: open + fcntl.LOCK_EX|LOCK_NB
-    Lock-->>P2: ok (fcntl 自动释放被死进程持有的锁)
-    P2->>Lock: read 旧 JSON → pid=N1 not alive (ESRCH)
-    P2->>Lock: 自动清理 + 重写自己的 JSON {pid:N2, ...}
-    P2->>P2: 取锁成功，继续工作
+#### 4.6.2 子图 2：残锁清理场景（P1 被 kill -9，.lock 残留）
+
+> **两条子图为独立时间线**：上图描述 P1 正常 release；本图描述 P1 异常退出后另一个进程 P3 启动取锁的清理路径。两者不在同一次 continue 调用内发生。
+
+```mermaid
+sequenceDiagram
+    participant P3 as 进程 3 (新 continue，P1 已被 kill -9)
+    participant Lock as runs/.locks/REQ-2026-011.lock
+
+    Note over Lock: .lock 文件残留 JSON {pid:N1, created_at:T1}（P1 异常退出未执行 atexit）
+    P3->>Lock: open + fcntl.LOCK_EX|LOCK_NB
+    Lock-->>P3: ok （fcntl 自动释放被死进程持有的锁，POSIX 行为）
+    P3->>Lock: read 旧 JSON → pid=N1
+    P3->>P3: _is_pid_alive(N1) → ESRCH (False)
+    P3->>P3: 二次校验：created_at T1 在文件 mtime 之前 ≥ 1s → 视为 stale
+    P3->>Lock: truncate + 重写自己的 JSON {pid:N3, created_at:T3, path_target:...}
+    P3->>P3: 取锁成功，继续工作
 ```
 
 ---
@@ -1483,7 +1503,9 @@ def _ready_nodes(run_state, workflow):
 
 ## 6. Hook 与 tty 校验
 
-### 6.1 pre-tool-use-guard.sh 拦截规则（D-006 hook 基线）
+### 6.1 pre-tool-use-guard.sh 拦截规则（**AI-CMD-LOCK 基线**）
+
+> **命名说明**：plan.md 中"D-006 hook 拦截基线" 引用是历史 ADR（承自 REQ-2026-006 全局逃生通道）；本需求 plan.md 的 D-006 是 DAG 兼容退化判定。为避免同号不同义，本文档以下统一用 **"AI-CMD-LOCK"** 指代 pre-tool-use-guard.sh 中 AI 不可调命令拦截基线。
 
 **当前拦截范围**（来源：.claude/hooks/pre-tool-use-guard.sh:22-23）：
 
@@ -1500,7 +1522,7 @@ readonly APPROVAL_PYTHON_PATTERN='python3?[[:space:]]+([^[:space:]]+/)?(scripts/
 
 `check_tty_for_approval`（scripts/lib/workflow_state_validator.py:70-87）保持不变；新增写入逻辑（AC-03a/b 追加事件）**仅在 isatty 校验通过之后执行**（R-S01 mitigation）。
 
-### 6.3 D-006 拦截基线测试矩阵
+### 6.3 AI-CMD-LOCK 基线测试矩阵
 
 | 测试用例 | 预期行为 |
 |---|---|
@@ -1602,10 +1624,12 @@ PR 拆 commit（共 ~16 commits）：
 
 | commit 组 | 范围 | 包含 features |
 |---|---|---|
-| **P0-baseline**（4 commits） | A1: append_events.py 新建；A2: kind 枚举扩展；A3: last_event_ts 语义；yaml check_meta.py 修复 | F-001/F-002/F-003 + AC-02 附带修正 |
-| **P0**（5 commits） | DAG scheduler（loader+continue）；artifact dispatcher；approval 闭环（approve+reject）；save_node_result.py；path-lock | F-004/F-005/F-006/F-007/F-008 |
-| **P1**（4 commits） | AI 节点契约（dispatcher 三处改写）；run_state.py rebuild 扩展；CMD_ALLOWED_STATES 扩展；status doctor verbose | F-009/F-010/F-011/F-012 |
-| **P2**（3 commits） | loop until_bash；sub_workflow 回填；fuzzy + workflow list --json + AC-10 字段白名单 | F-013/F-014/F-015 |
+| **P0-baseline**（3 commits + 1 chore） | A1 `append_events.py` 4KB cap + manifest fallback；A2 `--kind` 枚举扩展；A3 `last_event_ts` 语义（含 `run_state.py` rebuild 扩展 / `CMD_ALLOWED_STATES` 扩展）；附带 chore：`standard-8phase.yaml:57` 引用 `check_meta.py` 修复（AC-02 R-I03） | F-001 / F-002 / F-003 |
+| **P0**（5 commits） | DAG scheduler（`workflow_loader._expand_implicit_depends_on` + `workflow_continue._ready_nodes`）；artifact dispatcher（`_dispatch_artifact_node` + `run_artifact_checks.py` 接入）；approval 闭环（approve + reject inline repair）；`save_node_result.py` 新建；`path_lock.py` 三件套 | F-004 / F-005 / F-006 / F-007 / F-008 |
+| **P1**（3 commits） | status doctor `--verbose` 树形 + heartbeat / stale 检测；loop until_bash 两步落地；sub_workflow 父子完成回填 | F-009 / F-010 / F-011 |
+| **P2**（2 commits） | workflow list --json + 路由 fuzzy；AC-10 Claude 运行参数字段白名单（7 字段） | F-012 / F-013 |
+
+> 合计 **13 commits**（与 features.json 13 features 一一对应；P0-baseline 内附 1 chore commit 修 `standard-8phase.yaml` 不计入 feature 计数）。dispatcher 三处改写、`run_state.py` rebuild 扩展、`CMD_ALLOWED_STATES` 扩展等"AI 节点契约改造"已分散在 F-001~F-008 各自 PR 中，**不再独立成 P1 commit**。
 
 ### 8.3 回滚策略（对应 ADR D-004）
 
@@ -1707,3 +1731,4 @@ F-013 (AC-10 7 字段)   ← F-002 / F-007
 | 时间 | 修订 | 备注 |
 |---|---|---|
 | 2026-05-14 10:30:00 | v1 起草 | 落地 outline-design v4 + 14 条 ADR；含 6 张时序图 + 90 单元用例 + 13 features.json |
+| 2026-05-14 10:50:00 | v2 闭环 REV-001 3 required_fixes + 关键 suggestions | §8.2 commit 分组表对齐 features.json 13 commits（删 F-014/F-015 错位）；`approval_attempts_exhausted` 事件 `data.attempts` 统一改 `data.attempt`（与 started/completed 单数命名一致）；§6.1/§6.3/§3.1 "D-006 hook" 改 "AI-CMD-LOCK 基线"（去除与本期 plan.md D-006 同号不同义）；§1.1 显式注 `workflow_lock.py → path_lock.py` 改名；§2.3 删 `claude_session: null` 死字段；§4.5 sub_workflow 时序图补 continue 用户入口 + main loop 调用栈；§4.6 拆 4.6.1（并发拒绝）+ 4.6.2（残锁清理）两个独立子图，去除时间线矛盾 |
