@@ -199,6 +199,27 @@
   - − 引入 manifest 目录管理职责（清理 / 归档），detail-design 阶段需补一节"manifest 文件生命周期"（建议：随 run 归档，不单独清理）。
 - **时间**：2026-05-14 10:12:00
 
+### D-015 task-planning 审阅 4 处文档漂移合并处置（P 边界事实源 / 派发优先级 / touches 归属 / commit 数）
+
+- **Context**：development 阶段切入后，用户对 13 task.md 做归档式审阅，发现 4 处文档/任务归属漂移：
+  - **C-1（P 漂移）**：`artifacts/requirement.md:32 + :107 + :108 + :114` 写 AC-07/08 = **P2**，但下游 `artifacts/features.json` F-010/F-011 priority=**P1** + pr_group=P1（来源：requirements/REQ-2026-011/artifacts/features.json:319 / :356）+ `artifacts/detailed-design.md` §8.2 commit 表把 F-009/F-010/F-011 归 **P1**（3 commits）+ F-012/F-013 归 **P2**（2 commits）（来源：requirements/REQ-2026-011/artifacts/detailed-design.md:1858-1859）。
+  - **C-2（yaml 归属）**：`.claude/workflows/requirement/standard-8phase.yaml:57` 引用不存在脚本 `check_meta_schema.py`，需改为 `check_meta.py`——该修订对应 AC-02 R-I03（来源：requirements/REQ-2026-011/artifacts/requirement.md:101 + :170 D-01 决策）。`features.json` F-004 touches 含 yaml 但 F-005 touches 不含；F-005 验收明确要求 yaml 改完（来源：requirements/REQ-2026-011/artifacts/features.json:97 / :140 + tasks/F-005.md:54-55）。
+  - **C-3（派发顺序）**：`.claude/skills/feature-lifecycle-manager/reference/subagent-dispatch.md:13-24` 仅写 depends_on 拓扑 + complexity 选模型，**未定义 priority 分层规则**。F-008/F-012 均 depends_on=[]（来源：tasks/F-008.md:7 + tasks/F-012.md:7），dispatcher 视角等价；保守串行 P0-baseline 优先（plan.md:212）缺规则锚定时主 Agent 可能误派 F-012 (P2) 抢占 F-001 (P0) 时序。
+  - **C-4（commit 数）**：`detailed-design.md:1856` 写 "14 commits = 13 features + 1 chore"，line 1865 写 "合计 13 commits"，line 1872 写 "P2-3 commits"（实际 P2 = 2 commits）；表格事实是 14 = 13 features + 1 chore + P2 = 2。
+  - hash 锁观察：`requirement.md` 被 outline-design hash 锁定（meta.yaml:102）；`features.json` / `detailed-design.md` 被 detail-design hash 锁定（meta.yaml:113-119）。任一改动触发 R005 stale → 阻塞 development → testing。
+- **Decision**：
+  1. **P1/P2 边界事实源**（C-1）：以 `features.json` + `detailed-design.md` §8.2 为现行事实源；`requirement.md` AC 表的 P 列为 **definition 阶段历史快照**，本 ADR 与之 supersede。development → testing 不回填 requirement.md 主表（避免 outline-design R005 stale 触发 outline 重审），下次需求性更新走 ADR / 单独 PR 处理。
+  2. **派发顺序规则**（C-3）：标准次序 = `priority 分层（P0-baseline > P0 > P1 > P2）→ 同层 depends_on 拓扑 → 同档同层按 features.json 出现顺序`。`reference/subagent-dispatch.md` 同步落规则；主 Agent / 用户选下一个 feature 时按此次序判断；dispatcher 仍只看 depends_on + complexity（保守档不引擎层强制 priority 排序，避免 dispatcher 改造）。
+  3. **task.md touches 与 features.json diverge 规则**（C-2）：`touches_guard.py` / `GATE-TOUCHES-VIOLATION` 的事实源是 **task.md frontmatter**（来源：context/team/engineering-spec/task-frontmatter-schema.yaml:98-102）；`features.json.touches` 是 detail-design 阶段静态计划值，task.md 可在不破坏 features-schema 的前提下做细化校正。本 ADR 把 `.claude/workflows/requirement/standard-8phase.yaml` 从 F-004 task.md touches 移到 F-005 task.md touches（语义归属 AC-02 R-I03）；`features.json` 维持 detail-design hash 锁定形态不动。
+  4. **detailed-design.md commit 数内部矛盾**（C-4）：14 commits = 13 features + 1 chore 为事实，line 1865 "13 commits" 与 line 1872 "P2-3 commits" 为表述笔误。development 阶段不修（避免触发 detail-design R005 stale → 11 轮重审）；标记为 **development → testing phase-transition 前一并修复**（同批次纳入其他 detail-design 内部精修，单独走 1 轮 detail-design refresh 评审）。
+- **Consequences**：
+  - + 0 hash drift：4 处问题在不破坏 outline-design / detail-design hash 链的前提下闭环；保护 detail-design 11 轮迭代评审结果。
+  - + 派发优先级规则文档化，主 Agent / 用户选下一个 feature 时有明确次序锚点；保守档不引擎化避免 dispatcher 改造。
+  - + task.md frontmatter 作为 touches 事实源被明确，给后续 task-planning 阶段产物校正留出空间（不必每次都 detail-design 重审）。
+  - − requirement.md AC 表 P 列与 features.json 的事实漂移在文档上保留——需要 reviewer / 新人理解时翻 plan.md ADR D-015；通过本 ADR 显式声明 supersede 关系缓解。
+  - − detailed-design.md commit 数内部矛盾延到 testing 阶段前——开发期主 Agent / subagent 不应基于 commit 总数做语义判断（每个 feature 一个 commit + 一次 chore 是事实），风险面小。
+- **时间**：2026-05-14 15:33:00
+
 ---
 
 ## 阶段进度快照

@@ -43,3 +43,4 @@ REQ-2026-011 语义事件日志
 2026-05-14 15:18:50 [save] implementation backlog 沉淀 → notes.md：IB-01 SUCCESS_TERMINAL 抽 run_state.py + IB-02 outline:135 P3
 2026-05-14 15:25:45 [save] task-planning 13 task.md 落地（F-001~F-013 frontmatter schema 全过 + features.json schema 过）
 2026-05-14 15:30:40 [phase-transition] task-planning → development（11 gate 全过 exit=0 0 warning；PLAN-FRESHNESS 已消）
+2026-05-14 15:43:12 [save] task-planning 审阅 4 处漂移闭环：ADR D-015 + F-004/F-005 touches + 派发优先级文档
