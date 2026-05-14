@@ -399,27 +399,27 @@ def _check_node_match_or_fail(
     events, _ = read_events(jsonl_path)
     expected_type = "node_ready" if kind == "skill_result" else "approval_repair_started"
     # 找末位匹配 expected_type 的事件
-    last_awaiting_evt = None
+    last_node_lifecycle_evt = None
     for evt in reversed(events):
         if evt.get("type") in {"node_ready", "approval_repair_started",
                                "node_completed", "approval_repair_completed",
                                "node_failed"}:
-            last_awaiting_evt = evt
+            last_node_lifecycle_evt = evt
             break
 
-    if last_awaiting_evt is None or last_awaiting_evt.get("type") != expected_type:
+    if last_node_lifecycle_evt is None or last_node_lifecycle_evt.get("type") != expected_type:
         print(
             f"ERROR [E-NODE-RESULT-003]: jsonl 末位 awaiting 事件 ="
-            f"{(last_awaiting_evt or {}).get('type')!r}，期望 {expected_type!r}；"
+            f"{(last_node_lifecycle_evt or {}).get('type')!r}，期望 {expected_type!r}；"
             f"kind={kind!r} 状态契约违反。",
             file=sys.stderr,
         )
         sys.exit(2)
 
-    if last_awaiting_evt.get("node_id") != node_id:
+    if last_node_lifecycle_evt.get("node_id") != node_id:
         print(
             f"ERROR [E-NODE-RESULT-004]: jsonl 末位 {expected_type}.node_id="
-            f"{last_awaiting_evt.get('node_id')!r}，期望 {node_id!r}；节点身份错位。",
+            f"{last_node_lifecycle_evt.get('node_id')!r}，期望 {node_id!r}；节点身份错位。",
             file=sys.stderr,
         )
         sys.exit(2)
@@ -991,28 +991,38 @@ def _select_next_dispatch_target(
         ready = _ready_nodes(run_state, workflow)
         return ready[0] if ready else None
 
-    # 退化（单链）路径
+    # 退化（单链）路径（v6→v7 REV-006 P1 修订：success_terminal 与 §3.6.3 对齐）
+    # 关键：何为"该节点已走过"= state ∈ {completed, skipped}——与 §3.6.3 P1-3
+    # 修订的 success_terminal 集合严格对齐，避免出现"on_failure=skip 让首节点
+    # skipped 后被退化路径再次派发"的回溯漏洞。
+    SUCCESS_TERMINAL = {"completed", "skipped"}   # 与 §3.6.3 line 1071 同源
+
     if run_state.current_node is None:
-        # 分支 a：无任何 completed → 真新 run → 取 yaml 首节点
-        any_completed = any(
-            out.get("state") == "completed"
+        # 分支 a：无任何 success_terminal 节点 → 真新 run → 取 yaml 首节点
+        any_visited = any(
+            out.get("state") in SUCCESS_TERMINAL
             for out in run_state.node_outputs.values()
         )
-        if not any_completed:
+        if not any_visited:
             nodes = workflow.get("nodes") or []
             return nodes[0].get("id") if nodes else None
 
-        # 分支 b（v6 P1-2 修订）：有 completed 但 current_node is None → 从 jsonl
-        # 反扫最后 completed 的节点，走 _next_node(last_completed) 继续推进；
-        # 若 _next_node 也 is None → workflow 已自然终态，由
-        # _finalize_after_rebuild_if_last_topology_node（§3.6.3）写 workflow_completed
-        last_completed_id: str | None = None
+        # 分支 b（v6 P1-2 修订；v7 REV-006 P1 闭环 success_terminal 漏 skipped）：
+        # 有 success_terminal 但 current_node is None → 反扫 node_outputs 取
+        # 最后一个进入 SUCCESS_TERMINAL 的节点（包括 completed 与 skipped）→
+        # 走 _next_node(last_visited) 继续推进；若 _next_node 也 is None →
+        # workflow 已自然终态，由 _finalize_after_rebuild_if_last_topology_node
+        # （§3.6.3）写 workflow_completed。
+        # 注意（P3 #2）：仅退化路径执行；dict 插入序 ≡ rebuild 处理事件序
+        # ≡ 节点完成时间序（因 rebuild 每次 setdefault 或 reassign 都按事件流推进），
+        # 该假设仅在 depends_on_explicit=False 路径成立——DAG 路径已在 line 990 短路。
+        last_visited_id: str | None = None
         for nid, out in run_state.node_outputs.items():
-            if out.get("state") == "completed":
-                last_completed_id = nid   # 字典插入顺序保留写入序，最后一个赋值即末位
-        if last_completed_id is None:
-            return None   # 防御性：理论 any_completed 已保证不进
-        last_node = node_map.get(last_completed_id)
+            if out.get("state") in SUCCESS_TERMINAL:
+                last_visited_id = nid   # 字典插入顺序，最后赋值即末位
+        if last_visited_id is None:
+            return None   # 防御性：理论 any_visited 已保证不进
+        last_node = node_map.get(last_visited_id)
         if last_node is None:
             return None
         return _next_node(last_node, None)
@@ -1023,12 +1033,13 @@ def _select_next_dispatch_target(
 
 > **关于"反扫顺序"**：Python 3.7+ dict 保留插入序，rebuild 按事件顺序 `state.node_outputs[node_id] = ...` 设置，循环末位赋值即是最后一个 completed。若担忧 dict 序变更（外部代码 mutate），可改用 `events` 列表显式反扫（如 `_finalize_after_rebuild_if_last_topology_node` §3.6.3 line 951-955 已有此模式）—— development 阶段二选一。
 
-**单测约束**（覆盖 P1-2 修复回归 — v6 补全）：
+**单测约束**（覆盖 P1-2 修复回归 — v6 补全 + v7 REV-006 P1 反向覆盖）：
 
 - 测试 1（真新 run）：仅 `[workflow_started]` 事件 + yaml 含 3 个节点 N1/N2/N3 + `depends_on_explicit=False` → `_select_next_dispatch_target` 返回 `"N1"`（首节点 ID）。
-- 测试 2（v6 P1-2 修订）：事件序列 `[workflow_started, node_started(N1), node_completed(N1)]` + 退化 yaml（N1.next=N2）→ rebuild 后 `current_node is None` ∧ `node_outputs[N1].state=='completed'` → `_select_next_dispatch_target` 反扫得 last_completed=N1 → 返回 `_next_node(N1, None)`（即 N2 id）。
-- 测试 3（末节点已 completed）：事件序列 `[..., node_completed(N3)]` + N3 是末节点 → 反扫 last_completed=N3 → `_next_node(N3, None) is None` → 返回 None（交 _finalize_after_rebuild 处理）。
-- 测试 4：DAG 路径首启动（`depends_on_explicit=True` ∧ yaml N1 depends_on=[]）→ `_ready_nodes` 返回 `["N1"]`，路径自然正确。
+- 测试 2（v6 P1-2 修订）：事件序列 `[workflow_started, node_started(N1), node_completed(N1)]` + 退化 yaml（N1.next=N2）→ rebuild 后 `current_node is None` ∧ `node_outputs[N1].state=='completed'` → `_select_next_dispatch_target` 反扫得 last_visited=N1 → 返回 `_next_node(N1, None)`（即 N2 id）。
+- 测试 3（末节点已 completed）：事件序列 `[..., node_completed(N3)]` + N3 是末节点 → 反扫 last_visited=N3 → `_next_node(N3, None) is None` → 返回 None（交 _finalize_after_rebuild 处理）。
+- **测试 4（v7 REV-006 P1 反向回归）**：事件序列 `[workflow_started, node_started(N1), node_skipped(N1, reason="on_failure=skip")]` + 退化 yaml（N1.next=N2）→ rebuild 后 `current_node is None` ∧ `node_outputs[N1].state=='skipped'` → 分支 a 的 `any_visited=True`（包含 skipped）→ 进入分支 b → 反扫得 last_visited=N1 → 返回 `_next_node(N1, None)`（即 N2 id）。**关键反向**：N1 不会被错误重新派发。
+- 测试 5（DAG 路径首启动，`depends_on_explicit=True` ∧ yaml N1 depends_on=[]）→ `_ready_nodes` 返回 `["N1"]`，路径自然正确。
 
 #### 3.6.3 `_finalize_after_rebuild_if_last_topology_node` 适配（AC-01 / R-T01）
 
@@ -1742,7 +1753,7 @@ readonly APPROVAL_PYTHON_PATTERN='python3?[[:space:]]+([^[:space:]]+/)?(scripts/
 | `path_lock.py` | acquire 后 .lock 含 pid+created_at+path_target；二次 acquire raise LockBusyError；mock _is_pid_alive=False → 自动清理 + 重试一次；symlink 对 requirement-class run 建立；release 后 .lock 删除但 symlink 保留 | 7 |
 | `workflow_loader._expand_implicit_depends_on` | 全显式 → depends_on_explicit=True；一节点缺省 → False；首节点缺省 depends_on=[] 不算"隐式" → 仍可能为 True | 4 |
 | `workflow_continue._ready_nodes` | 首次 continue → 返回入度=0 节点；某节点 deps 全完 → 加入 ready；ready 节点已在 awaiting → 不重复返回；50 节点 yaml 性能 < 50ms（移到 §7.3） | 5 |
-| `workflow_continue._select_next_dispatch_target` | depends_on_explicit=True → 调 `_ready_nodes`；False → 调 `_next_node` | 2 |
+| `workflow_continue._select_next_dispatch_target` | depends_on_explicit=True → 调 `_ready_nodes`；False → 调 `_next_node`；**退化路径分支 a/b 用 `state ∈ {completed, skipped}` 判 last_visited（v7 REV-006 P1 闭环；与 §3.6.3 SUCCESS_TERMINAL 同源）**；含 4 条单测（真新 run / 续跑反扫 completed / 续跑反扫 skipped 反向回归 / 末节点反扫） | 5 |
 | `workflow_continue` awaiting 下 continue | state=awaiting → print INFO + return 0；不写任何新事件 | 2 |
 | `workflow_continue._finalize_after_rebuild_if_last_topology_node` | DAG 路径"全节点 ∈ {completed, skipped} ∧ 不存在 failed ∧ _ready_nodes 空" → 补 workflow_completed；单链路径 `_next_node is None` 末节点 → 补 workflow_completed；**多 sink DAG 任一先 completed 不触发完成事件**；**存在 failed 节点时 finalize 返回 False，不写 workflow_completed（P1-3 v6 反向覆盖）** | 6 |
 | `workflow_continue._poll_sub_workflows` | 子 completed → 父 child_graceful_exited + node_completed；子 failed + on_subworkflow_failure=skip → child_failed + node_skipped；子 failed + abort → child_failed + node_failed + workflow_failed | 3 |
@@ -1936,3 +1947,4 @@ F-013 (AC-10 7 字段)   ← F-002 / F-007
 | 2026-05-14 11:20:00 | v4 用户对抗审阅 6 处全闭环（3×P1 + 2×P2 + 1×P3） | **P1-1** `WORKFLOW_EVENT_TO_STATE` 不扩展，3 个新事件全部走 §3.8.3 if/elif 专门分支（修复扁平映射吞掉 current_node / pending_approval 副作用的根本缺陷；§2.1 + §3.8.2/3 + 单测）；**P1-2** `_select_next_dispatch_target` 退化路径加首节点补救（current_node is None ∧ 无 completed → 取 yaml.nodes[0]）解决 bootstrap 不设 current_node 导致 AC-01 退化失败；**P1-3** DAG 终态判定改"全节点终态 ∧ _ready_nodes 空"（替换"出度=0"避免多 sink DAG 过早 workflow_completed）；**P2-1** schema 顶层字段表对齐现状（run_id 仅 workflow_started 必填，rebuild 不读其他事件 run_id）；**P2-2** 统一 manifest helper 名为 `append_events_with_manifest`（§2.2 / §3.1 改名）；**P3** e2e yaml 路径 `code-review/` → `review/` 修正 |
 | 2026-05-14 11:35:00 | v5 闭环 REV-004 M-1/M-2 major 跨文件 drift + M-3 minor | **M-1 修复**：features.json F-002 description 删除"WORKFLOW_EVENT_TO_STATE 加..."旧语义，明确"扁平映射保持 6 项不扩展"+ 补反向回归断言（acceptance #7：扁平映射 keys 集合不含 3 新事件）；**M-2 修复**：features.json F-004 description 把"出度=0"改"全节点终态 ∧ _ready_nodes 空" + 补退化首节点 acceptance + 补多 sink DAG 反向回归 acceptance；**M-3 修复**：detailed-design §2.2 示例代码约定段澄清（§2.2.x JSON 示例写 run_id 作为人类辨识便利，§3.x 代码示例与现有 dispatcher 一致写 run_id，append_event 不校验、rebuild 仅 workflow_started 兜底取 run_id） |
 | 2026-05-14 11:55:00 | v6 用户对抗审阅第二轮 4 处全闭环（3×P1 + 1×P2） | **P1-1** save_node_result 补 `_check_node_match_or_fail` 第 2 道闸（RunState 字段 + jsonl 末位事件双向校验；新错误码 E-NODE-RESULT-002/003/004；测试矩阵 8→11 用例，补 3 条反向覆盖单测）—— 杜绝"等 N1 时错写 N2"的身份漏洞；**P1-2** `_select_next_dispatch_target` 退化路径分支 b（current_node is None ∧ 有 completed）补"反扫 last_completed → _next_node 推进"逻辑，与现有 node_completed handler "current_node=None"行为对齐；**P1-3** DAG 终态判定 `terminal_states` 去除 `failed`，含 failed 节点时 finalize 返回 False 由失败矩阵接管 workflow_failed/retry/skip；**P2** manifest 触发条件 §2.4 + §3.5 + §3.2 时序图 + 测试矩阵 + 示例注释全量对齐"batch ≥4KB 触发 + 单字段 ≥3500 入选"二段语义（消除 §2.4 "≥3500 单字段即外置"与 §3.5 算法"先看 batch"的语义冲突） |
+| 2026-05-14 12:15:00 | v7 闭环 REV-006 新 P1（success_terminal 不对称） + P3 三条文案 | **新 P1（v6 P1-2 与 P1-3 改动不对称遗留）**：§3.6.2 退化路径分支 a 的 `any_completed` + 分支 b 反扫的 `state == "completed"` 与 §3.6.3 P1-3 修订定义的 `success_terminal={completed, skipped}` 不一致——会让退化 yaml + on_failure=skip 场景下 N1 被 skip 后**重新派发首节点**。改：引入 `SUCCESS_TERMINAL` 集合（与 §3.6.3 同源）+ any_visited / last_visited 命名替换；补单测 4（skipped 反向回归）；features.json F-004 acceptance 新增"skipped 反向回归"断言。**P3 文案**：(1) `last_awaiting_evt` → `last_node_lifecycle_evt`（反扫候选含 node_completed/failed 不全是 awaiting）；(2) §3.6.2 分支 b 加"仅退化路径执行 + dict 序假设依据"显式注释；(3) F-007 acceptance 反向 b 文案展开"节点级事件候选集 {node_ready, approval_repair_started, node_completed, approval_repair_completed, node_failed}" |
