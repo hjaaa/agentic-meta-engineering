@@ -78,6 +78,12 @@ VALID_EVENT_TYPES: set[str] = {
     "child_graceful_exited",  # 子 graceful 退出（≤ 30s 内完成 cancel）
     "child_force_killed",     # TaskStop forceful 兜底（30s 超时）
     "child_failed",           # 子 subagent 执行节点时抛异常（映射 spec §6.4 on_subworkflow_failure）
+    # D-007 + AC-04a：节点进入"等待 Claude 动作"状态（approval repair 入口）
+    # 注意：这 3 类事件不映射 WORKFLOW_EVENT_TO_STATE——副作用依赖 current_node / pending_approval
+    # 扁平字典无法表达，必须在 rebuild 中用独立 elif 处理（对抗审阅 P1-1 教训）
+    "node_ready",                   # AC-04a：节点就绪，等待 Claude 执行
+    "approval_repair_started",      # AC-03b：approval 修复开始（attempt 计数）
+    "approval_repair_completed",    # AC-03b：approval 修复完成，回到 approval_pending
 }
 
 # 终态 workflow 事件
@@ -156,6 +162,18 @@ class RunState:
                 if not state.run_id:
                     state.run_id = evt.get("run_id") or state.run_id
                 state.state = "running"
+            # 注意：下方 3 个新 elif 必须在 WORKFLOW_EVENT_TO_STATE 分支之前——
+            # 这些事件的副作用依赖 current_node / pending_approval 字段，
+            # 无法通过扁平字典表达（对抗审阅 P1-1 教训）
+            elif ev_type == "node_ready" and node_id:
+                state.current_node = node_id
+                state.state = "awaiting_claude_action"
+            elif ev_type == "approval_repair_started" and node_id:
+                state.pending_approval = node_id
+                state.state = "awaiting_claude_action"
+            elif ev_type == "approval_repair_completed":
+                # pending_approval 保留（仍在等下一次 approve/reject）
+                state.state = "approval_pending"
             elif ev_type in WORKFLOW_EVENT_TO_STATE:
                 state.state = WORKFLOW_EVENT_TO_STATE[ev_type]
             elif ev_type == "node_started" and node_id:
@@ -170,6 +188,9 @@ class RunState:
                 }
                 if state.current_node == node_id:
                     state.current_node = None
+                # node_ready 先把 state 置为 awaiting_claude_action；节点完成后回 running
+                if state.state == "awaiting_claude_action":
+                    state.state = "running"
             elif ev_type == "node_failed" and node_id:
                 node_started_at.pop(node_id, None)
                 state.node_outputs[node_id] = {

@@ -42,6 +42,7 @@ DispatchOutcome = Literal[
     "loop_done",
     "sub_workflow_pending",
     "sub_workflow_done",
+    "awaiting_claude_action",  # F-002：节点就绪等待 Claude 执行（node_ready / approval_repair_started 路径）
 ]
 
 
