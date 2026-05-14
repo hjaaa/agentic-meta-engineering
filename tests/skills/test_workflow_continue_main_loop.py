@@ -328,12 +328,18 @@ class TestMainLoopCrashWindowDoesNotFinalize:
         tmp_path,
     ):
         """模拟 crash 场景：rebuild 把 current_node 置 None，但 state 仍为 running 且
-        拓扑还有未完成节点。重启后 _main_loop 直接因 while 失败退出，**不**写
-        workflow_completed，state 保持 running，让用户能介入修复。
+        拓扑还有未完成节点。
+
+        F-004 rev2（F-CR-002）后：_main_loop 在 finalize 与 while 之间插了 bootstrap，
+        会调 _select_next_dispatch_target 反扫 last_visited → _next_node 推进 → 继续
+        跑剩余节点，不再"保持 running 不推进"。
+
+        本测覆盖 bootstrap 的"无可派发节点"分支：mock _select_next_dispatch_target 返 None
+        来模拟 yaml/jsonl 不一致或拓扑全阻塞场景——此时 while 因 current_node 仍是 None 不
+        进入，state 保持 running，**不**写 workflow_completed。
         """
         # 模拟 crash 后 rebuild 的产物：current_node=None（rebuild 看到 node-a 已 completed），
-        # 但工作流还有 node-b 没跑完——必须在 jsonl 写 node-a 的 node_completed 让
-        # round-5 finalize helper 能看到"最后完成的节点仍有 next"
+        # 但工作流还有 node-b 没跑完
         from run_state import append_event as _append
         _append(jsonl_path, {
             "type": "node_completed",
@@ -349,23 +355,86 @@ class TestMainLoopCrashWindowDoesNotFinalize:
         }
         run_state = RunState(
             run_id="REQ-CRASH-001",
-            current_node=None,  # ← 关键：rebuild 后 current_node 已 None
-            state="running",     # 但 state 仍是 running（无 workflow_completed 事件）
+            current_node=None,  # rebuild 后 current_node 已 None
+            state="running",     # state 仍是 running（无 workflow_completed 事件）
         )
 
-        _main_loop(run_state, workflow, tmp_path, tmp_path, jsonl_path)
+        # F-CR-002 新语义：mock _select_next_dispatch_target 返 None 模拟"无可派发节点"，
+        # bootstrap 不置 current_node → while 不进入 → state 保持 running。
+        with patch(
+            "workflow_continue._select_next_dispatch_target",
+            return_value=None,
+        ):
+            _main_loop(run_state, workflow, tmp_path, tmp_path, jsonl_path)
 
-        # P1-c v2 关键回归：state 应保持 running，**不**翻 completed
+        # bootstrap 返 None 时：state 应保持 running，**不**翻 completed/failed
         assert run_state.state == "running", (
-            f"crash 窗口 rebuild 出的 current_node=None + 最后 completed 的节点仍有 next，"
-            f"应保持 running 让用户介入；实际 state={run_state.state!r}"
+            f"bootstrap 拿不到下一节点应保持 running 让用户介入；"
+            f"实际 state={run_state.state!r}"
         )
+        # current_node 仍为 None（while 未进入即未派发）
+        assert run_state.current_node is None
         # jsonl 不应含 workflow_completed
         events, _ = read_events(jsonl_path)
         types = [e["type"] for e in events]
         assert "workflow_completed" not in types, (
-            f"非末节点 crash 不应写 workflow_completed 事件，实际 jsonl events: {types}"
+            f"无可派发节点时不应写 workflow_completed 事件，实际 jsonl events: {types}"
         )
+
+    def test_main_loop_bootstrap_resumes_remaining_chain_after_crash(
+        self,
+        jsonl_path,
+        tmp_path,
+    ):
+        """F-CR-002 正向覆盖：crash-window 场景下 bootstrap 通过 _select_next_dispatch_target
+        反扫 last_visited 后能正确推进到剩余链路。
+
+        场景：node-a 已 completed（jsonl 有事件 + node_outputs 含 SUCCESS_TERMINAL），
+              node-b 未跑完；rebuild 后 current_node=None / state=running。
+        期望：bootstrap 通过分支 b 反扫 node_outputs 找到 last_visited=node-a，调
+              _next_node 返 node-b → 推进继续跑 → 最终 completed。
+        """
+        from workflow_dispatcher import DispatchResult
+        from run_state import append_event as _append
+
+        # 模拟 rebuild 后状态：node_outputs 含 node-a SUCCESS_TERMINAL
+        _append(jsonl_path, {
+            "type": "node_completed",
+            "node_id": "node-a",
+            "data": {"output": "ok"},
+        })
+
+        workflow = {
+            "nodes": [
+                {"id": "node-a", "bash": "echo a", "next": "node-b"},
+                {"id": "node-b", "bash": "echo b"},
+            ]
+        }
+        run_state = RunState(
+            run_id="REQ-RESUME-001",
+            current_node=None,
+            state="running",
+            node_outputs={
+                "node-a": {"output": "ok", "state": "completed", "data": {}}
+            },
+        )
+
+        with patch("workflow_dispatcher.dispatch_node") as mock_dispatch:
+            mock_dispatch.return_value = DispatchResult(
+                outcome="completed",
+                output="b-output",
+            )
+            _main_loop(run_state, workflow, tmp_path, tmp_path, jsonl_path)
+
+        # bootstrap 把 current_node 设为 node-b → 派发 → completed → 推进 None →
+        # finalize 写 workflow_completed
+        assert run_state.state == "completed", (
+            f"bootstrap 应推进 node-b 完成全链；实际 state={run_state.state!r}"
+        )
+        assert mock_dispatch.call_count == 1, "应仅派发剩余 node-b 一次"
+        # dispatcher 第一次调用即派 node-b
+        dispatched_node = mock_dispatch.call_args_list[0].args[0]
+        assert dispatched_node["id"] == "node-b"
 
     def test_main_loop_auto_finalizes_when_rebuild_yields_none_after_last_node(
         self,
