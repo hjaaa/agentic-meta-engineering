@@ -59,5 +59,11 @@
       "F-005（artifact 第 8 类 dispatcher）desc 322 字符且仅扩 dispatch_table 一条目，建议补 complexity: low",
       "F-010（loop until_bash）/ F-012（launcher fuzzy）desc 短且独立，建议补 complexity: low 以让阶段 7 派发器走并行 sonnet 通道"
     ]
+  },
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-14T15:11:11.566896+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
   }
 }

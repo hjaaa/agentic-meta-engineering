@@ -37,3 +37,4 @@ REQ-2026-011 语义事件日志
 2026-05-14 10:08:29 [phase-transition] outline-design → detail-design 11/11 gate 过；REV-004 looks_clean(92) signoff；arch-concerns AC-A1/A2/A3 全闭环
 2026-05-14 10:13:55 [save] detail-design 6 项待澄清全闭环：D-02→D-009 / D-03→D-010 / O-01→D-011 / O-02→D-012 / O-03→D-013 / O-04→D-014
 2026-05-14 15:01:35 [signoff] REV-REQ-2026-011-detail-design-010 approved by hj19961223@gmail.com
+2026-05-14 15:11:11 [signoff] REV-REQ-2026-011-detail-design-011 approved by hj19961223@gmail.com
