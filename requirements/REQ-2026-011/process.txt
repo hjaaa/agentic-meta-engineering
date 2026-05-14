@@ -39,3 +39,6 @@ REQ-2026-011 语义事件日志
 2026-05-14 15:01:35 [signoff] REV-REQ-2026-011-detail-design-010 approved by hj19961223@gmail.com
 2026-05-14 15:11:11 [signoff] REV-REQ-2026-011-detail-design-011 approved by hj19961223@gmail.com
 2026-05-14 15:12:56 [phase-transition] detail-design → task-planning 11/11 gate 过；REV-011 looks_clean(94) signoff；11 轮迭代 4 轮对抗 17 bug 闭环
+2026-05-14 15:14:08 [save] task-planning 切入完成；待选下一步：13 features 一次性拆 / P0-baseline pilot / 先做归档
+2026-05-14 15:18:50 [save] implementation backlog 沉淀 → notes.md：IB-01 SUCCESS_TERMINAL 抽 run_state.py + IB-02 outline:135 P3
+2026-05-14 15:25:45 [save] task-planning 13 task.md 落地（F-001~F-013 frontmatter schema 全过 + features.json schema 过）

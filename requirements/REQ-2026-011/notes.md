@@ -48,3 +48,21 @@
   - tech-research 产出（feasibility=high / 17~23 天估算 / D-01/D-02 关闭结论 / D-03 延期、Q-01~Q-05 新发现）全部作废，重做时需重审
   - reviews.definition.latest = REV-002 looks_clean(92) + tty signoff approved 状态保留；若 requirement.md 在 definition 重做时再次变更，会触发 R005 stale，需要走第三轮评审
   - meta.yaml.gates_passed 历史保留 bootstrap→definition / definition→tech-research 两条；下次切换 phase 时门禁 runner `_validate_phase_args` 会基于当前 phase（已回到 definition）做相邻校验
+
+## Implementation backlog（task-planning 阶段沉淀，2026-05-14）
+
+> 来自 detail-design v8 评审遗留，不阻塞 task-planning → development，但 implementation 起步时必须处理。
+
+### IB-01 · SUCCESS_TERMINAL 抽共享常量（F-004 实施前置）
+
+- **现状**：`SUCCESS_TERMINAL = {"completed", "skipped"}` 字面集合在 `detailed-design.md` 四处局部定义（§3.3.5 line 767-771 / §3.6.2 line 1012 / §3.6.3 line 1035 / §5.4 line 1692-1694），靠注释「与 §3.6.3 同源」维持一致——已连续三轮（v6→v7→v8）出现不对称 drift。
+- **目标**：implementation 起步时把常量提到 `scripts/lib/run_state.py`（建议命名 `NodeState.SUCCESS_TERMINAL = frozenset({"completed", "skipped"})`），让 `workflow_continue.py` 的 `_ready_nodes` / `_select_next_dispatch_target` / `_finalize_after_rebuild_if_last_topology_node` 四处 import 同一常量。
+- **F-004 modules 补丁**：当前 modules 含 `workflow_loader.py / workflow_continue.py / standard-8phase.yaml + 测试 6 项`，缺 `scripts/lib/run_state.py`——F-004 进入 development 前需补到 modules 列表。
+- **来源**：`reviews/detail-design-007.json:68`（suggestion #1）+ `reviews/detail-design-008.json:81/91`（recommendation #2 + modules 缺失提示）。
+
+### IB-02 · outline-design.md:135 末节点判定文案 readability 清理（P3）
+
+- **现状**：outline-design.md:135 同一表格格内出现 4 种表述并存——「成功类终态 / SUCCESS_TERMINAL / completed / skipped」，正确性已闭环（v8 P3 修订），但可读性偏低。
+- **目标**：在 implementation PR 一并把 outline-design.md:135 的术语统一为「SUCCESS_TERMINAL ({completed, skipped})」单一表述，配套备注「与 detailed-design §3.6.3 同源」。
+- **优先级**：P3 minor，可与 F-004 同 PR 顺带 fix，不单开任务。
+- **来源**：`reviews/detail-design-008.json:71`（minor #3）。
