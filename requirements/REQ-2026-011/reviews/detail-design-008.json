@@ -1,0 +1,96 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-011-detail-design-008",
+  "requirement_id": "REQ-2026-011",
+  "phase": "detail-design",
+  "reviewer": "detail-design-quality-reviewer",
+  "reviewed_at": "2026-05-14 14:45:16",
+  "reviewed_commit": "cf1b942",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/detailed-design.md",
+      "sha256": "cf783dff5fcf6596468923617e4eac8da20dffbf32469976aff1b5c8e637248a"
+    },
+    {
+      "path": "artifacts/features.json",
+      "sha256": "1aaedc9d46cacddce07f2c6f3e237e18f457e6d5fe6652251801ca1a7e068450"
+    },
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "0863aa3cdd222ab08168eb50d9d4814c9f28045c0e3d05b2caee31de7176ee4a"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 91,
+  "dimensions": {
+    "consistency_with_outline": {
+      "score": 93,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "outline-design.md:135 末节点判定文字与 detailed-design.md §3.6.3 line 1098-1107 实现完全对齐（success_terminal + not has_failed + _ready_nodes 空），同步指向 detail v4 P1-3 修订记录；交叉 OK。仅一处 minor 措辞：'最终定稿见 detailed-design.md §3.6.3' 可补 line 锚点（1058-1115）便于二次跳读"
+        }
+      ]
+    },
+    "interface_completeness": {
+      "score": 92,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "detailed-design.md:768 NON_READY_STATES 包含 'running' 和 'awaiting_claude_action' 是冗余防御——line 775 已用 nid == run_state.current_node continue 单独排除运行中节点，rebuild 中 running/awaiting 不会写入 node_outputs[nid].state（OK 不影响正确性；建议 implementation 阶段在 docstring 注明 '冗余防御，与 current_node 短路双保险'）"
+        }
+      ]
+    },
+    "data_model_soundness": {
+      "score": 92,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "detailed-design.md §3.3.5 / §3.6.2 / §5.4 三处 SUCCESS_TERMINAL 常量字面值都是 {completed, skipped}，与现实代码 scripts/lib/run_state.py:164-190 node_outputs[nid].state 取值集 {completed, failed, skipped} 完全对齐；v8 抽出共享常量的建议（F-004 description 已写）implementation 阶段必须落到 scripts/lib/run_state.py，避免下一轮 drift 复发"
+        }
+      ]
+    },
+    "sequence_correctness": {
+      "score": 92,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "detailed-design.md:1083 finalize 反扫事件类型集 {node_completed, node_skipped} 不含 node_failed——这是合理设计抉择（node_failed 节点由 _route_outcome 失败矩阵在 abort/skip/retry 分支接管 workflow_failed/retry/skip，finalize 不接管，详见 line 1095-1097 注释 + §3.6.4 _poll_sub_workflows 矩阵）。但 §3.6.3 finalize docstring（line 1067-1074）和 features.json F-004 acceptance #10（line 123）都未显式陈述这一'抉择'，建议补一行注释 'node_failed 不参与反扫起点（由失败矩阵接管）'，避免未来再迭代时第四轮对抗审阅又把它当 P1"
+        }
+      ]
+    },
+    "feature_granularity": {
+      "score": 90,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "features.json:116 F-004 acceptance #6（_select_next_dispatch_target）+ line 118 acceptance #8（续跑反扫断言 P1-2 v6）仍保留旧命名 last_completed——v8 P1 已统一改为 SUCCESS_TERMINAL/last_visited 在 description（line 88）与 acceptance #4/#5（line 113-115）；这两条 acceptance 行为描述本身正确（state==completed 场景下 last_visited 等于 last_completed），但命名不对齐造成跨条款语义噪声，且与 detailed-design.md §3.6.2 line 1033/1036 last_visited_id 命名不一致。属 P3 旧文案残留再发——建议 features.json:116/118 把 last_completed 全部改为 last_visited（共 3 处），并在 acceptance #6 'current_node is None ∧ 无 completed' 改为 'current_node is None ∧ 无 success_terminal' 以保持术语一致"
+        },
+        {
+          "severity": "minor",
+          "description": "outline-design.md:135 末节点判定中文术语在同一格内出现 '成功类终态/SUCCESS_TERMINAL/completed/skipped' 多种表述，可读性可优化（不影响正确性）"
+        }
+      ]
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "features.json L116 + L118 把残留的 last_completed 替换为 last_visited（3 处），并把 acceptance #6 的 '无 completed' / '有 completed' 同步改为 '无 success_terminal' / '有 success_terminal'，与 description 抽出的 SUCCESS_TERMINAL 命名 1:1 对齐——本轮唯一 P3 残留",
+    "detailed-design.md §3.6.3 docstring（line 1067-1074）补一句 'node_failed 不参与反扫起点（由 _route_outcome 失败矩阵 abort/skip/retry 分支接管 workflow_failed/retry/skip，finalize 不接管）'，并在 features.json F-004 acceptance 加一条反向回归断言：'on_failure=abort 单链 N1→N2，事件 [..., node_failed(N2)] → finalize 不写 workflow_completed（由 _route_outcome 写 workflow_failed）'——预防第 4 轮对抗审阅把这点当 P1",
+    "detailed-design.md §3.3.5 line 768 NON_READY_STATES docstring 补一句 'running / awaiting_claude_action 冗余防御 —— 与 line 775 current_node 短路构成双保险'，避免实施阶段 reviewer 对集合冗余成员产生困惑",
+    "implementation 阶段把 SUCCESS_TERMINAL 共享常量真实抽到 scripts/lib/run_state.py（F-004 description 已建议），并让 §3.3.5 / §3.6.2 / §3.6.3 / §5.4 四处 import 同一常量——这是杜绝'同一语义在多处落地不一致'连续三轮复发的唯一根治方案；建议在 features.json F-004 modules 添加 scripts/lib/run_state.py（目前 modules 只含 workflow_loader/workflow_continue/standard-8phase.yaml + 测试 6 项，缺 run_state.py）",
+    "v8 修订记录（detailed-design.md:1968）覆盖完整且自我披露 P1/P2/P3 三档，质量上乘；建议下一轮 implementation 阶段 PR 描述沿用此模板"
+  ],
+  "scope": null,
+  "supersedes": "REV-REQ-2026-011-detail-design-007",
+  "features_json_validation": {
+    "valid": true,
+    "issues": [],
+    "enhancement_suggestions": [
+      "F-004 acceptance 仍有 2 处旧命名 last_completed 残留（line 116/118），建议在 implementation 阶段或本阶段补救 commit 替换",
+      "F-004 modules 建议增补 scripts/lib/run_state.py（SUCCESS_TERMINAL 共享常量落地点）",
+      "F-009 acceptance 已补 incomplete_dispatch 用例（line 286），与 §7.1 测试矩阵 line 1785 双向对齐，OK",
+      "F-004 acceptance #4 / #5 已补 v8 P1 反向回归（skipped 不阻断下游 + finalize 末节点 skipped），与 detailed-design.md §3.3.5/§3.6.3 1:1 对齐，OK"
+    ]
+  }
+}

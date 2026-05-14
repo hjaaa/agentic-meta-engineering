@@ -1064,9 +1064,14 @@ def _finalize_after_rebuild_if_last_topology_node(
     node_map: dict,
     jsonl_path: Path,
 ) -> bool:
-    """末节点判定双分支（AC-01 / R-T01；对抗审阅 P1-3 v6 二次修订）。
+    """末节点判定双分支（AC-01 / R-T01；对抗审阅 P1-3 v6 二次修订 + v8 P1 反扫起点修订）。
 
-    - depends_on_explicit=False：保留既有"_next_node(last_node, None) is None"判定
+    - depends_on_explicit=False：保留既有"_next_node(last_visited, None) is None"判定。
+      **node_failed 处理**：单链路径反扫候选集 {node_completed, node_skipped} 不含 node_failed
+      （v8 P1 抉择）；单链 + on_failure=abort 末节点 failed 时反扫返回 None → finalize 直接
+      return False，由 dispatcher 的 abort 路径主动写 workflow_failed（与 DAG 路径一致：
+      failed 节点的 workflow 终结**绝不**走 finalize，仅由失败矩阵 _handle_abort/_handle_skip
+      在 workflow_continue.py 内显式触发——保证 failed 与 completed 的终态信号互不串台）。
     - depends_on_explicit=True ：用"全节点 ∈ {completed, skipped} ∧ 不存在 failed ∧ _ready_nodes 空"
       （v5 把 failed 纳入终态会让含失败节点的 workflow 被错误标 completed，
         v6 排除 failed；含 failed 节点的 workflow 由 _route_outcome 失败矩阵决定
