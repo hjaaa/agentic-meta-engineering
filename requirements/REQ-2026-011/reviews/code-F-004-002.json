@@ -1,0 +1,118 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-011-code-F-004-002",
+  "requirement_id": "REQ-2026-011",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-14 22:18:11",
+  "reviewed_commit": "101b7b0",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "e05957428c01111babb122eac6af1871456cc9f6e0cfac8a5a5a5fc572a02c6a"
+    },
+    {
+      "path": "artifacts/tasks/F-004.md",
+      "sha256": "30bbf14be60662064dcb31a80107b7319cfaae33e39a5f8ab7b86ed8d4c60a80"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 90,
+  "dimensions": {
+    "design_consistency": {
+      "score": 90,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "F-CR2-009 scripts/lib/workflow_continue.py:536 _is_dag_topology_done(workflow, run_state) 参数顺序与文件惯例反——同模块 _advance_after_completed(run_state, node, ...) / _route_outcome(run_state, node, ...) 均以 run_state 首位；建议下个 PR 调成 _is_dag_topology_done(run_state, workflow)"
+        }
+      ]
+    },
+    "security": {
+      "score": 95,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 95,
+      "issues": []
+    },
+    "complexity": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "F-CR2-005 scripts/lib/workflow_continue.py:570 _finalize_after_rebuild CCN=10 恰好等于阈值；rev2 拆出 _is_dag_topology_done / _is_legacy_topology_done 已大幅降复杂度（rev1 18→rev2 10），但已无安全余量，下次再加分支即超阈"
+        },
+        {
+          "severity": "minor",
+          "description": "F-CR2-008 scripts/lib/workflow_continue.py 全文 860 行（rev1 726 → rev2 +134），rev1 follow-up F-CR-010 在 rev2 反向恶化；独立 PR 拆 workflow_scheduler.py + workflow_outcome_router.py 跟踪"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 91,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "F-CR2-001 (critic not_proven, 形式正确性 gap) scripts/lib/workflow_continue.py:389 _finalize_if_topology_done 仅以 current_node is None 判定拓扑完成，未调 _is_dag_topology_done；critic 反证 DAG happy path 下 _advance_after_completed:438-446 已让 current_node=None ⇔ 全节点 success_terminal（失败/跳过早走 _handle_skip/abort 不进 advance），不可触发误判；保留为 follow-up 推动下个 PR 把判定显式化（消形式 gap）"
+        },
+        {
+          "severity": "minor",
+          "description": "F-CR2-002 scripts/lib/workflow_continue.py:673 _main_loop bootstrap 阶段 _select_next_dispatch_target 返 None 时静默 exit 0；当 DAG yaml 全空或全 awaiting 时无 WARN，建议补 logger.warning 对齐 _finalize_after_rebuild:493 风格"
+        },
+        {
+          "severity": "minor",
+          "description": "F-CR2-003 scripts/lib/workflow_continue.py:740 _resume_run print(str(exc)) 缺 ERROR: 前缀，与同模块 _handle_retry:184-188 / _finalize_after_rebuild:493-495 WARN 前缀风格不一致"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 91,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "F-CR2-010 (critic not_proven) scripts/lib/workflow_continue.py:536/557 新 helper 缺显式 Returns 段；既有 _advance_after_completed 也无 Returns 段，文件惯例非全统一前提存疑——视为 follow-up 在统一 docstring 风格 PR 中处理"
+        },
+        {
+          "severity": "minor",
+          "description": "F-CR2-011 tests/e2e/test_standard_8phase_dag.py:172 死 import + noqa 压制，应直接删除或显式使用"
+        },
+        {
+          "severity": "minor",
+          "description": "F-CR2-012 tests/e2e/test_standard_8phase_dag.py:107 死变量 completed_node_ids 未被断言读取"
+        },
+        {
+          "severity": "minor",
+          "description": "F-CR2-013 tests/e2e/test_standard_8phase_dag.py 新测试函数名纯英文（如 test_dag_multi_sink_full_chain），与同目录既有 test_legacy_next_chain.py 等混合命名惯例略有 drift；非阻断风格点"
+        }
+      ]
+    },
+    "performance": {
+      "score": 92,
+      "issues": []
+    },
+    "history_context": {
+      "score": 95,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "rev1 5 条 required_fixes 全闭环：F-CR-001/002/003/007 closed，F-CR-004 partially（CCN 18→10 at-threshold，建议下 PR 继续抽 helper 留余量）；F-CR-008/011/015 minor 全 closed",
+    "trend-Q-orphan-scheduler 反模式消除：_select_next_dispatch_target 在 main_loop 链路上调用点从 0 提到 2（443 advance DAG 分支 + 673 bootstrap），这是 rev2 的最大胜利",
+    "trend-G-meta：rev1→rev2 修复未引入回归（critic 把 EH-1 由 critical 降 not_proven 已确认），形式正确性 gap 留下个 PR 显式化即可",
+    "EH-1 形式正确性 gap：建议 _finalize_if_topology_done 内增 assert _is_dag_topology_done(run_state, workflow) 当 workflow.depends_on_explicit=True，让形式与语义一致——happy path 不变，但防止后续重构破坏不变量",
+    "CMP follow-up：860 行文件拆 workflow_scheduler.py + workflow_outcome_router.py，把 _select_next_dispatch_target / _dag_next / _legacy_bootstrap_or_resume / _legacy_advance + _ready_nodes 拆出",
+    "Lint follow-up（5 处 minor not_rebutted）：参数顺序 _is_dag_topology_done(workflow, run_state)→(run_state, workflow) / bootstrap None WARN / _resume_run print 加 ERROR 前缀 / 删 e2e 死 import + 死变量 / 统一 docstring Returns 段"
+  ],
+  "scope": {
+    "feature_id": "F-004"
+  },
+  "supersedes": "REV-REQ-2026-011-code-F-004-001",
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-14T22:25:55.485836+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
+  }
+}

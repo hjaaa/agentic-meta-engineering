@@ -182,12 +182,13 @@ reviews:
       F-004:
         history:
           - REV-REQ-2026-011-code-F-004-001
-        latest: REV-REQ-2026-011-code-F-004-001
-        conclusion: blocked
-        reviewed_commit: '54e0718'
+          - REV-REQ-2026-011-code-F-004-002
+        latest: REV-REQ-2026-011-code-F-004-002
+        conclusion: looks_clean
+        reviewed_commit: '101b7b0'
         artifact_hashes:
           artifacts/features.json: 
             e05957428c01111babb122eac6af1871456cc9f6e0cfac8a5a5a5fc572a02c6a
           artifacts/tasks/F-004.md: 
-            cee14a5c2b3cf21b864cd0c8c51850ba4e14100f8b697f77c45818adb54f3e45
+            30bbf14be60662064dcb31a80107b7319cfaae33e39a5f8ab7b86ed8d4c60a80
         stale: false

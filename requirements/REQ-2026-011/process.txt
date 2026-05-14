@@ -70,3 +70,7 @@ REQ-2026-011 语义事件日志
 2026-05-14 21:22:38 [save] F-004 派发完成（model=opus，22 new tests + 1371/1371 + 8 skipped 0 回归；commit c762a68）；进 post-dev gate + /code-review；caveat：_select_next_dispatch_target 未自动接入 main_loop bootstrap（与既有 test_main_loop_skips_finalize 冲突，超 F-004 touches）
 2026-05-14 21:45:35 [review:blocked] F-004 rev1 code-review blocked(62) 5维[55/70/80/75/90] 1 blocker (F-CR-001 DAG 推进路径不分流 → 首节点完成后误终止) + 4 major (F-CR-002/003/004/007)；critic 7→9 keep；trend-Q-orphan-scheduler 反模式首发；rev2 修复派发
 2026-05-14 22:04:29 [save] F-004 rev2 修复完成（78068f4：DAG 推进分流 + bootstrap + CCN 拆解 + WARN 日志；新增 3 测 + 改 1 测；scoped 38/38 + 1374 全套 0 回归）；进 rev2 post-dev gate + /code-review
+2026-05-14 22:23:23 [review:approved] F-004 rev2 code-review looks_clean(90) 5维[90/88/91/91/95]；rev1 5 required_fixes 全闭环（F-CR-001/002/007/008/011/015 closed + F-CR-004 partially CCN 18→10 at-threshold）；trend-Q-orphan-scheduler 反模式消除（_select_next_dispatch_target 调用点 0→2）；critic 5 rejected/2 not_proven (含 EH-1)/8 not_rebutted；等 tty signoff
+2026-05-14 22:25:55 [signoff] REV-REQ-2026-011-code-F-004-002 approved by hj19961223@gmail.com
+2026-05-14 22:27:26 [signoff] REV-REQ-2026-011-code-F-004-002 approved by hj19961223@gmail.com
+2026-05-14 22:27:26 [save] F-004 完成（status=done / rev2 looks_clean 90 / signoff approved / 释放派发锁 / 9 minor follow-up 入 IB backlog（lint + 形式正确性 assert + 模块拆分三件套）；trend-Q-orphan-scheduler 反模式消除）
