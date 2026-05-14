@@ -222,7 +222,7 @@ runs/REQ-2026-011/
   | `reject-reason` | `approval_rejected` + `node_failed(reason=approval_attempts_exhausted)` | `data.reason` | `workflow_reject.py`（reject CLI 入口）|
   | `skill-output` | `node_completed`（kind=skill_result，主 Claude 回写大 output） | `data.output` | `save_node_result.py --kind=skill_result` |
 
-  扩展约束：未来新增 purpose 必须在本表登记 + 出现在 §2.2 事件 payload 段；未登记的 purpose 视为 schema 违规（落 manifest 时 raise WorkflowError）。
+  扩展约束：未来新增 purpose 必须在本表登记 + 出现在事件 payload schemas 段（即上文 jsonl event payload schemas 小节）；未登记的 purpose 视为 schema 违规（落 manifest 时 raise WorkflowError）。
 - **ref 结构**：`{"path": "manifest/<event_id>.txt", "size": N, "sha256": "<hex>"}`；
 - **生命周期**：随 run 归档；`requirement:archive` 不单独清理 manifest 目录（与 run 目录同进退）。
 - **写入原子性**：先写 manifest tmp 文件 → fsync → `os.replace()` 到目标路径 → 再 `append_events` 写 jsonl event（jsonl 写失败时 manifest 文件成孤儿，按"先 manifest 后 jsonl"顺序，孤儿 manifest 不影响 rebuild；后台清理留 follow-up）。
@@ -1737,7 +1737,7 @@ def _ready_nodes(run_state, workflow):
 
 > **命名说明**：plan.md 中"D-006 hook 拦截基线" 引用是历史 ADR（承自 REQ-2026-006 全局逃生通道）；本需求 plan.md 的 D-006 是 DAG 兼容退化判定。为避免同号不同义，本文档以下统一用 **"AI-CMD-LOCK"** 指代 pre-tool-use-guard.sh 中 AI 不可调命令拦截基线。
 
-**当前拦截范围**（来源：.claude/hooks/pre-tool-use-guard.sh:22-23）：
+**当前拦截范围**（下方贴出 22~23 行；来源：.claude/hooks/pre-tool-use-guard.sh:22）：
 
 ```bash
 readonly APPROVAL_SLASH_PATTERN='(/workflow:(approve|reject))(\b|[[:space:]])'
@@ -1806,7 +1806,7 @@ readonly APPROVAL_PYTHON_PATTERN='python3?[[:space:]]+([^[:space:]]+/)?(scripts/
 | `tests/e2e/test_status_verbose_stale.py` | 任意 yaml；mock last_event_ts 30 分钟前 | AC-06 |
 | `tests/e2e/test_loop_until_bash.py` | 新建 fixture（until_bash + max_iterations=3） | AC-07 |
 
-每个 fixture 至少 1 个断言：jsonl 末位 = workflow_completed（或对应失败终态）。
+每个 fixture 至少一个断言：jsonl 末位 = workflow_completed（或对应失败终态）。
 
 ### 7.3 micro-benchmark（性能软约束验证）
 
@@ -1844,7 +1844,7 @@ readonly APPROVAL_PYTHON_PATTERN='python3?[[:space:]]+([^[:space:]]+/)?(scripts/
 
 ### 8.1 与 REQ-2026-010 main loop 兼容
 
-REQ-010 落地了 main loop 7 类节点 + 7 outcome（来源：requirements/REQ-2026-010/artifacts/features.json:F-005~F-008）。本期改动：
+REQ-010 落地了 main loop 7 类节点 + 7 outcome（详见 F-005~F-008，来源：requirements/REQ-2026-010/artifacts/features.json）。本期改动：
 
 - **保持兼容**：DispatchOutcome 新增 `awaiting_claude_action`（第 8 项），既有 7 项行为不变；`_main_loop` 的 outcome 路由表追加 `awaiting_claude_action → break + return`（与 approval_pending / sub_workflow_pending 同款）。
 - **保持兼容**：`workflow_dispatcher.dispatch_node` 入口 `append_event(node_started)` 不动；既有 handler（skill/prompt/agent）的 `node_completed` 写入改为 `node_ready`，bash/approval/loop/sub_workflow 保持不变。
