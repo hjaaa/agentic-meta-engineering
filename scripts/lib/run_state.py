@@ -94,6 +94,11 @@ TERMINAL_WORKFLOW_EVENTS: set[str] = {
 # 终态 state 集合（state 字符串，非事件名）；用于新 elif 分支的终态守卫。
 TERMINAL_STATES: frozenset[str] = frozenset({"completed", "failed", "cancelled"})
 
+# F-004 IB-01：node 级"成功类终态"集合——_ready_nodes 依赖判定 / 退化路径
+# last_visited 反扫 / finalize DAG 全节点判定四处必须严格同源，禁止局部 set
+# 字面量再定义（v6→v7→v8 三轮 drift 复发风险的永久消除点）。
+SUCCESS_TERMINAL: frozenset[str] = frozenset({"completed", "skipped"})
+
 # state 派生表（最近一次 workflow 级事件 → state 字符串）
 WORKFLOW_EVENT_TO_STATE: dict[str, str] = {
     "workflow_started": "running",

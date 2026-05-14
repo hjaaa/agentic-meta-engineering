@@ -473,15 +473,26 @@ def _validate_node_id_uniqueness(
 # ============================================================================
 
 def _expand_implicit_depends_on(workflow: dict[str, Any]) -> None:
-    """`depends_on` 缺省 = 隐式接上一节点（spec §6.12）。"""
+    """`depends_on` 缺省 = 隐式接上一节点（spec §6.12）。
+
+    F-004（D-006 / AC-01）：加载后给 workflow dict 顶层补 `depends_on_explicit: bool`：
+      - True ：原始 YAML 中**所有节点**（首节点除外）显式声明了 depends_on
+      - False：至少一个非首节点缺省 depends_on（loader 仍补 [prev_id] 维持兼容）
+    首节点缺省 depends_on=[] 不算"隐式"，all_explicit 保持 True。
+    scheduler 据此 flag 选 `_ready_nodes`（True）/ `_next_node`（False）路径。
+    """
     nodes = workflow.get("nodes") or []
     prev_id: str | None = None
+    all_explicit = True
     for node in nodes:
         if not isinstance(node, dict):
             continue
         if "depends_on" not in node:
             node["depends_on"] = [prev_id] if prev_id else []
+            if prev_id is not None:  # 首节点缺省 depends_on=[] 不算"隐式"
+                all_explicit = False
         prev_id = node.get("id")
+    workflow["depends_on_explicit"] = all_explicit
 
 
 def _validate_dag(workflow: dict[str, Any], report: Report, file_label: str) -> None:

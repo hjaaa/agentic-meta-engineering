@@ -1,0 +1,24 @@
+# F-004 退化路径 fixture：5 节点全 next，无显式 depends_on
+# 用于验证 depends_on_explicit=False 路径走 _select_next_dispatch_target → _next_node
+# 单链；e2e 跑通到 workflow_completed。
+name: workflow-legacy-next
+version: 1
+category: assist
+provider: claude
+model: sonnet
+
+nodes:
+  - id: n1
+    bash: 'echo n1'
+    next: n2
+  - id: n2
+    bash: 'echo n2'
+    next: n3
+  - id: n3
+    bash: 'echo n3'
+    next: n4
+  - id: n4
+    bash: 'echo n4'
+    next: n5
+  - id: n5
+    bash: 'echo n5'

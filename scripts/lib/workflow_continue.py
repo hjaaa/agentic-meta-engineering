@@ -20,7 +20,13 @@ if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
 from common import REPO_ROOT, WorkflowError, infer_run_id_from_branch  # noqa: E402
-from run_state import RunState, _resolve_run_dir, append_event, read_events  # noqa: E402
+from run_state import (  # noqa: E402
+    SUCCESS_TERMINAL,
+    RunState,
+    _resolve_run_dir,
+    append_event,
+    read_events,
+)
 from workflow_state_validator import validate_state_for_cmd  # noqa: E402
 from workflow_loader import load_workflow  # noqa: E402
 
@@ -51,6 +57,111 @@ def _next_node(
     if hint is not None:
         return hint
     return current_node.get("next")
+
+
+# F-004 IB-01：NON_READY_STATES 与 SUCCESS_TERMINAL 同源——SUCCESS_TERMINAL 从
+# run_state 模块 import（永久消除 v6→v7→v8 三轮 drift 复发风险）。
+_NON_READY_STATES: frozenset[str] = SUCCESS_TERMINAL | frozenset(
+    {"failed", "running", "awaiting_claude_action"}
+)
+
+
+def _ready_nodes(
+    run_state: RunState,
+    workflow: dict,
+) -> list[str]:
+    """计算当前 ready 节点 ID 列表（D-013：每次全量重算）。
+
+    算法（detail-design §3.3.5；v8 REV-007 P1 修订 — SUCCESS_TERMINAL 贯穿）：
+      1. 取 workflow.nodes 全集
+      2. 对每个候选节点：
+         - 已在任一非 ready 终态 / 派发中（SUCCESS_TERMINAL ∪ {failed, running,
+           awaiting_claude_action}）→ 跳过
+         - 所有 depends_on 节点的 state ∈ SUCCESS_TERMINAL（含 skipped）→ 加入 ready
+      3. 按 yaml 出现顺序返回（D-006 串行派发的事件顺序确定）
+
+    Returns:
+        list[str]: 0~N 个 ready node id（空 = 拓扑跑完 或 全部阻塞）
+
+    Time: O(V × avg_deps)，50 节点 × 5 deps ≈ 250 set 查询 < 5ms。
+    """
+    success_done = {
+        nid
+        for nid, entry in run_state.node_outputs.items()
+        if (entry or {}).get("state") in SUCCESS_TERMINAL
+    }
+    ready: list[str] = []
+    for node in workflow.get("nodes") or []:
+        if not isinstance(node, dict):
+            continue
+        nid = node.get("id")
+        if not nid or nid == run_state.current_node:
+            continue
+        existing_state = (run_state.node_outputs.get(nid) or {}).get("state")
+        if existing_state in _NON_READY_STATES:
+            continue
+        deps = node.get("depends_on") or []
+        if all(d in success_done for d in deps):
+            ready.append(nid)
+    return ready
+
+
+def _select_next_dispatch_target(
+    run_state: RunState,
+    workflow: dict,
+    node_map: dict[str, dict],
+) -> str | None:
+    """选择下一个待派发节点 id（detail-design §3.6.2）。
+
+    分流（D-006 / AC-01）：
+      - workflow["depends_on_explicit"] == True → `_ready_nodes`[0]（DAG 串行派发）
+      - 否则 → 退化（单链）路径：
+
+    退化路径双分支处理（current_node is None 时；v6 P1-2 + v7 REV-006 P1 + v8 P1 修订）：
+      (a) 无任何 SUCCESS_TERMINAL 节点（真新 run）→ 返回 yaml 首节点 nodes[0].id
+      (b) 有 SUCCESS_TERMINAL 节点 → 反扫 node_outputs 取最后一个进入
+          SUCCESS_TERMINAL 的节点（含 completed 与 skipped），走
+          `_next_node(last_visited, None)` 推进；若返 None → workflow 已自然终态，
+          由 `_finalize_after_rebuild_if_last_topology_node` 写 workflow_completed。
+      关键反向：on_failure=skip 让 N1 skipped 后，N1 不会被错误重新派发。
+
+    current_node 不为 None 时：单链路径取 _next_node(cur_node, None)。
+    """
+    if workflow.get("depends_on_explicit"):
+        ready = _ready_nodes(run_state, workflow)
+        return ready[0] if ready else None
+
+    # 退化（单链）路径：仅 depends_on_explicit=False 时执行
+    if run_state.current_node is None:
+        any_visited = any(
+            (out or {}).get("state") in SUCCESS_TERMINAL
+            for out in run_state.node_outputs.values()
+        )
+        if not any_visited:
+            # 分支 a：真新 run → 取 yaml 首节点
+            nodes = workflow.get("nodes") or []
+            for node in nodes:
+                if isinstance(node, dict) and node.get("id"):
+                    return node["id"]
+            return None
+
+        # 分支 b：有 SUCCESS_TERMINAL 但 current_node is None →
+        # 反扫 node_outputs 取最后一个进入 SUCCESS_TERMINAL 的节点。
+        # Python 3.7+ dict 保留插入序；rebuild 按事件流逐条 setattr，
+        # 循环末位赋值即末位 visited 节点。
+        last_visited_id: str | None = None
+        for nid, out in run_state.node_outputs.items():
+            if (out or {}).get("state") in SUCCESS_TERMINAL:
+                last_visited_id = nid
+        if last_visited_id is None:
+            return None  # 防御：any_visited 已保证不会进
+        last_node = node_map.get(last_visited_id)
+        if last_node is None:
+            return None
+        return _next_node(last_node, None)
+
+    cur_node = node_map.get(run_state.current_node)
+    return _next_node(cur_node, None) if cur_node else None
 
 
 def _handle_retry(
@@ -340,37 +451,66 @@ def _route_outcome(
 
 def _finalize_after_rebuild_if_last_topology_node(
     run_state: RunState,
+    workflow: dict,
     node_map: dict,
     jsonl_path: Path,
 ) -> bool:
-    """main_loop 入口的回填补救（codex round-5 2026-05-12 P2）：
+    """main_loop 入口的回填补救（detail-design §3.6.3；F-004 双分支 + v8 P1 修订）。
 
-    P1-c v2 把 workflow_completed 写入下沉到 _route_outcome 后，引入对称 crash 窗口：
-      _advance_after_completed 已把 current_node 置 None 但 _finalize_if_topology_done
-      append_event 之前 crash → 重启时 rebuild 出 current_node=None / state=running，
-      main_loop 因 while 失败立刻退出，永远不进 _route_outcome，run 卡死。
+    背景（round-5 P2）：
+      `_advance_after_completed` 已把 current_node 置 None 但
+      `_finalize_if_topology_done` append_event 之前 crash → 重启时 rebuild 出
+      current_node=None / state=running，main_loop 因 while 失败立刻退出，run 卡死。
 
     本 helper 在 main_loop 进入循环前补救：若 current_node is None ∧ state==running
-    ∧ jsonl 最后一条 node_completed 对应的节点在拓扑上没有 next（即"末节点"），说明
-    crash 发生在自然完成的窗口里，补写 workflow_completed 把 state 翻 completed。
-    若最后 completed 的节点仍有 next（真 crash mid-stream），保留 running 状态让用户介入。
+    ∧ 拓扑跑完（按下方双分支判定）→ 补写 workflow_completed。
+
+    判定双分支（AC-01 / R-T01）：
+      - depends_on_explicit=False（单链）：反扫 last_visited（含 node_completed 与
+        node_skipped；**不含 node_failed** — failed 由 abort 路径主动写
+        workflow_failed），`_next_node(last_visited, None) is None` 即末节点。
+        v8 P1 把反扫候选集从 last_completed 扩到 last_visited，杜绝单链 yaml
+        末节点 skipped 时 workflow_completed 漏写卡死。
+      - depends_on_explicit=True （DAG）：用"全节点 state ∈ SUCCESS_TERMINAL
+        ∧ 不存在 failed ∧ `_ready_nodes` 空"；含 failed 节点时返 False，由
+        `_route_outcome` 失败矩阵接管 workflow_failed/retry/skip。
 
     返回：True 表示已补写 workflow_completed（调用方应跳过 while）；False 表示无需补救。
     """
     if run_state.current_node is not None or run_state.state != "running":
         return False
     events, _ = read_events(jsonl_path)
-    last_completed_node_id: str | None = None
+    # v8 REV-007 P1：反扫 last_visited（含 node_completed 与 node_skipped）——
+    # 单链末节点是 skipped 时，原 last_completed 反扫会返 None → 漏写 workflow_completed。
+    # 反扫候选集**不含** node_failed：failed 节点由失败矩阵决定 workflow_failed/retry/skip，
+    # finalize 不接管（与 DAG 路径 has_failed → return False 一致）。
+    last_visited_id: str | None = None
     for evt in events:
-        if evt.get("type") == "node_completed":
-            last_completed_node_id = evt.get("node_id")
-    if not last_completed_node_id:
+        if evt.get("type") in ("node_completed", "node_skipped"):
+            last_visited_id = evt.get("node_id")
+    if not last_visited_id:
         return False
-    last_node = node_map.get(last_completed_node_id)
+    last_node = node_map.get(last_visited_id)
     if last_node is None:
         return False
-    # 末节点判定：_next_node(last_node, None) is None 表示拓扑上无后继
-    if _next_node(last_node, None) is None:
+
+    if workflow.get("depends_on_explicit"):
+        # DAG 路径（v6 P1-3 + v8 P1 修订）：has_failed 即放弃 finalize。
+        node_states = {
+            n["id"]: (run_state.node_outputs.get(n["id"]) or {}).get("state")
+            for n in workflow.get("nodes") or []
+            if isinstance(n, dict) and n.get("id")
+        }
+        has_failed = any(s == "failed" for s in node_states.values())
+        all_success_terminal = all(
+            s in SUCCESS_TERMINAL for s in node_states.values()
+        )
+        no_more_ready = len(_ready_nodes(run_state, workflow)) == 0
+        is_last = all_success_terminal and no_more_ready and not has_failed
+    else:
+        is_last = _next_node(last_node, None) is None
+
+    if is_last:
         append_event(jsonl_path, {"type": "workflow_completed", "data": {}})
         run_state.state = "completed"
         return True
@@ -397,7 +537,10 @@ def _main_loop(
     node_map = _build_node_map(workflow)
 
     # round-5 P2：crash 在 advance 之后 / finalize 之前的窗口补救
-    if _finalize_after_rebuild_if_last_topology_node(run_state, node_map, jsonl_path):
+    # F-004：新签名传 workflow（DAG / 单链双分支判定）
+    if _finalize_after_rebuild_if_last_topology_node(
+        run_state, workflow, node_map, jsonl_path
+    ):
         return
 
     while run_state.state == "running" and run_state.current_node:
