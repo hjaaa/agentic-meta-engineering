@@ -190,9 +190,19 @@ runs/REQ-2026-011/
 ```
 
 - **event_id 命名**：`<iso_ts>-<node_id>-<purpose>-<seq>`（`purpose ∈ {repair, reject-reason, skill-output}`）；
+- **purpose 与事件类型映射**：
+
+  | purpose | 对应触发事件类型 | 来源字段 | 触发位置 |
+  |---|---|---|---|
+  | `repair` | `approval_repair_started` / `approval_repair_completed` | `data.prompt_ref` / `data.output` | `workflow_reject.py`（attempt < max）+ `save_node_result.py --kind=approval_repair` |
+  | `reject-reason` | `approval_rejected` + `node_failed(reason=approval_attempts_exhausted)` | `data.reason` | `workflow_reject.py`（reject CLI 入口）|
+  | `skill-output` | `node_completed`（kind=skill_result，主 Claude 回写大 output） | `data.output` | `save_node_result.py --kind=skill_result` |
+
+  扩展约束：未来新增 purpose 必须在本表登记 + 出现在 §2.2 事件 payload 段；未登记的 purpose 视为 schema 违规（落 manifest 时 raise WorkflowError）。
 - **ref 结构**：`{"path": "manifest/<event_id>.txt", "size": N, "sha256": "<hex>"}`；
 - **生命周期**：随 run 归档；`requirement:archive` 不单独清理 manifest 目录（与 run 目录同进退）。
 - **写入原子性**：先写 manifest tmp 文件 → fsync → `os.replace()` 到目标路径 → 再 `append_events` 写 jsonl event（jsonl 写失败时 manifest 文件成孤儿，按"先 manifest 后 jsonl"顺序，孤儿 manifest 不影响 rebuild；后台清理留 follow-up）。
+- **index.txt 并发原子**：多进程并发 `append_events_with_manifest()` 时，index.txt fd 需 `fcntl.LOCK_EX` 锁后再追加；F-001 acceptance 含 2 进程并发各写 1 行的回归断言（缓解 §9 R-5 风险）。
 
 ### 2.5 features.json `priority` 字段（对应 ADR D-005）
 
@@ -261,6 +271,11 @@ from typing import Literal
 
 from common import REPO_ROOT, WorkflowError
 from run_state import RunState, _resolve_run_dir, append_event, read_events
+# 注：_resolve_run_dir 虽带下划线前缀，但已是 run_state 模块的稳定公开 contract——
+#     供 workflow_continue / workflow_approve / save_node_result 等所有 CLI 入口
+#     统一定位 runs/<run_id>/ 目录。保留下划线前缀以表达"非业务逻辑、勿在外部测试中 mock"
+#     的内部协议语义；如 development 阶段觉得歧义，可在 F-007 PR 中改名为 resolve_run_dir
+#     并同步所有调用站（不在本 ADR 范围）。
 from workflow_state_validator import validate_state_for_cmd
 
 KindLiteral = Literal["skill_result", "approval_repair"]
@@ -268,7 +283,20 @@ _AWAITING = "awaiting_claude_action"
 
 
 def main(args: list[str], repo_root: Path | None = None) -> int:
-    """CLI entry。"""
+    """CLI entry。
+
+    Returns:
+        int — 退出码语义：
+            0 = success（事件成功写入 jsonl + 状态已切回 running / approval_pending）
+            1 = 入参非法 / WorkflowError（如 --kind=approval_repair 缺 --attempt；run_id 不存在）
+            2 = fail-closed（state != awaiting_claude_action；详见 _check_state_or_fail 抛 SystemExit(2)）
+        其他非 0 = 未捕获异常（main 不再额外包装，由 traceback 暴露给 stderr）。
+
+    Raises:
+        本函数自身不 raise——所有错误转为 print(stderr) + return non-zero；
+        但 _check_state_or_fail / _validate_inputs 内部抛 SystemExit / WorkflowError，
+        由 main 顶层 try/except 转译为 return 1 / 2。
+    """
     ...
 
 
@@ -1732,3 +1760,4 @@ F-013 (AC-10 7 字段)   ← F-002 / F-007
 |---|---|---|
 | 2026-05-14 10:30:00 | v1 起草 | 落地 outline-design v4 + 14 条 ADR；含 6 张时序图 + 90 单元用例 + 13 features.json |
 | 2026-05-14 10:50:00 | v2 闭环 REV-001 3 required_fixes + 关键 suggestions | §8.2 commit 分组表对齐 features.json 13 commits（删 F-014/F-015 错位）；`approval_attempts_exhausted` 事件 `data.attempts` 统一改 `data.attempt`（与 started/completed 单数命名一致）；§6.1/§6.3/§3.1 "D-006 hook" 改 "AI-CMD-LOCK 基线"（去除与本期 plan.md D-006 同号不同义）；§1.1 显式注 `workflow_lock.py → path_lock.py` 改名；§2.3 删 `claude_session: null` 死字段；§4.5 sub_workflow 时序图补 continue 用户入口 + main loop 调用栈；§4.6 拆 4.6.1（并发拒绝）+ 4.6.2（残锁清理）两个独立子图，去除时间线矛盾 |
+| 2026-05-14 11:00:00 | v3 闭环 REV-002 dev backlog 4 项 minor | F-001 acceptance 加"manifest/index.txt 多进程并发 append 原子（fcntl.LOCK_EX）"；F-013 acceptance #7 grep 断言改行为级（dispatcher 写 contract → save_node_result 不消费 → node_completed 不含字段）；§2.4 manifest 加 purpose 与事件类型映射表 + index.txt 并发原子说明；§3.1 `_resolve_run_dir` 私名跨模块导出加注释 + `save_node_result.main` docstring 补返回值语义（0/1/2） |

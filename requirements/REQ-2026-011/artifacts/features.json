@@ -19,7 +19,8 @@
         "5KB payload → raise PayloadTooLargeError 且 jsonl 无副作用",
         "reject reason 5KB 走 append_events_with_manifest → manifest/<event_id>.txt 存在 + index.txt 追加一行 + jsonl event.data.reason_ref={path,size,sha256}",
         "manifest tmp 写失败 → 不写 jsonl，raise OSError，不产生半落盘",
-        "事件 type 不在 VALID_EVENT_TYPES → raise WorkflowError 与既有 append_event 一致"
+        "事件 type 不在 VALID_EVENT_TYPES → raise WorkflowError 与既有 append_event 一致",
+        "manifest/index.txt 多进程并发 append 原子：起 2 个子进程同时调 append_events_with_manifest 各写 1 条 5KB reason → index.txt 含 2 行且 sha256 与 manifest/<event_id>.txt 文件内容一致（用 fcntl.LOCK_EX 锁 index.txt fd，覆盖 R-5 风险）"
       ],
       "estimate_days": 1.5,
       "priority": "P0",
@@ -394,7 +395,7 @@
         "loader：output_format={...}（dict）通过 schema",
         "dispatcher skill 节点缺省 7 字段 → node_ready.data.external_action_contract 含 7 空缺省（[] / null）",
         "dispatcher skill 节点 allowed_tools=['Read'] → node_ready.data.external_action_contract.allowed_tools == ['Read']",
-        "save_node_result.py 不读 contract（grep 函数体确认 7 字段未被消费）"
+        "行为级断言：dispatcher 写出 node_ready.data.external_action_contract={allowed_tools:['Read'], ...} 后，主调 save_node_result.py --kind=skill_result，写出的 node_completed 事件 data 不含 external_action_contract 字段（contract 在 dispatcher 端透传完成，不进入回写流）"
       ],
       "estimate_days": 1.2,
       "priority": "P2",
