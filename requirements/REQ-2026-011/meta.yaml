@@ -1,7 +1,7 @@
 # ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-011
 title: workflow runtime DAG 调度与节点 dispatcher 补全（参考 Archon 设计）
-phase: task-planning
+phase: development
 created_at: "2026-05-13 08:36:31"     # 格式 YYYY-MM-DD HH:MM:SS（Asia/Shanghai），见 context/team/engineering-spec/time-format.md
 branch: feat/req-2026-011
 base_branch: develop
@@ -52,6 +52,17 @@ gates_passed:
       13 features F-001~F-013 + outline-design.md/features.json/detailed-design.md
       四向交叉一致；implementation 阶段 backlog 2 项（SUCCESS_TERMINAL 抽共享常量 +
       outline 历史 drift 清理）
+  - phase: development
+    at: '2026-05-14 15:30:00'
+    via: managing-requirement-lifecycle
+    notes: task-planning → development 门禁 11/11 全过（GATE-META-SCHEMA /
+      INDEX-INTEGRITY / SOURCING / PLAN-FRESHNESS / WORKSPACE-CLEAN /
+      REVIEW-VERDICT / FEATURES-SCHEMA / TASK-FRONTMATTER / POST-DEV-RECEIPT /
+      TRACEABILITY / TOUCHES-VIOLATION）；13 task.md F-001~F-013 落地
+      schema 13/13 全过 + features.json schema 过；task-planning 不走单独
+      reviewer 评审（schema 自动校验为质量门）；plan.md 同步追加阶段进度
+      快照消 PLAN-FRESHNESS warning；下一步从 P0-baseline F-001 起派
+      implementer subagent
 pr_url: ""                             # /requirement:submit 成功后回写
 pr_number: 0                           # /requirement:submit 成功后回写
 log_layout: split                      # split（默认，工具日志→process.tool.log / 语义事件→process.txt） | legacy（老格式，全写 process.txt）
