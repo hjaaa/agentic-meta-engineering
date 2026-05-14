@@ -149,7 +149,7 @@ WORKFLOW_EVENT_TO_STATE: dict[str, str] = {
 ```
 
 - **必填**：`data.attempt` (int, 1-based) / `data.max_attempts` (int) / `data.prompt_ref` (str)。
-- **互斥**：`data.reason`（inline，长度 < 3500 字节）xor `data.reason_ref`（manifest pointer，详见 §2.4 D-014）；写入方按字节数自动选择。
+- **互斥**：`data.reason`（inline）xor `data.reason_ref`（manifest pointer，详见 §2.4 D-014）；写入方按 §2.4/§3.5 的"batch ≥4KB 触发 + 单字段 ≥3500 入选"算法自动选择。
 - **统一封装**：reject CLI 通过 `append_events_with_manifest(..., large_field_paths=[("data", "reason")])` 自动判定（公开 API 名见 §3.5）。
 
 #### 2.2.3 `approval_repair_completed`（AC-03b/AC-04b，对应 ADR D-007）
@@ -172,7 +172,7 @@ WORKFLOW_EVENT_TO_STATE: dict[str, str] = {
 
 #### 2.2.4 既有事件 payload 微调（无 schema 破坏）
 
-- `approval_rejected` 事件 `data.reason` 受 D-014 同样规则约束（≥ 3.5KB 自动 manifest fallback）。
+- `approval_rejected` 事件 `data.reason` 受 D-014 同样规则约束（**batch ≥ 4KB 时**触发 manifest fallback；不再"单字段 ≥3.5KB 即外置"，v6 P2 修订）。
 - `node_failed` 事件 `data.reason` 字段含义补：当因 `approval_attempts_exhausted` 触发时（AC-03c），`data.reason = "approval_attempts_exhausted"`，`data.attempt = max_attempts`（**单数 `attempt` 与 approval_rejected / approval_repair_started/completed 事件命名统一**，消费方可用单一 key 反扫；不再使用复数 `attempts` 字段），`workflow_failed` 紧随其后写入（由 reject CLI 一次原子三事件）。
 
 ### 2.3 lock 文件格式（对应 ADR D-003 / D-005）
@@ -193,9 +193,15 @@ WORKFLOW_EVENT_TO_STATE: dict[str, str] = {
 - **失活检测**：取锁失败时第二进程读 pid → `kill -0 pid` → `ESRCH` 视为 stale；二次校验 `created_at` 在 mtime 之前 ≥ 1s（缓解 pid 复用窗口，详见 §5.1）；
 - requirement 类 run（`run_id.startswith("REQ-")`）acquire 时按需 `os.symlink("../../runs/.locks/<id>.lock", "requirements/.locks/<id>.lock")`，存在性检测**必须用 `os.path.lexists()`**（outline-design v4 §lock layer 已强调）。
 
-### 2.4 manifest 文件格式（对应 ADR D-014）
+### 2.4 manifest 文件格式（对应 ADR D-014，对抗审阅 P2 v6 修订对齐 §3.5 算法）
 
-当 jsonl 单事件 `data.<field>` 字节数 ≥ 3500（`MAX_INLINE_FIELD_BYTES`），将该字段原文落到 `runs/<run_id>/manifest/<event_id>.txt`，event 内仅留 ref：
+**触发条件**（与 §3.5 `append_events_with_manifest` 算法严格对齐）：
+
+1. 先 dry-run 估算 batch 序列化字节数；
+2. 若 `estimate < 4KB` → 直接走 `append_events` 直写，**不**外置（即使有 3.6KB 单字段）；
+3. 仅当 `estimate ≥ 4KB` 时，对 `large_field_paths` 中**单字段 ≥ 3500 字节** (`MAX_INLINE_FIELD_BYTES`) 的部分外置到 `runs/<run_id>/manifest/<event_id>.txt`，event 内仅留 ref（详见 §3.5 第 2-3 步）。
+
+> **v5 → v6 修订要点**：v5 §2.4 写"单字段 ≥ 3500 字节就落 manifest"与 §3.5 算法（先看 batch 大小再判单字段）不一致。v6 统一为**仅 batch ≥ 4KB 时才扫描 single field 并按 3500 字节阈值外置**——简化路径、避免 3.6KB 小事件产生不必要的 manifest 文件 IO。`MAX_INLINE_FIELD_BYTES=3500` 仅在外置场景内作为"选谁外置"的阈值，不是独立触发器。
 
 ```
 runs/REQ-2026-011/
@@ -337,7 +343,7 @@ def _check_state_or_fail(
     run_id: str,
     run_state: RunState,
 ) -> None:
-    """fail-closed：state != awaiting_claude_action 时退出码 2。
+    """fail-closed 第 1 道闸：state != awaiting_claude_action 时退出码 2。
 
     Raises:
         SystemExit(2): state 不为 awaiting_claude_action。
@@ -346,6 +352,74 @@ def _check_state_or_fail(
         print(
             f"ERROR [E-NODE-RESULT-001]: state={run_state.state!r} != {_AWAITING!r}; "
             f"主 Claude Code 仅可在 awaiting_claude_action 下回写 outcome。",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+
+def _check_node_match_or_fail(
+    run_id: str,
+    node_id: str,
+    kind: KindLiteral,
+    run_state: RunState,
+    jsonl_path: Path,
+) -> None:
+    """fail-closed 第 2 道闸（对抗审阅 P1-1）：节点身份校验。
+
+    必须验证两条：
+      (1) RunState 字段匹配 —— skill_result 时 run_state.current_node == node_id；
+                              approval_repair 时 run_state.pending_approval == node_id。
+      (2) jsonl 末位事件类型 + 该末位的 node_id 严格匹配——即 awaiting 状态来自该节点：
+            kind=skill_result      → 末位 awaiting 事件 == node_ready(node_id)
+            kind=approval_repair   → 末位 awaiting 事件 == approval_repair_started(node_id)
+
+    没有此校验时，AI 可在等待 N1 的 awaiting 下错误写 N2 的 node_completed，
+    会绕过整个节点身份契约。
+
+    Raises:
+        SystemExit(2): 任一校验失败。
+    """
+    # (1) RunState 字段比对
+    if kind == "skill_result":
+        expected = run_state.current_node
+        field_name = "current_node"
+    else:  # approval_repair
+        expected = run_state.pending_approval
+        field_name = "pending_approval"
+
+    if expected != node_id:
+        print(
+            f"ERROR [E-NODE-RESULT-002]: --node={node_id!r} 与 RunState.{field_name}={expected!r} "
+            f"不匹配；主 Claude 仅可回写当前 awaiting 的节点。",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+    # (2) jsonl 末位事件类型 + node_id 严格匹配
+    events, _ = read_events(jsonl_path)
+    expected_type = "node_ready" if kind == "skill_result" else "approval_repair_started"
+    # 找末位匹配 expected_type 的事件
+    last_awaiting_evt = None
+    for evt in reversed(events):
+        if evt.get("type") in {"node_ready", "approval_repair_started",
+                               "node_completed", "approval_repair_completed",
+                               "node_failed"}:
+            last_awaiting_evt = evt
+            break
+
+    if last_awaiting_evt is None or last_awaiting_evt.get("type") != expected_type:
+        print(
+            f"ERROR [E-NODE-RESULT-003]: jsonl 末位 awaiting 事件 ="
+            f"{(last_awaiting_evt or {}).get('type')!r}，期望 {expected_type!r}；"
+            f"kind={kind!r} 状态契约违反。",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+    if last_awaiting_evt.get("node_id") != node_id:
+        print(
+            f"ERROR [E-NODE-RESULT-004]: jsonl 末位 {expected_type}.node_id="
+            f"{last_awaiting_evt.get('node_id')!r}，期望 {node_id!r}；节点身份错位。",
             file=sys.stderr,
         )
         sys.exit(2)
@@ -366,11 +440,17 @@ def _write_event(
     ...
 ```
 
-**关键约束**：
+**关键约束**（对抗审阅 P1-1 修订 — 改"单门禁"为"复合 fail-closed 三件套"）：
 
-- `state == awaiting_claude_action` 是**唯一**门禁——通过则 100% 允许写，否则 fail-closed exit 2。
-- `--output` 接受裸 JSON 字符串或 `@<file>` 文件引用；超过 3.5KB 时 `_write_event` 内部走 `append_events_with_manifest()`（§3.5 公开 API）。
-- `--attempt` 当 `--kind=approval_repair` 时**必填**且必须与最近一条 `approval_repair_started.data.attempt` 一致（不一致 exit 1，避免 attempt 错位）。
+- **第 1 道闸：state 校验**（`_check_state_or_fail`）—— `state == awaiting_claude_action` 时通过，否则 exit 2 `E-NODE-RESULT-001`。
+- **第 2 道闸：节点身份校验**（`_check_node_match_or_fail`）——
+  - kind=skill_result：要求 `run_state.current_node == node_id` ∧ jsonl 末位 awaiting 事件 = `node_ready(node_id)`；
+  - kind=approval_repair：要求 `run_state.pending_approval == node_id` ∧ jsonl 末位 awaiting 事件 = `approval_repair_started(node_id)`；
+  - 任一不匹配 → exit 2 `E-NODE-RESULT-002/003/004`（区分 RunState 字段错位 / 末位类型错位 / 末位 node_id 错位）。
+- **第 3 道闸：attempt 校验**（仅 `--kind=approval_repair`）—— `--attempt` 必填且必须与最近一条 `approval_repair_started.data.attempt` 一致，不一致 exit 1。
+- `--output` 接受裸 JSON 字符串或 `@<file>` 文件引用；`_write_event` 一律走 `append_events_with_manifest()`（§3.5 公开 API），由其内部按 batch ≥4KB 触发 + 单字段 ≥3500 入选的算法决定是否外置。
+
+> **设计依据**：单 state 门禁存在身份漏洞——AI 可在等待 N1 时 `--node=N2 --kind=skill_result` 写错节点的 `node_completed`。RunState 字段（rebuild 已正确设置 `current_node` / `pending_approval`）+ jsonl 末位事件双向交叉校验，杜绝身份错位。
 
 ### 3.2 `scripts/lib/workflow_approve.py` / `workflow_reject.py` 改动（对应 ADR D-007 / D-008 / D-009 / D-014）
 
@@ -450,7 +530,7 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
              "data": {"reason": "approval_attempts_exhausted", "node_id": node_id}},
         ]
 
-    # 4. 原子写（§3.5 append_events + manifest fallback for reason ≥ 3.5KB）
+    # 4. 原子写（§3.5 append_events + manifest fallback for batch ≥4KB；单字段 ≥3500 入选）
     try:
         append_events_with_manifest(
             jsonl_path,
@@ -894,19 +974,26 @@ def _select_next_dispatch_target(
 
     DAG 路径返回第一个 ready id（D-006 串行），单链路径返回 current_node.next。
 
-    对抗审阅 P1-2 修订：
+    对抗审阅 P1-2 修订（**v6 二次修订**）：
       bootstrap 仅写 workflow_started 不设 current_node（workflow_bootstrap.py:324-336），
-      rebuild 后新 run 的 run_state.current_node is None。退化路径必须为"首次启动"
-      场景兜底——current_node is None ∧ 无任何 completed 节点（即真新 run）时取 yaml
-      首节点 nodes[0]；已有 completed 但 current_node is None（即已完成或异常）则
-      不再派发返回 None。DAG 路径无此问题：_ready_nodes 自然返回 depends_on=[] 的入口节点。
+      rebuild 后新 run 的 run_state.current_node is None；同时 node_completed handler
+      在 run_state.py:171-172 会把 current_node 置 None（"if state.current_node == node_id：
+      state.current_node = None"）。所以 current_node is None 同时覆盖两种场景：
+        (a) 真新 run（无任何 completed）
+        (b) 已有节点 completed 但 main loop 还没 _advance（crash 或重 continue）
+
+      退化（单链）路径双分支处理：
+        (a) 无 completed → 返回 yaml 首节点 nodes[0]
+        (b) 有 completed → 从 jsonl 反扫"最后 completed 的 node_id"，走 _next_node(last_completed)
+        DAG 路径无此问题：_ready_nodes 自然返回 depends_on=[] 入口节点 + 已 completed 节点不再入 ready
     """
     if workflow.get("depends_on_explicit"):
         ready = _ready_nodes(run_state, workflow)
         return ready[0] if ready else None
+
     # 退化（单链）路径
     if run_state.current_node is None:
-        # 首次启动补救（P1-2）：无 current_node 且没有任何节点已完成 → 取 yaml 首节点
+        # 分支 a：无任何 completed → 真新 run → 取 yaml 首节点
         any_completed = any(
             out.get("state") == "completed"
             for out in run_state.node_outputs.values()
@@ -914,18 +1001,34 @@ def _select_next_dispatch_target(
         if not any_completed:
             nodes = workflow.get("nodes") or []
             return nodes[0].get("id") if nodes else None
-        # 已有 completed 但 current_node is None → 视为已自然完成或 crash 后由
-        # _finalize_after_rebuild_if_last_topology_node 处理（§3.6.3）
-        return None
+
+        # 分支 b（v6 P1-2 修订）：有 completed 但 current_node is None → 从 jsonl
+        # 反扫最后 completed 的节点，走 _next_node(last_completed) 继续推进；
+        # 若 _next_node 也 is None → workflow 已自然终态，由
+        # _finalize_after_rebuild_if_last_topology_node（§3.6.3）写 workflow_completed
+        last_completed_id: str | None = None
+        for nid, out in run_state.node_outputs.items():
+            if out.get("state") == "completed":
+                last_completed_id = nid   # 字典插入顺序保留写入序，最后一个赋值即末位
+        if last_completed_id is None:
+            return None   # 防御性：理论 any_completed 已保证不进
+        last_node = node_map.get(last_completed_id)
+        if last_node is None:
+            return None
+        return _next_node(last_node, None)
+
     cur_node = node_map.get(run_state.current_node)
     return _next_node(cur_node, None) if cur_node else None
 ```
 
-**单测约束**（覆盖 P1-2 修复回归）：
+> **关于"反扫顺序"**：Python 3.7+ dict 保留插入序，rebuild 按事件顺序 `state.node_outputs[node_id] = ...` 设置，循环末位赋值即是最后一个 completed。若担忧 dict 序变更（外部代码 mutate），可改用 `events` 列表显式反扫（如 `_finalize_after_rebuild_if_last_topology_node` §3.6.3 line 951-955 已有此模式）—— development 阶段二选一。
 
-- 测试 1：新 run 仅 `[workflow_started]` 事件（来自 workflow_bootstrap） + yaml 含 3 个节点 N1/N2/N3 + `depends_on_explicit=False` → `_select_next_dispatch_target` 返回 `"N1"`（首节点 ID）。
-- 测试 2：事件序列 `[workflow_started, node_started(N1), node_completed(N1)]` + 退化 yaml → `_select_next_dispatch_target` 返回 `_next_node(N1, None)`（即 N2 id 或 None）。
-- 测试 3：DAG 路径首启动（`depends_on_explicit=True` ∧ yaml N1 depends_on=[]）→ `_ready_nodes` 返回 `["N1"]`，路径自然正确。
+**单测约束**（覆盖 P1-2 修复回归 — v6 补全）：
+
+- 测试 1（真新 run）：仅 `[workflow_started]` 事件 + yaml 含 3 个节点 N1/N2/N3 + `depends_on_explicit=False` → `_select_next_dispatch_target` 返回 `"N1"`（首节点 ID）。
+- 测试 2（v6 P1-2 修订）：事件序列 `[workflow_started, node_started(N1), node_completed(N1)]` + 退化 yaml（N1.next=N2）→ rebuild 后 `current_node is None` ∧ `node_outputs[N1].state=='completed'` → `_select_next_dispatch_target` 反扫得 last_completed=N1 → 返回 `_next_node(N1, None)`（即 N2 id）。
+- 测试 3（末节点已 completed）：事件序列 `[..., node_completed(N3)]` + N3 是末节点 → 反扫 last_completed=N3 → `_next_node(N3, None) is None` → 返回 None（交 _finalize_after_rebuild 处理）。
+- 测试 4：DAG 路径首启动（`depends_on_explicit=True` ∧ yaml N1 depends_on=[]）→ `_ready_nodes` 返回 `["N1"]`，路径自然正确。
 
 #### 3.6.3 `_finalize_after_rebuild_if_last_topology_node` 适配（AC-01 / R-T01）
 
@@ -936,12 +1039,14 @@ def _finalize_after_rebuild_if_last_topology_node(
     node_map: dict,
     jsonl_path: Path,
 ) -> bool:
-    """末节点判定双分支（AC-01 / R-T01；对抗审阅 P1-3 修订）。
+    """末节点判定双分支（AC-01 / R-T01；对抗审阅 P1-3 v6 二次修订）。
 
     - depends_on_explicit=False：保留既有"_next_node(last_node, None) is None"判定
-    - depends_on_explicit=True ：用"全节点终态 ∧ _ready_nodes 为空"判定
-      （**不再用"出度=0"**——该判定在多 sink DAG 下会让任一 sink 先完成即触发完成事件，
-        另一 sink 被截断；P1-3 已修订）
+    - depends_on_explicit=True ：用"全节点 ∈ {completed, skipped} ∧ 不存在 failed ∧ _ready_nodes 空"
+      （v5 把 failed 纳入终态会让含失败节点的 workflow 被错误标 completed，
+        v6 排除 failed；含 failed 节点的 workflow 由 _route_outcome 失败矩阵决定
+        workflow_failed / retry / skip，finalize 不接管）
+
     """
     if run_state.current_node is not None or run_state.state != "running":
         return False
@@ -957,17 +1062,22 @@ def _finalize_after_rebuild_if_last_topology_node(
         return False
 
     if workflow.get("depends_on_explicit"):
-        # DAG 路径（对抗审阅 P1-3 修订）：
-        #   原"最后完成节点出度=0"判定在多 sink DAG 下会过早写 workflow_completed
-        #   （任一 sink 先完成即触发，另一 sink 未跑完被截断）。
-        #   改判定：所有节点都进入终态 {completed, skipped, failed} 且 _ready_nodes 为空。
-        terminal_states = {"completed", "skipped", "failed"}
-        all_terminal = all(
-            run_state.node_outputs.get(n["id"], {}).get("state") in terminal_states
+        # DAG 路径（对抗审阅 P1-3 修订 — v6 二次修订）：
+        #   v5 把 failed 纳入终态会让含失败节点的 workflow 被错误写成 workflow_completed。
+        #   语义应该是：只有"全节点 ∈ {completed, skipped}（成功类终态）"才写 workflow_completed；
+        #   若存在 failed 节点 → finalize 返回 False，由 _route_outcome 的失败矩阵
+        #   （on_failure=abort/skip/retry）接管，由 dispatcher 在写 node_failed 同步写
+        #   workflow_failed（已有 abort 路径，见 workflow_continue.py:_handle_abort）。
+        success_terminal = {"completed", "skipped"}
+        node_states = {
+            n["id"]: run_state.node_outputs.get(n["id"], {}).get("state")
             for n in workflow.get("nodes", []) if n.get("id")
-        )
+        }
+        has_failed = any(s == "failed" for s in node_states.values())
+        all_success_terminal = all(s in success_terminal for s in node_states.values())
         no_more_ready = len(_ready_nodes(run_state, workflow)) == 0
-        is_last = all_terminal and no_more_ready
+        # 关键：has_failed 即放弃 finalize，由失败矩阵决定 workflow_failed / retry / skip
+        is_last = all_success_terminal and no_more_ready and not has_failed
     else:
         is_last = (_next_node(last_node, None) is None)
 
@@ -1258,11 +1368,12 @@ sequenceDiagram
     Rej->>FS: read_events → 反扫 prior_rejects=0
     Rej->>Rej: current_attempt=1, max_attempts=3 (D-009)
 
-    alt reason < 3.5KB
+    alt batch estimate < 4KB（v6 P2 修订）
         Rej->>AE: append_events([approval_rejected, approval_repair_started])
-        AE->>FS: 单次 LOCK_EX + write (< 4KB)
-    else reason ≥ 3.5KB (D-014)
+        AE->>FS: 单次 LOCK_EX + write (直写 jsonl，即使单字段达 3.6KB)
+    else batch estimate ≥ 4KB (D-014 触发 manifest)
         Rej->>AE: append_events_with_manifest(..., large_field_paths=[("data","reason")])
+        AE->>AE: 扫描 large_field_paths，单字段 ≥3500 入选外置
         AE->>Mfst: 先写 manifest tmp + fsync + replace
         AE->>FS: 单次 LOCK_EX + write (event.data.reason_ref={path,size,sha256})
     end
@@ -1614,7 +1725,7 @@ readonly APPROVAL_PYTHON_PATTERN='python3?[[:space:]]+([^[:space:]]+/)?(scripts/
 |---|---|
 | AI agent 通过 Bash tool 调 `/workflow:approve` | hook 拦截 exit 2，stderr 含 `BLOCKED: /workflow:approve / /workflow:reject 是人类专属动作` |
 | AI agent 通过 Bash tool 调 `python3 scripts/lib/workflow_approve.py` | hook 拦截同上 |
-| AI agent 通过 Bash tool 调 `python3 scripts/lib/save_node_result.py --kind=skill_result --run=... --node=...` | hook **放行**；进入 `_check_state_or_fail`：state == awaiting → 写入；state != awaiting → exit 2 |
+| AI agent 通过 Bash tool 调 `python3 scripts/lib/save_node_result.py --kind=skill_result --run=... --node=...` | hook **放行**；进入 `_check_state_or_fail` + `_check_node_match_or_fail` 复合三件套（P1-1）：state == awaiting ∧ node_id == current_node ∧ 末位 node_ready.node_id 匹配 → 写入；任一不满足 → exit 2 |
 | 人类在 tty 调 `/workflow:approve` | isatty=True → 走主路径 |
 | 测试 mock `sys.stdin.isatty()` 返 False 调 approve.main | `check_tty_for_approval` exit 2 |
 
@@ -1626,21 +1737,21 @@ readonly APPROVAL_PYTHON_PATTERN='python3?[[:space:]]+([^[:space:]]+/)?(scripts/
 
 | 模块 | 关键断言 | 用例数 |
 |---|---|---|
-| `save_node_result.py` | `--kind=skill_result` state=awaiting → 写 node_completed；state=running → exit 2；`--kind=approval_repair` 缺 `--attempt` → exit 1；attempt 与 started 错位 → exit 1；output ≥ 3.5KB → 走 manifest | 8 |
+| `save_node_result.py` | `--kind=skill_result` state=awaiting ∧ node 匹配 → 写 node_completed；state=running → exit 2 (E-NODE-RESULT-001)；**node_id ≠ current_node → exit 2 (E-NODE-RESULT-002)（对抗审阅 P1-1）**；**末位事件非 node_ready → exit 2 (E-NODE-RESULT-003)（P1-1）**；**末位 node_ready.node_id ≠ --node → exit 2 (E-NODE-RESULT-004)（P1-1）**；`--kind=approval_repair` 缺 `--attempt` → exit 1；attempt 与 started 错位 → exit 1；output 让 batch 估算 ≥4KB → 走 manifest（单字段 ≥3500 入选，v6 P2 修订） | 11 |
 | `append_events.py` | 3 事件 payload 总 < 4KB → 单次 LOCK_EX 写；≥ 4KB → raise PayloadTooLargeError；mock fcntl crash → 部分写但 jsonl 完整最后一行 | 5 |
 | `path_lock.py` | acquire 后 .lock 含 pid+created_at+path_target；二次 acquire raise LockBusyError；mock _is_pid_alive=False → 自动清理 + 重试一次；symlink 对 requirement-class run 建立；release 后 .lock 删除但 symlink 保留 | 7 |
 | `workflow_loader._expand_implicit_depends_on` | 全显式 → depends_on_explicit=True；一节点缺省 → False；首节点缺省 depends_on=[] 不算"隐式" → 仍可能为 True | 4 |
 | `workflow_continue._ready_nodes` | 首次 continue → 返回入度=0 节点；某节点 deps 全完 → 加入 ready；ready 节点已在 awaiting → 不重复返回；50 节点 yaml 性能 < 50ms（移到 §7.3） | 5 |
 | `workflow_continue._select_next_dispatch_target` | depends_on_explicit=True → 调 `_ready_nodes`；False → 调 `_next_node` | 2 |
 | `workflow_continue` awaiting 下 continue | state=awaiting → print INFO + return 0；不写任何新事件 | 2 |
-| `workflow_continue._finalize_after_rebuild_if_last_topology_node` | DAG 路径"全节点终态 ∧ _ready_nodes 空" → 补 workflow_completed；单链路径 `_next_node is None` 末节点 → 补 workflow_completed；**多 sink DAG（A/B 均无下游）任一先 completed 不触发完成事件，必须 A∧B 都 completed 才触发** | 5 |
+| `workflow_continue._finalize_after_rebuild_if_last_topology_node` | DAG 路径"全节点 ∈ {completed, skipped} ∧ 不存在 failed ∧ _ready_nodes 空" → 补 workflow_completed；单链路径 `_next_node is None` 末节点 → 补 workflow_completed；**多 sink DAG 任一先 completed 不触发完成事件**；**存在 failed 节点时 finalize 返回 False，不写 workflow_completed（P1-3 v6 反向覆盖）** | 6 |
 | `workflow_continue._poll_sub_workflows` | 子 completed → 父 child_graceful_exited + node_completed；子 failed + on_subworkflow_failure=skip → child_failed + node_skipped；子 failed + abort → child_failed + node_failed + workflow_failed | 3 |
 | `workflow_dispatcher.dispatch_node`（D-008） | handler 不写 node_started（负向断言）；handler 抛异常 → 外层写 node_failed 且仅 1 条；artifact 节点 failures=[] → node_completed 1 条；failures!=[] → node_failed 1 条 | 4 |
 | `workflow_dispatcher._dispatch_artifact_node` | spec 含 must_exist 一项缺失 → raise WorkflowError；schema_check 命中 check_meta.py → 通过 | 3 |
 | `workflow_dispatcher._dispatch_skill_node` | AC-04a：写 node_ready + outcome=awaiting；data.external_action_contract 含 7 字段（含空缺省） | 2 |
 | `workflow_dispatcher._dispatch_loop_node`（AC-07） | until_bash exit=0 → loop_done；exit≠0 → loop_iteration_started/completed；达 max_iterations → loop_max_iterations_exceeded | 3 |
 | `workflow_approve.py`（AC-03a） | approve 时 append_events 写 [approval_approved, node_completed] 2 条原子；state 派生 → running | 2 |
-| `workflow_reject.py`（AC-03b/c） | attempt=1 < max=3 → 写 [approval_rejected, approval_repair_started]；attempt=3 → 写 [rejected, node_failed, workflow_failed] 三条原子；reason ≥ 3.5KB → manifest fallback；attempt 计数从 jsonl 反扫 | 5 |
+| `workflow_reject.py`（AC-03b/c） | attempt=1 < max=3 → 写 [approval_rejected, approval_repair_started]；attempt=3 → 写 [rejected, node_failed, workflow_failed] 三条原子；reason 让 batch ≥4KB → manifest fallback（v6 P2 修订；3500 字节单字段在外置时入选）；attempt 计数从 jsonl 反扫 | 5 |
 | `run_state.py` rebuild 新事件 | node_ready → state=awaiting + current_node=N；approval_repair_started → state=awaiting + pending_approval=N；approval_repair_completed → state=approval_pending；node_completed 在 awaiting → state=running | 5 |
 | `workflow_state_validator.CMD_ALLOWED_STATES` | continue/save/status/cancel/rollback 在 awaiting_claude_action 下 allowed；approve/reject 在 awaiting 下 raise WorkflowError | 7 |
 | `workflow_status.py --verbose` | ready/running/blocked/paused/done 分类正确；stale 30 分钟阈值触发 WARN；env override 1 分钟 → 立即 stale | 4 |
@@ -1685,6 +1796,9 @@ readonly APPROVAL_PYTHON_PATTERN='python3?[[:space:]]+([^[:space:]]+/)?(scripts/
 | AI agent 试图 `Bash` tool 调 `/workflow:approve` | hook exit 2 |
 | AI agent 试图调 `python3 scripts/lib/workflow_reject.py "<reason>"` | hook exit 2 |
 | `save_node_result.py` 在 state=running 下被调 | exit 2 + stderr 含 E-NODE-RESULT-001 |
+| **`save_node_result.py --kind=skill_result --node=N2` 但 state=awaiting ∧ current_node=N1（P1-1 反向覆盖）** | exit 2 + stderr 含 E-NODE-RESULT-002 |
+| **`save_node_result.py --kind=skill_result --node=N1` 但末位事件非 node_ready（P1-1 反向覆盖）** | exit 2 + stderr 含 E-NODE-RESULT-003 |
+| **`save_node_result.py --kind=approval_repair --node=N1` 但末位 approval_repair_started.node_id=N2（P1-1 反向覆盖）** | exit 2 + stderr 含 E-NODE-RESULT-004 |
 | `save_node_result.py --kind=approval_repair --attempt=2` 但末位 started.attempt=1 | exit 1 + stderr 含 "attempt mismatch" |
 | 双写 started：手工调 dispatcher，handler 内强行 `append_event(node_started)` | 单测断言 jsonl 中 node_started 出现 2 次 → 测试失败（红） |
 | pid 复用残锁：mock `_is_pid_alive` 在两次取锁间从 False → True | 第一次 acquire 走清理路径成功；第二次取锁失败 raise LockBusyError |
@@ -1821,3 +1935,4 @@ F-013 (AC-10 7 字段)   ← F-002 / F-007
 | 2026-05-14 11:00:00 | v3 闭环 REV-002 dev backlog 4 项 minor | F-001 acceptance 加"manifest/index.txt 多进程并发 append 原子（fcntl.LOCK_EX）"；F-013 acceptance #7 grep 断言改行为级（dispatcher 写 contract → save_node_result 不消费 → node_completed 不含字段）；§2.4 manifest 加 purpose 与事件类型映射表 + index.txt 并发原子说明；§3.1 `_resolve_run_dir` 私名跨模块导出加注释 + `save_node_result.main` docstring 补返回值语义（0/1/2） |
 | 2026-05-14 11:20:00 | v4 用户对抗审阅 6 处全闭环（3×P1 + 2×P2 + 1×P3） | **P1-1** `WORKFLOW_EVENT_TO_STATE` 不扩展，3 个新事件全部走 §3.8.3 if/elif 专门分支（修复扁平映射吞掉 current_node / pending_approval 副作用的根本缺陷；§2.1 + §3.8.2/3 + 单测）；**P1-2** `_select_next_dispatch_target` 退化路径加首节点补救（current_node is None ∧ 无 completed → 取 yaml.nodes[0]）解决 bootstrap 不设 current_node 导致 AC-01 退化失败；**P1-3** DAG 终态判定改"全节点终态 ∧ _ready_nodes 空"（替换"出度=0"避免多 sink DAG 过早 workflow_completed）；**P2-1** schema 顶层字段表对齐现状（run_id 仅 workflow_started 必填，rebuild 不读其他事件 run_id）；**P2-2** 统一 manifest helper 名为 `append_events_with_manifest`（§2.2 / §3.1 改名）；**P3** e2e yaml 路径 `code-review/` → `review/` 修正 |
 | 2026-05-14 11:35:00 | v5 闭环 REV-004 M-1/M-2 major 跨文件 drift + M-3 minor | **M-1 修复**：features.json F-002 description 删除"WORKFLOW_EVENT_TO_STATE 加..."旧语义，明确"扁平映射保持 6 项不扩展"+ 补反向回归断言（acceptance #7：扁平映射 keys 集合不含 3 新事件）；**M-2 修复**：features.json F-004 description 把"出度=0"改"全节点终态 ∧ _ready_nodes 空" + 补退化首节点 acceptance + 补多 sink DAG 反向回归 acceptance；**M-3 修复**：detailed-design §2.2 示例代码约定段澄清（§2.2.x JSON 示例写 run_id 作为人类辨识便利，§3.x 代码示例与现有 dispatcher 一致写 run_id，append_event 不校验、rebuild 仅 workflow_started 兜底取 run_id） |
+| 2026-05-14 11:55:00 | v6 用户对抗审阅第二轮 4 处全闭环（3×P1 + 1×P2） | **P1-1** save_node_result 补 `_check_node_match_or_fail` 第 2 道闸（RunState 字段 + jsonl 末位事件双向校验；新错误码 E-NODE-RESULT-002/003/004；测试矩阵 8→11 用例，补 3 条反向覆盖单测）—— 杜绝"等 N1 时错写 N2"的身份漏洞；**P1-2** `_select_next_dispatch_target` 退化路径分支 b（current_node is None ∧ 有 completed）补"反扫 last_completed → _next_node 推进"逻辑，与现有 node_completed handler "current_node=None"行为对齐；**P1-3** DAG 终态判定 `terminal_states` 去除 `failed`，含 failed 节点时 finalize 返回 False 由失败矩阵接管 workflow_failed/retry/skip；**P2** manifest 触发条件 §2.4 + §3.5 + §3.2 时序图 + 测试矩阵 + 示例注释全量对齐"batch ≥4KB 触发 + 单字段 ≥3500 入选"二段语义（消除 §2.4 "≥3500 单字段即外置"与 §3.5 算法"先看 batch"的语义冲突） |
