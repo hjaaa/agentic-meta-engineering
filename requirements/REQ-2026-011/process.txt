@@ -53,3 +53,5 @@ REQ-2026-011 语义事件日志
 2026-05-14 16:21:32 [save] F-001 完成（status=done / rev2 looks_clean 91 / signoff approved / 释放派发锁 / 5 follow-up minor 留 IB backlog）
 2026-05-14 16:23:25 [save] F-001 P0-baseline 闭环：rev2 looks_clean(91) + signoff approved + 锁释放 + 8 commits；5 follow-up minor 留 IB backlog；next 派 F-002 或整 IB
 2026-05-14 16:39:06 [save] IB backlog 整理：IB-01 F-004 touches 补 run_state.py；IB-02 改归 dev→testing 前 doc-refresh 批；IB-03~07 落 F-001 rev2 5 minors
+2026-05-14 16:44:20 [save] F-002 派发开始（model=sonnet，complexity=light fallback；touches 3 文件）
+2026-05-14 16:49:48 [save] F-002 派发完成（model=sonnet 30 tests passed；commit 8743134；进 post-dev + /code-review）
