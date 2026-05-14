@@ -1620,7 +1620,7 @@ REQ-010 落地了 main loop 7 类节点 + 7 outcome（来源：requirements/REQ-
 
 ### 8.2 单 PR 提交 + commit 分组（C-06 决策）
 
-PR 拆 commit（共 ~16 commits）：
+PR 拆 commit（共 **14 commits = 13 features + 1 chore**）：
 
 | commit 组 | 范围 | 包含 features |
 |---|---|---|
