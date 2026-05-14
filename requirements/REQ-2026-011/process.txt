@@ -13,3 +13,22 @@ REQ-2026-011 语义事件日志
 2026-05-13 10:15:06 [phase-transition] definition → tech-research（11 gate 全过；REV-002 looks_clean 92 + tty signoff approved）
 2026-05-13 10:42:14 [save] tech-research.md 完成 feasibility=high 17~23 天 D-01/D-02 关闭 D-03 延 detail-design Q-01~Q-05 待用户决策
 2026-05-13 11:27:11 [phase-transition] tech-research → definition (rollback) reason=需要重新讨论需求 tech-research.md 归档.rollback-20260513-112537/
+2026-05-14 08:36:52 [review:needs_revision] 用户对抗审阅 requirement.md：P1×3+P2×2+P3×1 共 6 处
+2026-05-14 08:36:53 [save] 6 处全闭环：loader explicit 标记 / AC-04 拆 a-b / run_artifact_checks 入口 / 串行 ready+D-04 follow-up，sourcing strict 0/0
+2026-05-14 08:42:32 [review:needs_revision] 用户二轮对抗审阅 requirement.md：P1×2+P2×2 共 4 处
+2026-05-14 08:42:33 [save] 4 处全闭环：on_reject 改 synthetic repair 事件流 / continue 在 awaiting 只读 / 场景4 锁路径对齐 / artifact 不双写 started，strict 0/0
+2026-05-14 08:46:40 [review:needs_revision] 用户三轮对抗审阅 requirement.md：P1×1+P2×1+P3×1 共 3 处
+2026-05-14 08:46:41 [save] 3 处全闭环：approval_repair 复用 awaiting_claude_action / 场景2 reject 改 repair 事件流 / 场景1 started 归外层，strict 0/0
+2026-05-14 08:48:56 [save] 四轮评审：删 line 19 背景段残留 [待用户确认]（现状描述非范围决策），余 4 处均合规挂 D-02/D-03
+2026-05-14 08:53:16 [phase-transition] definition → tech-research（再次进入；门禁 5/5 过；四轮对抗审阅 16 处全闭环+ADR D-006/007/008）
+2026-05-14 09:02:22 [save] tech-research.md v2 (rollback 后重写) feasibility=feasible 21~27 天 中位 23.7；5 类风险共 8 条；新发现 3 条（R-I02 R-I03 R-T03）
+2026-05-14 09:03:58 [review:approved] tech-research.md v2 user-approved (feasibility=feasible 中位 23.7 天 风险 8 条 P0 阻塞 0)
+2026-05-14 09:03:59 [phase-transition] tech-research → outline-design（门禁 5/5 过；6 条待澄清归 detail-design）
+2026-05-14 09:20:38 [save] outline-design.md v1 起草完成（10 个 H2/H3 章节 + 4 mermaid 时序图 + 2 mermaid 状态机 + 7 项技术选型）；sourcing strict 0/0；reviewer v1 needs_attention(78)
+2026-05-14 09:20:39 [save] outline-design.md v2 应对 4 required_fixes + 5 suggestions 全闭环（P2 嵌入点 / R-T01 末节点判定 / symlink 时机 / 弱引用 / 状态机改 mermaid 等）
+2026-05-14 09:20:41 [review:approved] REV-outline-design-002 looks_clean(87)；2 条新 suggestions 归 detail-design
+2026-05-14 09:44:29 [save] outline-design.md v3 用户二轮对抗审阅 4 处闭环：append_events 新 helper / artifact handler 自写 completed / AC-10 透传走 node_ready.data / lexists 不用 exists
+2026-05-14 09:48:31 [review:approved] REV-outline-design-003 looks_clean(91)；4 项关注重点全部闭环；1 suggestion + 2 architectural_concerns 归 detail-design
+2026-05-14 09:50:37 [save] outline-design.md v3 looks_clean(91)；三轮 score 78→87→91，5 维≥88；2 arch concerns 归 detail-design
+2026-05-14 09:54:08 [save] outline-design.md v4 补「架构关注点与演化触发」小节：AC-A1/A2/A3 三条本期 baseline + 触发再决策阈值；O-04/O-05 入待澄清
+2026-05-14 09:55:37 [save] architectural_concerns 全闭环存档点；下一步待用户决策：直接进 detail-design 或先重审 v4

@@ -36,7 +36,7 @@
 ## 风险
 
 - 风险 1：与 REQ-2026-010 范围高度重叠 —— 在 definition 阶段必须精确划分增量 vs 已落地，避免重做 main loop / bootstrap dispatcher 相关工作
-- 风险 2：DAG 调度器重构是 runtime 主路径变更 —— 不引 feature flag（见 D-004），依赖 `next` 退化兼容路径 + 全量回归 standard-8phase / code-review-embedded / sub_workflow 三类 YAML 兜底
+- 风险 2：DAG 调度器重构是 runtime 主路径变更 —— 不引 feature flag（见 D-004），依赖 `depends_on_explicit=False` 退化兼容路径（见 D-006）+ 全量回归 standard-8phase / code-review-embedded / sub_workflow 三类 YAML 兜底
 - 风险 3：approval 闭环涉及人类卡点 + Hook 防护，回归覆盖不足会出"AI 自动 approve 绕过"严重事故 —— 必须保留 D-006 hook 拦截基线，并补 CLI tty 校验测试
 - 风险 4：path-lock 在 macOS / Linux 文件锁语义差异 —— 必须显式选定 `fcntl.LOCK_EX`（与既有 jsonl 写一致）而非 flock(2)，避免跨平台不兼容
 
@@ -100,3 +100,35 @@
   - + 配合 requirement.md 降级条款，P2（AC-07~10）成本失控时可整组降级为后续需求，不阻塞 P0+P1。
   - − features-schema.yaml 改动需 schema 测兜底（detail-design 阶段同步出 schema diff），并兼容历史 features.json 无 priority 的情况（必填 / 选填规则需 detail-design 定）。
 - **时间**：2026-05-13 09:08:39
+
+### D-006 DAG 兼容退化判定依据选 `depends_on_explicit` 标记位 + 同层 ready 串行派发
+
+- **Context**：四轮对抗审阅指出原"`depends_on==[]` 时退化为 next"判定与 loader 现状冲突——`workflow_loader._expand_implicit_depends_on` 会给缺省节点自动补 `[prev_id]`（来源：scripts/lib/workflow_loader.py:475），导致加载后 `depends_on` 永远非空，兼容路径永不命中。同时 `code-review-embedded.yaml` 8 个 checker 设计为同层 ready，需明确本期是识别+串行 / 识别+并发 / 返回给 Claude Code 分批。候选 1：A 加载后判定 / B 在 loader 加 `depends_on_explicit: bool` 标记位；候选 2：a 识别+串行 / b 识别+并发（`RunState.current_node` 集合化）/ c 返回给 Claude Code。来源：artifacts/requirement.md:89 + AC-01 + 决策记录"兼容退化判定依据" + "同层 ready 节点本期执行策略"。
+- **Decision**：兼容判定选 B（loader `_expand_implicit_depends_on` 内补 `depends_on_explicit: bool`，缺省 = False，scheduler 据此区分显式 DAG / 隐式链）；同层 ready 选 a（识别 + 按 yaml 出现顺序串行派发，保 `RunState` 单 `current_node` 模型；事件顺序确定可复现）；并发派发列入 follow-up 需求 D-04，本期不做。
+- **Consequences**：
+  - + 最小侵入：loader 标记位保留原始语义，scheduler 据此切两条路径，不破坏既有简单 yaml。
+  - + 串行派发保持 RunState 单值不变，与 REQ-2026-010 main loop 兼容，e2e 行为确定。
+  - − code-review-embedded.yaml 8 checker 本期跑 8 次串行派发，单次审查 wall-clock 偏长；并发能力需后续需求覆盖（D-04 follow-up）。
+- **时间**：2026-05-14 08:36:53
+
+### D-007 approval reject 走 inline `approval_repair` 事件流，复用 `awaiting_claude_action` 状态
+
+- **Context**：四轮对抗审阅指出"reject 跳到 on_reject 节点"语义与真实 yaml 不符——`on_reject` 在真实 yaml 是 `approval.on_reject.prompt` inline 子结构（来源：.claude/workflows/requirement/standard-8phase.yaml:156），不是独立 DAG node；若直接把 approval 节点写 `node_failed`，DAG scheduler 会把下游 permanently blocked 或提前触发失败矩阵 retry。同时 approval_repair 中间态需选状态归属：A 复用 `awaiting_claude_action` / B 新增 `approval_repairing` / C 修订期间仍保持 `approval_pending`。来源：artifacts/requirement.md AC-03 + 决策记录"on_reject 事件流模型" + "approval_repair 中间态归属"。
+- **Decision**：事件流选 inline synthetic repair：reject CLI 原子写 `approval_rejected + approval_repair_started(attempt=N)` 并把状态机切到 `awaiting_claude_action`（复用 AC-04 同款，不引第二个 awaiting 状态）→ 主 Claude 执行 inline `approval.on_reject.prompt` → 调 `save_node_result.py --kind=approval_repair` 写 `approval_repair_completed` → 状态回 `approval_pending` 等待下一次 approve/reject；达 `max_attempts`（yaml `approval.on_reject.max_attempts` override，默认 N=3，D-02 待 detail-design 定稿）才 `node_failed + workflow_failed` reason=`approval_attempts_exhausted`。
+- **Consequences**：
+  - + 事件流与 yaml 真实结构一致，attempts 计数与 yaml `max_attempts` 同源。
+  - + 状态机不膨胀：`awaiting_claude_action` 同时承载 skill/prompt/agent 完成等待 与 approval repair 等待，`save_node_result --kind=skill_result|approval_repair` 子模式区分写入事件名。
+  - + 保持 D-006 hook 拦截基线不变：reject CLI 仍走 tty fail-closed，AI 无法自动 reject。
+  - − 实施细节：`save_node_result.py` 必须强制校验 RunState.state == `awaiting_claude_action`，否则给 AI agent 留绕过口；fail-closed 校验需 unit 测覆盖。
+- **时间**：2026-05-14 08:46:41
+
+### D-008 artifact / dispatcher 事件写入职责分工（外层写 started/failed，handler 只写 completed）
+
+- **Context**：四轮对抗审阅指出 AC-02 原写法"`_dispatch_artifact_node` 写 node_started + node_completed + node_failed"会与外层 `dispatch_node` 双写 `node_started`——外层 dispatcher 进入即写 node_started（来源：scripts/lib/workflow_dispatcher.py:128）+ 异常分支统一转 `node_failed`。同时 `awaiting_claude_action` 状态下 `/workflow:continue` 行为未定义，可能引发重复派发。候选 1：A 外层 + handler 双写 / B 外层负责 started/failed，handler 仅 completed；候选 2：continue 在 awaiting 下 A fail-closed / B 只读不派发 / C 自动重派发。来源：artifacts/requirement.md AC-02 + AC-04b 决策记录"awaiting_claude_action 下 continue 语义"。
+- **Decision**：事件写入分工选 B（外层 `dispatch_node` 进入即写 `node_started` + 异常 try/except 统一转 `node_failed`；所有 handler 包括 `_dispatch_artifact_node` 仅在 success path 写自己的 outcome 事件 如 `node_completed`/`node_ready`，禁止重复写 started）；continue 在 awaiting 下选 B（识别 awaiting → print `INFO: node <id> awaiting external save_node_result (kind=skill_result|approval_repair), no dispatch` → return 0；不写新事件、不推进 ready 集；保留 idempotent 语义）。
+- **Consequences**：
+  - + jsonl 中每节点 node_started/node_completed 各 1 条，事件成对，RunState.rebuild 计数不偏。
+  - + continue 命令保持 idempotent，用户用 continue 试探状态不会被误拦或污染 jsonl。
+  - + handler 职责单一，新增节点类型只需写 success path，failure 路径由外层兜底，新人理解成本低。
+  - − 既有 dispatcher 单元测试需补"handler 不写 started"的负向断言（detail-design 阶段补 e2e fixture 兜底）。
+- **时间**：2026-05-14 08:46:41

@@ -1,7 +1,7 @@
 # ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-011
 title: workflow runtime DAG 调度与节点 dispatcher 补全（参考 Archon 设计）
-phase: definition
+phase: outline-design
 created_at: "2026-05-13 08:36:31"     # 格式 YYYY-MM-DD HH:MM:SS（Asia/Shanghai），见 context/team/engineering-spec/time-format.md
 branch: feat/req-2026-011
 base_branch: develop
@@ -11,15 +11,29 @@ gates_passed:
   - phase: definition
     at: '2026-05-13 08:42:31'
     via: managing-requirement-lifecycle
-    notes: bootstrap → definition gate 全过（GATE-META-SCHEMA / INDEX-INTEGRITY /
-      SOURCING / PLAN-FRESHNESS / WORKSPACE-CLEAN / REVIEW-VERDICT /
-      FEATURES-SCHEMA / TASK-FRONTMATTER / POST-DEV-RECEIPT / TRACEABILITY /
+    notes: bootstrap → definition gate 全过（GATE-META-SCHEMA / INDEX-INTEGRITY / 
+      SOURCING / PLAN-FRESHNESS / WORKSPACE-CLEAN / REVIEW-VERDICT / 
+      FEATURES-SCHEMA / TASK-FRONTMATTER / POST-DEV-RECEIPT / TRACEABILITY / 
       TOUCHES-VIOLATION 共 11 个）
   - phase: tech-research
     at: '2026-05-13 10:14:42'
     via: managing-requirement-lifecycle
-    notes: definition → tech-research gate 全过（同 11 个 gate；REV-002 looks_clean(92)
-      + hj19961223@gmail.com tty signoff approved；R003/R005 双 gate 解除）
+    notes: definition → tech-research gate 全过（同 11 个 gate；REV-002 
+      looks_clean(92) + hj19961223@gmail.com tty signoff approved；R003/R005 双 
+      gate 解除）；已于 2026-05-13 11:27:11 rollback 至 definition 重新讨论范围
+  - phase: tech-research
+    at: '2026-05-14 08:52:50'
+    via: managing-requirement-lifecycle
+    notes: definition → tech-research (rollback 后再次进入)；门禁 5/5 过（GATE-META-SCHEMA
+      / INDEX-INTEGRITY / SOURCING / PLAN-FRESHNESS / 
+      WORKSPACE-CLEAN）；requirement.md 经四轮对抗审阅 16 处全闭环（loader explicit / AC-04 拆 
+      / artifact 入口 / 串行 ready / on_reject inline repair / continue idempotent /
+      锁路径对齐 / 不双写 started 等）；plan.md 同步 D-006/007/008 三条 ADR
+  - phase: outline-design
+    at: '2026-05-14 09:03:29'
+    via: managing-requirement-lifecycle
+    notes: tech-research → outline-design 门禁 5/5 过；user approve tech-research.md
+      v2 (feasibility=feasible 中位 23.7 天)；P0 阻塞项 = 0；6 条待澄清归 detail-design 阶段处理
 pr_url: ""                             # /requirement:submit 成功后回写
 pr_number: 0                           # /requirement:submit 成功后回写
 log_layout: split                      # split（默认，工具日志→process.tool.log / 语义事件→process.txt） | legacy（老格式，全写 process.txt）
@@ -58,4 +72,18 @@ reviews:
     history:
       - REV-REQ-2026-011-definition-001
       - REV-REQ-2026-011-definition-002
+    stale: false
+  outline-design:
+    latest: REV-REQ-2026-011-outline-design-003
+    conclusion: looks_clean
+    reviewed_commit: 33e919a
+    artifact_hashes:
+      artifacts/outline-design.md: 
+        61e24cf28575e36514ca5260b0f2f57c9d1208f7a39e3aa3d2dd79c12b340357
+      artifacts/requirement.md: 
+        86a31b69f1d1b0c7a20940f86ec8c8ad993f6f1e1b1950ac328dcf6bc3f4d184
+    history:
+      - REV-REQ-2026-011-outline-design-001
+      - REV-REQ-2026-011-outline-design-002
+      - REV-REQ-2026-011-outline-design-003
     stale: false
