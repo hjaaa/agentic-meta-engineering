@@ -85,7 +85,7 @@
     {
       "id": "F-004",
       "title": "DAG ready_nodes scheduler + depends_on_explicit 标记位",
-      "description": "scripts/lib/workflow_loader.py 的 _expand_implicit_depends_on 内补 workflow['depends_on_explicit']: bool 标记位（True = 全部节点显式声明 depends_on；False = 至少一节点缺省，loader 自动补 [prev_id]）。scripts/lib/workflow_continue.py 新增 _ready_nodes(run_state, workflow)（D-013 每次全量重算）+ _select_next_dispatch_target() 双路径分流。**退化路径双分支兜底（对抗审阅 P1-2 v6 二次修订）**：(a) current_node is None ∧ 无任何 completed → 返回 yaml.nodes[0].id（真新 run）；(b) current_node is None ∧ 已有 completed → 反扫 node_outputs 取 last_completed → 走 _next_node(last_completed)（应对 rebuild 后 node_completed handler 把 current_node 置 None 的场景）。_finalize_after_rebuild_if_last_topology_node DAG 末节点判定（**对抗审阅 P1-3 v6 二次修订**）：terminal 集合 **仅 {completed, skipped}**（**不含 failed**） + 不存在 failed + _ready_nodes 为空 → 才写 workflow_completed；含 failed 节点时返回 False 由 _route_outcome 失败矩阵接管 workflow_failed/retry/skip。落地 ADR D-006 + D-013 + AC-01 + 详见 detailed-design.md §3.4 / §3.6.2 / §3.6.3。附带修正 .claude/workflows/requirement/standard-8phase.yaml:57 不存在的 check_meta_schema.py → check_meta.py（与 F-005 同 commit 或独立小 commit）。",
+      "description": "scripts/lib/workflow_loader.py 的 _expand_implicit_depends_on 内补 workflow['depends_on_explicit']: bool 标记位（True = 全部节点显式声明 depends_on；False = 至少一节点缺省，loader 自动补 [prev_id]）。**全局成功终态集合 SUCCESS_TERMINAL = {completed, skipped}**（v8 REV-007 P1 抽出贯穿）：用于依赖满足判定 / 退化路径 last_visited / DAG finalize；implementation 阶段抽到 scripts/lib/run_state.py 共享常量永久消除复发风险。scripts/lib/workflow_continue.py 新增 _ready_nodes(run_state, workflow)（D-013 每次全量重算；依赖满足条件 = deps 全部 ∈ SUCCESS_TERMINAL；跳过状态 ∈ SUCCESS_TERMINAL ∪ {failed, running, awaiting_claude_action}，**v8 P1 修订前只看 completed 会让 skipped 依赖永久阻塞下游 + skipped/failed 节点被错误重派**）+ _select_next_dispatch_target() 双路径分流。**退化路径双分支兜底**：(a) current_node is None ∧ 无任何 success_terminal 节点 → 返回 yaml.nodes[0].id（真新 run）；(b) current_node is None ∧ 已有 success_terminal 节点 → 反扫 node_outputs 取 last_visited（含 completed/skipped）→ 走 _next_node(last_visited)。_finalize_after_rebuild_if_last_topology_node DAG 末节点判定：全节点 ∈ SUCCESS_TERMINAL ∧ 不存在 failed ∧ _ready_nodes 为空 → 才写 workflow_completed；含 failed 节点时返回 False 由 _route_outcome 失败矩阵接管。**单链路径 finalize 反扫起点同步改 last_visited（含 node_completed/node_skipped 事件）**——v7 反扫 last_completed 在末节点 skipped 时会漏写 workflow_completed。落地 ADR D-006 + D-013 + AC-01 + 详见 detailed-design.md §3.3.5 / §3.4 / §3.6.2 / §3.6.3 / §5.4。附带修正 .claude/workflows/requirement/standard-8phase.yaml:57 不存在的 check_meta_schema.py → check_meta.py（与 F-005 同 commit 或独立小 commit）。",
       "modules": [
         "scripts/lib/workflow_loader.py",
         "scripts/lib/workflow_continue.py",
@@ -109,8 +109,10 @@
       "acceptance": [
         "loader：全显式 depends_on yaml → workflow['depends_on_explicit'] == True",
         "loader：任一节点缺省 depends_on → workflow['depends_on_explicit'] == False（loader 仍补 [prev_id]）",
-        "_ready_nodes 首次调用（completed=∅）→ 返回入度=0 节点集（按 yaml 出现顺序）",
-        "_ready_nodes 某节点 deps 全完 → 加入 ready；已在 awaiting / failed → 不加入",
+        "_ready_nodes 首次调用（success_terminal=∅）→ 返回入度=0 节点集（按 yaml 出现顺序）",
+        "_ready_nodes 依赖满足判定用 SUCCESS_TERMINAL（{completed, skipped}，v8 REV-007 P1 修订）：某节点 deps 全部 ∈ SUCCESS_TERMINAL → 加入 ready；已在 success_terminal / failed / running / awaiting → 不加入",
+        "v8 P1 反向回归 a（skipped 不阻断下游）：yaml N1 → N2（N2.depends_on=[N1]），事件 [..., node_skipped(N1)] → _ready_nodes 返回 ['N2']（旧实现误返 [] 让 N2 永久阻塞）",
+        "v8 P1 反向回归 b（finalize 末节点 skipped）：单链 yaml N1→N2→N3，事件 [..., node_completed(N1), node_completed(N2), node_skipped(N3)]（N3 是末节点）→ _finalize_after_rebuild_if_last_topology_node 反扫 last_visited=N3，_next_node(N3,None) is None → 补写 workflow_completed（旧 last_completed 反扫 N3 是 skipped 被漏，会卡死）",
         "_select_next_dispatch_target：depends_on_explicit=True → 调 _ready_nodes 取 [0]；False → 调 _next_node；**退化路径 current_node is None ∧ 无 completed → 返回 workflow.nodes[0].id（P1-2 分支 a）**；**退化路径 current_node is None ∧ 有 completed → 反扫 last_completed → _next_node(last_completed)（P1-2 v6 分支 b 修复）**",
         "新 run 启动断言（P1-2 分支 a 回归）：仅 [workflow_started] 事件 + 退化 yaml（depends_on_explicit=False，3 节点 N1/N2/N3）→ _select_next_dispatch_target 返回 'N1'（首节点 id）",
         "续跑反扫断言（P1-2 分支 b 回归，v6 新增）：[workflow_started, node_started(N1), node_completed(N1)] + 退化 yaml（N1.next=N2）→ rebuild 后 current_node is None ∧ node_outputs[N1].state=='completed' → _select_next_dispatch_target 反扫得 last_completed=N1 → 返回 'N2'",
@@ -274,13 +276,14 @@
       "complexity": "medium",
       "acceptance": [
         "--verbose 输出含 ready (N) / running (N) / blocked (N) / awaiting (N) / done (N) 五行分类",
-        "blocked 节点附 'deps: [a, b]' 说明阻塞依赖",
+        "blocked 节点附 'deps: [a, b]' 说明阻塞依赖；reason 取自 {incomplete_dispatch, awaiting_deps, awaiting_claude_action} 枚举",
         "awaiting 节点附 'kind=skill_result' 或 'kind=approval_repair'",
         "last_event_ts 距 now ≥ 30 分钟 → 输出含 'WARN: stale heartbeat (age=Xmin)'",
         "env CLAUDE_WORKFLOW_STALE_MINUTES=1 + 2 分钟前 ts → 立即 stale",
         "无 --verbose → 输出格式与既有 status 一致（不破坏 D-007 双轨已有 fixture）",
         "e2e：fixture 写 approval_pending 事件 + 30 分钟前 ts → status --verbose 输出含 stale WARN",
-        "e2e：jsonl chmod 000 → status --verbose exit != 0 + stderr 含 jsonl unreadable"
+        "e2e：jsonl chmod 000 → status --verbose exit != 0 + stderr 含 jsonl unreadable",
+        "e2e incomplete_dispatch 诊断（v8 REV-007 P2 闭环 AC-06 e2e (b)）：fixture 写 [workflow_started, node_started(N1)] 但**无后续 node_completed / node_failed / node_skipped 事件** → status --verbose 输出含 'blocked: incomplete_dispatch' 行 + 'node: N1'（对应 requirement.md:106 e2e 场景 b）"
       ],
       "estimate_days": 2.3,
       "priority": "P1",

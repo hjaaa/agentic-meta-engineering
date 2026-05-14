@@ -743,10 +743,12 @@ def _ready_nodes(
 ) -> list[str]:
     """计算当前 ready 节点 ID 列表（D-013：每次全量重算）。
 
-    算法：
+    算法（**v8 REV-007 P1 修订**：SUCCESS_TERMINAL 贯穿）：
       1. 取 workflow.nodes 全集
-      2. 对每个未完成节点（id not in run_state.node_outputs 或 state != "completed"），
-         若所有 depends_on 节点的 state == "completed" → 加入 ready
+      2. 对每个候选节点：
+         - 已在任一终态（success_terminal {completed, skipped} 或 failed）→ 不再 ready
+         - 已在派发中（current_node / state ∈ {running, awaiting_claude_action}）→ 不再 ready
+         - 所有 depends_on 节点的 state ∈ SUCCESS_TERMINAL（**含 skipped**）→ 加入 ready
       3. 按 yaml 出现顺序返回（保 D-006 串行派发的事件顺序确定）
 
     退化路径（D-006）：当 workflow.meta.depends_on_explicit == False（loader 标记），
@@ -756,19 +758,29 @@ def _ready_nodes(
         list[str]: 0~N 个 ready node id（空 = 拓扑跑完 或 全部阻塞）
 
     Time: O(V × avg_deps)，50 节点 × 5 deps ≈ 250 set 查询 < 5ms。
+
+    **对抗审阅 P1 修订（v8）**：原 completed-only 实现有两处漏洞——
+      (i) 跳过条件仅检查 'in completed'，skipped/failed 节点会被错误重新派发；
+      (ii) 依赖满足只看 completed，下游节点在 on_failure=skip 后永久阻塞。
     """
-    completed = {nid for nid, entry in run_state.node_outputs.items()
-                 if entry.get("state") == "completed"}
+    # 与 §3.6.2 / §3.6.3 同源（implementation 阶段建议抽到 run_state.py 共享常量）
+    SUCCESS_TERMINAL = {"completed", "skipped"}
+    NON_READY_STATES = SUCCESS_TERMINAL | {"failed", "running", "awaiting_claude_action"}
+
+    success_done = {nid for nid, entry in run_state.node_outputs.items()
+                    if entry.get("state") in SUCCESS_TERMINAL}
     ready: list[str] = []
     for node in workflow.get("nodes", []):
         nid = node.get("id")
-        if not nid or nid in completed or nid == run_state.current_node:
+        if not nid or nid == run_state.current_node:
             continue
-        # 节点已在 awaiting / running 时跳过（避免重复派发）
-        if nid in run_state.node_outputs and run_state.node_outputs[nid].get("state") in ("running", "awaiting"):
+        # 任何已"走过"或正在处理的节点都不再 ready
+        existing_state = (run_state.node_outputs.get(nid) or {}).get("state")
+        if existing_state in NON_READY_STATES:
             continue
         deps = node.get("depends_on") or []
-        if all(d in completed for d in deps):
+        # 依赖满足：所有 deps 都在 success_done（completed | skipped）
+        if all(d in success_done for d in deps):
             ready.append(nid)
     return ready
 ```
@@ -982,10 +994,12 @@ def _select_next_dispatch_target(
         (a) 真新 run（无任何 completed）
         (b) 已有节点 completed 但 main loop 还没 _advance（crash 或重 continue）
 
-      退化（单链）路径双分支处理：
-        (a) 无 completed → 返回 yaml 首节点 nodes[0]
-        (b) 有 completed → 从 jsonl 反扫"最后 completed 的 node_id"，走 _next_node(last_completed)
-        DAG 路径无此问题：_ready_nodes 自然返回 depends_on=[] 入口节点 + 已 completed 节点不再入 ready
+      退化（单链）路径双分支处理（v8 REV-007 P1 措辞修订：success_terminal 贯穿）：
+        (a) 无 success_terminal 节点（即 state ∈ {completed, skipped} 的节点为 0 个）→ 返回 yaml 首节点 nodes[0]
+        (b) 有 success_terminal 节点 → 从 jsonl 反扫"最后 last_visited 的 node_id"（含 skipped），
+            走 _next_node(last_visited)
+        DAG 路径无此问题：_ready_nodes 自然返回 depends_on 全 success_terminal 的入口节点 +
+            已 success_terminal / failed / running / awaiting 的节点不再入 ready
     """
     if workflow.get("depends_on_explicit"):
         ready = _ready_nodes(run_state, workflow)
@@ -1062,13 +1076,15 @@ def _finalize_after_rebuild_if_last_topology_node(
     if run_state.current_node is not None or run_state.state != "running":
         return False
     events, _ = read_events(jsonl_path)
-    last_completed = None
+    # v8 REV-007 P1：反扫 last_visited（含 node_completed 与 node_skipped）——
+    # 单链末节点是 skipped 时，原 last_completed 反扫会返 None → 漏写 workflow_completed
+    last_visited_id = None
     for evt in events:
-        if evt.get("type") == "node_completed":
-            last_completed = evt.get("node_id")
-    if not last_completed:
+        if evt.get("type") in ("node_completed", "node_skipped"):
+            last_visited_id = evt.get("node_id")
+    if not last_visited_id:
         return False
-    last_node = node_map.get(last_completed)
+    last_node = node_map.get(last_visited_id)
     if last_node is None:
         return False
 
@@ -1667,19 +1683,20 @@ append_events_with_manifest([events], large_field_paths=[("data","reason")], run
 
 ```python
 def _ready_nodes(run_state, workflow):
-    completed = {nid for nid, e in run_state.node_outputs.items() if e["state"] == "completed"}
+    # v8 REV-007 P1：SUCCESS_TERMINAL 贯穿 — completed 与 skipped 都算"依赖满足 + 不再 ready"
+    SUCCESS_TERMINAL = {"completed", "skipped"}
+    NON_READY = SUCCESS_TERMINAL | {"failed", "running", "awaiting_claude_action"}
+    success_done = {nid for nid, e in run_state.node_outputs.items() if e["state"] in SUCCESS_TERMINAL}
     ready = []
     for node in workflow["nodes"]:
         nid = node["id"]
-        if nid in completed:
-            continue
         if nid == run_state.current_node:    # 已在派发中
             continue
-        # 跳过 running / awaiting / failed 状态的节点
-        if nid in run_state.node_outputs:
+        existing = (run_state.node_outputs.get(nid) or {}).get("state")
+        if existing in NON_READY:             # 跳过任一终态 / running / awaiting
             continue
         deps = node.get("depends_on") or []
-        if all(d in completed for d in deps):
+        if all(d in success_done for d in deps):
             ready.append(nid)
     return ready    # 按 yaml 出现顺序（D-006 串行）
 ```
@@ -1765,7 +1782,7 @@ readonly APPROVAL_PYTHON_PATTERN='python3?[[:space:]]+([^[:space:]]+/)?(scripts/
 | `workflow_reject.py`（AC-03b/c） | attempt=1 < max=3 → 写 [approval_rejected, approval_repair_started]；attempt=3 → 写 [rejected, node_failed, workflow_failed] 三条原子；reason 让 batch ≥4KB → manifest fallback（v6 P2 修订；3500 字节单字段在外置时入选）；attempt 计数从 jsonl 反扫 | 5 |
 | `run_state.py` rebuild 新事件 | node_ready → state=awaiting + current_node=N；approval_repair_started → state=awaiting + pending_approval=N；approval_repair_completed → state=approval_pending；node_completed 在 awaiting → state=running | 5 |
 | `workflow_state_validator.CMD_ALLOWED_STATES` | continue/save/status/cancel/rollback 在 awaiting_claude_action 下 allowed；approve/reject 在 awaiting 下 raise WorkflowError | 7 |
-| `workflow_status.py --verbose` | ready/running/blocked/paused/done 分类正确；stale 30 分钟阈值触发 WARN；env override 1 分钟 → 立即 stale | 4 |
+| `workflow_status.py --verbose` | ready/running/blocked/paused/done 分类正确；stale 30 分钟阈值触发 WARN；env override 1 分钟 → 立即 stale；**incomplete_dispatch 诊断（v8 REV-007 P2）：jsonl [workflow_started, node_started(N1)] 无后续终态事件 → blocked 行 reason=incomplete_dispatch + node=N1**；blocked reason 枚举 ∈ {incomplete_dispatch, awaiting_deps, awaiting_claude_action} | 6 |
 | `workflow_loader.py` AC-10 字段 | 7 字段全合法 yaml 通过 schema；allowed_tools 非 list[str] → schema 错；output_format 非 dict → schema 错 | 5 |
 | launcher fuzzy（AC-09） | 编辑距离 ≤ 2 命中；fuzzy 词典 ≥ 10 词 hit；`workflow list --json` 输出有效 JSON | 4 |
 
@@ -1948,3 +1965,4 @@ F-013 (AC-10 7 字段)   ← F-002 / F-007
 | 2026-05-14 11:35:00 | v5 闭环 REV-004 M-1/M-2 major 跨文件 drift + M-3 minor | **M-1 修复**：features.json F-002 description 删除"WORKFLOW_EVENT_TO_STATE 加..."旧语义，明确"扁平映射保持 6 项不扩展"+ 补反向回归断言（acceptance #7：扁平映射 keys 集合不含 3 新事件）；**M-2 修复**：features.json F-004 description 把"出度=0"改"全节点终态 ∧ _ready_nodes 空" + 补退化首节点 acceptance + 补多 sink DAG 反向回归 acceptance；**M-3 修复**：detailed-design §2.2 示例代码约定段澄清（§2.2.x JSON 示例写 run_id 作为人类辨识便利，§3.x 代码示例与现有 dispatcher 一致写 run_id，append_event 不校验、rebuild 仅 workflow_started 兜底取 run_id） |
 | 2026-05-14 11:55:00 | v6 用户对抗审阅第二轮 4 处全闭环（3×P1 + 1×P2） | **P1-1** save_node_result 补 `_check_node_match_or_fail` 第 2 道闸（RunState 字段 + jsonl 末位事件双向校验；新错误码 E-NODE-RESULT-002/003/004；测试矩阵 8→11 用例，补 3 条反向覆盖单测）—— 杜绝"等 N1 时错写 N2"的身份漏洞；**P1-2** `_select_next_dispatch_target` 退化路径分支 b（current_node is None ∧ 有 completed）补"反扫 last_completed → _next_node 推进"逻辑，与现有 node_completed handler "current_node=None"行为对齐；**P1-3** DAG 终态判定 `terminal_states` 去除 `failed`，含 failed 节点时 finalize 返回 False 由失败矩阵接管 workflow_failed/retry/skip；**P2** manifest 触发条件 §2.4 + §3.5 + §3.2 时序图 + 测试矩阵 + 示例注释全量对齐"batch ≥4KB 触发 + 单字段 ≥3500 入选"二段语义（消除 §2.4 "≥3500 单字段即外置"与 §3.5 算法"先看 batch"的语义冲突） |
 | 2026-05-14 12:15:00 | v7 闭环 REV-006 新 P1（success_terminal 不对称） + P3 三条文案 | **新 P1（v6 P1-2 与 P1-3 改动不对称遗留）**：§3.6.2 退化路径分支 a 的 `any_completed` + 分支 b 反扫的 `state == "completed"` 与 §3.6.3 P1-3 修订定义的 `success_terminal={completed, skipped}` 不一致——会让退化 yaml + on_failure=skip 场景下 N1 被 skip 后**重新派发首节点**。改：引入 `SUCCESS_TERMINAL` 集合（与 §3.6.3 同源）+ any_visited / last_visited 命名替换；补单测 4（skipped 反向回归）；features.json F-004 acceptance 新增"skipped 反向回归"断言。**P3 文案**：(1) `last_awaiting_evt` → `last_node_lifecycle_evt`（反扫候选含 node_completed/failed 不全是 awaiting）；(2) §3.6.2 分支 b 加"仅退化路径执行 + dict 序假设依据"显式注释；(3) F-007 acceptance 反向 b 文案展开"节点级事件候选集 {node_ready, approval_repair_started, node_completed, approval_repair_completed, node_failed}" |
+| 2026-05-14 12:50:00 | v8 用户对抗审阅第三轮 3 处全闭环（1 P1 + 1 P2 + 1 P3） | **P1（skipped 终态未贯穿 _ready_nodes / finalize）**：(a) §3.3.5 _ready_nodes 主实现 + §5.4 摘要：completed 集合改 SUCCESS_TERMINAL；跳过条件加 skipped/failed/running/awaiting；依赖满足判定改 `all(d in SUCCESS_TERMINAL)`，**杜绝 skipped 节点的下游永久阻塞**；(b) §3.6.3 finalize 反扫起点 last_completed → last_visited（含 node_completed | node_skipped），**杜绝单链 yaml 末节点 skipped 时 workflow_completed 漏写卡死**；features.json F-004 acceptance 补 2 条反向回归（skipped 不阻断下游 + finalize 末节点 skipped 仍完成）。**P2（AC-06 incomplete_dispatch 无验收）**：features.json F-009 acceptance 补 e2e 断言（node_started 无终态 → blocked: incomplete_dispatch + node=N1）；§7 测试矩阵补具体用例 + reason 枚举。**P3（旧文案残留）**：(a) §3.6.2 docstring "无 completed / 最后 completed" → "无 success_terminal / 最后 last_visited"；(b) features.json F-004 description 全量改"success_terminal/last_visited"；(c) outline-design.md line 135 末节点判定旧"出度=0"改"全节点 SUCCESS_TERMINAL ∧ 不存在 failed ∧ _ready_nodes 空"+ 引用 detail-design v4 P1-3 修订记录 |
