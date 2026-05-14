@@ -141,8 +141,8 @@ WORKFLOW_EVENT_TO_STATE: dict[str, str] = {
     "attempt": 1,
     "max_attempts": 3,
     "prompt_ref": "approval.on_reject.prompt",
-    "reason": "用户反馈：缺少 ...（≤ 3.5KB inline）"
-    // 或当 reason ≥ 3.5KB 时：
+    "reason": "用户反馈：缺少 ...（inline，常规场景）"
+    // 或当 batch ≥4KB 触发 manifest fallback 且 reason 单字段 ≥3500 入选外置时（§2.4 二段语义）：
     // "reason_ref": {"path": "manifest/<event_id>.txt", "size": 5234, "sha256": "abc..."}
   }
 }
@@ -1708,13 +1708,13 @@ def _ready_nodes(run_state, workflow):
 
 **复杂度**：
 - 时间 O(V × max_deps) = O(50 × 5) = 250 ops < 5ms
-- 空间 O(V)（completed 集合）
+- 空间 O(V)（success_terminal 集合）
 
 **性能验证**：micro-benchmark 见 §7.3。
 
-**边界**：
-- `completed` 空（首次 continue）→ 返回入度=0 的节点集（拓扑首层）
-- 全部完成 → 返回 []，由 `_finalize_after_rebuild_if_last_topology_node` 写 workflow_completed
+**边界**（v8 P3 措辞修订 — success_terminal 统一）：
+- `success_terminal` 空（首次 continue）→ 返回入度=0 的节点集（拓扑首层）
+- 全部完成（全节点 ∈ success_terminal）→ 返回 []，由 `_finalize_after_rebuild_if_last_topology_node` 写 workflow_completed
 - 存在 failed 节点 → 下游永远 not-ready；scheduler 不再推进，由 on_failure 矩阵兜底
 
 ### 5.5 兼容退化（对应 ADR D-006）
@@ -1775,7 +1775,7 @@ readonly APPROVAL_PYTHON_PATTERN='python3?[[:space:]]+([^[:space:]]+/)?(scripts/
 | `path_lock.py` | acquire 后 .lock 含 pid+created_at+path_target；二次 acquire raise LockBusyError；mock _is_pid_alive=False → 自动清理 + 重试一次；symlink 对 requirement-class run 建立；release 后 .lock 删除但 symlink 保留 | 7 |
 | `workflow_loader._expand_implicit_depends_on` | 全显式 → depends_on_explicit=True；一节点缺省 → False；首节点缺省 depends_on=[] 不算"隐式" → 仍可能为 True | 4 |
 | `workflow_continue._ready_nodes` | 首次 continue → 返回入度=0 节点；某节点 deps 全完 → 加入 ready；ready 节点已在 awaiting → 不重复返回；50 节点 yaml 性能 < 50ms（移到 §7.3） | 5 |
-| `workflow_continue._select_next_dispatch_target` | depends_on_explicit=True → 调 `_ready_nodes`；False → 调 `_next_node`；**退化路径分支 a/b 用 `state ∈ {completed, skipped}` 判 last_visited（v7 REV-006 P1 闭环；与 §3.6.3 SUCCESS_TERMINAL 同源）**；含 4 条单测（真新 run / 续跑反扫 completed / 续跑反扫 skipped 反向回归 / 末节点反扫） | 5 |
+| `workflow_continue._select_next_dispatch_target` | depends_on_explicit=True → 调 `_ready_nodes`；False → 调 `_next_node`；**退化路径分支 a/b 用 `state ∈ SUCCESS_TERMINAL = {completed, skipped}` 判 last_visited（v7 REV-006 P1 闭环；与 §3.6.3 同源）**；含 5 条单测（真新 run / 续跑反扫 completed / 续跑反扫 skipped 反向回归 / 末节点反扫 / DAG 路径首启动） | 5 |
 | `workflow_continue` awaiting 下 continue | state=awaiting → print INFO + return 0；不写任何新事件 | 2 |
 | `workflow_continue._finalize_after_rebuild_if_last_topology_node` | DAG 路径"全节点 ∈ {completed, skipped} ∧ 不存在 failed ∧ _ready_nodes 空" → 补 workflow_completed；单链路径 `_next_node is None` 末节点 → 补 workflow_completed；**多 sink DAG 任一先 completed 不触发完成事件**；**存在 failed 节点时 finalize 返回 False，不写 workflow_completed（P1-3 v6 反向覆盖）** | 6 |
 | `workflow_continue._poll_sub_workflows` | 子 completed → 父 child_graceful_exited + node_completed；子 failed + on_subworkflow_failure=skip → child_failed + node_skipped；子 failed + abort → child_failed + node_failed + workflow_failed | 3 |
@@ -1971,3 +1971,4 @@ F-013 (AC-10 7 字段)   ← F-002 / F-007
 | 2026-05-14 11:55:00 | v6 用户对抗审阅第二轮 4 处全闭环（3×P1 + 1×P2） | **P1-1** save_node_result 补 `_check_node_match_or_fail` 第 2 道闸（RunState 字段 + jsonl 末位事件双向校验；新错误码 E-NODE-RESULT-002/003/004；测试矩阵 8→11 用例，补 3 条反向覆盖单测）—— 杜绝"等 N1 时错写 N2"的身份漏洞；**P1-2** `_select_next_dispatch_target` 退化路径分支 b（current_node is None ∧ 有 completed）补"反扫 last_completed → _next_node 推进"逻辑，与现有 node_completed handler "current_node=None"行为对齐；**P1-3** DAG 终态判定 `terminal_states` 去除 `failed`，含 failed 节点时 finalize 返回 False 由失败矩阵接管 workflow_failed/retry/skip；**P2** manifest 触发条件 §2.4 + §3.5 + §3.2 时序图 + 测试矩阵 + 示例注释全量对齐"batch ≥4KB 触发 + 单字段 ≥3500 入选"二段语义（消除 §2.4 "≥3500 单字段即外置"与 §3.5 算法"先看 batch"的语义冲突） |
 | 2026-05-14 12:15:00 | v7 闭环 REV-006 新 P1（success_terminal 不对称） + P3 三条文案 | **新 P1（v6 P1-2 与 P1-3 改动不对称遗留）**：§3.6.2 退化路径分支 a 的 `any_completed` + 分支 b 反扫的 `state == "completed"` 与 §3.6.3 P1-3 修订定义的 `success_terminal={completed, skipped}` 不一致——会让退化 yaml + on_failure=skip 场景下 N1 被 skip 后**重新派发首节点**。改：引入 `SUCCESS_TERMINAL` 集合（与 §3.6.3 同源）+ any_visited / last_visited 命名替换；补单测 4（skipped 反向回归）；features.json F-004 acceptance 新增"skipped 反向回归"断言。**P3 文案**：(1) `last_awaiting_evt` → `last_node_lifecycle_evt`（反扫候选含 node_completed/failed 不全是 awaiting）；(2) §3.6.2 分支 b 加"仅退化路径执行 + dict 序假设依据"显式注释；(3) F-007 acceptance 反向 b 文案展开"节点级事件候选集 {node_ready, approval_repair_started, node_completed, approval_repair_completed, node_failed}" |
 | 2026-05-14 12:50:00 | v8 用户对抗审阅第三轮 3 处全闭环（1 P1 + 1 P2 + 1 P3） | **P1（skipped 终态未贯穿 _ready_nodes / finalize）**：(a) §3.3.5 _ready_nodes 主实现 + §5.4 摘要：completed 集合改 SUCCESS_TERMINAL；跳过条件加 skipped/failed/running/awaiting；依赖满足判定改 `all(d in SUCCESS_TERMINAL)`，**杜绝 skipped 节点的下游永久阻塞**；(b) §3.6.3 finalize 反扫起点 last_completed → last_visited（含 node_completed | node_skipped），**杜绝单链 yaml 末节点 skipped 时 workflow_completed 漏写卡死**；features.json F-004 acceptance 补 2 条反向回归（skipped 不阻断下游 + finalize 末节点 skipped 仍完成）。**P2（AC-06 incomplete_dispatch 无验收）**：features.json F-009 acceptance 补 e2e 断言（node_started 无终态 → blocked: incomplete_dispatch + node=N1）；§7 测试矩阵补具体用例 + reason 枚举。**P3（旧文案残留）**：(a) §3.6.2 docstring "无 completed / 最后 completed" → "无 success_terminal / 最后 last_visited"；(b) features.json F-004 description 全量改"success_terminal/last_visited"；(c) outline-design.md line 135 末节点判定旧"出度=0"改"全节点 SUCCESS_TERMINAL ∧ 不存在 failed ∧ _ready_nodes 空"+ 引用 detail-design v4 P1-3 修订记录 |
+| 2026-05-14 13:20:00 | v9 用户对抗审阅第四轮 2 处全闭环（1 P2 + 1 P3） | **P2（manifest fallback 触发条件旧语义残留）**：(a) features.json F-006 description "reason ≥ 3.5KB 走 manifest fallback" → "batch ≥4KB 时触发 manifest fallback，单字段 ≥3500 入选外置；reason 单字段超 3.5KB 但 batch 仍 <4KB 时直写不外置"（与 §2.4 / §3.5 二段语义对齐）；(b) §2.2.2 approval_repair_started JSON 示例注释 "或当 reason ≥ 3.5KB 时" → "或当 batch ≥4KB 触发 manifest fallback 且 reason 单字段 ≥3500 入选外置时"。**P3（少量旧文案）**：(a) §5.4 _ready_nodes "completed 集合" → "success_terminal 集合"；(b) §5.4 边界 "completed 空（首次 continue）" → "success_terminal 空"；(c) §7 测试矩阵 _select_next_dispatch_target "含 4 条单测" → "含 5 条单测"（含 DAG 路径首启动），与 §3.6.2 line 1041 单测 1~5 对齐 |

@@ -159,7 +159,7 @@
     {
       "id": "F-006",
       "title": "approval 闭环（approve + reject inline repair + attempts）",
-      "description": "scripts/lib/workflow_approve.py 在 isatty + state 校验通过后，用 append_events 原子写 [approval_approved, node_completed]（AC-03a）。scripts/lib/workflow_reject.py 引入 DEFAULT_APPROVAL_MAX_ATTEMPTS=3（D-009），反扫 jsonl 统计 prior_rejects 得 current_attempt，yaml on_reject.max_attempts override；attempt<max → 用 append_events_with_manifest 原子写 [approval_rejected, approval_repair_started]（reason ≥ 3.5KB 走 manifest fallback）；attempt==max → 原子写 [approval_rejected, node_failed(reason=approval_attempts_exhausted), workflow_failed]。落地 ADR D-007 + D-009 + AC-03a/b/c。",
+      "description": "scripts/lib/workflow_approve.py 在 isatty + state 校验通过后，用 append_events 原子写 [approval_approved, node_completed]（AC-03a）。scripts/lib/workflow_reject.py 引入 DEFAULT_APPROVAL_MAX_ATTEMPTS=3（D-009），反扫 jsonl 统计 prior_rejects 得 current_attempt，yaml on_reject.max_attempts override；attempt<max → 用 append_events_with_manifest 原子写 [approval_rejected, approval_repair_started]（**batch ≥4KB 时触发 manifest fallback，单字段 ≥3500 入选外置**，v6 P2 二段语义；reason 单字段超 3.5KB 但 batch 仍 <4KB 时直写不外置）；attempt==max → 原子写 [approval_rejected, node_failed(reason=approval_attempts_exhausted), workflow_failed]。落地 ADR D-007 + D-009 + AC-03a/b/c。",
       "modules": [
         "scripts/lib/workflow_approve.py",
         "scripts/lib/workflow_reject.py",
