@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-004",
+  "status": "DONE",
+  "commit_sha": "c762a68",
+  "files_changed": [
+    "scripts/lib/workflow_loader.py",
+    "scripts/lib/workflow_continue.py",
+    "scripts/lib/run_state.py",
+    "tests/lib/test_workflow_loader_explicit.py",
+    "tests/lib/test_workflow_continue_ready_nodes.py",
+    "tests/e2e/test_legacy_next_chain.py",
+    "tests/fixtures/workflow_legacy_next.yaml"
+  ],
+  "test_summary": "新增 22 tests passed（loader_explicit 4 + ready_nodes 15 + legacy_next_chain 3）+ 1371 全套 0 回归（pytest tests/，含 IB-01 SUCCESS_TERMINAL 抽 run_state.py 共享常量）",
+  "touches_violations": [],
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-14T21:30:00+08:00"
+}
