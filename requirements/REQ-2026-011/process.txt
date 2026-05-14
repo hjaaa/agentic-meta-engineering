@@ -68,3 +68,5 @@ REQ-2026-011 语义事件日志
 2026-05-14 20:54:59 [save] IB-backlog 闭环：IB-03 LOCK_UN try/except + IB-05 抽 _externalize_large_fields + IB-07 6 私有函数 docstring；IB-04 moot；17/17 AC + 1332 全套 0 回归；IB-06 等 F-004/F-009
 2026-05-14 20:58:47 [development] F-004 派发开始（model=opus，complexity=heavy；touches 7 文件 = 3 src + 3 test + 1 fixture；含 IB-01 SUCCESS_TERMINAL 抽 run_state.py 共享常量）
 2026-05-14 21:22:38 [save] F-004 派发完成（model=opus，22 new tests + 1371/1371 + 8 skipped 0 回归；commit c762a68）；进 post-dev gate + /code-review；caveat：_select_next_dispatch_target 未自动接入 main_loop bootstrap（与既有 test_main_loop_skips_finalize 冲突，超 F-004 touches）
+2026-05-14 21:45:35 [review:blocked] F-004 rev1 code-review blocked(62) 5维[55/70/80/75/90] 1 blocker (F-CR-001 DAG 推进路径不分流 → 首节点完成后误终止) + 4 major (F-CR-002/003/004/007)；critic 7→9 keep；trend-Q-orphan-scheduler 反模式首发；rev2 修复派发
+2026-05-14 22:04:29 [save] F-004 rev2 修复完成（78068f4：DAG 推进分流 + bootstrap + CCN 拆解 + WARN 日志；新增 3 测 + 改 1 测；scoped 38/38 + 1374 全套 0 回归）；进 rev2 post-dev gate + /code-review

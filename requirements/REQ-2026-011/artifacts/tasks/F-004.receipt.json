@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "feature_id": "F-004",
   "status": "DONE",
-  "commit_sha": "12ceb11",
+  "commit_sha": "78068f4",
   "files_changed": [
     "scripts/lib/workflow_loader.py",
     "scripts/lib/workflow_continue.py",
@@ -15,21 +15,10 @@
     "tests/fixtures/workflow_dag_multi_sink.yaml",
     "tests/skills/test_workflow_continue_main_loop.py"
   ],
-  "test_summary": "rev2 闭环 F-CR-001/002/003/004/007（+ 顺手 F-CR-008/011）：新增 3 测试（test_dag_multi_sink_full_chain / test_standard_8phase_dag_bootstrap_validate_first_then_second_layer / test_main_loop_bootstrap_resumes_remaining_chain_after_crash），改写 1 测试（test_main_loop_skips_finalize_when_rebuild_yields_none_current_node 适配 bootstrap 语义）；F-004 scoped 38/38 通过；全套 1374 passed + 8 skipped 0 回归（基线 rev1 1371）。radon CCN：_select_next_dispatch_target 17→3 / _finalize_after_rebuild_if_last_topology_node 18→10 / _advance_after_completed 2 / _main_loop 9 / 全部 ≤10",
-  "touches_violations": [
-    {
-      "path": "/Users/richardhuang/.claude/projects/-Users-richardhuang-learnspace-agentic-meta-engineering/memory/save_review_verdict_contract.md",
-      "ts": "2026-05-14T13:45:21+00:00",
-      "tool": "Edit"
-    },
-    {
-      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/tests/skills/test_workflow_continue_main_loop.py",
-      "ts": "2026-05-14T13:53:13+00:00",
-      "tool": "Edit"
-    }
-  ],
+  "test_summary": "rev2 闭环 F-CR-001/002/003/004/007（+ 顺手 F-CR-008/011）：新增 3 测试 + 改写 1 测试；F-004 scoped 38/38 通过；全套 1374 passed + 8 skipped 0 回归（基线 rev1 1371）。radon CCN：_select_next_dispatch_target 17→3 / _finalize_after_rebuild_if_last_topology_node 18→10 / _advance_after_completed 2 / _main_loop 9 / 全部 ≤10",
+  "touches_violations": [],
   "concerns": [],
   "missing_context": "",
   "block_reason": "",
-  "timestamp": "2026-05-14T22:00:00+08:00"
+  "timestamp": "2026-05-14T22:05:00+08:00"
 }
