@@ -123,4 +123,86 @@
 - **目标**：把 `TERMINAL_STATES` 终态守卫扩到既有 approval_* 三分支（与 F-002 rev2 的 node_ready / approval_repair_started / approval_repair_completed 守卫同构）。
 - **维度**：error_handling（既有技术债，与 F-007 同根因）。
 - **执行时机**：与 IB-01 (SUCCESS_TERMINAL) 一并在 F-004 PR 处理（顺手扩，与 D-014 同模式扫描一致），或独立 hardening task。
+- **状态（2026-05-14 22:30）**：⏸ pending。F-004 rev2 scope 严格控制在 acceptance 内未处理（subagent 已自报"同模式但不在 F-004 acceptance"）。建议在 IB-09 ~ IB-18 lint sweep 同 PR 顺手做，或独立 hardening task。
 - **来源**：F-002 rev2 subagent D-014 同模式扫描产出（详见 reviews/code-F-002-001.json 报告 + receipt.json D-014 扫描结论）；critic 已确认超 F-002 acceptance 范围，不在 rev2 commit 修复。
+
+## F-004 rev2 follow-up minors（2026-05-14 22:28 沉淀）
+
+> 来源：`reviews/code-F-004-002.json` 各维度 issues（9 条 minor not_rebutted + 1 条 not_proven 降级；rev2 looks_clean(90) signoff approved）。
+> 处置原则：**不阻塞 F-005 派发**；按 D-014 trend-G-meta 终结经验，建议归"lint + 形式正确性 assert + 模块拆分"三件套独立 PR；若到 development→testing 仍有遗漏，列入 doc-refresh 批次或后续需求。
+
+### IB-09 · `_finalize_if_topology_done` 形式正确性 assert（EH-1 / F-CR2-001 critic not_proven 降级）
+
+- **现状**：`scripts/lib/workflow_continue.py:404-408` 热路径 `_finalize_if_topology_done` 仍以 `current_node is None` 单条件写 `workflow_completed`，未接 rev2 新增的 `_is_dag_topology_done` helper（`_is_dag_topology_done` 仅在 `_finalize_after_rebuild_if_last_topology_node:624` 被调用，即 crash 恢复路径）。critic 反证：DAG happy path 下 `_advance_after_completed:438-446` + `_handle_skip/abort` 早返 `_route_outcome` → `current_node=None ⇔ 全节点 SUCCESS_TERMINAL`，所以形式 gap 存在但**不可触发**。
+- **目标**：在 `_finalize_if_topology_done` DAG 分支补 `assert _is_dag_topology_done(run_state, workflow)`，让形式与 happy-path 语义一致——不动 happy path，仅防后续重构破坏不变量（如未来若新增节点失败处理路径不再走 `_handle_skip/abort` 早返，会触发误写 `workflow_completed`）。
+- **维度**：error_handling + design_consistency。
+- **来源**：`reviews/code-F-004-002.json` F-CR2-001（critic verdict not_proven，judge final_disposition downgrade → suggestions follow-up）。
+
+### IB-10 · `_main_loop` bootstrap 返 None 静默 exit 0（F-CR2-002）
+
+- **现状**：`scripts/lib/workflow_continue.py:671-674` bootstrap 阶段 `_select_next_dispatch_target` 返 None 时（DAG yaml 全空 / 全 awaiting / yaml-jsonl 不一致），while 不进入，函数静默返回，main() exit 0。调用方拿到成功码但什么都没做。
+- **目标**：next_id is None 时打 WARN（`WARN: bootstrap 阶段无可派发节点，state=running 但 workflow 停止推进，yaml/jsonl 可能不一致`），对齐 `_finalize_after_rebuild:493` 风格。
+- **维度**：error_handling minor。
+- **来源**：`reviews/code-F-004-002.json` F-CR2-002（critic not_rebutted）。
+
+### IB-11 · `_resume_run:740` print 缺 `ERROR:` 前缀（F-CR2-003）
+
+- **现状**：`scripts/lib/workflow_continue.py:740` `print(str(exc), file=sys.stderr)` 缺 `ERROR:` 前缀；同文件其他错误日志（L749/773/797/802/831/849/859）均带 `ERROR:` 前缀。
+- **目标**：改为 `print(f'ERROR: {exc}', file=sys.stderr)` 对齐全文风格，便于日志聚合统一过滤。
+- **维度**：error_handling minor。
+- **来源**：`reviews/code-F-004-002.json` F-CR2-003。
+
+### IB-12 · `_finalize_after_rebuild` CCN at-threshold 余量耗尽（F-CR2-005）
+
+- **现状**：`scripts/lib/workflow_continue.py:565-632` `_finalize_after_rebuild_if_last_topology_node` rev1→rev2 CCN 18→10（恰好等于阈值），下次再加一条 if 分支就超。L591 复合守卫 `current_node is not None or state != 'running'` 算 2 决策点，是 CCN 上界的主贡献。
+- **目标**：把 WARN-and-scan 块（L595-621）抽 `_scan_last_visited(events, node_map) -> (last_node_or_none, emitted_warn: bool)`，主函数 CCN≈6 拓宽余量，同时给反扫逻辑独立可测 seam。
+- **维度**：complexity minor。
+- **来源**：`reviews/code-F-004-002.json` F-CR2-005。
+
+### IB-13 · `workflow_continue.py` 拆模块（F-CR2-008，原 F-CR-010 反向恶化）
+
+- **现状**：`scripts/lib/workflow_continue.py` 860 行（rev1 726→rev2 +134）反而长了 18%，已超 500 阈值 72%。rev2 通过 helper 拆解换 CCN 余量，但代码总量上行。
+- **目标**：拆两个新模块：
+  - `scripts/lib/workflow_scheduler.py`：`_dag_next` / `_legacy_first_node` / `_legacy_resume_from_last_visited` / `_legacy_bootstrap_or_resume` / `_legacy_advance` / `_select_next_dispatch_target` / `_ready_nodes` / `_is_dag_topology_done` / `_is_legacy_topology_done` / `_finalize_after_rebuild_if_last_topology_node` / `_finalize_if_topology_done`
+  - `scripts/lib/workflow_outcome_router.py`：`_route_outcome` / `_handle_retry` / `_handle_skip` / `_handle_abort` / `_handle_failure` / `_advance_after_completed`
+- **预估**：拆分后 `workflow_continue.py` ~520 行；`workflow_scheduler.py` ~120 行；`workflow_outcome_router.py` ~150 行。
+- **维度**：complexity minor（独立 PR，IB 中**最大单项**）。
+- **执行时机**：建议独立 PR，**不要与 IB-09 ~ IB-12/14~17 lint sweep 混合**——拆模块 PR 应只含纯重构（move + rename + import 同步 + tests 不动）。
+- **来源**：`reviews/code-F-004-002.json` F-CR2-008（原 F-CR-010 rev2 反向恶化）。
+
+### IB-14 · `_is_dag_topology_done` 参数顺序与文件惯例反（F-CR2-009）
+
+- **现状**：`scripts/lib/workflow_continue.py:536` `_is_dag_topology_done(workflow, run_state)` 签名 `workflow` 在前；文件其他双参函数（`_ready_nodes` / `_dag_next` / `_legacy_bootstrap_or_resume` / `_select_next_dispatch_target` / `_advance_after_completed`）均 `(run_state, workflow, ...)` 顺序。调用点 L624 已对齐反序，但签名本身违反全文惯例。
+- **目标**：签名改 `_is_dag_topology_done(run_state, workflow) -> bool` + 调用点同步。
+- **维度**：design_consistency minor。
+- **来源**：`reviews/code-F-004-002.json` F-CR2-009。
+
+### IB-15 · 新 helper docstring 缺 Returns 段（F-CR2-010 critic not_proven）
+
+- **现状**：rev2 新增 7 个私有函数（`_dag_next` / `_legacy_first_node` / `_legacy_resume_from_last_visited` / `_legacy_bootstrap_or_resume` / `_legacy_advance` / `_is_dag_topology_done` / `_is_legacy_topology_done`）docstring 均未含「返回值」段；文件内 `_ready_nodes` / `_handle_retry` / `_handle_skip` 等既有函数有「返回：」或 `Returns:` 段。critic 反证既有 `_advance_after_completed` 也无 → 文件风格非全统一，降级为 follow-up。
+- **目标**：在 docstring 风格统一 PR 中一并补齐 7 个新 helper 的「返回：`<类型>` — `<语义>`」行。
+- **维度**：auxiliary_spec minor。
+- **来源**：`reviews/code-F-004-002.json` F-CR2-010（critic not_proven 降级 follow-up）。
+
+### IB-16 · 测试文件死 import + 死变量（F-CR2-011 / F-CR2-012）
+
+- **现状**：
+  - `tests/e2e/test_standard_8phase_dag.py:172` `from workflow_dispatcher import DispatchResult as _DR  # noqa: F401` 是死 import + noqa 压制（L145 已有同名 `DispatchResult` import）
+  - `tests/e2e/test_standard_8phase_dag.py:107` `completed_node_ids = [...]` 死变量（赋值后未读取）
+- **目标**：两处直接删除（违反 CLAUDE.md §5「外科手术式修改」无死代码原则）。
+- **维度**：auxiliary_spec minor。
+- **来源**：`reviews/code-F-004-002.json` F-CR2-011 / F-CR2-012。
+
+### IB-17 · 新 e2e 测试函数名未沿用同目录混合命名惯例（F-CR2-013）
+
+- **现状**：rev2 新增 `tests/e2e/test_standard_8phase_dag.py:53,131` 两个测试函数纯英文（`test_dag_multi_sink_full_chain` / `test_standard_8phase_dag_bootstrap_validate_first_then_second_layer`），未沿用同目录 `test_legacy_next_chain.py` 已建立的"英文场景词_中文期望"混合命名（如 `test_legacy_next_chain_跑通到workflow_completed` / `test_standard_8phase_首节点为bootstrap_validate`）。
+- **目标**：改成混合格式，如 `test_dag_multi_sink_full_chain_三节点依次派发到workflow_completed` 等。
+- **维度**：auxiliary_spec minor（低优先级，**非阻断**；可在测试统一命名时回头改齐）。
+- **来源**：`reviews/code-F-004-002.json` F-CR2-013。
+
+### IB-18 · `auxiliary-spec-checker` rev2 跨文件命名风格 drift（F-CR2-014 critic rejected，作为团队规范沉淀）
+
+- **现状**：`tests/skills/test_workflow_continue_main_loop.py` 同文件 14 测试全英文，与 `tests/lib/test_run_state_new_events.py`（F-002 引入中文命名）跨文件分裂。critic rejected（同文件一致优先于跨文件），但作为**团队规范议题**值得统一。
+- **目标**：在 CLAUDE.md §0 或 `context/team/engineering-spec/` 补「测试函数名允许中文以提升 AC 可读性」豁免条款，统一规范后再回头处理这类 finding，避免后续 reviewer 反复触发同一 finding。
+- **维度**：团队规范层（非代码 IB，跟 F-CR-005 类似归"风格双标"）。
+- **来源**：`reviews/code-F-004-002.json` F-CR2-014（critic rejected）+ 之前的 F-CR-005（F-003 同模式 follow-up）。
