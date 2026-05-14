@@ -82,6 +82,7 @@
 - **目标**：补一段 `try: fcntl.flock(fd, LOCK_UN) except OSError: pass`（POSIX 上仅 EBADF 触发，极罕见但显式更稳）。
 - **维度**：error_handling（92 → 一处 minor）。
 - **来源**：`reviews/code-F-001-002.json:50-54`。
+- **状态（2026-05-14 20:53）**：✅ 闭环。`_atomic_write_jsonl` L80 与 `_append_index_line` L195 两处 LOCK_UN 释放均包 `try/except OSError: pass`；17/17 AC test 仍 pass，全套 1332 tests 无回归。
 
 ### IB-04 · append_events.py:234,286 慢路径 json.dumps encode 2 次（PERF-003）
 
@@ -89,6 +90,7 @@
 - **目标**：把 dry-run 编码结果缓存复用，避免二次 encode（约 10~20 行重构）。
 - **维度**：performance（88 → 一处 minor）。
 - **来源**：`reviews/code-F-001-002.json:62-68`。
+- **状态（2026-05-14 20:53）**：✅ moot，不动代码。复核结论：fast path 已把 `_estimate_blob_bytes` 返回的 bytes 直接喂给 `_atomic_write_jsonl`（单次 encode 复用）；slow path 的两次 encode 编码的是 mutation 前后两份不同数据（先估算原始尺寸 → 走 manifest 外置 → 再估算外置后尺寸），无法缓存复用。原 IB-04 描述基于早期未复用 bytes 的实现，rev1 重构后已不成立。
 
 ### IB-05 · append_events.py:200-290 函数 91 行接近 100 行阈值（CMP-1）
 
@@ -96,6 +98,7 @@
 - **目标**：抽 `_check_payload_size` / `_persist_field_to_manifest` 等内联段为独立 helper（建议保 70 行内）。
 - **维度**：complexity（84 → 一处 minor）。
 - **来源**：`reviews/code-F-001-002.json:40-46`。
+- **状态（2026-05-14 20:53）**：✅ 闭环。抽出 `_externalize_large_fields(events, large_field_paths, run_dir) -> None` 私有 helper 承担 mutation 循环；`append_events_with_manifest` 主体（去掉 docstring）压缩到 ~15 行，三段式（dry-run → fallback → 二段 dry-run + write）清晰可读。17/17 AC test pass。
 
 ### IB-06 · append_events.py:254 event_id 格式偏离 detailed-design §3.5 命名（DC-1）
 
@@ -104,6 +107,7 @@
 - **维度**：design_consistency（88 → 一处 minor）。
 - **依赖**：F-004 (workflow_continue 调用 append_events) / F-009 (artifact dispatcher)
 - **来源**：`reviews/code-F-001-002.json:22-30`。
+- **状态（2026-05-14 20:53）**：⏸ pending，本批次不动。F-004 / F-009 落地后 `dispatch_node` 调用点开始传 node_id 才有 ctx 落地，提前修反而要再返工；保留依赖锚定。
 
 ### IB-07 · 私有函数 docstring 风格扩张（SPEC-013 follow-up）
 
@@ -111,6 +115,7 @@
 - **目标**：F-002 / F-003 触及 append_events.py 时顺手把 4~5 个私有函数 docstring 风格补齐（Args / Raises / Returns 段统一）。
 - **维度**：auxiliary_spec（95，跨多个私有函数累积 minor）。
 - **来源**：`reviews/code-F-001-002.json:77`（suggestion #1 末段「私有函数不属首轮 finding 范围」）。
+- **状态（2026-05-14 20:53）**：✅ 闭环。`_estimate_blob_bytes` / `_validate_and_stamp` / `_atomic_write_jsonl` / `_get_nested` / `_set_nested` / `_del_nested` 6 个私有函数 docstring 补齐 Args / Returns / Raises 段；`_persist_field_to_manifest` / `_append_index_line` 原已合规；新增 `_externalize_large_fields` 同模板。F-002 / F-003 未触及 append_events.py（其他文件），所以延后到本批次集中处理。
 
 ### IB-08 · 既有 approval_pending / approved / rejected 三分支终态守卫缺失（F-002 rev2 同模式扫描沉淀）
 

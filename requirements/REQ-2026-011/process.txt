@@ -65,3 +65,4 @@ REQ-2026-011 语义事件日志
 2026-05-14 20:38:17 [review:approved] F-003 code-review looks_clean(93) 5维[92/95/95/95/95/88/95/95]；critic 5→0 keep（4 rejected + 1 not_proven）；1 follow-up（F-CR-005 风格双标 - F-002 既成惯例）；等 tty signoff
 2026-05-14 20:42:39 [signoff] REV-REQ-2026-011-code-F-003-001 approved by hj19961223@gmail.com
 2026-05-14 20:43:35 [save] F-003 完成（status=done / looks_clean 93 / signoff approved / 释放派发锁 / 1 follow-up F-CR-005 沉淀团队规范）
+2026-05-14 20:54:59 [save] IB-backlog 闭环：IB-03 LOCK_UN try/except + IB-05 抽 _externalize_large_fields + IB-07 6 私有函数 docstring；IB-04 moot；17/17 AC + 1332 全套 0 回归；IB-06 等 F-004/F-009

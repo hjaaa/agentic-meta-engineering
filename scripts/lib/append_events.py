@@ -51,13 +51,27 @@ class PayloadTooLargeError(WorkflowError):
 
 
 def _estimate_blob_bytes(events: list[dict[str, Any]]) -> bytes:
-    """序列化 events 为 utf-8 blob（dry-run / 正式写共用同一序列化逻辑）。"""
+    """序列化 events 为 utf-8 blob（dry-run / 正式写共用同一序列化逻辑）。
+
+    Args:
+        events: 已通过 _validate_and_stamp 校验补 ts 的事件列表。
+
+    Returns:
+        拼接后的 utf-8 字节串（行间 `\\n`，末尾 `\\n`），直接喂给 _atomic_write_jsonl。
+    """
     payloads = [json.dumps(e, ensure_ascii=False) for e in events]
     return ("\n".join(payloads) + "\n").encode("utf-8")
 
 
 def _validate_and_stamp(events: list[dict[str, Any]]) -> None:
-    """校验 event type 白名单；缺 ts 时自动补 ISO8601 UTC（in-place）。"""
+    """校验 event type 白名单；缺 ts 时自动补 ISO8601 UTC（in-place）。
+
+    Args:
+        events: 待写入的事件列表（in-place mutate：缺 ts 补当前 UTC 时间）。
+
+    Raises:
+        WorkflowError: 任一事件非 dict 或 type 不在 VALID_EVENT_TYPES 中。
+    """
     for event in events:
         if not isinstance(event, dict):
             raise WorkflowError("event 必须是 dict")
@@ -69,7 +83,15 @@ def _validate_and_stamp(events: list[dict[str, Any]]) -> None:
 
 
 def _atomic_write_jsonl(jsonl_path: Path, blob_bytes: bytes) -> None:
-    """单次 LOCK_EX + 单次 os.write 原子追加。父目录不存在时自动创建。"""
+    """单次 LOCK_EX + 单次 os.write 原子追加。
+
+    Args:
+        jsonl_path: 目标 .jsonl 路径（父目录不存在时自动创建）。
+        blob_bytes: 待追加的 utf-8 字节串（已含末尾 newline）。
+
+    Raises:
+        OSError: open / write / fsync 失败时抛出，调用方决定是否回滚。
+    """
     jsonl_path.parent.mkdir(parents=True, exist_ok=True)
     fd = os.open(str(jsonl_path), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
     try:
@@ -77,7 +99,10 @@ def _atomic_write_jsonl(jsonl_path: Path, blob_bytes: bytes) -> None:
         try:
             os.write(fd, blob_bytes)
         finally:
-            fcntl.flock(fd, fcntl.LOCK_UN)
+            try:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            except OSError:
+                pass
     finally:
         os.close(fd)
 
@@ -104,7 +129,15 @@ def append_events(jsonl_path: Path, events: list[dict[str, Any]]) -> None:
 
 
 def _get_nested(obj: dict[str, Any], path: tuple[str, ...]) -> Any | None:
-    """按 path tuple 钻取嵌套字段值，任意层缺失返回 None。"""
+    """按 path tuple 钻取嵌套字段值，任意层缺失返回 None。
+
+    Args:
+        obj: 起点 dict。
+        path: 形如 ("data", "reason") 的字段路径 tuple。
+
+    Returns:
+        命中字段值；任一层非 dict 或 key 缺失返回 None。
+    """
     cur: Any = obj
     for key in path:
         if not isinstance(cur, dict) or key not in cur:
@@ -114,7 +147,16 @@ def _get_nested(obj: dict[str, Any], path: tuple[str, ...]) -> Any | None:
 
 
 def _set_nested(obj: dict[str, Any], path: tuple[str, ...], value: Any) -> None:
-    """按 path tuple 设置嵌套字段（最后一层 key 写入 value）。"""
+    """按 path tuple 设置嵌套字段（最后一层 key 写入 value）。
+
+    Args:
+        obj: 起点 dict（in-place mutate）。
+        path: 字段路径 tuple；中间层必须已存在为 dict。
+        value: 写入的新值。
+
+    Raises:
+        KeyError: path 中间层 key 不存在时由内层 cur[key] 抛出。
+    """
     cur: dict[str, Any] = obj
     for key in path[:-1]:
         cur = cur[key]
@@ -122,7 +164,15 @@ def _set_nested(obj: dict[str, Any], path: tuple[str, ...], value: Any) -> None:
 
 
 def _del_nested(obj: dict[str, Any], path: tuple[str, ...]) -> None:
-    """按 path tuple 删除嵌套字段（最后一层 key 删除）。"""
+    """按 path tuple 删除嵌套字段（最后一层 key 删除）。
+
+    Args:
+        obj: 起点 dict（in-place mutate）。
+        path: 字段路径 tuple；末层 key 不存在时静默忽略。
+
+    Raises:
+        KeyError: path 中间层 key 不存在时由内层 cur[key] 抛出。
+    """
     cur: dict[str, Any] = obj
     for key in path[:-1]:
         cur = cur[key]
@@ -192,9 +242,61 @@ def _append_index_line(
         try:
             os.write(fd, line.encode("utf-8"))
         finally:
-            fcntl.flock(fd, fcntl.LOCK_UN)
+            try:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            except OSError:
+                pass
     finally:
         os.close(fd)
+
+
+def _externalize_large_fields(
+    events: list[dict[str, Any]],
+    large_field_paths: list[tuple[str, ...]],
+    run_dir: Path,
+) -> None:
+    """扫描 events，把单字段 ≥ MAX_INLINE_FIELD_BYTES 的值落 manifest + 替换为 *_ref。
+
+    Args:
+        events: 已通过 _validate_and_stamp 的事件列表（in-place mutate：删原字段、写 *_ref）。
+        large_field_paths: 允许被外置的字段路径（如 [("data", "reason")]）。
+        run_dir: manifest 与 index.txt 的根目录。
+
+    Raises:
+        OSError: manifest 文件或 index.txt 写失败时直接抛出（调用方据此决定不写 jsonl）。
+    """
+    seq = 0
+    for event in events:
+        for path in large_field_paths:
+            field_value = _get_nested(event, path)
+            if field_value is None:
+                continue
+            field_str = str(field_value)
+            if len(field_str.encode("utf-8")) < MAX_INLINE_FIELD_BYTES:
+                continue
+
+            ts_compact = event.get("ts", "").replace(":", "").replace("-", "")
+            ev_type = event.get("type", "unknown")
+            event_id = f"{ts_compact}-{ev_type}-{uuid4().hex[:8]}-{seq}"
+            seq += 1
+
+            rel_path, size, sha256_hex = _persist_field_to_manifest(
+                field_str, event_id, run_dir
+            )
+
+            field_dotted = ".".join(path)
+            _append_index_line(run_dir, event_id, field_dotted, sha256_hex, size)
+
+            _del_nested(event, path)
+            ref_key = path[-1] + "_ref"
+            ref_value = {"path": rel_path, "size": size, "sha256": sha256_hex}
+            parent_path = path[:-1]
+            if parent_path:
+                parent = _get_nested(event, parent_path)
+                if isinstance(parent, dict):
+                    parent[ref_key] = ref_value
+            else:
+                event[ref_key] = ref_value
 
 
 def append_events_with_manifest(
@@ -227,62 +329,15 @@ def append_events_with_manifest(
     if not events:
         return
 
-    # 校验 + 补 ts（in-place，使后续 dry-run 序列化结果与最终写入一致）
     _validate_and_stamp(events)
 
-    # 第一段 dry-run
     blob_bytes = _estimate_blob_bytes(events)
     if len(blob_bytes) < MAX_BATCH_PAYLOAD_BYTES:
-        # 直写，不触碰 manifest（AC-7 二段触发关键）
         _atomic_write_jsonl(jsonl_path, blob_bytes)
         return
 
-    # ≥ 4KB → 扫描 large_field_paths，外置大字段
-    seq = 0
-    for event in events:
-        for path in large_field_paths:
-            field_value = _get_nested(event, path)
-            if field_value is None:
-                continue
-            field_str = str(field_value)
-            if len(field_str.encode("utf-8")) < MAX_INLINE_FIELD_BYTES:
-                continue
+    _externalize_large_fields(events, large_field_paths, run_dir)
 
-            # 生成唯一 event_id（ts + type + uuid，避免并发碰撞）
-            ts_compact = event.get("ts", "").replace(":", "").replace("-", "")
-            ev_type = event.get("type", "unknown")
-            event_id = f"{ts_compact}-{ev_type}-{uuid4().hex[:8]}-{seq}"
-            seq += 1
-
-            # 写 manifest（tmp + fsync + replace）；任一失败直接抛 OSError，不写 jsonl
-            rel_path, size, sha256_hex = _persist_field_to_manifest(
-                field_str, event_id, run_dir
-            )
-
-            # 写 index.txt（LOCK_EX 保证并发原子，AC-6）
-            field_dotted = ".".join(path)
-            _append_index_line(run_dir, event_id, field_dotted, sha256_hex, size)
-
-            # 替换原字段：删原字段 + 写 <name>_ref（以 acceptance #3 为准）
-            _del_nested(event, path)
-            ref_key = path[-1] + "_ref"
-            parent_path = path[:-1]
-            if parent_path:
-                parent = _get_nested(event, parent_path)
-                if isinstance(parent, dict):
-                    parent[ref_key] = {
-                        "path": rel_path,
-                        "size": size,
-                        "sha256": sha256_hex,
-                    }
-            else:
-                event[ref_key] = {
-                    "path": rel_path,
-                    "size": size,
-                    "sha256": sha256_hex,
-                }
-
-    # 第二段 dry-run
     blob_bytes = _estimate_blob_bytes(events)
     if len(blob_bytes) >= MAX_BATCH_PAYLOAD_BYTES:
         raise PayloadTooLargeError(len(blob_bytes))
