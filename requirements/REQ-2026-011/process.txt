@@ -46,3 +46,4 @@ REQ-2026-011 语义事件日志
 2026-05-14 15:43:12 [save] task-planning 审阅 4 处漂移闭环：ADR D-015 + F-004/F-005 touches + 派发优先级文档
 2026-05-14 15:44:46 [save] development 准入就绪：4 漂移闭环 0 hash drift + 11 gate 过；next F-001 待派
 2026-05-14 15:52:35 [save] F-001 派发完成（model=sonnet 16 tests passed）→ 进入 post-dev gate + /code-review
+2026-05-14 16:08:59 [review:approved] F-001 code-review looks_clean(86) 5维[88/92/88/84/82/86/88/92]；critic drop=17 / keep=9（2 major + 7 minor 均为低成本改进，required_fixes=0）
