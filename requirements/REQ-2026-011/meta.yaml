@@ -1,7 +1,7 @@
 # ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-011
 title: workflow runtime DAG 调度与节点 dispatcher 补全（参考 Archon 设计）
-phase: outline-design
+phase: detail-design
 created_at: "2026-05-13 08:36:31"     # 格式 YYYY-MM-DD HH:MM:SS（Asia/Shanghai），见 context/team/engineering-spec/time-format.md
 branch: feat/req-2026-011
 base_branch: develop
@@ -34,6 +34,15 @@ gates_passed:
     via: managing-requirement-lifecycle
     notes: tech-research → outline-design 门禁 5/5 过；user approve tech-research.md
       v2 (feasibility=feasible 中位 23.7 天)；P0 阻塞项 = 0；6 条待澄清归 detail-design 阶段处理
+  - phase: detail-design
+    at: '2026-05-14 10:09:00'
+    via: managing-requirement-lifecycle
+    notes: outline-design → detail-design 门禁 11/11 全过（GATE-META-SCHEMA /
+      INDEX-INTEGRITY / SOURCING / PLAN-FRESHNESS / WORKSPACE-CLEAN /
+      REVIEW-VERDICT / FEATURES-SCHEMA / TASK-FRONTMATTER / POST-DEV-RECEIPT /
+      TRACEABILITY / TOUCHES-VIOLATION）；REV-outline-design-004 looks_clean(92)
+      5 维 [94/92/93/92/91] + hj19961223@gmail.com tty signoff approved；
+      arch-concerns 全闭环（AC-A1/A2/A3）；6 条待澄清 + 新 O-04/O-05 全部归入 detail-design
 pr_url: ""                             # /requirement:submit 成功后回写
 pr_number: 0                           # /requirement:submit 成功后回写
 log_layout: split                      # split（默认，工具日志→process.tool.log / 语义事件→process.txt） | legacy（老格式，全写 process.txt）
