@@ -58,3 +58,5 @@ REQ-2026-011 语义事件日志
 2026-05-14 17:03:47 [review:needs_attention] F-002 rev1 needs_attention(82) 0/1 major (F-005)/1 minor (F-007)；critic 7→2 keep；rev2 修复派发
 2026-05-14 17:08:43 [save] F-002 rev2 修复完成（9efd08a 33 tests passed；F-005 节点守卫 + F-007 终态守卫；IB-08 既有 approval_* 同模式沉淀 notes.md）
 2026-05-14 17:18:48 [review:approved] F-002 rev2 code-review looks_clean(92) 0/0/1 minor (F-010 死 import)；critic 5→1 keep；trend-G-meta 健康；等 tty signoff
+2026-05-14 17:21:14 [signoff] REV-REQ-2026-011-code-F-002-002 approved by hj19961223@gmail.com
+2026-05-14 17:22:02 [save] F-002 完成（status=done / rev2 looks_clean 92 / signoff approved / F-010 死 import 同 rev 闭环 / 释放派发锁 / IB-08 沉淀）

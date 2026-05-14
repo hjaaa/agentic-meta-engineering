@@ -66,5 +66,11 @@
   "scope": {
     "feature_id": "F-002"
   },
-  "supersedes": "REV-REQ-2026-011-code-F-002-001"
+  "supersedes": "REV-REQ-2026-011-code-F-002-001",
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-14T17:21:14.373434+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
+  }
 }
