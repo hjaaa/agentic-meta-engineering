@@ -198,3 +198,19 @@
   - + manifest-pointer 模式后续可扩展到其他大 payload 事件类型（D-015 follow-up）。
   - − 引入 manifest 目录管理职责（清理 / 归档），detail-design 阶段需补一节"manifest 文件生命周期"（建议：随 run 归档，不单独清理）。
 - **时间**：2026-05-14 10:12:00
+
+---
+
+## 阶段进度快照
+
+> 非 ADR，仅作 plan-freshness mtime 锚定与阶段产物索引。
+
+### task-planning（2026-05-14 完成）
+
+- **产物**：`artifacts/tasks/F-001.md ~ F-013.md`（13 个 task.md），单个 commit `61c58d6` 落地
+- **schema 校验**：`GATE-FEATURES-SCHEMA` + `GATE-TASK-FRONTMATTER` 13/13 全过；`features.json` 仍 hash 锁定（status 不在 features.json，权威源 = task.md frontmatter）
+- **派发策略**：保守档串行（一次派一个 implementer subagent，依赖按 `depends_on_features` 拓扑），P0-baseline 优先：F-001 → F-002 → F-003 → F-004（heavy）→ F-005 → F-006（heavy）→ F-007 → F-008
+- **implementation 起步前置**（沉淀在 `notes.md` Implementation backlog）：
+  - **IB-01**：`SUCCESS_TERMINAL = {"completed", "skipped"}` 抽到 `scripts/lib/run_state.py` 共享常量（F-004 进入 development 前补 modules）
+  - **IB-02**：`outline-design.md:135` 末节点判定文案 P3 readability 统一（F-004 同 PR 顺带 fix）
+- **phase-transition gate**：11/11 全过 exit=0（PLAN-FRESHNESS W002 由本节刷新消除）
