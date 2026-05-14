@@ -132,3 +132,69 @@
   - + handler 职责单一，新增节点类型只需写 success path，failure 路径由外层兜底，新人理解成本低。
   - − 既有 dispatcher 单元测试需补"handler 不写 started"的负向断言（detail-design 阶段补 e2e fixture 兜底）。
 - **时间**：2026-05-14 08:46:41
+
+### D-009 approval `on_reject.max_attempts` 引擎默认值 = 3
+
+- **Context**：requirement.md 第 18 项 ⏳D-02 暂用 N=3，待 detail-design 定稿（来源：requirements/REQ-2026-011/artifacts/requirement.md:171）；yaml schema 强制 `max_attempts` 必填，引擎默认值仅在 yaml 字段省略时兜底；standard-8phase.yaml 已显式填 3（来源：.claude/workflows/requirement/standard-8phase.yaml:168）。候选：2 / 3 / 5。
+- **Decision**：引擎默认 `on_reject.max_attempts = 3`；yaml 必填校验保留（schema 不放宽），保证引擎默认值仅在历史 yaml / 未来兼容路径下兜底。
+- **Consequences**：
+  - + 与现 standard-8phase.yaml 一致，用户行为无感切换。
+  - + 兜底场景下行为可预期（最多 3 次 approval_repair 后转 workflow_failed），避免无限循环。
+  - − yaml schema 必填校验仍需 detail-design 阶段补 unit 测兜底 yaml 误用场景。
+- **时间**：2026-05-14 10:12:00
+
+### D-010 stale 阈值默认 = 30 分钟
+
+- **Context**：requirement.md 第 19 项 ⏳D-03 候选 15 / 30 / 60 min，detail-design 阶段定稿（来源：requirements/REQ-2026-011/artifacts/requirement.md:172）；现状 AI 节点 single attempt 中位运行时间 5~15 min（codex review-loop / 文档起草 / reviewer）。
+- **Decision**：`STALE_THRESHOLD_MINUTES = 30`（环境变量 `CLAUDE_WORKFLOW_STALE_MINUTES` 可覆盖，方便测试 / 长跑节点临时调整）；status doctor 在 `RunState.last_event_ts` 距 now ≥ 30 min 时打 `WARN node <id> stale (last_event_ts=<ts>, age=<m>min)`，**不**强制 fail-closed，由人类决定是否继续 / kill。
+- **Consequences**：
+  - + 2× 中位余量足够覆盖正常长跑节点；codex review-loop 等长节点偶发超 30 min 走 warn 不阻塞，体验可控。
+  - + 环境变量 override 给 e2e 测试留窗口（fixture 设 1 min 触发 stale 路径）。
+  - − 真正挂死的节点提示要等 30 min 才出，反馈链略长——可接受（人类常态 `/workflow:status` 仍能立即看到节点处于 awaiting_claude_action 状态）。
+- **时间**：2026-05-14 10:12:00
+
+### D-011 AC-06 heartbeat 实现 = 复用 `last_event_ts` 字段（O-01 关闭）
+
+- **Context**：AC-06 描述写"每次 `dispatch_node` 前写 heartbeat 事件"（来源：requirements/REQ-2026-011/artifacts/requirement.md:106）；但 `run_state.py` 已存 `last_event_ts` 字段（来源：scripts/lib/run_state.py:127），重写一遍 heartbeat 事件会让 VALID_EVENT_TYPES 膨胀 + RunState.rebuild 加分支 + AC-10 末位语义出现歧义（heartbeat 写在 node_ready 之后将变末位）。候选：A 新增 heartbeat 事件 / B 复用 last_event_ts / C 混合。
+- **Decision**：选 B 复用 `last_event_ts`——`dispatch_node` 在进入即写 `node_started` 事件，append_events 内部已更新 `RunState.last_event_ts`，无需独立 heartbeat 事件；status doctor 通过 `RunState.last_event_ts` 判 stale（D-010）；AC-10 末位语义保持"按事件类型过滤后取最后一条 node_ready"（**已是 AC-A3 baseline**），无歧义。AC-06 文档描述需 detail-design 阶段同步改写为"每次 dispatch_node 进入即更新 RunState.last_event_ts（通过 node_started 事件 append 隐式完成）"。
+- **Consequences**：
+  - + 不扩 VALID_EVENT_TYPES，jsonl 体量不膨胀，rebuild 逻辑零变更。
+  - + AC-10 末位反扫语义闭合（"按类型过滤"在 v3/v4 已写）。
+  - + status doctor 实现简单：直接读 RunState.last_event_ts。
+  - − requirement.md AC-06 文字需 detail-design 同步修订一行（不影响 contract，归 D-015 follow-up clean-up）。
+- **时间**：2026-05-14 10:12:00
+
+### D-012 `save_node_result.py` 与 `save_review.py` 不抽公共 helper（O-02 关闭）
+
+- **Context**：outline-design O-02 议题（来源：requirements/REQ-2026-011/artifacts/outline-design.md:524）；两者 schema 校验段约 30~60 行有重叠。候选：抽 / 不抽 / 仅抽 IO helper。
+- **Decision**：不抽。两个 CLI 后续演化方向可能分叉（`save_node_result` 需校验 `state == awaiting_claude_action` 等 RunState 约束，`save_review` 需校验 14 字段 verdict schema），提前抽公共 helper 反会绑死；用单测覆盖两份独立 `_validate_inputs` 抵消重复成本。
+- **Consequences**：
+  - + 单文件 self-contained，新人不用跨文件追逻辑。
+  - + 演化路径独立，未来 save_node_result 加 RunState 锚定校验不影响 save_review。
+  - − 二者 schema 校验段未来若都需要相同新规则（如 atomic-write 保护），需手动同步；通过 detail-design 阶段把"两边都需要"列入 PR review checklist 兜底。
+- **时间**：2026-05-14 10:12:00
+
+### D-013 `_ready_nodes` = 每次全量重算（O-03 关闭）
+
+- **Context**：outline-design O-03 议题（来源：requirements/REQ-2026-011/artifacts/outline-design.md:525）；性能软约束 ≤ 50ms，典型 DAG ≤ 20 节点。
+- **Decision**：每次 `continue` 全量重算 ready 集——遍历所有节点，过滤 `depends_on` 全部 `node_completed` 且自身未 `node_started` 的；无增量缓存，无状态依赖。约 30 行实现。
+- **Consequences**：
+  - + 实现简单、可读，rebuild 后状态自洽，不引入"缓存与真相不一致" bug 面。
+  - + 性能足够：20 节点 × O(depends_on)（≤ 5）≈ 100 次 set 查询，wall-clock < 5ms，远低于 50ms 软约束。
+  - − DAG 规模放大到 200+ 时性能退化（O(N*M)），但本期所有 yaml DAG 节点数 ≤ 30，触达需新 follow-up 需求评估。
+- **时间**：2026-05-14 10:12:00
+
+### D-014 AC-A1 4KB 上限 + reject reason ≥4KB 时 fallback 到 manifest（O-04 关闭）
+
+- **Context**：AC-A1 baseline（来源：requirements/REQ-2026-011/artifacts/outline-design.md:488）约定 `MAX_BATCH_PAYLOAD_BYTES = 4096`；O-04 议题（来源：requirements/REQ-2026-011/artifacts/outline-design.md:526）需定 reject reason 大 payload 兜底策略。候选：硬限制 raise / manifest fallback / 不设上限。
+- **Decision**：
+  - 常量 `MAX_BATCH_PAYLOAD_BYTES = 4096`，定义在 `scripts/lib/append_events.py` 顶部。
+  - 单次 `append_events([...])` 序列化后字节数 ≥ 4096 → raise `PayloadTooLargeError`（detail-design 定异常类）。
+  - reject reason / approval_repair_started.data 等单字段超 3.5KB 时，写入 `runs/<run_id>/manifest/<event_id>.txt` 存原文 + 在 jsonl event 内只留 `{"ref": "manifest/<event_id>.txt", "size": N, "sha256": ...}`；触发条件统一在 reject CLI / save_node_result 内部封装，调用方无感。
+  - 单测覆盖：（1）3.5KB success path（直写 jsonl）；（2）5KB raise；（3）reject reason 5KB → manifest fallback + jsonl 仅留 ref。
+- **Consequences**：
+  - + jsonl 单行可控，避免大 payload 撑爆 RunState.rebuild 内存。
+  - + reject reason 罕见超长场景不阻塞 workflow（manifest 文件 + ref 引用模式）。
+  - + manifest-pointer 模式后续可扩展到其他大 payload 事件类型（D-015 follow-up）。
+  - − 引入 manifest 目录管理职责（清理 / 归档），detail-design 阶段需补一节"manifest 文件生命周期"（建议：随 run 归档，不单独清理）。
+- **时间**：2026-05-14 10:12:00
