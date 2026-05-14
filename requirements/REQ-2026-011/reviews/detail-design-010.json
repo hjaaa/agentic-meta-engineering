@@ -60,5 +60,11 @@
       "F-009 (workflow_status --verbose) 可补 complexity: medium（含 incomplete_dispatch 诊断 + stale 阈值 env override）",
       "全表 features 均未补 interfaces_frozen 字段；v9 已完成 4 轮对抗审阅且 5 维全 ≥90，建议 implementation 阶段为已冻结接口签名的 feature（F-001 / F-006 / F-007）补 interfaces_frozen: true，让阶段 7 派发器走更激进并行策略"
     ]
+  },
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-14T15:01:35.269561+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
   }
 }
