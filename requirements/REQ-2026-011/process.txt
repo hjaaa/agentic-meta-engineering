@@ -47,3 +47,4 @@ REQ-2026-011 语义事件日志
 2026-05-14 15:44:46 [save] development 准入就绪：4 漂移闭环 0 hash drift + 11 gate 过；next F-001 待派
 2026-05-14 15:52:35 [save] F-001 派发完成（model=sonnet 16 tests passed）→ 进入 post-dev gate + /code-review
 2026-05-14 16:08:59 [review:approved] F-001 code-review looks_clean(86) 5维[88/92/88/84/82/86/88/92]；critic drop=17 / keep=9（2 major + 7 minor 均为低成本改进，required_fixes=0）
+2026-05-14 16:19:24 [review:approved] F-001 rev2 code-review looks_clean(91) 5维[88→改+91/92/88→91/84→86/82→91/86→93/88/92]；4 项 fix 全闭环 + 0 新 issue；5 follow-up minor 已标注；等 tty signoff
