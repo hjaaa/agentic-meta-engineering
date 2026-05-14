@@ -9,9 +9,17 @@
   - PayloadTooLargeError：单事件或批量超 4KB 时抛出（manifest fallback 后仍超才抛）。
 
 D-014 决策：
-  - 4KB = POSIX PIPE_BUF 保守跨平台原子写边界
+  - 4KB = POSIX 单次 write 原子上限保守取值；普通文件的原子追加由 LOCK_EX + O_APPEND 保证，
+    与 PIPE_BUF 无关（PIPE_BUF 仅约束 pipe）
   - 3.5KB = MAX_INLINE_FIELD_BYTES（每字段 inline 上限）
   - 4KB - 3.5KB = 500 字节冗余（含 ts/run_id/type 等顶层字段）
+
+线程安全：
+  - 跨进程：LOCK_EX + O_APPEND 保证 jsonl/index.txt 的原子追加；
+  - 同进程跨线程：未保护。events list 与 dict 是 caller 拥有的对象，
+    in-place mutate（补 ts / 删原字段 / 写 *_ref）不加锁，多线程共享
+    同一 events 对象会发生 dict data race。当前调用方约束为多进程，
+    不涉及该场景。
 """
 from __future__ import annotations
 
@@ -27,7 +35,7 @@ from uuid import uuid4
 from common import WorkflowError
 from run_state import VALID_EVENT_TYPES
 
-MAX_BATCH_PAYLOAD_BYTES: int = 4096        # D-014 POSIX PIPE_BUF 保守边界
+MAX_BATCH_PAYLOAD_BYTES: int = 4096        # D-014 POSIX 单次 write 原子上限保守取值
 MAX_INLINE_FIELD_BYTES: int = 3500         # 单字段 inline 上限（manifest 触发阈）
 
 
@@ -76,6 +84,10 @@ def _atomic_write_jsonl(jsonl_path: Path, blob_bytes: bytes) -> None:
 
 def append_events(jsonl_path: Path, events: list[dict[str, Any]]) -> None:
     """单次 LOCK_EX + 单次 os.write 写多条事件（R-T03 根除）。
+
+    Args:
+        jsonl_path: 目标 .jsonl 文件路径（父目录不存在时自动创建）。
+        events: 待追加的事件 list（in-place mutate：缺 ts 时自动补 ISO8601 UTC）。
 
     Raises:
         WorkflowError: events 中包含非白名单 type 或非 dict。
@@ -139,14 +151,22 @@ def _persist_field_to_manifest(
     sha256_hex = hashlib.sha256(field_bytes).hexdigest()
     size = len(field_bytes)
 
+    replaced = False
     fd = os.open(str(tmp_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
     try:
-        os.write(fd, field_bytes)
-        os.fsync(fd)
+        try:
+            os.write(fd, field_bytes)
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        os.replace(str(tmp_path), str(manifest_path))
+        replaced = True
     finally:
-        os.close(fd)
-
-    os.replace(str(tmp_path), str(manifest_path))
+        if not replaced:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
 
     return f"manifest/{event_id}.txt", size, sha256_hex
 
@@ -186,8 +206,11 @@ def append_events_with_manifest(
     """payload 超限时按 large_field_paths 落 manifest（D-014 二段触发算法）。
 
     Args:
+        jsonl_path: 目标 .jsonl 文件路径（父目录不存在时自动创建）。
+        events: 待追加的事件 list（in-place mutate：补 ts、替换超限字段为 *_ref）。
         large_field_paths: 形如 [("data", "reason")] 表示
             event["data"]["reason"] 字段允许被外置 manifest。
+        run_dir: manifest 文件与 index.txt 的根目录（子目录 manifest/ 自动创建）。
 
     流程（v6 修订，对抗 P2 反向回归）：
       1. dry-run 估算字节数

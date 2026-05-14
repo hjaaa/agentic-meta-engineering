@@ -209,6 +209,28 @@ def test_ac4_os_replace_failure_no_jsonl(tmp_path: Path) -> None:
     assert not jsonl.exists()
 
 
+def test_ac4_tmp_cleaned_on_write_failure(tmp_path: Path) -> None:
+    """.tmp 文件在 os.write 失败后必须被清理（EH-001 rev1 修复验收）。"""
+    jsonl = tmp_path / "run.jsonl"
+    run_dir = tmp_path / "run"
+    reason = "r" * 5000
+
+    ev = _make_event("approval_rejected", {"data": {"reason": reason}})
+
+    with mock.patch("os.write", side_effect=OSError("disk full")):
+        with pytest.raises(OSError, match="disk full"):
+            append_events_with_manifest(
+                jsonl, [ev], large_field_paths=[("data", "reason")], run_dir=run_dir
+            )
+
+    # jsonl 不应被写入
+    assert not jsonl.exists()
+    # .tmp 文件不应残留
+    manifest_dir = run_dir / "manifest"
+    tmp_files = list(manifest_dir.glob("*.tmp")) if manifest_dir.exists() else []
+    assert tmp_files == [], f"残留 .tmp 文件：{tmp_files}"
+
+
 # ---------------------------------------------------------------------------
 # AC-5：event type 不在 VALID_EVENT_TYPES → raise WorkflowError
 # ---------------------------------------------------------------------------
