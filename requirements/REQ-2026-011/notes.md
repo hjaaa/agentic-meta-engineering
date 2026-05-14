@@ -111,3 +111,11 @@
 - **目标**：F-002 / F-003 触及 append_events.py 时顺手把 4~5 个私有函数 docstring 风格补齐（Args / Raises / Returns 段统一）。
 - **维度**：auxiliary_spec（95，跨多个私有函数累积 minor）。
 - **来源**：`reviews/code-F-001-002.json:77`（suggestion #1 末段「私有函数不属首轮 finding 范围」）。
+
+### IB-08 · 既有 approval_pending / approved / rejected 三分支终态守卫缺失（F-002 rev2 同模式扫描沉淀）
+
+- **现状**：`scripts/lib/run_state.py` 既有 L219-231 三分支 `approval_pending` / `approval_approved` / `approval_rejected` 与 F-007 同类终态守卫缺失——事件序列 `[..., workflow_failed, approval_pending(N)]` 下 state 会被覆盖回 `approval_pending`，污染 `/workflow:status` 显示和 D-011 stale 检测。
+- **目标**：把 `TERMINAL_STATES` 终态守卫扩到既有 approval_* 三分支（与 F-002 rev2 的 node_ready / approval_repair_started / approval_repair_completed 守卫同构）。
+- **维度**：error_handling（既有技术债，与 F-007 同根因）。
+- **执行时机**：与 IB-01 (SUCCESS_TERMINAL) 一并在 F-004 PR 处理（顺手扩，与 D-014 同模式扫描一致），或独立 hardening task。
+- **来源**：F-002 rev2 subagent D-014 同模式扫描产出（详见 reviews/code-F-002-001.json 报告 + receipt.json D-014 扫描结论）；critic 已确认超 F-002 acceptance 范围，不在 rev2 commit 修复。

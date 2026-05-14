@@ -55,3 +55,5 @@ REQ-2026-011 语义事件日志
 2026-05-14 16:39:06 [save] IB backlog 整理：IB-01 F-004 touches 补 run_state.py；IB-02 改归 dev→testing 前 doc-refresh 批；IB-03~07 落 F-001 rev2 5 minors
 2026-05-14 16:44:20 [save] F-002 派发开始（model=sonnet，complexity=light fallback；touches 3 文件）
 2026-05-14 16:49:48 [save] F-002 派发完成（model=sonnet 30 tests passed；commit 8743134；进 post-dev + /code-review）
+2026-05-14 17:03:47 [review:needs_attention] F-002 rev1 needs_attention(82) 0/1 major (F-005)/1 minor (F-007)；critic 7→2 keep；rev2 修复派发
+2026-05-14 17:08:43 [save] F-002 rev2 修复完成（9efd08a 33 tests passed；F-005 节点守卫 + F-007 终态守卫；IB-08 既有 approval_* 同模式沉淀 notes.md）
