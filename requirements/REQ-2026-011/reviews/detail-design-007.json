@@ -1,0 +1,85 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-011-detail-design-007",
+  "requirement_id": "REQ-2026-011",
+  "phase": "detail-design",
+  "reviewer": "detail-design-quality-reviewer",
+  "reviewed_at": "2026-05-14 14:23:38",
+  "reviewed_commit": "02a05da",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/detailed-design.md",
+      "sha256": "5e5a0207c5c57fa8bacb35ad97722de358ffa1616fa7dd2c81ea2726b8891bb1"
+    },
+    {
+      "path": "artifacts/features.json",
+      "sha256": "2a31e8085a52019f2170f2ccd65b9f15e5cf1e8f5ae9dd2242bac7ceac2dad3b"
+    },
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "379fb36d2192c590533fc52c8e25e76a52735b10536e57e54d1f980aac8288a5"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 94,
+  "dimensions": {
+    "consistency_with_outline": {
+      "score": 92,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "outline-design.md:135 仍保留 v3 旧表述（DAG 末节点判定走\"出度=0\"），与 detailed-design v4/v6 已迭代到\"全节点终态 ∧ _ready_nodes 空\"存在历史 drift；本轮 v7 不在 outline 阶段，仅作信息提示——若 F-004 实施时需追溯 outline，可同 PR 一行修正"
+        }
+      ]
+    },
+    "interface_completeness": {
+      "score": 95,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "detailed-design.md:998 SUCCESS_TERMINAL 集合在 §3.6.2 内嵌定义，§3.6.3:1075 出现的是同义局部 success_terminal 字面集合（非共享常量）；从同源约束的角度建议未来抽公共模块常量（如 run_state.SUCCESS_TERMINAL）避免再次漂移；当前用注释\"与 §3.6.3 line 1071 同源\"显式标注已足以闭环，不阻塞"
+        }
+      ]
+    },
+    "data_model_soundness": {
+      "score": 94,
+      "issues": []
+    },
+    "sequence_correctness": {
+      "score": 95,
+      "issues": []
+    },
+    "feature_granularity": {
+      "score": 92,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "features.json:88 (F-004) description 长度 1033 字、:34 (F-007) 926 字、:14 (F-001) 594 字均显著超出 200 字门槛——但承载 ADR + AC + 模块路径 + 反向回归记号的密度合理，REV-005/006 已认可此约定；保留 minor 标记便于下游派发器知情"
+        }
+      ]
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    {
+      "description": "F-004 / F-007 / F-001 description 长度 600~1033 字超 200 字常规门槛，承载信息密度高可接受；下一轮迭代可考虑把 ADR / 反向回归记号抽到独立 ADR section，让 description 回归 ≤300 字"
+    },
+    {
+      "description": "建议在 implementation 起步时把 §3.6.2 的 SUCCESS_TERMINAL 与 §3.6.3 的 success_terminal 提到 run_state.py 共享常量（如 NodeState.SUCCESS_TERMINAL = frozenset({'completed', 'skipped'}))，永久消除两处再次 drift 风险"
+    },
+    {
+      "description": "outline-design.md:135 \"出度=0\"残留可在 F-004 commit 顺手 1 行修正，对齐 detailed-design v4/v6 的\"全节点终态 ∧ _ready_nodes 空\"语义；非阻塞"
+    }
+  ],
+  "scope": null,
+  "supersedes": "REV-REQ-2026-011-detail-design-006",
+  "features_json_validation": {
+    "valid": true,
+    "issues": [],
+    "enhancement_suggestions": [
+      "F-004 acceptance 第 118 项\"skipped 反向回归\"已显式标记 v7 REV-006 P1 闭环 + 关键反向断言（N1 不会被错误重新派发），与 detailed-design §3.6.2 测试 4（line 1041）严格对称——优秀对齐范式，可作为下游派发模板沉淀",
+      "F-007 acceptance 第 211 项反向 b 文案已展开节点级事件候选集 {node_ready, approval_repair_started, node_completed, approval_repair_completed, node_failed}，与 §3.6.2 line 1041 / §3.8.3 elif 分支链严格对齐；建议派发到该 feature 的 subagent 默认携带此候选集作为白盒覆盖基线",
+      "13 条 feature 全部含 complexity / touches / depends_on_features 三件套，下游派发器可走最优 sonnet/opus 分级 + 并发拆分策略——堪比模板级 features.json，无需补字段"
+    ]
+  }
+}
