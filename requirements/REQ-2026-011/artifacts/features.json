@@ -30,7 +30,7 @@
     {
       "id": "F-002",
       "title": "VALID_EVENT_TYPES 扩展 + DispatchOutcome 第 8 类",
-      "description": "scripts/lib/run_state.py 的 VALID_EVENT_TYPES 加 node_ready / approval_repair_started / approval_repair_completed 三类；WORKFLOW_EVENT_TO_STATE 加 node_ready → awaiting_claude_action / approval_repair_started → awaiting_claude_action / approval_repair_completed → approval_pending；scripts/lib/workflow_dispatcher.py 的 DispatchOutcome Literal 加第 8 项 awaiting_claude_action。RunState.rebuild 内 if/elif 链补 4 个新分支（含 node_completed 在 awaiting 下回 running 的特殊处理）。落地 ADR D-007 + AC-A2 baseline。",
+      "description": "scripts/lib/run_state.py 的 VALID_EVENT_TYPES 加 node_ready / approval_repair_started / approval_repair_completed 三类；**WORKFLOW_EVENT_TO_STATE 扁平映射保持 6 项不扩展**（对抗审阅 P1-1：扁平映射 elif 命中后跳过专门分支，无法落 current_node / pending_approval 副作用）；RunState.rebuild 内 if/elif 链补 4 个新分支（含 node_completed 在 awaiting 下回 running 的特殊处理）——新 elif 必须插入到 `elif ev_type in WORKFLOW_EVENT_TO_STATE` 之前；scripts/lib/workflow_dispatcher.py 的 DispatchOutcome Literal 加第 8 项 awaiting_claude_action。落地 ADR D-007 + AC-A2 baseline + 详见 detailed-design.md §2.1 / §3.8.2 / §3.8.3。",
       "modules": [
         "scripts/lib/run_state.py",
         "scripts/lib/workflow_dispatcher.py",
@@ -50,7 +50,8 @@
         "RunState.rebuild：approval_repair_started → state=awaiting_claude_action + pending_approval=node_id",
         "RunState.rebuild：approval_repair_completed → state=approval_pending；pending_approval 保留",
         "RunState.rebuild：node_completed 紧跟 node_ready → state 回 running",
-        "DispatchOutcome Literal 含 awaiting_claude_action（mypy 静态校验通过）"
+        "DispatchOutcome Literal 含 awaiting_claude_action（mypy 静态校验通过）",
+        "回归断言（对抗审阅 P1-1 反向覆盖）：WORKFLOW_EVENT_TO_STATE 字典 keys 集合不变（与既有 6 项相等），断言 'node_ready' not in WORKFLOW_EVENT_TO_STATE / 'approval_repair_started' not in WORKFLOW_EVENT_TO_STATE / 'approval_repair_completed' not in WORKFLOW_EVENT_TO_STATE"
       ],
       "estimate_days": 1.0,
       "priority": "P0",
@@ -83,7 +84,7 @@
     {
       "id": "F-004",
       "title": "DAG ready_nodes scheduler + depends_on_explicit 标记位",
-      "description": "scripts/lib/workflow_loader.py 的 _expand_implicit_depends_on 内补 workflow['depends_on_explicit']: bool 标记位（True = 全部节点显式声明 depends_on；False = 至少一节点缺省，loader 自动补 [prev_id]）。scripts/lib/workflow_continue.py 新增 _ready_nodes(run_state, workflow)（D-013 每次全量重算）+ _select_next_dispatch_target() 双路径分流；_finalize_after_rebuild_if_last_topology_node 适配 DAG 末节点判定（出度=0）。落地 ADR D-006 + D-013 + AC-01。附带修正 .claude/workflows/requirement/standard-8phase.yaml:57 不存在的 check_meta_schema.py → check_meta.py（与 F-005 同 commit 或独立小 commit）。",
+      "description": "scripts/lib/workflow_loader.py 的 _expand_implicit_depends_on 内补 workflow['depends_on_explicit']: bool 标记位（True = 全部节点显式声明 depends_on；False = 至少一节点缺省，loader 自动补 [prev_id]）。scripts/lib/workflow_continue.py 新增 _ready_nodes(run_state, workflow)（D-013 每次全量重算）+ _select_next_dispatch_target() 双路径分流（**退化路径补首节点启动逻辑：current_node is None ∧ 无 completed → 返回 yaml.nodes[0].id，对抗审阅 P1-2 修复 bootstrap 不设 current_node 导致 AC-01 退化无法启动**）；_finalize_after_rebuild_if_last_topology_node 适配 DAG 末节点判定（**全节点 ∈ {completed, skipped, failed} 且 _ready_nodes 为空**，对抗审阅 P1-3：旧 [出度=0] 判定在多 sink DAG 下会过早写 workflow_completed 截断未完成 sink）。落地 ADR D-006 + D-013 + AC-01 + 详见 detailed-design.md §3.4 / §3.6.2 / §3.6.3。附带修正 .claude/workflows/requirement/standard-8phase.yaml:57 不存在的 check_meta_schema.py → check_meta.py（与 F-005 同 commit 或独立小 commit）。",
       "modules": [
         "scripts/lib/workflow_loader.py",
         "scripts/lib/workflow_continue.py",
@@ -109,10 +110,12 @@
         "loader：任一节点缺省 depends_on → workflow['depends_on_explicit'] == False（loader 仍补 [prev_id]）",
         "_ready_nodes 首次调用（completed=∅）→ 返回入度=0 节点集（按 yaml 出现顺序）",
         "_ready_nodes 某节点 deps 全完 → 加入 ready；已在 awaiting / failed → 不加入",
-        "_select_next_dispatch_target：depends_on_explicit=True → 调 _ready_nodes 取 [0]；False → 调 _next_node",
+        "_select_next_dispatch_target：depends_on_explicit=True → 调 _ready_nodes 取 [0]；False → 调 _next_node；**退化路径 current_node is None ∧ 无任何 completed → 返回 workflow.nodes[0].id（对抗审阅 P1-2 修复）**",
+        "新 run 启动断言（P1-2 回归）：仅 [workflow_started] 事件 + 退化 yaml（depends_on_explicit=False，3 节点 N1/N2/N3）→ _select_next_dispatch_target 返回 'N1'（首节点 id）",
         "e2e：fixture workflow_legacy_next.yaml（5 节点全用 next）跑通退化路径，jsonl 末位 workflow_completed",
         "e2e：standard-8phase.yaml 走 DAG 路径首节点 bootstrap-validate 跑通，第二层 ready 计算正确",
-        "_finalize_after_rebuild_if_last_topology_node：DAG 末节点（出度=0）→ 补 workflow_completed；单链末节点 _next_node is None → 同款"
+        "_finalize_after_rebuild_if_last_topology_node DAG 路径：**全节点 ∈ {completed, skipped, failed} 且 _ready_nodes 为空时**才补 workflow_completed（对抗审阅 P1-3 修复）；单链末节点 _next_node is None → 同款补完成事件",
+        "多 sink DAG 反向回归（P1-3 反向覆盖）：fixture 含 2 个并行 sink A 与 B（depends_on_explicit=True，A.depends_on=B.depends_on=[N0]），node_completed(A) 单独写入后 _finalize_after_rebuild_if_last_topology_node 返回 False；直到 node_completed(B) 写入后才返回 True 并补 workflow_completed"
       ],
       "estimate_days": 3.0,
       "priority": "P0",

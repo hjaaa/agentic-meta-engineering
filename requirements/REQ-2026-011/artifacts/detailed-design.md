@@ -96,7 +96,11 @@ WORKFLOW_EVENT_TO_STATE: dict[str, str] = {
 | `node_id` | 节点级事件必填 | 全局事件（`workflow_started/completed/failed/cancelled` 等）不需要 |
 | `data` | 按事件类型 schema 必填 | 详见下方各事件 payload 段；payload 大小校验见 §2.4 |
 
-> **示例代码约定**：本文档 §3.x 内的事件构造示例（如 §3.2 reject CLI、§3.3 artifact node_completed）一律不写 `run_id` 字段——与现有所有 `append_event` 调用站（如 workflow_dispatcher.py / workflow_continue.py / workflow_approve.py）的写法保持一致。
+> **示例代码约定**（M-3 修订）：
+> - §2.2.x JSON payload 示例显式写 `run_id` —— **仅作为读 jsonl 时人类辨识便利**，机器侧 rebuild 不依赖此字段（见上表）。
+> - §3.x Python 代码示例与现有 `scripts/lib/workflow_dispatcher.py:132/163` 既有写法一致：append_event payload **包含** `run_id=run_state.run_id`（虽 rebuild 不读，但写入侧保持冗余以备未来日志/审计/外部消费）。
+> - §3.2 reject CLI（line 421-432）等少量"作为可读 schema 示例"的事件构造没写 `run_id`——实施时按 §3.3 dispatcher 同款补上即可，本文档**不强制改写示例**（避免与 §2.2.x JSON 示例风格冲突）。
+> - 核心契约：`append_event` 不校验 `run_id`，缺失合法；rebuild 仅在首条 `workflow_started` 兜底取 `run_id`。
 
 #### 2.2.1 `node_ready`（AC-04a，对应 ADR D-007 / D-008）
 
@@ -1816,3 +1820,4 @@ F-013 (AC-10 7 字段)   ← F-002 / F-007
 | 2026-05-14 10:50:00 | v2 闭环 REV-001 3 required_fixes + 关键 suggestions | §8.2 commit 分组表对齐 features.json 13 commits（删 F-014/F-015 错位）；`approval_attempts_exhausted` 事件 `data.attempts` 统一改 `data.attempt`（与 started/completed 单数命名一致）；§6.1/§6.3/§3.1 "D-006 hook" 改 "AI-CMD-LOCK 基线"（去除与本期 plan.md D-006 同号不同义）；§1.1 显式注 `workflow_lock.py → path_lock.py` 改名；§2.3 删 `claude_session: null` 死字段；§4.5 sub_workflow 时序图补 continue 用户入口 + main loop 调用栈；§4.6 拆 4.6.1（并发拒绝）+ 4.6.2（残锁清理）两个独立子图，去除时间线矛盾 |
 | 2026-05-14 11:00:00 | v3 闭环 REV-002 dev backlog 4 项 minor | F-001 acceptance 加"manifest/index.txt 多进程并发 append 原子（fcntl.LOCK_EX）"；F-013 acceptance #7 grep 断言改行为级（dispatcher 写 contract → save_node_result 不消费 → node_completed 不含字段）；§2.4 manifest 加 purpose 与事件类型映射表 + index.txt 并发原子说明；§3.1 `_resolve_run_dir` 私名跨模块导出加注释 + `save_node_result.main` docstring 补返回值语义（0/1/2） |
 | 2026-05-14 11:20:00 | v4 用户对抗审阅 6 处全闭环（3×P1 + 2×P2 + 1×P3） | **P1-1** `WORKFLOW_EVENT_TO_STATE` 不扩展，3 个新事件全部走 §3.8.3 if/elif 专门分支（修复扁平映射吞掉 current_node / pending_approval 副作用的根本缺陷；§2.1 + §3.8.2/3 + 单测）；**P1-2** `_select_next_dispatch_target` 退化路径加首节点补救（current_node is None ∧ 无 completed → 取 yaml.nodes[0]）解决 bootstrap 不设 current_node 导致 AC-01 退化失败；**P1-3** DAG 终态判定改"全节点终态 ∧ _ready_nodes 空"（替换"出度=0"避免多 sink DAG 过早 workflow_completed）；**P2-1** schema 顶层字段表对齐现状（run_id 仅 workflow_started 必填，rebuild 不读其他事件 run_id）；**P2-2** 统一 manifest helper 名为 `append_events_with_manifest`（§2.2 / §3.1 改名）；**P3** e2e yaml 路径 `code-review/` → `review/` 修正 |
+| 2026-05-14 11:35:00 | v5 闭环 REV-004 M-1/M-2 major 跨文件 drift + M-3 minor | **M-1 修复**：features.json F-002 description 删除"WORKFLOW_EVENT_TO_STATE 加..."旧语义，明确"扁平映射保持 6 项不扩展"+ 补反向回归断言（acceptance #7：扁平映射 keys 集合不含 3 新事件）；**M-2 修复**：features.json F-004 description 把"出度=0"改"全节点终态 ∧ _ready_nodes 空" + 补退化首节点 acceptance + 补多 sink DAG 反向回归 acceptance；**M-3 修复**：detailed-design §2.2 示例代码约定段澄清（§2.2.x JSON 示例写 run_id 作为人类辨识便利，§3.x 代码示例与现有 dispatcher 一致写 run_id，append_event 不校验、rebuild 仅 workflow_started 兜底取 run_id） |
