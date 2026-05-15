@@ -137,7 +137,7 @@ def _dispatch_node_by_type_key(
     if "approval" in node:
         return _dispatch_approval_node(node, env, run_state, jsonl_path)
     if "loop" in node:
-        return _dispatch_loop_node(node, env, run_state, jsonl_path)
+        return _dispatch_loop_node(node, env, run_state, jsonl_path, root)
     if "sub_workflow" in node:
         # env 当前未在 sub_workflow 节点使用；run_state 用于写 parent_run_id 入 sub run meta
         return _dispatch_sub_workflow_node(node, run_state, run_dir, root, jsonl_path)
@@ -409,27 +409,66 @@ def _dispatch_loop_node(
     env: dict[str, Any],
     run_state: RunState,
     jsonl_path: Path,
+    root: Path = Path("."),
 ) -> DispatchResult:
     """Loop 节点：迭代计数从 run_state.loop_counters[node_id] 读取。
 
-    逻辑（F-011）：
-    1. 读取当前迭代次数（loop_counters[node_id]，首次为 0）
-    2. 写 loop_iteration_started 事件（data.iteration = current_iteration）
-    3. 写 loop_iteration_completed 事件（data.iteration = current_iteration）
-    4. 若 current_iteration + 1 >= max_iterations → outcome="loop_done"
-       否则 → outcome="loop_continue"（workflow_continue.py 负责递增计数器并继续同节点）
+    AC-07 扩展：
+    - 新增 node["loop"]["until_bash"]: str 字段
+    - 每轮迭代前先跑 until_bash；exit=0 → loop_completed + outcome=loop_done
+    - exit≠0 → 继续既有 loop_iteration_started/completed 路径
+    - 达到 max_iterations → loop_max_iterations_exceeded + outcome=loop_done
+    - until_bash timeout（30s） → error 写 data.error = "timeout: <cmd>"，按 max_iterations 兜底
+    - until_bash 不传 → 完全走既有路径（保护 F-011 历史行为）
 
     约束：
     - data["iteration"] 必须存在，供 RunState.rebuild 中 loop_counters 累计消费
     - max_iterations 取自 node["loop"]["max_iterations"]；缺省视为 1
     """
+    import os  # 用于注入 iter 环境变量
+
     node_id: str = node.get("id", "<unknown>")
     loop_cfg: dict = node.get("loop") or {}
     max_iterations: int = int(loop_cfg.get("max_iterations", 1))
+    until_bash: str | None = loop_cfg.get("until_bash")
 
     # 当前迭代索引（0-based）：首次不在 loop_counters 中，取 0
     current_iteration: int = run_state.loop_counters.get(node_id, 0)
 
+    # AC-07：until_bash 优先判定（仅在传入时生效）
+    if until_bash:
+        rendered_until = substitute_vars(
+            until_bash, run_state.node_outputs, env, escape_for_bash=False
+        )
+        try:
+            proc = subprocess.run(
+                ["bash", "-c", rendered_until],
+                cwd=str(root),
+                capture_output=True,
+                text=True,
+                timeout=30.0,
+                env={**os.environ, "iter": str(current_iteration)},
+            )
+            if proc.returncode == 0:
+                # exit=0 → until 条件成立，跳过本轮迭代直接完成
+                append_event(jsonl_path, {
+                    "type": "loop_completed",
+                    "node_id": node_id,
+                    "data": {"iteration": current_iteration},
+                })
+                return DispatchResult(outcome="loop_done")
+            # exit≠0 → 条件不成立，继续走迭代路径
+        except subprocess.TimeoutExpired:
+            # timeout 不视为 loop_done，继续走迭代路径；error 记录在 completed 事件
+            _write_loop_iteration_with_error(
+                jsonl_path, node_id, current_iteration,
+                f"timeout: {rendered_until}",
+            )
+            return _loop_check_max_or_continue(
+                node_id, current_iteration, max_iterations, jsonl_path
+            )
+
+    # 既有路径（until_bash 不传，或 until_bash exit≠0 时）
     append_event(jsonl_path, {
         "type": "loop_iteration_started",
         "node_id": node_id,
@@ -443,7 +482,45 @@ def _dispatch_loop_node(
     })
 
     # 已完成 current_iteration 轮（0-based），下一轮编号为 current_iteration + 1
+    return _loop_check_max_or_continue(
+        node_id, current_iteration, max_iterations, jsonl_path
+    )
+
+
+def _write_loop_iteration_with_error(
+    jsonl_path: Path,
+    node_id: str,
+    iteration: int,
+    error: str,
+) -> None:
+    """写 loop_iteration_started + loop_iteration_completed（含 error 字段）。"""
+    append_event(jsonl_path, {
+        "type": "loop_iteration_started",
+        "node_id": node_id,
+        "data": {"iteration": iteration},
+    })
+    append_event(jsonl_path, {
+        "type": "loop_iteration_completed",
+        "node_id": node_id,
+        "data": {"iteration": iteration, "error": error},
+    })
+
+
+def _loop_check_max_or_continue(
+    node_id: str,
+    current_iteration: int,
+    max_iterations: int,
+    jsonl_path: Path,
+) -> DispatchResult:
+    """达到 max_iterations → 写 loop_max_iterations_exceeded + outcome=loop_done；
+    否则 → outcome=loop_continue。
+    """
     if current_iteration + 1 >= max_iterations:
+        append_event(jsonl_path, {
+            "type": "loop_max_iterations_exceeded",
+            "node_id": node_id,
+            "data": {"max_iterations": max_iterations, "iteration": current_iteration},
+        })
         return DispatchResult(outcome="loop_done")
     return DispatchResult(outcome="loop_continue")
 
