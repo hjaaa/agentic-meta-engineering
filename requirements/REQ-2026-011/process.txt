@@ -95,3 +95,5 @@ REQ-2026-011 语义事件日志
 2026-05-15 10:16:11 [signoff] REV-REQ-2026-011-outline-design-005 approved by hj19961223@gmail.com
 2026-05-15 10:16:11 [signoff] REV-REQ-2026-011-detail-design-012 approved by hj19961223@gmail.com
 2026-05-15 10:16:11 [save] doc-refresh 批闭环（ca5c0e5+fe018ed+signoff：4 文档 sourcing + D-015 #4 commit 数 + 2 refresh review + 2 signoff；R005/R003 全解；剩 R002 active features pending 在 testing 切换前正常状态）
+2026-05-15 10:17:58 [save] 会话节点：F-005 P0 闭环 + IB sweep 5/5 批 14 项 + doc-refresh 批闭环（sourcing/D-015#4/outline-005+detail-012 refresh signoff）；5/13 features done；phase-transition 11/11 sanity 全过；等派 F-006/F-008
+2026-05-15 10:39:41 [save] F-006 派发完成（model=opus / heavy；15 new + 1409/1409 + 8 skipped 0 回归；commit febba74；touches_violations=[]）；进 post-dev gate + /code-review
