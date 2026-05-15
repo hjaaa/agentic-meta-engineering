@@ -405,6 +405,28 @@ _[hook-skipped: claude-exit-143]_
 
 
 
+## F-011 rev2 follow-up（2026-05-15 22:00 沉淀）
+
+> 来源：`reviews/code-F-011-002.json` Judge 把 2 项判 follow-up（rev2 自引入 keep=0；critic 4 rejected + 2 not_proven 全数 drop/follow-up）。处置原则：development→testing 切换前与 IB-31 / IB-34 同批 sweep。
+
+### IB-35 · test_poll_subworkflows.py 553 行越 500 阈值（F2-CR-001）
+
+- **现状**：rev2 后 `tests/lib/test_poll_subworkflows.py` 11 个 TC 集中单文件 553 行（rev1 453 → rev2 +100 = 553），越 complexity-checker 阈值 500。
+- **目标**：与 IB-31（workflow_continue.py 533 → sub_workflow_poller.py 拆模块）同批 sweep。建议：
+  - 选项 A：随 IB-31 拆 sub_workflow_poller.py 时，把 `_handle_child_*` + `_poll_sub_workflows` 的测试也移到 `tests/lib/test_sub_workflow_poller.py`
+  - 选项 B：把 AC-9/10/11（fail-closed 回归 100 行）单独抽到 `tests/lib/test_poll_subworkflows_fail_closed.py`，主文件回到 ~453 行
+- **维度**：complexity major（trend-CR-A-module-bloat 跨文件复发；建议 IB sweep 时统一 test/src 拆分阈值原则）
+- **执行时机**：与 IB-31 同批 sweep PR；或与 development→testing 切换前的 doc-refresh / IB sweep 总批次合并。
+- **来源**：`reviews/code-F-011-002.json` F2-CR-001 + trend-CR-A-module-bloat 信号（rev1 src 533 → rev2 test 553 同模式）。
+
+### IB-36 · detailed-design.md fail-closed chained-traceback 契约缺失（F2-CR-004）
+
+- **现状**：rev2 AC-9/10/11 三测试断言 `exc_info.value.__cause__ is not None`（验证 `raise WorkflowError(...) from exc` 保留 PEP 3134 chained traceback），但 detailed-design.md §3.6.4 `_handle_child_*` fail-closed 契约描述（对应 workflow_continue.py L61/L106/L179 docstring）仅说"WorkflowError 向上抛"，未明确要求 `__cause__` 保留。测试比 design 严格，存在 design 文档未覆盖的隐式要求。
+- **目标**：在 detailed-design.md §3.6.4 各 helper 的 fail-closed 说明中补一句"使用 `raise WorkflowError(...) from exc` 保留原始 traceback 链（`__cause__` 非 None）"；或在 features.json F-011 acceptance 中加一条"fail-closed：WorkflowError.__cause__ 应指向原始异常"，让测试意图有 design 背书。
+- **维度**：design_consistency minor（trend-D-design-doc-drift 同信号延续）
+- **执行时机**：与 IB-34 doc-refresh 批次同批（development→testing 切换前），与 IB-34 §3.7 + §4.5 mermaid 修补一并落盘，避免多次 R005 横扫。
+- **来源**：`reviews/code-F-011-002.json` F2-CR-004 + design-consistency-checker rev2 第 3 项 minor。
+
 ## 会话经验（2026-05-15 17:15）
 
 _本轮无新经验_
