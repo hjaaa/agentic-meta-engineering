@@ -11,6 +11,7 @@
 """
 from __future__ import annotations
 
+import copy
 import json
 import subprocess
 import sys
@@ -152,7 +153,7 @@ def dispatch_node(
             # env 当前未在 sub_workflow 节点使用；run_state 用于写 parent_run_id 入 sub run meta
             result = _dispatch_sub_workflow_node(node, run_state, run_dir, root, jsonl_path)
         elif "artifact" in node:                          # AC-02 第 8 类
-            result = _dispatch_artifact_node(node, run_state, run_dir, root, env, jsonl_path)
+            result = _dispatch_artifact_node(node, run_state, root, env, jsonl_path)
         else:
             raise WorkflowError(f"未知节点类型: {node_id}")
 
@@ -534,76 +535,88 @@ def _dispatch_sub_workflow_node(
 # artifact 节点 dispatcher（AC-02 第 8 类，F-005 落地）
 # ============================================================================
 
+def _render_list_field(items: list, fn) -> list:
+    """渲染 must_exist / must_not_exist 列表（每项 str，调 fn 展开）。"""
+    return [fn(item) if isinstance(item, str) else item for item in items]
+
+
+def _render_schema_check_items(items: list, fn) -> list:
+    """渲染 schema_check 列表项的 script + args[] 字段。"""
+    rendered = []
+    for chk in items:
+        new_chk = dict(chk)
+        if isinstance(new_chk.get("script"), str):
+            new_chk["script"] = fn(new_chk["script"])
+        if isinstance(new_chk.get("args"), list):
+            new_chk["args"] = _render_list_field(new_chk["args"], fn)
+        rendered.append(new_chk)
+    return rendered
+
+
+def _render_must_contain_items(items: list, fn) -> list:
+    """渲染 must_contain_sections 列表项的 file + sections[] 字段。"""
+    rendered = []
+    for chk in items:
+        new_chk = dict(chk)
+        if isinstance(new_chk.get("file"), str):
+            new_chk["file"] = fn(new_chk["file"])
+        if isinstance(new_chk.get("sections"), list):
+            new_chk["sections"] = _render_list_field(new_chk["sections"], fn)
+        rendered.append(new_chk)
+    return rendered
+
+
+def _render_must_match_items(items: list, fn) -> list:
+    """渲染 must_match_regex 列表项的 file + pattern 字段。"""
+    rendered = []
+    for chk in items:
+        new_chk = dict(chk)
+        if isinstance(new_chk.get("file"), str):
+            new_chk["file"] = fn(new_chk["file"])
+        if isinstance(new_chk.get("pattern"), str):
+            new_chk["pattern"] = fn(new_chk["pattern"])
+        rendered.append(new_chk)
+    return rendered
+
+
+def _make_spec_expander(run_state: RunState, env: dict[str, Any]):
+    """构造 artifact spec $VAR 展开函数（escape_for_bash=False，路径类变量用裸字面值）。"""
+    def _s(text: str) -> str:
+        return substitute_vars(text, run_state.node_outputs, env, escape_for_bash=False)
+    return _s
+
+
+# 已知的 5 类可展开 spec 字段（key → helper 函数）；主函数按此表分发，其余字段 deepcopy 保留
+_SPEC_RENDER_MAP = {
+    "must_exist": _render_list_field,
+    "must_not_exist": _render_list_field,
+    "schema_check": _render_schema_check_items,
+    "must_contain_sections": _render_must_contain_items,
+    "must_match_regex": _render_must_match_items,
+}
+
+
 def _render_artifact_spec(spec: dict, run_state: RunState, env: dict[str, Any]) -> dict:
-    """对 artifact spec 内所有字符串字段做变量展开，返回同形 dict。
+    """对 artifact spec 内 $VAR 引用做 substitute_vars 展开（5 类字段）。
 
-    展开字段（与 run_artifact_checks 消费的 5 类 key 对齐）：
-      - must_exist[]、must_not_exist[]：路径字符串
-      - schema_check[].script、schema_check[].args[]
-      - must_contain_sections[].file、must_contain_sections[].sections[]
-      - must_match_regex[].file、must_match_regex[].pattern
-
-    路径类变量使用 escape_for_bash=False：裸字面值传给 Path()，
-    加 shell 引号会让 Path("'foo'") 解析失败。
+    生产 yaml 字段全集 = {must_exist, schema_check, must_contain_sections}（已知）
+    + 设计层 must_not_exist / must_match_regex 也覆盖（防御性）。
+    「其余字段原样保留」路径走 deepcopy 防 mutation 共享（F-CR2-004 修复）。
     """
-    def _s(val: str) -> str:
-        return substitute_vars(val, run_state.node_outputs, env, escape_for_bash=False)
-
+    fn = _make_spec_expander(run_state, env)
     rendered: dict = {}
-
-    # must_exist / must_not_exist：路径字符串列表
-    for key in ("must_exist", "must_not_exist"):
+    for key, helper in _SPEC_RENDER_MAP.items():
         if key in spec:
-            rendered[key] = [_s(item) for item in (spec[key] or [])]
-
-    # schema_check：script + args 展开
-    if "schema_check" in spec:
-        rendered_checks = []
-        for chk in (spec["schema_check"] or []):
-            rendered_chk = dict(chk)
-            if "script" in chk:
-                rendered_chk["script"] = _s(chk["script"])
-            if "args" in chk:
-                rendered_chk["args"] = [_s(a) for a in (chk["args"] or [])]
-            rendered_checks.append(rendered_chk)
-        rendered["schema_check"] = rendered_checks
-
-    # must_contain_sections：file + sections 展开
-    if "must_contain_sections" in spec:
-        rendered_mcs = []
-        for mcs in (spec["must_contain_sections"] or []):
-            rendered_mcs_item = dict(mcs)
-            if "file" in mcs:
-                rendered_mcs_item["file"] = _s(mcs["file"])
-            if "sections" in mcs:
-                rendered_mcs_item["sections"] = [_s(sec) for sec in (mcs["sections"] or [])]
-            rendered_mcs.append(rendered_mcs_item)
-        rendered["must_contain_sections"] = rendered_mcs
-
-    # must_match_regex：file + pattern 展开
-    if "must_match_regex" in spec:
-        rendered_mmr = []
-        for mmr in (spec["must_match_regex"] or []):
-            rendered_mmr_item = dict(mmr)
-            if "file" in mmr:
-                rendered_mmr_item["file"] = _s(mmr["file"])
-            if "pattern" in mmr:
-                rendered_mmr_item["pattern"] = _s(mmr["pattern"])
-            rendered_mmr.append(rendered_mmr_item)
-        rendered["must_match_regex"] = rendered_mmr
-
-    # 其余字段原样保留（不含 $VAR 引用）
+            rendered[key] = helper(spec[key] or [], fn)
     for key, val in spec.items():
         if key not in rendered:
-            rendered[key] = val
-
+            rendered[key] = copy.deepcopy(val)
     return rendered
 
 
 def _dispatch_artifact_node(
     node: dict,
     run_state: RunState,
-    run_dir: Path,
     root: Path,
     env: dict[str, Any],
     jsonl_path: Path,

@@ -27,6 +27,10 @@ from run_state import RunState  # noqa: E402
 from workflow_dispatcher import (  # noqa: E402
     DispatchResult,
     _dispatch_artifact_node,
+    _render_list_field,
+    _render_must_contain_items,
+    _render_must_match_items,
+    _render_schema_check_items,
     dispatch_node,
 )
 
@@ -333,3 +337,53 @@ def test_artifact_var_expansion_failure(tmp_jsonl: Path, tmp_path: Path) -> None
     assert "$ARTIFACTS_DIR" not in error_msg, (
         f"错误消息不应含字面 '$ARTIFACTS_DIR'（应已展开），实际：{error_msg!r}"
     )
+
+
+# ============================================================================
+# TC-IB19：4 个私有 helper 单元测试（must_not_exist / must_match_regex 边界）
+# ============================================================================
+
+def test_render_list_field_must_not_exist_expansion() -> None:
+    """_render_list_field：must_not_exist 路径中的 $VAR 被正确展开。"""
+    fn = lambda s: s.replace("$DIR", "/tmp/out")  # noqa: E731
+    items = ["$DIR/foo.md", "$DIR/bar.md"]
+    result = _render_list_field(items, fn)
+    assert result == ["/tmp/out/foo.md", "/tmp/out/bar.md"], f"展开结果异常：{result}"
+
+
+def test_render_list_field_non_str_items_passthrough() -> None:
+    """_render_list_field：非字符串项原样保留（防御性）。"""
+    fn = lambda s: s.upper()  # noqa: E731
+    items = ["abc", None, 42]
+    result = _render_list_field(items, fn)
+    assert result == ["ABC", None, 42], f"非字符串项应原样保留：{result}"
+
+
+def test_render_must_match_items_file_and_pattern() -> None:
+    """_render_must_match_items：file + pattern 字段均被展开。"""
+    fn = lambda s: s.replace("$ROOT", "/repo")  # noqa: E731
+    items = [
+        {"file": "$ROOT/notes.md", "pattern": "^#"},
+        {"file": "$ROOT/readme.md"},          # 无 pattern 字段，原样
+    ]
+    result = _render_must_match_items(items, fn)
+    assert result[0]["file"] == "/repo/notes.md"
+    assert result[0]["pattern"] == "^#"
+    assert result[1]["file"] == "/repo/readme.md"
+    assert "pattern" not in result[1], "无 pattern 字段的项不应被注入 pattern"
+
+
+def test_render_schema_check_items_args_expansion() -> None:
+    """_render_schema_check_items：args 列表内字符串被展开，非字符串项原样保留。"""
+    fn = lambda s: s.replace("$META", "/run/meta.yaml")  # noqa: E731
+    items = [
+        {
+            "script": "check_meta.py",
+            "args": ["$META", "--strict", 99],  # 99 是非字符串，应原样
+            "expected_exit_code": 0,
+        }
+    ]
+    result = _render_schema_check_items(items, fn)
+    assert result[0]["script"] == "check_meta.py"  # 无 $VAR，原样
+    assert result[0]["args"] == ["/run/meta.yaml", "--strict", 99]
+    assert result[0]["expected_exit_code"] == 0  # 其余字段保留
