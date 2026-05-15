@@ -34,6 +34,7 @@ from workflow_scheduler import (  # noqa: E402
     _select_next_dispatch_target,
 )
 from workflow_outcome_router import _route_outcome  # noqa: E402
+import path_lock  # noqa: E402
 
 
 def _build_node_map(workflow: dict) -> dict[str, dict]:
@@ -252,23 +253,40 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
-    rc = _resume_run(run_id, run_state, jsonl_path)
-    if rc != 0:
-        return rc
-
-    print(f"恢复 workflow run {run_id!r}（state={run_state.state}）")
-
-    workflow = _load_workflow_for_run(run_state, run_dir, root)
-    if workflow is None:
-        return 1
-
-    # 调用 main loop；WorkflowError 由此捕获，让 main() 返回统一 ERROR 而非裸 traceback
-    # 注：tests/skills/test_workflow_commands.py 直接调用 main()，不走 __main__ 兜底
+    # F-008: 在 _setup_run 之后、_resume_run 之前取 path_lock；LockBusyError 被 WorkflowError
+    # 兜底（继承关系），打 stderr 含 "another continue is running, pid=N" + exit 1。
+    lock_handle = None
     try:
-        _main_loop(run_state, workflow, run_dir, root, jsonl_path)
-    except WorkflowError as exc:
-        print(f"ERROR: main loop 异常退出：{exc}", file=sys.stderr)
+        lock_handle = path_lock.acquire(run_id, root)
+    except path_lock.LockBusyError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
         return 1
+    except WorkflowError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+
+    try:
+        rc = _resume_run(run_id, run_state, jsonl_path)
+        if rc != 0:
+            return rc
+
+        print(f"恢复 workflow run {run_id!r}（state={run_state.state}）")
+
+        workflow = _load_workflow_for_run(run_state, run_dir, root)
+        if workflow is None:
+            return 1
+
+        # 调用 main loop；WorkflowError 由此捕获，让 main() 返回统一 ERROR 而非裸 traceback
+        # 注：tests/skills/test_workflow_commands.py 直接调用 main()，不走 __main__ 兜底
+        try:
+            _main_loop(run_state, workflow, run_dir, root, jsonl_path)
+        except WorkflowError as exc:
+            print(f"ERROR: main loop 异常退出：{exc}", file=sys.stderr)
+            return 1
+    finally:
+        # atexit 已注册 release，此处显式 release 为双保险（try/finally 覆盖所有 return 路径）
+        if lock_handle is not None:
+            path_lock.release(lock_handle)
 
     return 0
 
