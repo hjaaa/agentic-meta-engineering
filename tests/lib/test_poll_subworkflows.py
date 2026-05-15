@@ -1,6 +1,7 @@
 """F-011 · _poll_sub_workflows 单元测试。
 
-覆盖 AC-1~AC-5 + 补充 AC-7（continue 分支）+ AC-8（多 sub_workflow 并存）。
+覆盖 AC-1~AC-5 + 补充 AC-7（continue 分支）+ AC-8（多 sub_workflow 并存）+
+AC-9/10/11（fail-closed 回归：append_event 失败时 WorkflowError 向上传播）。
 
 测试用例：
 - TC-AC1 : 子末位 workflow_completed → 父追加 child_graceful_exited + node_completed
@@ -10,6 +11,9 @@
 - TC-AC5 : 幂等 — 父节点已 completed 时不重复写 child_*
 - TC-AC7 : 子末位 workflow_failed + on_subworkflow_failure=continue → 父追加 child_failed + node_completed
 - TC-AC8 : 多 sub_workflow 节点：1 completed + 1 failed-skip → 两个父节点都被回填
+- TC-AC9 : _handle_child_completed append_event 失败 → WorkflowError 向上传播（chained traceback 保留）
+- TC-AC10: _handle_child_failed_by_policy（skip）append_event 失败 → WorkflowError 向上传播
+- TC-AC11: _handle_child_cancelled append_event 失败 → WorkflowError 向上传播
 
 运行：
     python3 -m pytest tests/lib/test_poll_subworkflows.py -v
@@ -19,12 +23,14 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_REPO_ROOT / "scripts" / "lib"))
 
+from common import WorkflowError  # noqa: E402
 from run_state import RunState, append_event, read_events  # noqa: E402
 from workflow_continue import _poll_sub_workflows  # noqa: E402
 
@@ -451,3 +457,97 @@ def test_fail_policy_no_duplicate_workflow_failed(tmp_path: Path) -> None:
     assert wf_failed_count == 0, (
         f"state 已 failed 时不应再写 workflow_failed，实际写了 {wf_failed_count} 条"
     )
+
+
+# ============================================================================
+# AC-9 / AC-10 / AC-11 fail-closed 回归
+# ============================================================================
+
+def test_handle_child_completed_propagates_workflow_error_when_append_fails(
+    tmp_path: Path,
+) -> None:
+    """AC-9: _handle_child_completed append_event 失败 → WorkflowError 向上传播（chained traceback 保留）。"""
+    node_id = "sub-fc-completed"
+    run_dir = tmp_path / "runs" / "PARENT-FC1"
+    run_dir.mkdir(parents=True)
+
+    sub_run_dir = run_dir / "sub_runs" / node_id
+    _write_sub_jsonl(sub_run_dir, [
+        {"type": "workflow_started", "run_id": node_id,
+         "data": {"workflow_name": "child-wf"}, "ts": "2026-05-15T00:00:00Z"},
+        {"type": "workflow_completed", "data": {}, "ts": "2026-05-15T00:01:00Z"},
+    ])
+    parent_jsonl = _write_parent_jsonl(run_dir, [
+        {"type": "workflow_started", "run_id": "PARENT-FC1",
+         "data": {"workflow_name": "parent-wf"}, "ts": "2026-05-15T00:00:00Z"},
+    ])
+    run_state = _make_run_state(run_id="PARENT-FC1")
+    workflow = _make_workflow([{"id": node_id, "sub_workflow": {"template": "child-wf"}}])
+
+    with patch("workflow_continue.append_event",
+               side_effect=WorkflowError("simulated I/O fail")) as _mock:
+        with pytest.raises(WorkflowError) as exc_info:
+            _poll_sub_workflows(run_state, workflow, run_dir, parent_jsonl)
+
+    assert exc_info.value.__cause__ is not None, "chained traceback (__cause__) 应被保留"
+
+
+def test_handle_child_failed_by_policy_propagates_workflow_error_when_append_fails(
+    tmp_path: Path,
+) -> None:
+    """AC-10: _handle_child_failed_by_policy（skip）append_event 失败 → WorkflowError 向上传播。"""
+    node_id = "sub-fc-failed"
+    run_dir = tmp_path / "runs" / "PARENT-FC2"
+    run_dir.mkdir(parents=True)
+
+    sub_run_dir = run_dir / "sub_runs" / node_id
+    _write_sub_jsonl(sub_run_dir, [
+        {"type": "workflow_started", "run_id": node_id,
+         "data": {"workflow_name": "child-wf"}, "ts": "2026-05-15T00:00:00Z"},
+        {"type": "workflow_failed", "data": {"error": "oops"}, "ts": "2026-05-15T00:01:00Z"},
+    ])
+    parent_jsonl = _write_parent_jsonl(run_dir, [
+        {"type": "workflow_started", "run_id": "PARENT-FC2",
+         "data": {"workflow_name": "parent-wf"}, "ts": "2026-05-15T00:00:00Z"},
+    ])
+    run_state = _make_run_state(run_id="PARENT-FC2")
+    workflow = _make_workflow([{
+        "id": node_id, "sub_workflow": {"template": "child-wf"},
+        "on_subworkflow_failure": "skip",
+    }])
+
+    with patch("workflow_continue.append_event",
+               side_effect=WorkflowError("simulated I/O fail")) as _mock:
+        with pytest.raises(WorkflowError) as exc_info:
+            _poll_sub_workflows(run_state, workflow, run_dir, parent_jsonl)
+
+    assert exc_info.value.__cause__ is not None, "chained traceback (__cause__) 应被保留"
+
+
+def test_handle_child_cancelled_propagates_workflow_error_when_append_fails(
+    tmp_path: Path,
+) -> None:
+    """AC-11: _handle_child_cancelled append_event 失败 → WorkflowError 向上传播（chained traceback 保留）。"""
+    node_id = "sub-fc-cancelled"
+    run_dir = tmp_path / "runs" / "PARENT-FC3"
+    run_dir.mkdir(parents=True)
+
+    sub_run_dir = run_dir / "sub_runs" / node_id
+    _write_sub_jsonl(sub_run_dir, [
+        {"type": "workflow_started", "run_id": node_id,
+         "data": {"workflow_name": "child-wf"}, "ts": "2026-05-15T00:00:00Z"},
+        {"type": "workflow_cancelled", "data": {}, "ts": "2026-05-15T00:01:00Z"},
+    ])
+    parent_jsonl = _write_parent_jsonl(run_dir, [
+        {"type": "workflow_started", "run_id": "PARENT-FC3",
+         "data": {"workflow_name": "parent-wf"}, "ts": "2026-05-15T00:00:00Z"},
+    ])
+    run_state = _make_run_state(run_id="PARENT-FC3")
+    workflow = _make_workflow([{"id": node_id, "sub_workflow": {"template": "child-wf"}}])
+
+    with patch("workflow_continue.append_event",
+               side_effect=WorkflowError("simulated I/O fail")) as _mock:
+        with pytest.raises(WorkflowError) as exc_info:
+            _poll_sub_workflows(run_state, workflow, run_dir, parent_jsonl)
+
+    assert exc_info.value.__cause__ is not None, "chained traceback (__cause__) 应被保留"

@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "feature_id": "F-011",
   "status": "DONE",
-  "commit_sha": "faa6807",
+  "commit_sha": "TBD",
   "files_changed": [
     "scripts/lib/workflow_continue.py",
     "tests/lib/test_poll_subworkflows.py",
@@ -10,10 +10,10 @@
     "tests/fixtures/workflow_parent_sub.yaml",
     "tests/fixtures/workflow_child_simple.yaml"
   ],
-  "test_summary": "10 new (test_poll_subworkflows) + 1 new (test_sub_workflow_backfill) + 1471 baseline = 1482 passed in 49.99s",
+  "test_summary": "3 new fail-closed regression (AC-9/10/11) + 1482 baseline = 1485 passed in 50.18s",
   "touches_violations": [],
   "concerns": [],
   "missing_context": "",
   "block_reason": "",
-  "timestamp": "2026-05-15T12:00:00+08:00"
+  "timestamp": "2026-05-15T22:00:00+08:00"
 }
