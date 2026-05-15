@@ -44,7 +44,11 @@ DEFAULT_APPROVAL_MAX_ATTEMPTS = 3  # D-009
 
 
 def _load_workflow_node(
-    run_state: RunState, node_id: str, run_dir: Path, root: Path
+    run_state: RunState,
+    node_id: str,
+    run_dir: Path,
+    root: Path,
+    run_id: str,
 ) -> dict[str, Any]:
     """按 run_state.workflow_name 取节点定义；找不到时返回空 dict。
 
@@ -55,6 +59,16 @@ def _load_workflow_node(
 
     设计取舍：reject 是兜底通道，绝不能因 yaml loader 抽风把 CLI 拒掉——
     宁可走 D-009 默认 max_attempts=3，也不能让用户 reject 失败。
+
+    Args:
+        run_state: rebuild 后的 RunState（取 workflow_name）
+        node_id:   待查找的节点 id（pending_approval 节点）
+        run_dir:   run 目录（含 meta.yaml 降级路径）
+        root:      repo 根（拼绝对 workflow yaml 路径）
+        run_id:    用于 logging.warning extra 上下文
+
+    Returns:
+        节点定义 dict；找不到/加载失败时返回 {}（caller 走 D-009 默认）。
     """
     workflow_name = run_state.workflow_name
     if not workflow_name:
@@ -69,19 +83,110 @@ def _load_workflow_node(
                 if rel_path:
                     workflow_path = root / rel_path
             except (OSError, yaml.YAMLError) as exc:
-                logging.warning("reject 读 meta.yaml 降级 workflow_path 失败：%s", exc)
+                logging.warning(
+                    "reject 读 meta.yaml 降级 workflow_path 失败 run_id=%s node_id=%s: %s",
+                    run_id, node_id, exc,
+                )
                 return {}
     if not workflow_path.exists():
         return {}
 
     result = load_workflow(workflow_path)
     if result.report.errors or not result.workflow:
-        logging.warning("reject 加载 workflow 失败 workflow=%s", workflow_name)
+        logging.warning(
+            "reject 加载 workflow 失败 workflow=%s run_id=%s node_id=%s",
+            workflow_name, run_id, node_id,
+        )
         return {}
     for node in result.workflow.get("nodes") or []:
         if isinstance(node, dict) and node.get("id") == node_id:
             return node
     return {}
+
+
+def _extract_max_attempts(
+    node_def: dict[str, Any],
+    run_id: str,
+    node_id: str,
+) -> int:
+    """从 node_def.approval.on_reject.max_attempts 解析有效 max_attempts。
+
+    yaml 写非法值（非 int / <1 / 缺字段）一律降级到 D-009 默认 3，并打 logging.warning
+    留排查线索（区分缺字段 vs 显式非法值）：
+
+    - 缺字段（None） → 静默走 D-009（约定：未声明即采用默认）
+    - 显式非法值（0/-2/'foo'）→ 打 warning，仍降级 D-009
+
+    设计动机：workflow_loader.py:394-403 on_reject 校验仅查字段存在不校验类型/范围
+    （对比 L411-415 retry.max_attempts 显式 int>=0），yaml 笔误会绕过 loader 静默 fallback——
+    本函数做最后一道兜底 + 留 audit trail。
+
+    Args:
+        node_def: workflow 节点定义（_load_workflow_node 返回值，可能为空 dict）
+        run_id:   logging.warning 上下文
+        node_id:  logging.warning 上下文
+
+    Returns:
+        max_attempts ≥ 1 的合法值，或 D-009 默认 3。
+    """
+    approval_cfg = (node_def.get("approval") or {}) if isinstance(node_def, dict) else {}
+    on_reject_cfg = (approval_cfg.get("on_reject") or {}) if isinstance(approval_cfg, dict) else {}
+    raw = on_reject_cfg.get("max_attempts") if isinstance(on_reject_cfg, dict) else None
+    if isinstance(raw, int) and not isinstance(raw, bool) and raw >= 1:
+        return raw
+    if raw is not None:
+        logging.warning(
+            "reject: yaml on_reject.max_attempts=%r 非法（需 int≥1），降级 D-009 默认 %d "
+            "run_id=%s node_id=%s",
+            raw, DEFAULT_APPROVAL_MAX_ATTEMPTS, run_id, node_id,
+        )
+    return DEFAULT_APPROVAL_MAX_ATTEMPTS
+
+
+def _validate_reason(args: list[str]) -> str | None:
+    """校验 reason 参数，返回合法 reason 或 None（None 时已 print stderr，caller 直接 return 1）。
+
+    校验顺序：
+      1. args 为空 → 提示需要 reason
+      2. trim + 截断到 _REASON_MAX_LEN 后长度 < _REASON_MIN_LEN → 提示太短
+    """
+    if not args:
+        print(
+            f"ERROR: /workflow:reject 需要 <reason> 参数（最短 {_REASON_MIN_LEN} 字符）",
+            file=sys.stderr,
+        )
+        return None
+    reason = (" ".join(args).strip())[:_REASON_MAX_LEN]
+    if len(reason) < _REASON_MIN_LEN:
+        print(
+            f"ERROR: reason 太短（{len(reason)} 字符），最短 {_REASON_MIN_LEN} 字符",
+            file=sys.stderr,
+        )
+        return None
+    return reason
+
+
+def _print_reject_summary(
+    current_attempt: int,
+    max_attempts: int,
+    ts: str,
+    run_id: str,
+    node_id: str,
+) -> None:
+    """打印 reject 后用户面向终端的两支汇总（attempt<max → repair；attempt==max → failed）。
+
+    抽离自 main 末尾，降 main 的分支圈复杂度；纯打印，不影响事件写入。
+    """
+    if current_attempt < max_attempts:
+        print(f"Rejected {node_id!r} at {ts} (attempt {current_attempt}/{max_attempts})")
+        print(f"  run_id: {run_id}")
+        print("  on_reject 路径：approval_repair_started → 等 Claude 修复后回 approval_pending")
+    else:
+        print(
+            f"Rejected {node_id!r} at {ts} (attempt {current_attempt}/{max_attempts}) → 达上限"
+        )
+        print(f"  run_id: {run_id}")
+        print("  状态机：approval_pending → failed (approval_attempts_exhausted)")
 
 
 def _build_reject_events(
@@ -156,19 +261,8 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
     # 第一道：isatty 兜底校验（fail-closed）
     check_tty_for_approval("reject")
 
-    if not args:
-        print(
-            f"ERROR: /workflow:reject 需要 <reason> 参数（最短 {_REASON_MIN_LEN} 字符）",
-            file=sys.stderr,
-        )
-        return 1
-
-    reason = (" ".join(args).strip())[:_REASON_MAX_LEN]
-    if len(reason) < _REASON_MIN_LEN:
-        print(
-            f"ERROR: reason 太短（{len(reason)} 字符），最短 {_REASON_MIN_LEN} 字符",
-            file=sys.stderr,
-        )
+    reason = _validate_reason(args)
+    if reason is None:
         return 1
 
     # 推断 run_id
@@ -203,12 +297,9 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
     )
     current_attempt = prior_rejects + 1
 
-    # 取 max_attempts：yaml override > D-009 默认
-    node_def = _load_workflow_node(run_state, node_id, run_dir, root)
-    approval_cfg = (node_def.get("approval") or {}) if isinstance(node_def, dict) else {}
-    on_reject_cfg = (approval_cfg.get("on_reject") or {}) if isinstance(approval_cfg, dict) else {}
-    max_attempts_raw = on_reject_cfg.get("max_attempts") if isinstance(on_reject_cfg, dict) else None
-    max_attempts = int(max_attempts_raw) if isinstance(max_attempts_raw, int) and max_attempts_raw >= 1 else DEFAULT_APPROVAL_MAX_ATTEMPTS
+    # 取 max_attempts：yaml override > D-009 默认（非法值 warning 在 helper 内）
+    node_def = _load_workflow_node(run_state, node_id, run_dir, root, run_id)
+    max_attempts = _extract_max_attempts(node_def, run_id, node_id)
 
     events_to_write = _build_reject_events(
         run_id=run_id,
@@ -236,14 +327,7 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
         return 1
 
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    if current_attempt < max_attempts:
-        print(f"Rejected {node_id!r} at {ts} (attempt {current_attempt}/{max_attempts})")
-        print(f"  run_id: {run_id}")
-        print("  on_reject 路径：approval_repair_started → 等 Claude 修复后回 approval_pending")
-    else:
-        print(f"Rejected {node_id!r} at {ts} (attempt {current_attempt}/{max_attempts}) → 达上限")
-        print(f"  run_id: {run_id}")
-        print("  状态机：approval_pending → failed (approval_attempts_exhausted)")
+    _print_reject_summary(current_attempt, max_attempts, ts, run_id, node_id)
     return 0
 
 

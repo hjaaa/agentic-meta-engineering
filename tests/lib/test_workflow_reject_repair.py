@@ -9,11 +9,13 @@
 - AC-03c：reject attempt=3/max=3 → 原子写 [approval_rejected, node_failed,
   workflow_failed]；state→failed
 - yaml on_reject.max_attempts=5 override → 引擎 honor；缺省走 D-009 默认 3
+- yaml on_reject.max_attempts=0/-2 非法值 → 静默降级 D-009 默认 + logging.warning
 - isatty=False → exit 2
 - reason < 8 字符 → exit 1
 """
 from __future__ import annotations
 
+import logging
 import subprocess
 import sys
 from pathlib import Path
@@ -28,6 +30,12 @@ if str(_LIB_DIR) not in sys.path:
 
 from run_state import RunState, append_event, read_events  # noqa: E402
 import workflow_reject  # noqa: E402
+
+# 复用 e2e 测试的断言 helper（避免双份维护——同根因来自 review F-CR-008/F-CR-016/F-CR-018）
+_E2E_DIR = REPO_ROOT / "tests" / "e2e"
+if str(_E2E_DIR) not in sys.path:
+    sys.path.insert(0, str(_E2E_DIR))
+from test_approval_reject_repair import _assert_after_reject  # noqa: E402
 
 WORKFLOW_REJECT_PY = REPO_ROOT / "scripts" / "lib" / "workflow_reject.py"
 
@@ -131,7 +139,12 @@ def tmp_repo(tmp_path: Path) -> Path:
 # ---------- AC-03b：attempt=1/max=3 ----------
 
 def test_reject_attempt_1_writes_repair_started_inline(tmp_repo: Path) -> None:
-    """AC-03b：首次 reject 应原子写 [approval_rejected(attempt=1), approval_repair_started]。"""
+    """AC-03b：首次 reject 应原子写 [approval_rejected(attempt=1), approval_repair_started]。
+
+    锚定字段（review F-CR-016）：
+    - approval_repair_started.data.prompt_ref == 'approval.on_reject.prompt'
+      （detailed-design §2.2.2 L151 显式必填）
+    """
     _write_workflow_yaml(tmp_repo)
     run_id = "RUN-F006-REJ-001"
     _seed_approval_pending(tmp_repo, run_id, prior_rejects=0)
@@ -141,19 +154,11 @@ def test_reject_attempt_1_writes_repair_started_inline(tmp_repo: Path) -> None:
 
     jsonl = tmp_repo / "runs" / run_id / "run-state.jsonl"
     events, warnings = read_events(jsonl)
-    assert not warnings, f"不应有 jsonl warn，实际：{warnings}"
-
-    types = [e["type"] for e in events]
-    assert types[-2:] == ["approval_rejected", "approval_repair_started"], (
-        f"reject 应原子写 [rejected, repair_started]，实际末位 2：{types[-2:]}"
-    )
+    # 复用 e2e helper 做 [rejected, repair_started] 形状 + attempt + max + prompt_ref 一站式校验
+    _assert_after_reject(events, warnings, expected_attempt=1, expected_max=3)
 
     rej = events[-2]
-    repair = events[-1]
-    assert rej["data"]["attempt"] == 1
     assert rej["data"]["reason"] == "设计方案存在严重缺陷"
-    assert repair["data"]["attempt"] == 1
-    assert repair["data"]["max_attempts"] == 3
 
 
 def test_reject_attempt_1_state_derives_awaiting_claude_action(tmp_repo: Path) -> None:
@@ -301,6 +306,38 @@ def test_reject_default_max_attempts_when_yaml_missing(tmp_repo: Path) -> None:
     assert types[-3:] == ["approval_rejected", "node_failed", "workflow_failed"], (
         f"缺 yaml 应走 D-009 默认 max=3，实际末位 3：{types[-3:]}"
     )
+
+
+# ---------- yaml on_reject.max_attempts 非法值 → 静默降级 + warning（review F-CR-002）----------
+
+@pytest.mark.parametrize("bad_value", [0, -2, "foo"])
+def test_reject_invalid_max_attempts_warns_and_falls_back(
+    tmp_repo: Path, caplog: pytest.LogCaptureFixture, bad_value: object,
+) -> None:
+    """yaml on_reject.max_attempts=0/-2/字符串 → 降级 D-009 默认 + 打 logging.warning。
+
+    锚定 review F-CR-002（workflow_loader.py:394-403 校验仅查字段存在不校验类型/范围，
+    yaml 笔误绕过 loader 静默 fallback；本函数做最后一道兜底 + 留 audit trail）。
+    """
+    bad_yaml = _MIN_TEMPLATE.replace("max_attempts: 3", f"max_attempts: {bad_value!r}")
+    _write_workflow_yaml(tmp_repo, bad_yaml)
+    run_id = f"RUN-F006-REJ-INVALID-{bad_value}".replace(" ", "_")
+    _seed_approval_pending(tmp_repo, run_id, prior_rejects=0)
+
+    with caplog.at_level(logging.WARNING):
+        rc = _run_reject(["非法 max_attempts 测试"], tmp_repo, run_id)
+    assert rc == 0
+
+    # 应打 warning 提示降级 D-009（区分缺字段 None vs 显式非法值）
+    assert any(
+        "on_reject.max_attempts" in rec.message and "非法" in rec.message
+        for rec in caplog.records
+    ), f"应有 warning 提示降级 D-009，实际 records={[r.message for r in caplog.records]}"
+
+    # attempt=1 + 默认 max=3 → 走 repair 路径
+    jsonl = tmp_repo / "runs" / run_id / "run-state.jsonl"
+    events, warnings = read_events(jsonl)
+    _assert_after_reject(events, warnings, expected_attempt=1, expected_max=3)
 
 
 # ---------- isatty=False → exit 2 ----------
