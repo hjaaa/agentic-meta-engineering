@@ -262,3 +262,54 @@ def test_rebuild_approval_repair_started_在终态后不覆盖state():
     assert state.state == "completed", (
         f"终态 completed 后 approval_repair_started 不应覆盖 state，实际 {state.state}"
     )
+
+
+# ============================================================================
+# IB-08 · approval_pending/approved/rejected 在终态后不覆盖 state
+# ============================================================================
+
+def test_rebuild_approval_pending_在终态后不覆盖state():
+    """IB-08：workflow_failed 后出现 approval_pending 不应把 state 覆盖回 approval_pending。
+
+    事件序列 [..., workflow_failed, approval_pending(N)] 下，
+    state 应保持 failed，不被覆盖。
+    """
+    events = [
+        {"type": "workflow_started", "run_id": "R-IB08a", "data": {"workflow_name": "x"}},
+        {"type": "workflow_failed", "data": {"reason": "internal error"}},
+        {"type": "approval_pending", "node_id": "gate-1"},
+    ]
+    state = RunState.rebuild(events, run_id="R-IB08a")
+    assert state.state == "failed", (
+        f"终态 failed 后 approval_pending 不应覆盖 state，实际 {state.state}"
+    )
+
+
+def test_rebuild_approval_approved_在终态后不覆盖state():
+    """IB-08：workflow_cancelled 后出现 approval_approved 不应把 state 覆盖回 running。"""
+    events = [
+        {"type": "workflow_started", "run_id": "R-IB08b", "data": {"workflow_name": "x"}},
+        {"type": "node_started", "node_id": "gate-2"},
+        {"type": "approval_pending", "node_id": "gate-2"},
+        {"type": "workflow_cancelled", "data": {}},
+        {"type": "approval_approved", "node_id": "gate-2"},
+    ]
+    state = RunState.rebuild(events, run_id="R-IB08b")
+    assert state.state == "cancelled", (
+        f"终态 cancelled 后 approval_approved 不应覆盖 state，实际 {state.state}"
+    )
+
+
+def test_rebuild_approval_rejected_在终态后不覆盖state():
+    """IB-08：workflow_completed 后出现 approval_rejected 不应把 state 覆盖回 running。"""
+    events = [
+        {"type": "workflow_started", "run_id": "R-IB08c", "data": {"workflow_name": "x"}},
+        {"type": "node_started", "node_id": "gate-3"},
+        {"type": "approval_pending", "node_id": "gate-3"},
+        {"type": "workflow_completed", "data": {}},
+        {"type": "approval_rejected", "node_id": "gate-3"},
+    ]
+    state = RunState.rebuild(events, run_id="R-IB08c")
+    assert state.state == "completed", (
+        f"终态 completed 后 approval_rejected 不应覆盖 state，实际 {state.state}"
+    )

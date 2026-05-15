@@ -109,6 +109,44 @@ def _build_env(run_state: RunState, run_dir: Path, root: Path) -> dict[str, str]
 # 入口：dispatch_node（详细设计 §1.5 派发规则）
 # ============================================================================
 
+def _dispatch_node_by_type_key(
+    node: dict,
+    run_state: RunState,
+    run_dir: Path,
+    root: Path,
+    env: dict[str, Any],
+    jsonl_path: Path,
+) -> DispatchResult:
+    """按 node 内含的类型键派发到对应 _dispatch_*_node。
+
+    顺序优先级（与历史 elif 链一致）：
+      agent > skill > prompt/prompt_file > bash > approval > loop > sub_workflow > artifact
+
+    抽离为独立函数（IB-21b），使 dispatch_node 主函数 CCN 降为 ≈ 4。
+    各 handler 签名不同，无法用统一字典映射——保留 if 链 self-contained 语义。
+    """
+    if "agent" in node:
+        return _dispatch_agent_node(node, env, jsonl_path)
+    if "skill" in node:
+        return _dispatch_skill_node(node, run_state, env, jsonl_path)
+    if "prompt" in node or "prompt_file" in node:
+        # prompt_file 是 prompt 节点的另一种写法，统一派发（§1.6 描述两者互斥）
+        return _dispatch_prompt_node(node, run_state, env, run_dir, root, jsonl_path)
+    if "bash" in node:
+        return _dispatch_bash_node(node, run_state, env, run_dir, root, jsonl_path)
+    if "approval" in node:
+        return _dispatch_approval_node(node, env, run_state, jsonl_path)
+    if "loop" in node:
+        return _dispatch_loop_node(node, env, run_state, jsonl_path)
+    if "sub_workflow" in node:
+        # env 当前未在 sub_workflow 节点使用；run_state 用于写 parent_run_id 入 sub run meta
+        return _dispatch_sub_workflow_node(node, run_state, run_dir, root, jsonl_path)
+    if "artifact" in node:                              # AC-02 第 8 类
+        return _dispatch_artifact_node(node, run_state, root, env, jsonl_path)
+    node_id: str = node.get("id", "<unknown>")
+    raise WorkflowError(f"未知节点类型: {node_id}")
+
+
 def dispatch_node(
     node: dict,
     run_state: RunState,
@@ -117,13 +155,15 @@ def dispatch_node(
     env: dict[str, Any],
     jsonl_path: Path,
 ) -> DispatchResult:
-    """按 node dict 内含的键派发到 7 类节点处理函数。
+    """按 node dict 内含的键派发到 8 类节点处理函数。
 
     进入时写 node_started 事件；异常时写 node_failed 事件并返回 outcome="failed"。
     未知节点类型抛 WorkflowError（被 except 捕获后写 node_failed）。
 
     派发优先级（按 detailed-design.md:158-165）：
-      agent > skill > prompt > bash > approval > loop > sub_workflow
+      agent > skill > prompt > bash > approval > loop > sub_workflow > artifact
+
+    类型识别委托给 _dispatch_node_by_type_key（IB-21b），主函数 CCN ≤ 4。
     """
     node_id: str = node.get("id", "<unknown>")
 
@@ -135,28 +175,7 @@ def dispatch_node(
     })
 
     try:
-        # 按 node dict 内含键识别类型（顺序即优先级）
-        if "agent" in node:
-            result = _dispatch_agent_node(node, env, jsonl_path)
-        elif "skill" in node:
-            result = _dispatch_skill_node(node, run_state, env, jsonl_path)
-        elif "prompt" in node or "prompt_file" in node:
-            # prompt_file 是 prompt 节点的另一种写法，统一派发（§1.6 描述两者互斥）
-            result = _dispatch_prompt_node(node, run_state, env, run_dir, root, jsonl_path)
-        elif "bash" in node:
-            result = _dispatch_bash_node(node, run_state, env, run_dir, root, jsonl_path)
-        elif "approval" in node:
-            result = _dispatch_approval_node(node, env, run_state, jsonl_path)
-        elif "loop" in node:
-            result = _dispatch_loop_node(node, env, run_state, jsonl_path)
-        elif "sub_workflow" in node:
-            # env 当前未在 sub_workflow 节点使用；run_state 用于写 parent_run_id 入 sub run meta
-            result = _dispatch_sub_workflow_node(node, run_state, run_dir, root, jsonl_path)
-        elif "artifact" in node:                          # AC-02 第 8 类
-            result = _dispatch_artifact_node(node, run_state, root, env, jsonl_path)
-        else:
-            raise WorkflowError(f"未知节点类型: {node_id}")
-
+        return _dispatch_node_by_type_key(node, run_state, run_dir, root, env, jsonl_path)
     except Exception as exc:
         # 所有异常（含 WorkflowError）统一转换为 outcome=failed，写 node_failed 事件
         # 这是规范要求的"转换为 outcome=failed"，而非吞没异常
@@ -168,8 +187,6 @@ def dispatch_node(
             "data": {"error": error_msg},
         })
         return DispatchResult(outcome="failed", error=error_msg)
-
-    return result
 
 
 # ============================================================================
@@ -641,7 +658,12 @@ def _dispatch_artifact_node(
     node_id: str = node.get("id", "<unknown>")
     raw_spec = node.get("artifact") or {}
     spec = _render_artifact_spec(raw_spec, run_state, env)
-    failures = run_artifact_checks(spec, cwd=root)
+    try:
+        failures = run_artifact_checks(spec, cwd=root)
+    except (OSError, ValueError) as exc:
+        raise WorkflowError(
+            f"artifact 节点 {node_id!r} 校验过程异常：{type(exc).__name__}: {exc}"
+        ) from exc
     if failures:
         raise WorkflowError(
             f"artifact 节点 {node_id!r} 校验失败：\n  - " + "\n  - ".join(failures)

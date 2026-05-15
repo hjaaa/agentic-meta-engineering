@@ -74,7 +74,7 @@ def _check_schema(spec: list[Any], cwd: Path) -> list[str]:
             proc = subprocess.run(
                 cmd, cwd=str(cwd), capture_output=True, text=True, timeout=120
             )
-        except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+        except (OSError, subprocess.TimeoutExpired) as exc:
             failures.append(f"schema_check 调用失败：{script} | {exc}")
             continue
         if proc.returncode != expected:

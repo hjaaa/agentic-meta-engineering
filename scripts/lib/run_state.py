@@ -221,16 +221,16 @@ class RunState:
                 # retry：重新计为 started
                 node_started_at[node_id] = ts
                 state.current_node = node_id
-            elif ev_type == "approval_pending" and node_id:
+            elif ev_type == "approval_pending" and node_id and state.state not in TERMINAL_STATES:
                 state.pending_approval = node_id
                 state.state = "approval_pending"
-            elif ev_type == "approval_approved" and node_id:
+            elif ev_type == "approval_approved" and node_id and state.state not in TERMINAL_STATES:
                 if state.pending_approval == node_id:
                     state.pending_approval = None
                 # approve 不直接终结 workflow；后续会有 node_completed 把节点关掉
                 if state.state == "approval_pending":
                     state.state = "running"
-            elif ev_type == "approval_rejected" and node_id:
+            elif ev_type == "approval_rejected" and node_id and state.state not in TERMINAL_STATES:
                 if state.pending_approval == node_id:
                     state.pending_approval = None
                 if state.state == "approval_pending":
