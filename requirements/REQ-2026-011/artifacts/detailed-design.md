@@ -703,6 +703,8 @@ agent / prompt 同款改写；prompt_file 仍在 dispatcher 内读文件渲染�
 #### 3.3.4 `_dispatch_loop_node` 扩展（AC-07）
 
 ```python
+import os
+
 def _dispatch_loop_node(
     node: dict,
     env: dict[str, Any],
@@ -713,8 +715,10 @@ def _dispatch_loop_node(
     """AC-07：扩展 until_bash + max_iterations 确定性 loop。
 
     新增字段 node["loop"]["until_bash"]: str：每轮 iteration_start 前跑此 bash
-        exit=0 → 跳过 iteration，直接 loop_completed 退出
-        exit≠0 → 写 loop_iteration_started 继续
+        exit=0 → 跳过 iteration，直接 loop_completed 退出（携 data.iteration 供 RunState 消费）
+        exit≠0 → 写 loop_iteration_started / loop_iteration_completed 继续
+        TimeoutExpired / OSError → 写 loop_iteration_completed.data.error 走 max_iterations 兜底
+            （与 _dispatch_bash_node:323-338 双捕基线对齐；oserror: / timeout: 前缀对称）
     """
     loop_cfg = node.get("loop") or {}
     max_iters = int(loop_cfg.get("max_iterations", 1))
@@ -724,11 +728,32 @@ def _dispatch_loop_node(
     # AC-07 新分支：until_bash 优先判定
     if until_bash:
         rendered = substitute_vars(until_bash, run_state.node_outputs, env, escape_for_bash=False)
-        proc = subprocess.run(["bash", "-c", rendered], cwd=str(root),
-                              capture_output=True, text=True, timeout=30.0)
-        if proc.returncode == 0:
-            append_event(jsonl_path, {"type": "loop_completed", "node_id": node["id"]})
-            return DispatchResult(outcome="loop_done")
+        try:
+            # env 注入：iter 暴露给 bash 脚本读取（acceptance #2 用 `test $iter -ge 3`）
+            proc = subprocess.run(
+                ["bash", "-c", rendered],
+                cwd=str(root),
+                capture_output=True, text=True, timeout=30.0,
+                env={**os.environ, "iter": str(current_iter)},
+            )
+            if proc.returncode == 0:
+                append_event(jsonl_path, {
+                    "type": "loop_completed",
+                    "node_id": node["id"],
+                    "data": {"iteration": current_iter},  # F-010 rev1：供 RunState 消费 + 与 iteration_* 事件对齐
+                })
+                return DispatchResult(outcome="loop_done")
+        except subprocess.TimeoutExpired:
+            _write_loop_iteration_with_error(
+                jsonl_path, node["id"], current_iter, f"timeout: {rendered}",
+            )
+            return _loop_check_max_or_continue(node["id"], current_iter, max_iters, jsonl_path)
+        except OSError as exc:
+            # F-010 rev2：对齐 _dispatch_bash_node:323-338 双捕基线（bash 不在 PATH / cwd 不存在等）
+            _write_loop_iteration_with_error(
+                jsonl_path, node["id"], current_iter, f"oserror: {exc}",
+            )
+            return _loop_check_max_or_continue(node["id"], current_iter, max_iters, jsonl_path)
 
     # 后续按既有 loop_iteration_started/completed 逻辑写
     ...
@@ -1153,7 +1178,7 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
     parser = argparse.ArgumentParser(...)
     parser.add_argument("run_id", nargs="?")
     parser.add_argument("--verbose", action="store_true",
-                        help="树形输出 + ready/running/blocked/paused 节点 + stale 检测（AC-06）")
+                        help="树形输出 + ready/running/blocked/awaiting/done 5 分类 + stale 检测（AC-06）")
     parsed = parser.parse_args(args)
     ...
 
@@ -1162,17 +1187,18 @@ def _render_status_verbose(
     run_state: RunState,
     run_dir: Path,
     workflow: dict | None,
-    indent: int = 0,
+    indent: int = 0,                 # IB-34：main 顶层单次调用不需要；保留参数签名以兼容未来子 run 嵌套 verbose 渲染
 ) -> str:
     """AC-06 verbose 输出（D-002 树形文本）。
 
-    新增段：
-      - 节点分类：ready (k) / running (1 or 0) / blocked (k) / paused (k) / done (k)
+    新增段（与 features.json AC-1 5 分类对齐）：
+      - 节点分类：ready (k) / running (1 or 0) / blocked (k) / awaiting (k) / done (k)
       - heartbeat：基于 run_state.last_event_ts（D-011）
       - stale 检测：last_event_ts 距 now ≥ STALE_THRESHOLD_MINUTES → WARN（D-010）
       - blocked 节点附 reason：incomplete_dispatch / awaiting_deps / awaiting_claude_action
     """
-    lines = _render_status(run_state, run_dir, indent)  # 既有
+    output = _render_status(run_state, run_dir, indent)  # 既有，返回 str（baseline）
+    lines = [output]
     ...
     return "\n".join(lines)
 ```
