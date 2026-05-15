@@ -151,6 +151,8 @@ def dispatch_node(
         elif "sub_workflow" in node:
             # env 当前未在 sub_workflow 节点使用；run_state 用于写 parent_run_id 入 sub run meta
             result = _dispatch_sub_workflow_node(node, run_state, run_dir, root, jsonl_path)
+        elif "artifact" in node:                          # AC-02 第 8 类
+            result = _dispatch_artifact_node(node, run_dir, root, jsonl_path)
         else:
             raise WorkflowError(f"未知节点类型: {node_id}")
 
@@ -526,3 +528,53 @@ def _dispatch_sub_workflow_node(
         )
 
     return DispatchResult(outcome="sub_workflow_pending")
+
+
+# ============================================================================
+# artifact 节点 dispatcher（AC-02 第 8 类，F-005 落地）
+# ============================================================================
+
+def _dispatch_artifact_node(
+    node: dict,
+    run_dir: Path,
+    root: Path,
+    jsonl_path: Path,
+) -> DispatchResult:
+    """artifact 第 8 类 dispatcher（AC-02）。
+
+    职责：
+      - 调 run_artifact_checks.run_artifact_checks(spec, cwd=root) 跑 5 类校验
+      - failures 为空 → 写 node_completed（success path）
+      - failures 非空 → raise WorkflowError，由外层转 node_failed（D-008 职责分工）
+
+    禁止：
+      - 写 node_started（外层已写）
+      - 直接写 node_failed（由外层 try/except 兜底）
+
+    Raises:
+      WorkflowError: artifact 校验失败（含失败明细列表）
+    """
+    from run_artifact_checks import run_artifact_checks  # 避免顶层循环导入
+
+    node_id: str = node.get("id", "<unknown>")
+    spec = node.get("artifact") or {}
+    failures = run_artifact_checks(spec, cwd=root)
+    if failures:
+        raise WorkflowError(
+            f"artifact 节点 {node_id!r} 校验失败：\n  - " + "\n  - ".join(failures)
+        )
+
+    # 统计实际校验项数：failures 为空时，spec 内各类目项数之和
+    checks_run = sum(
+        len(spec.get(k) or [])
+        for k in (
+            "must_exist", "must_not_exist", "schema_check",
+            "must_contain_sections", "must_match_regex",
+        )
+    )
+    append_event(jsonl_path, {
+        "type": "node_completed",
+        "node_id": node_id,
+        "data": {"output": {"artifact_pass": True, "checks_run": checks_run}},
+    })
+    return DispatchResult(outcome="completed")
