@@ -32,7 +32,7 @@ if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
 import save_node_result  # noqa: E402
-from run_state import RunState, append_event, read_events  # noqa: E402
+from run_state import RunState, append_event  # noqa: E402
 
 SAVE_NODE_RESULT_PY = REPO_ROOT / "scripts" / "lib" / "save_node_result.py"
 HOOK_FILE = REPO_ROOT / ".claude" / "hooks" / "pre-tool-use-guard.sh"
@@ -109,7 +109,7 @@ def _run_cli(tmp_path: Path, *extra_args: str) -> subprocess.CompletedProcess[st
 def test_ac01_skill_result_happy_path(tmp_path: Path) -> None:
     """skill_result: state=awaiting + current_node=N1 + 末位 node_ready(N1) → exit 0 + node_completed 写入。"""
     run_id = "REQ-2099-701"
-    run_dir, jsonl_path = _make_run_dir(tmp_path, run_id)
+    _, jsonl_path = _make_run_dir(tmp_path, run_id)
     _seed_node_ready(jsonl_path, "node-N1")
 
     output_json = json.dumps({"result": "ok"})
@@ -131,7 +131,7 @@ def test_ac01_skill_result_happy_path(tmp_path: Path) -> None:
 def test_ac02_skill_result_state_running_exit2(tmp_path: Path) -> None:
     """state=running → exit 2，stderr 含 E-NODE-RESULT-001。"""
     run_id = "REQ-2099-702"
-    run_dir, jsonl_path = _make_run_dir(tmp_path, run_id)
+    _, jsonl_path = _make_run_dir(tmp_path, run_id)
     # 只写 workflow_started，state=running
     append_event(jsonl_path, {"type": "workflow_started", "run_id": run_id})
 
@@ -150,7 +150,7 @@ def test_ac02_skill_result_state_running_exit2(tmp_path: Path) -> None:
 def test_ac03_p1_reverse_a_current_node_mismatch(tmp_path: Path) -> None:
     """current_node=N1 但 CLI 传 --node=N2 → exit 2，stderr 含 E-NODE-RESULT-002。"""
     run_id = "REQ-2099-703"
-    run_dir, jsonl_path = _make_run_dir(tmp_path, run_id)
+    _, jsonl_path = _make_run_dir(tmp_path, run_id)
     _seed_node_ready(jsonl_path, "node-N1")  # current_node=N1
 
     output_json = json.dumps({"result": "ok"})
@@ -169,7 +169,7 @@ def test_ac03_p1_reverse_a_current_node_mismatch(tmp_path: Path) -> None:
 def test_ac04_p1_reverse_b_tail_event_not_node_ready(tmp_path: Path) -> None:
     """state=awaiting + current_node=N1，但末位节点级事件是 approval_repair_started → exit 2 + E-NODE-RESULT-003。"""
     run_id = "REQ-2099-704"
-    run_dir, jsonl_path = _make_run_dir(tmp_path, run_id)
+    _, jsonl_path = _make_run_dir(tmp_path, run_id)
     # 先 node_ready(N1) 使 state=awaiting + current_node=N1
     append_event(jsonl_path, {"type": "workflow_started", "run_id": run_id})
     append_event(jsonl_path, {"type": "node_ready", "node_id": "node-N1",
@@ -236,7 +236,7 @@ def test_ac05_p1_reverse_c_tail_node_id_mismatch() -> None:
 def test_ac06_approval_repair_happy_path(tmp_path: Path) -> None:
     """approval_repair: attempt=1 一致 → exit 0 + approval_repair_completed 写入。"""
     run_id = "REQ-2099-706"
-    run_dir, jsonl_path = _make_run_dir(tmp_path, run_id)
+    _, jsonl_path = _make_run_dir(tmp_path, run_id)
     _seed_approval_repair_started(jsonl_path, node_id="gate-A", attempt=1)
 
     output_json = json.dumps({"fixed": True})
@@ -250,6 +250,7 @@ def test_ac06_approval_repair_happy_path(tmp_path: Path) -> None:
     assert "approval_repair_completed" in types, f"期望 approval_repair_completed 被写入，events={types}"
     completed = next(e for e in events if e["type"] == "approval_repair_completed")
     assert completed["node_id"] == "gate-A"
+    assert completed["data"]["attempt"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -259,7 +260,7 @@ def test_ac06_approval_repair_happy_path(tmp_path: Path) -> None:
 def test_ac07_approval_repair_missing_attempt(tmp_path: Path) -> None:
     """缺 --attempt → exit 1，stderr 含 'attempt required'。"""
     run_id = "REQ-2099-707"
-    run_dir, jsonl_path = _make_run_dir(tmp_path, run_id)
+    _, jsonl_path = _make_run_dir(tmp_path, run_id)
     _seed_approval_repair_started(jsonl_path, node_id="gate-B", attempt=1)
 
     output_json = json.dumps({"fixed": True})
@@ -278,7 +279,7 @@ def test_ac07_approval_repair_missing_attempt(tmp_path: Path) -> None:
 def test_ac08_approval_repair_attempt_mismatch(tmp_path: Path) -> None:
     """--attempt=2 但 started.attempt=1 → exit 1，stderr 含 'attempt mismatch'。"""
     run_id = "REQ-2099-708"
-    run_dir, jsonl_path = _make_run_dir(tmp_path, run_id)
+    _, jsonl_path = _make_run_dir(tmp_path, run_id)
     _seed_approval_repair_started(jsonl_path, node_id="gate-C", attempt=1)
 
     output_json = json.dumps({"fixed": True})
@@ -358,8 +359,8 @@ def test_ac11_save_node_result_not_blocked_by_hook() -> None:
     hook_content = HOOK_FILE.read_text(encoding="utf-8")
 
     # save_node_result.py 的完整调用形式不应命中任何 hook 拦截 pattern
-    simulated_cmd = "python3 scripts/lib/save_node_result.py --run REQ-xxx --node N1 --kind skill_result --output '{}'"
-
+    # 验证意图：save_node_result 不出现在 hook 的 APPROVAL_*_PATTERN 中，
+    # 因此调用 "python3 scripts/lib/save_node_result.py ..." 不会被拦截
     # 从 hook 提取 APPROVAL_PYTHON_PATTERN 定义值（不含变量引用行）
     # 判据：save_node_result 不出现在 workflow_(approve|reject) 正则里
     assert "save_node_result" not in hook_content, (

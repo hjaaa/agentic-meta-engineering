@@ -18,6 +18,17 @@ CLI 形态：
   第 2 道：RunState 字段 + jsonl 末位节点级事件双向交叉校验 → exit 2 E-NODE-RESULT-002/003/004
   第 3 道（仅 approval_repair）：attempt 缺失或不一致 → exit 1
 
+错误码表（E-NODE-RESULT-NNN）：
+  E-NODE-RESULT-001 — state != awaiting_claude_action（exit 2）
+  E-NODE-RESULT-002 — RunState 字段 current_node/pending_approval 不匹配（exit 2）
+  E-NODE-RESULT-003 — jsonl 末位节点级事件类型不匹配（exit 2）
+  E-NODE-RESULT-004 — jsonl 末位节点级事件 node_id 不匹配（exit 2）
+  E-NODE-RESULT-005 — --output 参数解析失败（JSON parse error 或文件读取失败）（exit 1）
+  E-NODE-RESULT-006 — --output 解析结果不是 JSON object（exit 1）
+  E-NODE-RESULT-007 — --attempt 参数缺失（approval_repair 必填）（exit 1）
+  E-NODE-RESULT-008 — --attempt 值与 approval_repair_started.data.attempt 不一致（exit 1）
+  E-NODE-RESULT-099 — 通用兜底（WorkflowError / 未预期异常）（exit 1）
+
 ADR D-012：不与 save_review.py 共用 helper。
 """
 from __future__ import annotations
@@ -35,7 +46,7 @@ if str(_LIB_DIR) not in sys.path:
 
 from append_events import append_events_with_manifest  # noqa: E402
 from common import REPO_ROOT, WorkflowError  # noqa: E402
-from run_state import RunState, _resolve_run_dir, read_events, rebuild_run_state  # noqa: E402
+from run_state import RunState, _resolve_run_dir, read_events  # noqa: E402
 
 # 节点级事件类型集合，用于末位节点级事件反扫
 _NODE_LEVEL_EVENTS: frozenset[str] = frozenset({
@@ -79,11 +90,11 @@ def _parse_output(output_raw: str) -> dict[str, Any]:
             content = output_raw
         result = json.loads(content)
     except Exception as exc:
-        print(f"ERROR: output 解析失败: {exc}", file=sys.stderr)
+        print(f"ERROR [E-NODE-RESULT-005]: output 解析失败: {exc}", file=sys.stderr)
         sys.exit(1)
 
     if not isinstance(result, dict):
-        print("ERROR: output 必须是 JSON object", file=sys.stderr)
+        print("ERROR [E-NODE-RESULT-006]: output 必须是 JSON object", file=sys.stderr)
         sys.exit(1)
     return result
 
@@ -203,7 +214,7 @@ def _check_attempt_or_fail(
     """
     if attempt is None:
         print(
-            "ERROR: attempt required for --kind=approval_repair",
+            "ERROR [E-NODE-RESULT-007]: attempt required for --kind=approval_repair",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -217,7 +228,7 @@ def _check_attempt_or_fail(
 
     if expected_attempt is not None and attempt != expected_attempt:
         print(
-            f"ERROR: attempt mismatch: expected {expected_attempt}, got {attempt}",
+            f"ERROR [E-NODE-RESULT-008]: attempt mismatch: expected {expected_attempt}, got {attempt}",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -295,7 +306,7 @@ def _handle_approval_repair(
         "type": "approval_repair_completed",
         "node_id": node_id,
         "ts": ts,
-        "data": {"output": output},
+        "data": {"attempt": attempt, "output": output},
     }
     append_events_with_manifest(
         jsonl_path,
@@ -353,16 +364,16 @@ def main(argv: list[str] | None = None) -> int:
     try:
         run_dir = _resolve_run_dir(args.run, repo_root)
     except WorkflowError as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
+        print(f"ERROR [E-NODE-RESULT-099]: {exc}", file=sys.stderr)
         return 1
-
-    jsonl_path = run_dir / "run-state.jsonl"
-    events, _warnings = read_events(jsonl_path)
-    run_state = RunState.rebuild(events, run_id=args.run, warnings=_warnings)
 
     output = _parse_output(args.output)
 
     try:
+        jsonl_path = run_dir / "run-state.jsonl"
+        events, _warnings = read_events(jsonl_path)
+        run_state = RunState.rebuild(events, run_id=args.run, warnings=_warnings)
+
         if args.kind == "skill_result":
             return _handle_skill_result(
                 run_state, args.node, output, events, jsonl_path, run_dir
@@ -372,7 +383,10 @@ def main(argv: list[str] | None = None) -> int:
                 run_state, args.node, output, args.attempt, events, jsonl_path, run_dir
             )
     except WorkflowError as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
+        print(f"ERROR [E-NODE-RESULT-099]: {exc}", file=sys.stderr)
+        return 1
+    except Exception as exc:
+        print(f"ERROR [E-NODE-RESULT-099]: {exc}", file=sys.stderr)
         return 1
 
 
