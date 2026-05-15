@@ -254,3 +254,83 @@ _[hook-skipped: claude-exit-143]_
 - **维度**：error_handling minor + complexity minor
 - **来源**：`reviews/code-F-005-002.json` F-CR2-006 (pre_existing 未恶化) + F-CR2-007 (suggestion pre_existing) + 关联 rev1 F-CR-004 (dropped scope-out)。
 
+## F-008 rev2 follow-up minors（2026-05-15 14:18 沉淀）
+
+> 来源：`reviews/code-F-008-002.json` 9 follow-up（rev2 looks_clean(87) signoff approved；rev1 5 keep finding 全闭合）。
+> 处置原则：**不阻塞 F-009 派发**；trend-G-meta SUPPRESSED；建议归"atexit/fd 生命周期" + "docstring 三段对称" + "复杂度可选拆函数"三件套独立 PR。
+
+### IB-22 · `atexit.unregister(release)` 跨 handle 误删（F2-CR-004 major→follow-up）
+
+- **现状**：`scripts/lib/path_lock.py:319` `atexit.unregister(release)` 不传 args，Python 按函数对象匹配 → 移除该函数的所有注册（含其它 handle 的 partial bindings）
+- **可达性**：当前 acquire 仅 `workflow_continue.py:260` 单点调用 + 单进程单锁主流场景**不可达**；未来扩展任务级锁 / 并发持多锁场景即触发跨 handle 误删
+- **目标**：用 `functools.partial(release, handle)` 注册 + 用 `atexit.unregister(<partial 对象>)` 精确匹配；或在 release 内用 `atexit._exithandlers` 按 handle 条件 unregister
+- **维度**：concurrency major（critic 降级，scope 内单进程不可达）
+- **执行时机**：建议合并 IB-23 (F2-CR-005) 同 PR — 同属 atexit / fd 生命周期管理
+- **来源**：`reviews/code-F-008-002.json` F2-CR-004。
+
+### IB-23 · `_write_lock_json` 抛 WorkflowError 时 fd 泄漏（F2-CR-005 minor）
+
+- **现状**：`scripts/lib/path_lock.py:293` acquire 取锁成功后调 `_write_lock_json`，若抛 WorkflowError，fd 已持锁但 atexit.register 在 304 还未执行
+- **影响**：OS 退出自愈 + 下次 acquire 走 stale 路径自愈双保险，实际影响 <1e-6/op
+- **目标**：line 293 处包 `try/except WorkflowError as exc: os.close(fd); raise`（与 _retry_after_stale 内 OSError 兜底风格对齐）
+- **维度**：error_handling + security minor（critic 降级）
+- **来源**：`reviews/code-F-008-002.json` F2-CR-005。
+
+### IB-24 · `_retry_after_stale` close+unlink 共享 except（F2-CR-006 minor）
+
+- **现状**：`scripts/lib/path_lock.py:199-200` os.close + os.unlink 共享同一 try/except OSError；若 close 失败则 unlink 跳过，logger.debug 后继续
+- **目标**：拆为两段 try/except 分别区分 close-fail vs unlink-fail（可观测性 nit；非必须）
+- **维度**：error_handling minor
+- **来源**：`reviews/code-F-008-002.json` F2-CR-006。
+
+### IB-25 · 模块 docstring 未提 atexit.unregister（F2-CR-008 minor）
+
+- **现状**：`scripts/lib/path_lock.py:1-11` 三件套介绍段 release 描述未提及 `atexit.unregister` 精确语义
+- **目标**：在三件套介绍段补一句 atexit 注册/反注册的精确语义（按函数对象匹配 + 配合 functools.partial 实现 per-handle 反注册的注意事项）
+- **维度**：design_consistency minor
+- **执行时机**：与 IB-22 修复同 PR 一并更新 docstring
+- **来源**：`reviews/code-F-008-002.json` F2-CR-008。
+
+### IB-26 · 三进程 TOCTOU inode 分裂（F2-CR-012 minor，spec ack）
+
+- **现状**：`scripts/lib/path_lock.py:262-273` _retry_after_stale 中 close+unlink+open 三步无原子性；进程 B 的 unlink 删掉 A 刚 open 的新文件 → 后续进程 C 创建又一个新 inode → 双持锁
+- **状态**：spec §5.1（detailed-design.md:1604-1614）明文承认 ≤1e-7/op + pid 死 + mtime 二次校验双层拦截；保留现状
+- **可选优化**：在 unlink 前再读一次 inode 比对（O(1) syscall），进一步降低概率到 ≤1e-9/op
+- **维度**：concurrency minor（critic 降级）
+- **来源**：`reviews/code-F-008-002.json` F2-CR-012。
+
+### IB-27 · SIGTERM 在 atexit 注册前窗口残锁（F2-CR-013 minor，spec ack）
+
+- **现状**：`scripts/lib/path_lock.py:293-305` `_write_lock_json` 后 → `atexit.register` 前窗口期收到 SIGTERM，默认 handler 不走 atexit → 真残锁；mtime ≥1s 阈值会阻止 1s 内自动清理
+- **状态**：spec §5.1 明文 best-effort，下次 acquire stale 自愈；保留现状
+- **可选优化**：调换顺序 — 先 `_setup_signal_handlers(handle)` 再 `_write_lock_json`（窗口期缩短至毫秒级）；需评估 handler 在 lock JSON 未写入时调 release 的安全性
+- **维度**：concurrency minor（critic 降级）
+- **来源**：`reviews/code-F-008-002.json` F2-CR-013。
+
+### IB-28 · retry 失败二次 `_read_lock_json`（F2-CR-017 minor）
+
+- **现状**：`scripts/lib/path_lock.py:276` `_retry_after_stale` 返 None 时 acquire 再次调 `_read_lock_json`，与 line 257 重复 read_text
+- **影响**：罕见连续竞争路径 +1 syscall，< 1ms 性能 nit
+- **目标**：让 `_retry_after_stale` 返回 None 时一并返回 retry_data；或保留现状（影响可忽略）
+- **维度**：performance minor
+- **来源**：`reviews/code-F-008-002.json` F2-CR-017。
+
+### IB-29 · docstring 三段对称（F2-CR-020+021 minor）
+
+- **现状**：
+  - `_retry_after_stale` (`path_lock.py:185-194`) docstring 三段已含，与 IB-07 Google docstring 风格基本对齐，仅缩进微差（critic 降级）
+  - `_is_stale_by_mtime` (`path_lock.py:74-95`) docstring 有 Args/Returns，缺 Raises 段（实际 except 兜底吞所有异常）
+- **目标**：
+  1. `_retry_after_stale` docstring 缩进对齐 IB-07 模板
+  2. `_is_stale_by_mtime` 补 `Raises: 不抛（OSError/ValueError 由 except 兜底返 False）` 一行
+- **维度**：design_consistency / auxiliary_spec minor
+- **执行时机**：与 IB-22/23 atexit 修复 PR 一并 docstring sweep
+- **来源**：`reviews/code-F-008-002.json` F2-CR-020 + F2-CR-021。
+
+### IB-30 · acquire 复杂度可选拆函数（F2-CR-001+002+003 not_proven → 可选）
+
+- **现状**：`scripts/lib/path_lock.py:223-307` rev2 已抽 `_retry_after_stale` 显著降复杂度；reviewer 用 span 行数（85）/ 误数嵌套深度 7（实际 5）/ CCN=9 无 spec 阈值依据 — critic 4 项 not_proven 全部成立
+- **可选优化**：进一步抽 `_handle_lock_conflict(fd, lock_path) -> int | None` 子函数，把 line 255-290 的 `if not ok` 取锁失败路径整体抽出；acquire 主路径降至 ≤ 50 行 / 嵌套 ≤ 2 层
+- **维度**：complexity（非必须，reviewer 弱证据，建议结合 IB-22/23 同模块改造时一并）
+- **来源**：`reviews/code-F-008-002.json` F2-CR-001 + F2-CR-002 + F2-CR-003（critic 全 not_proven，judge 聚合降级 minor）。
+
