@@ -2,18 +2,16 @@
   "schema_version": "1.0",
   "feature_id": "F-006",
   "status": "DONE",
-  "commit_sha": "febba745",
+  "commit_sha": "fe2fc03",
   "files_changed": [
-    "scripts/lib/workflow_approve.py",
     "scripts/lib/workflow_reject.py",
-    "tests/lib/test_workflow_approve_close.py",
     "tests/lib/test_workflow_reject_repair.py",
     "tests/e2e/test_approval_reject_repair.py"
   ],
-  "test_summary": "F-006 scoped 15 passed (4 approve + 10 reject + 1 e2e)；全套 1409 passed 8 skipped 0 回归（pytest 47.93s）",
+  "test_summary": "F-006 scoped 18 passed (4 approve + 13 reject + 1 e2e；rev1 15 + rev2 新增 3 个 invalid max_attempts parametrize)；全套 1412 passed 8 skipped 0 回归（pytest 47.91s）",
   "touches_violations": [],
   "concerns": [],
   "missing_context": "",
   "block_reason": "",
-  "timestamp": "2026-05-15T10:45:00+08:00"
+  "timestamp": "2026-05-15T11:30:00+08:00"
 }
