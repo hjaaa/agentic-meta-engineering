@@ -343,3 +343,63 @@ _[hook-skipped: claude-exit-143]_
 - **来源**：`reviews/code-F-008-002.json` F2-CR-001 + F2-CR-002 + F2-CR-003（critic 全 not_proven，judge 聚合降级 minor）。
 - **状态（2026-05-15 15:00）**：✅ 闭环（可选优化已落地）。抽 `_handle_lock_conflict(fd, lock_path) -> int` 子函数承担 read-holder / pid-alive / mtime / retry 全部失败分支语义；acquire 主路径降至 ~30 行（含 docstring）/ 嵌套 ≤ 2 层。函数职责单一，未来若再增竞态分支只改 `_handle_lock_conflict` 而不动 acquire。
 
+## F-009 rev1 follow-up minors（2026-05-15 15:43 沉淀）
+
+> 来源：`reviews/code-F-009-001.json` 14 candidate → 4 drop + 3 merge + 11 minor downgrade-suggestion；rev1 looks_clean(86) signoff approved。
+> 处置原则：**不阻塞 F-010 派发**；trend-D-design-doc-drift 轻度触发，由 IB-34 一次性收敛；建议归"complexity sweep" + "verbose fail-soft 日志" + "doc-refresh §3.7" 三批 PR。
+
+### IB-31 · `workflow_status.py` complexity sweep（F-CR-001 + F-CR-002 + F-CR-003 合并）
+
+- **现状**：
+  - `scripts/lib/workflow_status.py:90-166` `_classify_nodes` CCN≈18（6 分类聚合线性铺开 done/failed/running/awaiting/ready/blocked）
+  - `scripts/lib/workflow_status.py:227-302` `_render_status_verbose` CCN≈13（嵌套深度 2 + 内嵌函数 `_fmt_node_list` CCN=6）
+  - `scripts/lib/workflow_status.py:305-361` `main` CCN≈12（11 分支点：arg 解析 + run_id 推断 + verbose 分流 + jsonl unreadable + workflow 加载）
+- **目标**：抽 6 helper 让各函数 CCN ≤ 8：
+  1. `_compute_terminal_ids(node_outputs) -> tuple[set, set]`（done / failed）
+  2. `_compute_awaiting_nodes(run_state, run_dir) -> list[dict]`（含 kind 反扫）
+  3. `_compute_blocked_nodes(workflow, run_state, done_ids, running_ids, awaiting_ids, ready_ids) -> list[dict]`
+  4. 提升内嵌 `_fmt_node_list` 为模块级 helper（与 `_blocked_reason` 并列）
+  5. `_render_stale_warn(last_event_ts, threshold_min) -> str | None`
+  6. `_check_jsonl_readable(run_state) -> bool` + `_load_workflow_soft(run_state, run_dir, root) -> dict | None`
+- **维度**：complexity minor（critic 全部 not_rebutted/not_proven，建议合并独立 PR）
+- **来源**：`reviews/code-F-009-001.json` F-CR-001 + F-CR-002 + F-CR-003。
+
+### IB-32 · verbose 路径三处宽 except 统一加日志（F-CR-004 + F-CR-005 + F-CR-006 同根因合并）
+
+- **现状**：
+  - `scripts/lib/workflow_status.py:265-268` `_render_status_verbose` 调 `_classify_nodes` 后 `except Exception: return base` 静默
+  - `scripts/lib/workflow_status.py:354-358` main verbose 路径 `workflow_continue` 加载 `except Exception: pass` 吞 ImportError
+  - `scripts/lib/workflow_status.py:137-140` `_classify_nodes` 调 `_ready_nodes` 后 `except Exception: ready_ids = set()` 置空
+- **目标**：三处统一加 `print(f"WARN: <场景描述> failed ({type(exc).__name__}): <影响>", file=sys.stderr)`（参考 `workflow_continue.py:215` 风格）；区分 ImportError / yaml 业务错误 / 数据结构异常三类
+- **维度**：error_handling minor（critic 1 not_rebutted + 2 not_proven 降级）
+- **执行时机**：与 IB-31 同 PR 顺手做（同模块 workflow_status.py 改动集中）
+- **来源**：`reviews/code-F-009-001.json` F-CR-004 + F-CR-005 + F-CR-006。
+
+### IB-33 · 三个 minor housekeeping（F-CR-007 + F-CR-008 + F-CR-009）
+
+- **现状**：
+  - `scripts/lib/workflow_status.py:178-179` `_infer_awaiting_kind` 第二次 `read_events` 丢弃 warnings，缺注释
+  - `scripts/lib/workflow_status.py:341` `unreadable = [w for w in warnings if "jsonl 读取失败" in w]` 字串硬编码与 `run_state.py:282` 紧耦合
+  - `tests/e2e/test_status_verbose_stale.py:120` 仅断言 `"jsonl unreadable" in captured.err`，未校验 `ERROR:` 前缀
+- **目标**：
+  1. `_infer_awaiting_kind` 加注释 `# warnings already surfaced in main() AC-08 check`
+  2. 在 `scripts/lib/run_state.py` 顶部抽 `WARN_JSONL_UNREADABLE_PREFIX = "jsonl 读取失败"` 常量，两处引用
+  3. `tests/e2e/test_status_verbose_stale.py:120` 改 `assert "ERROR: jsonl unreadable" in captured.err`
+- **维度**：error_handling minor + design_consistency minor（critic 全 not_proven 降级）
+- **执行时机**：与 IB-31/32 同 PR 顺手做
+- **来源**：`reviews/code-F-009-001.json` F-CR-007 + F-CR-008 + F-CR-009。
+
+### IB-34 · detailed-design.md §3.7 pseudocode 与 features.json AC 对齐（F-CR-010 + F-CR-011 doc-refresh）
+
+- **现状**：design-consistency-checker 4 条 major 全数 drop/rejected/not_proven，根因 `detailed-design.md` §3.7 pseudocode 多处与 `features.json:278` AC 不一致：
+  - line 1170 `paused (k)` 节点分类不在 5 分类 AC 内（features.json AC-1 明文 ready/running/blocked/awaiting/done）
+  - line 1165 `indent: int = 0` 参数 main() 顶层只调一次 verbose 不需要（子 run 不输出 verbose 段）
+  - line 1175 `lines = _render_status(...)` pseudo 变量名暗示 list，实际 `_render_status` baseline 返回 str
+- **目标**：development→testing phase-transition 前的 doc-refresh 批次（与 D-015 #4 commit 数 + IB-02 outline-design line 135 末节点判定文案统一同批），把 §3.7 pseudocode 改为：
+  1. 删 line 1170 "paused (k)"，分类描述改 5 分类
+  2. line 1165 `indent: int = 0` 加注脚 "本期 main 顶层单次调用不需要传入；保留参数签名以兼容未来子 run 嵌套 verbose 渲染"
+  3. line 1175 改 `output = _render_status(...)` 明确返回 str，line 1177 改 `lines.append(output); return "\n".join(lines)`
+- **维度**：design_consistency minor（trend-D-design-doc-drift 收敛动作）
+- **执行时机**：development→testing 切换前 doc-refresh PR（与 D-015 #4 + IB-02 + 后续 F-010/F-011/F-013 等 review 中暴露的设计文档微调一并）
+- **来源**：`reviews/code-F-009-001.json` F-CR-010 + F-CR-011 + trend-D-design-doc-drift 信号。
+
