@@ -98,7 +98,7 @@ inputs:
 2. `validate_state_for_cmd` 校验当前 state 允许执行 cmd（来源：scripts/lib/workflow_state_validator.py:43）
 3. 取 path-lock（**AC-05 新**）
 4. `load_workflow` 加载 yaml + `_expand_implicit_depends_on` 标记 `depends_on_explicit`（**AC-01 新**，来源：scripts/lib/workflow_loader.py:475）
-5. `_ready_nodes` 算 ready 集合（**AC-01 新**；退化路径用 `_next_node`，来源：scripts/lib/workflow_continue.py:37）
+5. `_ready_nodes` 算 ready 集合（**AC-01 新**；退化路径用 `_next_node`，来源：scripts/lib/workflow_scheduler.py:23）
 6. `dispatch_node` 外层写 `node_started` → 按节点类型派发（来源：scripts/lib/workflow_dispatcher.py:128）
 7. handler 写 `node_completed` / `node_ready`（**AC-04a 新事件**）→ 异常由外层转 `node_failed`
 8. 主循环判断 outcome：completed → 进入下一轮 `_ready_nodes`；ready → return 等外部回写
@@ -132,7 +132,7 @@ inputs:
 | 模块 | 当前职责 | 本需求增量 | AC | 改造侵入度 |
 |---|---|---|---|---|
 | `scripts/lib/workflow_loader.py` | yaml schema 校验 + DAG 校验 + 隐式 depends_on 展开 | `_expand_implicit_depends_on` 内补 `depends_on_explicit: bool` 标记位（来源：scripts/lib/workflow_loader.py:475） | AC-01 | 低（10 行内） |
-| `scripts/lib/workflow_continue.py` | jsonl 反扫 + main loop 7 outcome 派发（来源：scripts/lib/workflow_continue.py:37） | `_next_node` → `_ready_nodes` 升级 + awaiting 下只读 continue + `_finalize_after_rebuild_if_last_topology_node` 适配——**末节点判定方向**（v8 REV-007 P3 措辞修订；最终定稿见 detailed-design.md §3.6.3）：保留 `_next_node(last_visited) is None` 作 `depends_on_explicit=False` 退化分支；`depends_on_explicit=True` 走"全节点 ∈ SUCCESS_TERMINAL ({completed, skipped}) ∧ 不存在 failed ∧ _ready_nodes 为空"判定（**不再用"出度=0"** —— 该旧判定在多 sink DAG 下任一 sink 先完成会过早写 workflow_completed，详见 detail-design 修订记录 v4 P1-3）（来源：scripts/lib/workflow_continue.py:341） | AC-01 / AC-04b | 中（主循环改写） |
+| `scripts/lib/workflow_continue.py` | jsonl 反扫 + main loop 7 outcome 派发（来源：scripts/lib/workflow_continue.py:48） | `_next_node` → `_ready_nodes` 升级 + awaiting 下只读 continue + `_finalize_after_rebuild_if_last_topology_node` 适配——**末节点判定方向**（v8 REV-007 P3 措辞修订；最终定稿见 detailed-design.md §3.6.3）：保留 `_next_node(last_visited) is None` 作 `depends_on_explicit=False` 退化分支；`depends_on_explicit=True` 走"全节点 ∈ SUCCESS_TERMINAL ({completed, skipped}) ∧ 不存在 failed ∧ _ready_nodes 为空"判定（**不再用"出度=0"** —— 该旧判定在多 sink DAG 下任一 sink 先完成会过早写 workflow_completed，详见 detail-design 修订记录 v4 P1-3）（IB-13 拆模块后 `_finalize_after_rebuild_if_last_topology_node` 移入；来源：scripts/lib/workflow_scheduler.py:293） | AC-01 / AC-04b | 中（主循环改写） |
 | `scripts/lib/workflow_dispatcher.py` | 7 类节点派发 + 外层 node_started/failed 写入（来源：scripts/lib/workflow_dispatcher.py:128） | 第 8 类 artifact elif + AI 节点改写 `node_ready` 不再直接 `node_completed`（来源：scripts/lib/workflow_dispatcher.py:37） | AC-02 / AC-04a | 中 |
 | `scripts/lib/workflow_approve.py` | 写 approval_approved + state 回 running（来源：scripts/lib/workflow_approve.py:64） | 追加写当前 approval 节点 `node_completed` + 推进下游 | AC-03a | 低 |
 | `scripts/lib/workflow_reject.py` | 写 approval_rejected（来源：scripts/lib/workflow_reject.py:82） | 调新 `append_events` helper 原子写 `[approval_rejected, approval_repair_started(attempt=N)]` 两条 + state 切 awaiting + attempts 上限判定 | AC-03b/c | 中 |

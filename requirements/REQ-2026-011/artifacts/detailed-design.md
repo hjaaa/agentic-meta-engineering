@@ -1099,7 +1099,7 @@ def _finalize_after_rebuild_if_last_topology_node(
         #   语义应该是：只有"全节点 ∈ {completed, skipped}（成功类终态）"才写 workflow_completed；
         #   若存在 failed 节点 → finalize 返回 False，由 _route_outcome 的失败矩阵
         #   （on_failure=abort/skip/retry）接管，由 dispatcher 在写 node_failed 同步写
-        #   workflow_failed（已有 abort 路径，见 workflow_continue.py:_handle_abort）。
+        #   workflow_failed（已有 abort 路径，见 workflow_outcome_router.py:_handle_abort —— IB-13 拆模块后移入 workflow_outcome_router.py，原属 workflow_continue.py）。
         success_terminal = {"completed", "skipped"}
         node_states = {
             n["id"]: run_state.node_outputs.get(n["id"], {}).get("state")
@@ -1862,14 +1862,14 @@ PR 拆 commit（共 **14 commits = 13 features + 1 chore**）：
 | **P1**（3 commits） | status doctor `--verbose` 树形 + heartbeat / stale 检测；loop until_bash 两步落地；sub_workflow 父子完成回填 | F-009 / F-010 / F-011 |
 | **P2**（2 commits） | workflow list --json + 路由 fuzzy；AC-10 Claude 运行参数字段白名单（7 字段） | F-012 / F-013 |
 
-> 合计 **13 commits**（与 features.json 13 features 一一对应；P0-baseline 内附 1 chore commit 修 `standard-8phase.yaml` 不计入 feature 计数）。dispatcher 三处改写、`run_state.py` rebuild 扩展、`CMD_ALLOWED_STATES` 扩展等"AI 节点契约改造"已分散在 F-001~F-008 各自 PR 中，**不再独立成 P1 commit**。
+> 合计 **13 feature commits + 1 chore commit = 14 commits**（与 features.json 13 features 一一对应；P0-baseline 内附 1 chore commit 修 `standard-8phase.yaml`，按 feature 计数为 13，按 commit 总数为 14；表中 P0-baseline 行已显式列出 "3 commits + 1 chore"，与 1856 行总数一致）。dispatcher 三处改写、`run_state.py` rebuild 扩展、`CMD_ALLOWED_STATES` 扩展等"AI 节点契约改造"已分散在 F-001~F-008 各自 PR 中，**不再独立成 P1 commit**。
 
 ### 8.3 回滚策略（对应 ADR D-004）
 
 - **不引入 feature flag**（D-004 决策）；
 - 每个 commit 独立可 `git revert`；
 - 如果 PR 合入后线上发现 P0 严重问题：revert 整 PR；REQ-010 已是稳定 baseline。
-- P2 commit 独立可降级（C-降级条款）：仅 revert P2-3 commits 不影响 P0+P1。
+- P2 commit 独立可降级（C-降级条款）：仅 revert **P2 = 2 commits**（F-012 + F-013）不影响 P0+P1。
 
 ---
 

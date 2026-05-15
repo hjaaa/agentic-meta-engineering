@@ -38,7 +38,7 @@ P0 三块改造（DAG scheduler / artifact dispatcher / approval 闭环）全部
 
 ### 3.1 AC-01 DAG ready-node scheduler（P0）
 
-**现状**：主循环（来源：scripts/lib/workflow_continue.py:403）条件 `while run_state.state == "running" and run_state.current_node` 依赖 `current_node` 非空。`_next_node()`（来源：scripts/lib/workflow_continue.py:37）只读 `current_node.next`，不消费 `depends_on`。首次启动（`current_node=None`）或仅用 `depends_on` 描述依赖时引擎无法推进。
+**现状**：主循环（IB-13 拆模块后入口层精简至 281 行；来源：scripts/lib/workflow_continue.py:48）条件 `while run_state.state == "running" and run_state.current_node` 依赖 `current_node` 非空。`_next_node()`（IB-13 拆模块后已移入 workflow_scheduler.py；来源：scripts/lib/workflow_scheduler.py:23）只读 `current_node.next`，不消费 `depends_on`。首次启动（`current_node=None`）或仅用 `depends_on` 描述依赖时引擎无法推进。
 
 **改造方案**：新增 `_ready_nodes(workflow, run_state) -> list[str]` 函数，复用 `topological_layers()`（来源：scripts/lib/topological_sort.py:25），传入 loader 已展开的 `depends_on` 拓扑（来源：scripts/lib/workflow_loader.py:475），排除 `node_outputs` 中已完成节点，返回当前 ready 集合首项。主循环入口：`current_node` 为 None 时先调 `_ready_nodes` 取首层 ready 节点。`_next_node` 保留为 `depends_on` 为空时退化路径（来源：requirements/REQ-2026-011/artifacts/requirement.md:89）。`_build_node_map()`（来源：scripts/lib/workflow_continue.py:28）不变。改动量：`_ready_nodes` 约 35~45 行；主循环改造约 15~20 行。
 
@@ -46,7 +46,7 @@ P0 三块改造（DAG scheduler / artifact dispatcher / approval 闭环）全部
 
 **工作量估算**：1.5~2.5 天（design 0.5 / dev 1 / test 0.5~1）
 
-**风险**：末节点判定函数 `_finalize_after_rebuild_if_last_topology_node()`（来源：scripts/lib/workflow_continue.py:341）依赖 `_next_node(last_node, None)` 判断拓扑末尾，DAG 切换后此判断逻辑需同步扩展，否则 `workflow_completed` 可能不写（likelihood: medium, impact: high）。
+**风险**：末节点判定函数 `_finalize_after_rebuild_if_last_topology_node()`（IB-13 拆模块后已移入 workflow_scheduler.py；来源：scripts/lib/workflow_scheduler.py:293）依赖 `_next_node(last_node, None)` 判断拓扑末尾，DAG 切换后此判断逻辑需同步扩展，否则 `workflow_completed` 可能不写（likelihood: medium, impact: high）。
 
 ---
 
@@ -163,7 +163,7 @@ P0 三块改造（DAG scheduler / artifact dispatcher / approval 闭环）全部
 
 **AC-07 loop until_bash（P2）**：`_dispatch_loop_node()`（来源：scripts/lib/workflow_dispatcher.py:386）已实现 `max_iterations` 计数，缺 `until_bash` 分支。改造：增加 `loop.until_bash` bash 命令执行（约 25 行），returncode=0 时触发 `loop_done`，否则继续迭代。工作量：1~1.5 天。风险：`until_bash` 无限循环需 `max_iterations` 硬上限兜底。
 
-**AC-08 sub_workflow 父子回填（P2）**：`_dispatch_sub_workflow_node()`（来源：scripts/lib/workflow_dispatcher.py:430）创建子 run 后返回 `sub_workflow_pending`，main loop 的 `sub_workflow_pending` 分支（来源：scripts/lib/workflow_continue.py:316）直接 return False 不做任何处理。改造：在此分支增加子 run jsonl 轮询逻辑（约 40~60 行），子 run 终态后写父 run `child_*` 事件 + 父节点 `node_completed/node_failed`，尊重 `on_subworkflow_failure`。工作量：1.5~2.5 天。风险：子 run 路径查找依赖 D-007 双轨兼容。
+**AC-08 sub_workflow 父子回填（P2）**：`_dispatch_sub_workflow_node()`（来源：scripts/lib/workflow_dispatcher.py:430）创建子 run 后返回 `sub_workflow_pending`，main loop 的 `sub_workflow_pending` 分支（IB-13 拆模块后此 outcome 路由分支已移入 workflow_outcome_router.py 的 `_route_outcome`；来源：scripts/lib/workflow_outcome_router.py:225）直接 return False 不做任何处理。改造：在此分支增加子 run jsonl 轮询逻辑（约 40~60 行），子 run 终态后写父 run `child_*` 事件 + 父节点 `node_completed/node_failed`，尊重 `on_subworkflow_failure`。工作量：1.5~2.5 天。风险：子 run 路径查找依赖 D-007 双轨兼容。
 
 **AC-09 fuzzy routing + workflow list --json（P2）**：launcher 增加 `difflib.get_close_matches` 编辑距离 ≤ 2 的 fuzzy 匹配（无新依赖，约 20 行）；`workflow list` 增加 `--json` 输出（约 30 行）。工作量：1~1.2 天。风险：fuzzy 匹配阈值过低会误触发。
 

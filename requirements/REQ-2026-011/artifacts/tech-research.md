@@ -30,7 +30,7 @@ P0 三件（DAG scheduler / artifact dispatcher / approval 闭环含 on_reject i
 **R-T01：DAG scheduler 主路径切换无 feature flag，退化兼容判定位置新增但尚未实现**
 
 - severity: high
-- description: `_expand_implicit_depends_on` 当前在所有缺省节点上写入 `[prev_id]`（来源：scripts/lib/workflow_loader.py:482），加载后 `depends_on` 永远非空，原本用 `depends_on==[]` 做退化判断的逻辑实际永不触发。AC-01 要求在该函数内补 `depends_on_explicit: bool` 标记位（来源：requirements/REQ-2026-011/artifacts/requirement.md:89），但该标记位本次需同时被 scheduler 新路径和退化路径双侧正确消费；任何一侧遗漏都会导致仅含 `next` 字段的历史 yaml 全部失败跑不通。另外 `_finalize_after_rebuild_if_last_topology_node`（来源：scripts/lib/workflow_continue.py:341）末节点判定当前用 `_next_node(last_node, None) is None`，DAG 切换后 DAG 末节点不一定有 `next` 字段，此函数需同步适配否则 `workflow_completed` 可能不写。
+- description: `_expand_implicit_depends_on` 当前在所有缺省节点上写入 `[prev_id]`（来源：scripts/lib/workflow_loader.py:482），加载后 `depends_on` 永远非空，原本用 `depends_on==[]` 做退化判断的逻辑实际永不触发。AC-01 要求在该函数内补 `depends_on_explicit: bool` 标记位（来源：requirements/REQ-2026-011/artifacts/requirement.md:89），但该标记位本次需同时被 scheduler 新路径和退化路径双侧正确消费；任何一侧遗漏都会导致仅含 `next` 字段的历史 yaml 全部失败跑不通。另外 `_finalize_after_rebuild_if_last_topology_node`（IB-13 拆模块后此函数已移入 workflow_scheduler.py；来源：scripts/lib/workflow_scheduler.py:293）末节点判定当前用 `_next_node(last_node, None) is None`，DAG 切换后 DAG 末节点不一定有 `next` 字段，此函数需同步适配否则 `workflow_completed` 可能不写。
 - likelihood: medium
 - mitigation: AC-01 e2e 要求三路径全覆盖（depends_on yaml / next-only yaml / code-review-embedded 8 checker 串行），实施时以 `depends_on_explicit` 标记位添加 + `_finalize_after_rebuild_if_last_topology_node` 适配为同一 commit，PR 前强制跑三路径 e2e。
 
@@ -100,7 +100,7 @@ P0 三件（DAG scheduler / artifact dispatcher / approval 闭环含 on_reject i
 
 | AC | 优先级 | 代码锚点摘要 | design (天) | dev (天) | test (天) | 合计 (天) |
 |---|---|---|---|---|---|---|
-| AC-01 DAG ready-node scheduler | P0 | `workflow_continue.py:37` 升级 `_ready_nodes`；`workflow_loader.py:475` 加 `depends_on_explicit`；`_finalize_after_rebuild_if_last_topology_node:341` 适配 | 0.5 | 1.5 | 1.0 | **3.0** |
+| AC-01 DAG ready-node scheduler | P0 | `workflow_scheduler.py:49` 升级 `_ready_nodes`；`workflow_loader.py:475` 加 `depends_on_explicit`；`workflow_scheduler.py:293` `_finalize_after_rebuild_if_last_topology_node` 适配（IB-13 拆模块后两处均移入 workflow_scheduler.py） | 0.5 | 1.5 | 1.0 | **3.0** |
 | AC-02 artifact dispatcher + yaml 修正 | P0 | `workflow_dispatcher.py:153` 插入 elif；新增 `_dispatch_artifact_node`；`standard-8phase.yaml:57` 改脚本路径 | 0.3 | 0.7 | 0.5 | **1.5** |
 | AC-03 approval 闭环（a+b+c） | P0 | `workflow_approve.py:64` 追加 `node_completed`；`workflow_reject.py:82` 追加 `approval_repair_started`；`run_state.py` approval_rejected handler 重写；attempt 计数逻辑 | 0.5 | 2.5 | 1.0 | **4.0** |
 | AC-04a AI 节点完成契约（派发侧） | P1 | `workflow_dispatcher.py` AI 节点三处改写 `node_ready`；新建 `save_node_result.py`（~120 行） | 0.5 | 1.5 | 0.5 | **2.5** |
@@ -151,7 +151,7 @@ P0 三件（DAG scheduler / artifact dispatcher / approval 闭环含 on_reject i
 
 **工作量差异：+3~4 天（主要集中在 AC-01 / AC-03 / AC-04）**
 
-1. **AC-01 从 2~2.5 天升至 3.0 天**：requirement.md 四轮对抗审阅新增了"兼容退化判定依据 = `depends_on_explicit` 标记位"（来源：requirements/REQ-2026-011/artifacts/requirement.md:89），这比前次预研的简单 `depends_on==[]` 判断多了 loader 层修改和标记位消费侧的联动点。同时 `_finalize_after_rebuild_if_last_topology_node` 适配（来源：scripts/lib/workflow_continue.py:341）是本轮阅读代码后新发现的改造点，前次预研未覆盖。
+1. **AC-01 从 2~2.5 天升至 3.0 天**：requirement.md 四轮对抗审阅新增了"兼容退化判定依据 = `depends_on_explicit` 标记位"（来源：requirements/REQ-2026-011/artifacts/requirement.md:89），这比前次预研的简单 `depends_on==[]` 判断多了 loader 层修改和标记位消费侧的联动点。同时 `_finalize_after_rebuild_if_last_topology_node` 适配（IB-13 拆模块后此函数已移入 workflow_scheduler.py；来源：scripts/lib/workflow_scheduler.py:293）是本轮阅读代码后新发现的改造点，前次预研未覆盖。
 
 2. **AC-03 从 3~4.5 天升至 4.0 天**：前次预研对 on_reject 语义（Q-01）存在高风险不确定项（来源：requirements/REQ-2026-011/artifacts/.rollback-20260513-112537/tech-research.md:94）。requirement.md 修订版已明确 on_reject inline repair 事件流（来源：requirements/REQ-2026-011/artifacts/requirement.md:59）：reject CLI 需原子写两条事件 + 状态切 `awaiting_claude_action`，`save_node_result --kind=approval_repair` 路径需在 RunState.rebuild 中正确映射。语义已确认但改造量比前次预估的"追加 node_failed" 更重（前次 AC-03b 预估 1.5~2.5 天含不确定度，现在实现路径清晰但代码量更大）。
 
