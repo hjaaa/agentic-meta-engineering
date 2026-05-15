@@ -111,3 +111,6 @@ REQ-2026-011 语义事件日志
 2026-05-15 13:06:56 [signoff] REV-REQ-2026-011-code-F-007-002 approved by hj19961223@gmail.com
 2026-05-15 13:09:10 [signoff] REV-REQ-2026-011-code-F-007-002 approved by hj19961223@gmail.com
 2026-05-15 13:09:10 [save] F-007 完成（status=done / rev2 looks_clean 88 / signoff approved / F2-CR-004 housekeeping data.output 断言补齐 / 释放派发锁 / 7/13 features done；3 suggestion (F2-CR-001/002/003) 入 IB sweep）
+2026-05-15 13:17:54 [save] 会话节点：F-007 P0 闭环（rev1 blocked 62 → rev2 looks_clean 88 / signoff approved / F2-CR-004 housekeeping / 释放派发锁）；7/13 features done；3 suggestion (F2-CR-001/002/003 sec/eh) 入 IB sweep；trend-G-meta MARGINAL；下一步派 F-008 (P0/medium 无依赖) 或 F-009 (P1/heavy 依赖 F-004/F-005/F-006 全 done)
+2026-05-15 13:21:50 [development] F-008 派发开始（model=sonnet，complexity=medium；touches 4 文件 = path_lock.py 新建 + workflow_continue.py main 入口接 acquire + tests/lib/test_path_lock.py 新建 + tests/e2e/test_path_lock_concurrent.py 新建；落地 D-003 三件套 + AC-05 双轨 symlink）
+2026-05-15 13:30:54 [development] F-008 派发完成（model=sonnet / commit=f9b2f98 / 4 文件 = path_lock.py 225 行 + workflow_continue.py +32 行 + 2 测试文件；10 单元 + 2 E2E + 1435 全套 0 回归；touches_violations=[]）；进 post-dev gate + /code-review

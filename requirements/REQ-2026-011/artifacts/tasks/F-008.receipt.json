@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-008",
+  "status": "DONE",
+  "commit_sha": "f9b2f98",
+  "files_changed": [
+    "scripts/lib/path_lock.py",
+    "scripts/lib/workflow_continue.py",
+    "tests/lib/test_path_lock.py",
+    "tests/e2e/test_path_lock_concurrent.py"
+  ],
+  "test_summary": "10 unit tests (7 AC + 1 perf + idempotent) + 2 e2e concurrent tests all passed; full suite 1435 passed 0 regression in 51.53s",
+  "touches_violations": [],
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-15T10:00:00+08:00"
+}
