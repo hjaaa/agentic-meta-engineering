@@ -90,3 +90,8 @@ REQ-2026-011 语义事件日志
 2026-05-15 09:58:11 [save] B4b 完成（b494f3a：IB-20 拆 artifact_spec_renderer.py 104 行 + workflow_dispatcher.py 685→606；test import 同步；1394 全套 0 回归 0 行为变更）；IB sweep 5/5 批全部完成（13 项 + IB-08 共 14 项 follow-up 闭环）；下一步 next 派 F-006
 2026-05-15 10:14:12 [review:approved] outline-design refresh-005 looks_clean (IB-13 source ref 校正，无语义偏离)；等 tty signoff
 2026-05-15 10:14:12 [review:approved] detail-design refresh-012 looks_clean(95) (IB-13 source ref + D-015 #4 commit 数自洽，14=13+1, P2=2)；等 tty signoff
+2026-05-15 10:15:05 [signoff] REV-REQ-2026-011-outline-design-005 approved by hj19961223@gmail.com
+2026-05-15 10:15:15 [signoff] REV-REQ-2026-011-detail-design-012 approved by hj19961223@gmail.com
+2026-05-15 10:16:11 [signoff] REV-REQ-2026-011-outline-design-005 approved by hj19961223@gmail.com
+2026-05-15 10:16:11 [signoff] REV-REQ-2026-011-detail-design-012 approved by hj19961223@gmail.com
+2026-05-15 10:16:11 [save] doc-refresh 批闭环（ca5c0e5+fe018ed+signoff：4 文档 sourcing + D-015 #4 commit 数 + 2 refresh review + 2 signoff；R005/R003 全解；剩 R002 active features pending 在 testing 切换前正常状态）
