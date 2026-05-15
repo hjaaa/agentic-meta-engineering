@@ -103,3 +103,5 @@ REQ-2026-011 语义事件日志
 2026-05-15 11:35:24 [signoff] REV-REQ-2026-011-code-F-006-002 approved by hj19961223@gmail.com
 2026-05-15 11:36:15 [save] F-006 完成（status=done / rev2 looks_clean 88 / signoff approved / 释放派发锁 / 2 minor follow-up 入 IB-25/26 + IB-24 已存合并；trend-G-meta 未触发；6/13 features done）
 2026-05-15 11:38:50 [save] 会话节点：F-006 P0 闭环（rev1 needs_attention 82 → rev2 looks_clean 88 / 6 keep 全闭合 / 18 tests + 1412 全套 0 回归 / signoff approved / 释放派发锁）；6/13 features done；2 minor (lib→e2e sys.path hack + bool 盲区) + 3 IB-24/25/26 follow-up；trend-G-meta 未触发；下一步派 F-007 (P0/medium 依赖 F-006 已 done) 或 F-008 (P0/medium 无依赖)
+2026-05-15 11:46:15 [development] F-007 派发开始（model=sonnet，complexity=medium；touches 2 文件 = save_node_result.py + 测试；fail-closed 三件套 + kind 子模式）
+2026-05-15 11:54:14 [development] F-007 done：save_node_result.py + 三道 fail-closed 闸 + manifest fallback；11 AC 全通过，全套 410 passed 0 回归；commit=911c0fd

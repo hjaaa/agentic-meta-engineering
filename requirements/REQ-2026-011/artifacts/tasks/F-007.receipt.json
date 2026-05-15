@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-007",
+  "status": "DONE",
+  "commit_sha": "911c0fd",
+  "files_changed": [
+    "scripts/lib/save_node_result.py",
+    "tests/lib/test_save_node_result.py"
+  ],
+  "test_summary": "11 passed in 0.52s (pytest tests/lib/test_save_node_result.py)；全套 410 passed 0 回归 (pytest tests/lib/ 14.47s)",
+  "touches_violations": [],
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-15T14:20:00+08:00"
+}
