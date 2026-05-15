@@ -86,3 +86,4 @@ REQ-2026-011 语义事件日志
 2026-05-15 09:27:03 [save] B1 IB-19 完成（1a25db4：_render_artifact_spec CCN 26→6 拆 4 helper + _dispatch_artifact_node 删 dead run_dir 6→5 params + deepcopy 防御；4 新 helper TC + 1387 全套 0 回归）；进 B2
 2026-05-15 09:35:48 [save] B2 完成（1f7af18：IB-09~12+14~17 共 8 项 lint sweep on workflow_continue.py + e2e test；assert/WARN/ERROR/CCN→6/参数顺序/docstring/死代码/混合命名；1387 全套 0 回归）；进 B3
 2026-05-15 09:43:09 [save] B3 完成（a83c03d / 60e9051：IB-08 approval_* 终态守卫 + IB-21a run_artifact_checks 异常包装 + IB-21b dispatch_node CCN 11→4 字典分发 + F-CR-004 OSError 父类捕获；7 new tests + 1394 全套 0 回归）；进 B4a (IB-13 拆 workflow_continue.py)
+2026-05-15 09:53:15 [save] B4a 完成（b860c2f：IB-13 拆 workflow_continue.py 860→281 + 新 workflow_scheduler.py 379 + workflow_outcome_router.py 309；3 测试 import 同步；1394 全套 0 回归 0 行为变更）；进 B4b (IB-20 拆 artifact_spec_renderer.py)

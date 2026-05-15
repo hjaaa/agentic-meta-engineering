@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0",
+  "ib_id": "IB-13 (B4a 拆 workflow_continue.py)",
+  "status": "DONE",
+  "commit_sha": "b860c2f",
+  "files_changed": [
+    "scripts/lib/workflow_scheduler.py (新建)",
+    "scripts/lib/workflow_outcome_router.py (新建)",
+    "scripts/lib/workflow_continue.py",
+    "tests/lib/test_workflow_continue_ready_nodes.py (import 同步)",
+    "tests/skills/test_workflow_continue_failure_handler.py (import 同步)",
+    "tests/e2e/test_legacy_next_chain.py (import 同步)"
+  ],
+  "test_summary": "1394 passed in 47.41s；全套无回归",
+  "verifications": {
+    "workflow_continue_lines_after": "281",
+    "workflow_scheduler_lines": "379",
+    "workflow_outcome_router_lines": "309",
+    "behavior_unchanged": true,
+    "test_import_sync_count": "3 个测试文件 import 同步到新模块"
+  },
+  "concerns": [
+    "_next_node 函数同时被 workflow_scheduler.py 内部多处与 workflow_outcome_router.py 用到，实际移入 workflow_scheduler.py（非原始 workflow_continue.py），outcome_router 从 workflow_scheduler import _next_node，无循环依赖。行数比预估略多（scheduler ~379 行含详细 docstring；continue 减少至 281 行，低于预估 520 行，因 _next_node 也一并移出）"
+  ],
+  "timestamp": "2026-05-15T15:45:00+08:00"
+}
