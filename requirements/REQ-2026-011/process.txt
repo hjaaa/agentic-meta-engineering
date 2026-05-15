@@ -106,3 +106,4 @@ REQ-2026-011 语义事件日志
 2026-05-15 11:46:15 [development] F-007 派发开始（model=sonnet，complexity=medium；touches 2 文件 = save_node_result.py + 测试；fail-closed 三件套 + kind 子模式）
 2026-05-15 11:54:14 [development] F-007 done：save_node_result.py + 三道 fail-closed 闸 + manifest fallback；11 AC 全通过，全套 410 passed 0 回归；commit=911c0fd
 2026-05-15 12:51:33 [review:blocked] F-007 rev1 code-review blocked(62) 5维[95/82/88/88/70/55/75] 1 critical (F-CR-001 approval_repair_completed 漏 data.attempt 必填) + 5 major (F-CR-005/006/007 错误码缺失 + F-CR-009/010 dead import) + 4 minor (F-CR-018/023/025/026)；critic 10 rejected/6 keep/10 not_proven downgrade；rev2 修复派发
+2026-05-15 16:30:00 [development] F-007 rev2 修复完成（c9bc3bf：data.attempt 必填 + E-NODE-RESULT-005~008+099 错误码 + dead import x2 + assert attempt==1 + _ 解包 x7 + 死变量 + try 覆盖；11 AC 全通过，全套 410 passed 0 回归）

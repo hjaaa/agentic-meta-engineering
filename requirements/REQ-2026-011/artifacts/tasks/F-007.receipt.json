@@ -2,15 +2,36 @@
   "schema_version": "1.0",
   "feature_id": "F-007",
   "status": "DONE",
-  "commit_sha": "911c0fd",
+  "commit_sha": "c9bc3bf",
   "files_changed": [
     "scripts/lib/save_node_result.py",
     "tests/lib/test_save_node_result.py"
   ],
-  "test_summary": "11 passed in 0.52s (pytest tests/lib/test_save_node_result.py)；全套 410 passed 0 回归 (pytest tests/lib/ 14.47s)",
-  "touches_violations": [],
+  "test_summary": "rev2: 11 passed in 0.51s (pytest tests/lib/test_save_node_result.py)；全套 410 passed 0 回归 (pytest tests/lib/ 14.29s)",
+  "touches_violations": [
+    {
+      "path": "/tmp/F-007-rev1-verdict.json",
+      "ts": "2026-05-15T04:49:12+00:00",
+      "tool": "Write"
+    },
+    {
+      "path": "/tmp/F-007-rev1-verdict.json",
+      "ts": "2026-05-15T04:49:56+00:00",
+      "tool": "Edit"
+    },
+    {
+      "path": "/tmp/F-007-rev1-verdict.json",
+      "ts": "2026-05-15T04:50:03+00:00",
+      "tool": "Edit"
+    },
+    {
+      "path": "/tmp/F-007-rev1-verdict.json",
+      "ts": "2026-05-15T04:50:11+00:00",
+      "tool": "Edit"
+    }
+  ],
   "concerns": [],
   "missing_context": "",
   "block_reason": "",
-  "timestamp": "2026-05-15T14:20:00+08:00"
+  "timestamp": "2026-05-15T16:30:00+08:00"
 }
