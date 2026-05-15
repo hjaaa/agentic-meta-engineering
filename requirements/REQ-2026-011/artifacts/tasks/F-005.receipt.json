@@ -2,16 +2,15 @@
   "schema_version": "1.0",
   "feature_id": "F-005",
   "status": "DONE",
-  "commit_sha": "f65a74e",
+  "commit_sha": "d980fec",
   "files_changed": [
     "scripts/lib/workflow_dispatcher.py",
-    ".claude/workflows/requirement/standard-8phase.yaml",
     "tests/lib/test_dispatch_artifact.py"
   ],
-  "test_summary": "7 passed in 0.11s（test_dispatch_artifact.py）；F-011 回归 14 passed；全套 1381 passed, 8 skipped in 47.29s",
+  "test_summary": "9 passed in 0.12s（test_dispatch_artifact.py，含 2 个新 TC）；F-011 回归 14 passed；全套 1383 passed, 8 skipped in 48.46s",
   "touches_violations": [],
   "concerns": [],
   "missing_context": "",
   "block_reason": "",
-  "timestamp": "2026-05-15T10:30:00+08:00"
+  "timestamp": "2026-05-15T14:20:00+08:00"
 }
