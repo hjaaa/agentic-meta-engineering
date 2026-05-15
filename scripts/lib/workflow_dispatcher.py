@@ -467,6 +467,13 @@ def _dispatch_loop_node(
             return _loop_check_max_or_continue(
                 node_id, current_iteration, max_iterations, jsonl_path
             )
+        except OSError as exc:
+            _write_loop_iteration_with_error(
+                jsonl_path, node_id, current_iteration, f"oserror: {exc}",
+            )
+            return _loop_check_max_or_continue(
+                node_id, current_iteration, max_iterations, jsonl_path
+            )
 
     # 既有路径（until_bash 不传，或 until_bash exit≠0 时）
     append_event(jsonl_path, {

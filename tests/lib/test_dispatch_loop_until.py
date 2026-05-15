@@ -209,3 +209,46 @@ def test_until_bash_timeout_writes_error_and_continues(tmp_path: Path) -> None:
     assert "loop_completed" not in [e["type"] for e in events], (
         "timeout 路径不应写 loop_completed"
     )
+
+
+# ============================================================================
+# TC-F10-U5：until_bash OSError → error 写 "oserror: <msg>"，按 max_iterations 兜底
+# ============================================================================
+
+def test_until_bash_oserror_writes_error_and_continues(tmp_path: Path) -> None:
+    """TC-F10-U5：until_bash 抛 OSError → loop_iteration_completed.data.error 含 'oserror:'，
+    继续走 max_iterations 计数路径（不视为 loop_done，对齐 _dispatch_bash_node 双捕基线）。
+    """
+    jsonl = tmp_path / "run-state.jsonl"
+    node = {
+        "id": "oserror-loop",
+        "loop": {"until_bash": "check_condition.sh", "max_iterations": 5},
+    }
+    run_state = _make_run_state()
+
+    with patch("workflow_dispatcher.subprocess.run") as mock_run:
+        mock_run.side_effect = OSError("bash not found")
+        result = _dispatch_loop_node(node, {}, run_state, jsonl, root=tmp_path)
+
+    # OSError 不视为 loop_done，继续计数路径（iteration=0，max=5，应 loop_continue）
+    assert result.outcome == "loop_continue", (
+        f"OSError 后 iteration=0 < max_iterations=5，应 loop_continue，实际 {result.outcome!r}"
+    )
+
+    events = _read_events(jsonl)
+    completed_events = [e for e in events if e["type"] == "loop_iteration_completed"]
+    assert len(completed_events) == 1, (
+        f"应有 1 条 loop_iteration_completed，实际 {len(completed_events)}"
+    )
+    error_val = (completed_events[0].get("data") or {}).get("error", "")
+    assert error_val.startswith("oserror:"), (
+        f"error 字段应以 'oserror:' 开头，实际：{error_val!r}"
+    )
+    assert "bash not found" in error_val, (
+        f"error 字段应含 OSError 消息，实际：{error_val!r}"
+    )
+
+    # 不应写 loop_completed（OSError 不是正常结束）
+    assert "loop_completed" not in [e["type"] for e in events], (
+        "OSError 路径不应写 loop_completed"
+    )
