@@ -105,3 +105,4 @@ REQ-2026-011 语义事件日志
 2026-05-15 11:38:50 [save] 会话节点：F-006 P0 闭环（rev1 needs_attention 82 → rev2 looks_clean 88 / 6 keep 全闭合 / 18 tests + 1412 全套 0 回归 / signoff approved / 释放派发锁）；6/13 features done；2 minor (lib→e2e sys.path hack + bool 盲区) + 3 IB-24/25/26 follow-up；trend-G-meta 未触发；下一步派 F-007 (P0/medium 依赖 F-006 已 done) 或 F-008 (P0/medium 无依赖)
 2026-05-15 11:46:15 [development] F-007 派发开始（model=sonnet，complexity=medium；touches 2 文件 = save_node_result.py + 测试；fail-closed 三件套 + kind 子模式）
 2026-05-15 11:54:14 [development] F-007 done：save_node_result.py + 三道 fail-closed 闸 + manifest fallback；11 AC 全通过，全套 410 passed 0 回归；commit=911c0fd
+2026-05-15 12:51:33 [review:blocked] F-007 rev1 code-review blocked(62) 5维[95/82/88/88/70/55/75] 1 critical (F-CR-001 approval_repair_completed 漏 data.attempt 必填) + 5 major (F-CR-005/006/007 错误码缺失 + F-CR-009/010 dead import) + 4 minor (F-CR-018/023/025/026)；critic 10 rejected/6 keep/10 not_proven downgrade；rev2 修复派发
