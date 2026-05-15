@@ -1,0 +1,14 @@
+# F-011 e2e fixture：父 workflow 含 sub_workflow 节点
+# 验证：子完成后父 jsonl 末位 workflow_completed（AC-08 AC-6）
+name: workflow-parent-sub
+version: 1
+category: assist
+provider: claude
+model: sonnet
+
+nodes:
+  - id: sub-node
+    sub_workflow:
+      template: workflow-child-simple
+      args: ""
+    on_subworkflow_failure: fail
