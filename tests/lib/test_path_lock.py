@@ -1,6 +1,6 @@
 """tests/lib/test_path_lock.py — path_lock 单元测试（F-008 AC-05）。
 
-覆盖 7 条 acceptance + 1 条性能测试：
+覆盖 7 条 acceptance + 1 条性能测试 + rev2 新增 mtime 二次校验测试：
   AC-1  acquire 首次取锁成功 → .lock JSON 含 pid / created_at / path_target
   AC-2  requirement 类 run → requirements/.locks/<id>.lock 是 symlink 指向实锁
   AC-3  release 后 .lock 删除；symlink 保留（dangling 容忍）
@@ -9,6 +9,9 @@
   AC-6  残锁 + 重试后仍冲突 → raise LockBusyError（不进入活锁）
   AC-7  atexit：sys.exit(0) → .lock 文件被删
   PERF  单次 acquire wall-clock ≤ 100ms
+  REV2-MTIME-1  _is_stale_by_mtime：created_at 比 st_mtime 早 2s → True
+  REV2-MTIME-2  _is_stale_by_mtime：created_at 与 st_mtime 接近（< 1s）→ False（保守）
+  REV2-MTIME-3  acquire 中 pid 死但 mtime 校验不通过（pid 复用窗口）→ 不清理，直接 raise LockBusyError
 """
 from __future__ import annotations
 
@@ -16,6 +19,7 @@ import json
 import os
 import sys
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest import mock
 
@@ -25,7 +29,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "scripts" / "lib"))
 
 import path_lock
-from path_lock import LockBusyError, LockHandle, acquire, release
+from path_lock import LockBusyError, LockHandle, acquire, release, _is_stale_by_mtime
 
 
 # ---------------------------------------------------------------------------
@@ -307,3 +311,69 @@ def test_release_idempotent(tmp_path: Path) -> None:
     handle = acquire(run_id, root)
     release(handle)
     release(handle)  # 第二次 release 不应抛异常
+
+
+# ---------------------------------------------------------------------------
+# REV2-MTIME：_is_stale_by_mtime 单元测试（F-CR-014 二次校验）
+# ---------------------------------------------------------------------------
+
+def test_is_stale_by_mtime_true(tmp_path: Path) -> None:
+    """REV2-MTIME-1: created_at 比 st_mtime 早 2 秒 → 返 True（视为真 stale）。"""
+    lp = tmp_path / "test.lock"
+    lp.write_text("x", encoding="utf-8")
+
+    # 获取真实 mtime
+    actual_mtime = lp.stat().st_mtime
+
+    # created_at = mtime - 2 秒（早于 mtime 2 秒，满足 ≥ 1s 阈值）
+    created_dt = datetime.fromtimestamp(actual_mtime - 2.0, tz=timezone.utc)
+    created_at_iso = created_dt.isoformat()
+
+    result = _is_stale_by_mtime(lp, created_at_iso, threshold_seconds=1.0)
+    assert result is True, f"created_at 早于 mtime 2s，应视为 stale，got {result}"
+
+
+def test_is_stale_by_mtime_false_pid_reuse_window(tmp_path: Path) -> None:
+    """REV2-MTIME-2: created_at 与 st_mtime 接近（< 1s 差值）→ 返 False（保守视为活锁）。"""
+    lp = tmp_path / "test.lock"
+    lp.write_text("x", encoding="utf-8")
+
+    # 获取真实 mtime
+    actual_mtime = lp.stat().st_mtime
+
+    # created_at = mtime - 0.5 秒（与 mtime 相差 0.5s，不满足 ≥ 1s 阈值）
+    created_dt = datetime.fromtimestamp(actual_mtime - 0.5, tz=timezone.utc)
+    created_at_iso = created_dt.isoformat()
+
+    result = _is_stale_by_mtime(lp, created_at_iso, threshold_seconds=1.0)
+    assert result is False, f"created_at 与 mtime 差 < 1s，应保守视为活锁，got {result}"
+
+
+def test_acquire_pid_reuse_window_no_cleanup(tmp_path: Path) -> None:
+    """REV2-MTIME-3: mock _is_pid_alive=False 但 mtime 校验不通过（pid 复用窗口）
+    → acquire 不清理 .lock，直接 raise LockBusyError。
+    """
+    root = _make_repo(tmp_path)
+    run_id = "REQ-2026-099"
+
+    lp = _lock_path(root, run_id)
+    dead_pid = 99999999
+    lock_data = {
+        "pid": dead_pid,
+        "created_at": "2026-01-01T00:00:00+00:00",
+        "path_target": str(lp.resolve()),
+        "host": "Darwin-25.4.0",
+    }
+    lp.write_text(json.dumps(lock_data) + "\n", encoding="utf-8")
+
+    # mock _try_fcntl_lock 返 False（锁冲突），_is_pid_alive 返 False（pid 死），
+    # 但 _is_stale_by_mtime 返 False（pid 复用窗口，不应清理）
+    with mock.patch.object(path_lock, "_try_fcntl_lock", return_value=False):
+        with mock.patch.object(path_lock, "_is_pid_alive", return_value=False):
+            with mock.patch.object(path_lock, "_is_stale_by_mtime", return_value=False):
+                with pytest.raises(LockBusyError) as exc_info:
+                    acquire(run_id, root)
+
+    # .lock 文件应仍存在（未被清理）
+    assert lp.exists(), "pid 复用窗口：.lock 文件不应被清理"
+    assert exc_info.value.pid == dead_pid

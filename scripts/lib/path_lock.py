@@ -59,6 +59,9 @@ class LockHandle:
 
 def _is_pid_alive(pid: int) -> bool:
     """kill -0 pid → ESRCH 为 False，其他 OSError 保守返 True。"""
+    if pid <= 0:
+        # pid <= 0 在 POSIX 是进程组语义，不可用于单进程探测，保守视为不存活
+        return False
     try:
         os.kill(pid, 0)
     except OSError as exc:
@@ -66,6 +69,30 @@ def _is_pid_alive(pid: int) -> bool:
             return False
         # EPERM 等保守视为存活
     return True
+
+
+def _is_stale_by_mtime(lock_path: Path, created_at_iso: str, threshold_seconds: float = 1.0) -> bool:
+    """二次校验残锁：若 created_at 比 .lock 文件 st_mtime 早 ≥ threshold_seconds，视为真 stale。
+
+    缓解 pid 复用误清窗口（详见 detailed-design.md §5.1）。
+
+    Args:
+        lock_path: .lock 文件路径
+        created_at_iso: 从 .lock JSON 读出的 created_at（ISO8601）
+        threshold_seconds: 阈值（默认 1.0s）
+
+    Returns:
+        True：created_at 比 mtime 早 ≥ threshold_seconds，视为真 stale
+        False：created_at 与 mtime 接近，pid 复用窗口可能，保守视为活锁
+    """
+    try:
+        st_mtime = lock_path.stat().st_mtime
+        created_dt = datetime.fromisoformat(created_at_iso.replace("Z", "+00:00"))
+        created_ts = created_dt.timestamp()
+        return (st_mtime - created_ts) >= threshold_seconds
+    except (OSError, ValueError):
+        # stat 失败 / created_at 格式坏 → 保守视为活锁
+        return False
 
 
 def _read_lock_json(lock_path: Path) -> dict | None:
@@ -88,10 +115,13 @@ def _write_lock_json(fd: int, lock_path: Path, run_id: str) -> None:
         "host": platform.platform(),
     }
     data = (json.dumps(payload, ensure_ascii=False) + "\n").encode("utf-8")
-    os.lseek(fd, 0, os.SEEK_SET)
-    os.ftruncate(fd, 0)
-    os.write(fd, data)
-    os.fsync(fd)
+    try:
+        os.lseek(fd, 0, os.SEEK_SET)
+        os.ftruncate(fd, 0)
+        os.write(fd, data)
+        os.fsync(fd)
+    except OSError as exc:
+        raise WorkflowError(f"lock file write failed: {exc}") from exc
     logger.debug("lock acquired (run_id=%s, pid=%d)", run_id, payload["pid"])
 
 
@@ -152,6 +182,44 @@ def _setup_signal_handlers(handle: LockHandle) -> None:
         logger.debug("signal handler setup failed (best-effort): %s", exc)
 
 
+def _retry_after_stale(fd: int, lock_path: Path) -> int | None:
+    """残锁清理后重试取锁，返回新 fd（成功）或 None（重试仍失败）。
+
+    调用前提：已确认 pid 已死且 mtime 二次校验通过（视为真 stale）。
+    副作用：关闭并释放传入的 fd，清理 .lock 文件，重新 open + fcntl 尝试。
+    返回新 fd 表示取锁成功；返回 None 时新 fd 已关闭。
+
+    Raises:
+        OSError: _try_fcntl_lock 罕见 OSError（EBADF/EINVAL/EDEADLK）
+    """
+    logger.info("stale lock at %s, cleaning up and retrying", lock_path)
+    try:
+        os.close(fd)
+        os.unlink(lock_path)
+    except OSError as exc:
+        logger.debug("stale lock cleanup failed: %s", exc)
+
+    new_fd = os.open(str(lock_path), os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        ok = _try_fcntl_lock(new_fd)
+    except OSError:
+        try:
+            os.close(new_fd)
+        except OSError:
+            pass
+        raise
+
+    if ok:
+        return new_fd
+
+    # 重试仍失败，关闭 fd
+    try:
+        os.close(new_fd)
+    except OSError:
+        pass
+    return None
+
+
 def acquire(run_id: str, repo_root: Path) -> LockHandle:
     """取实锁 + 同步 symlink。
 
@@ -159,8 +227,9 @@ def acquire(run_id: str, repo_root: Path) -> LockHandle:
       1. 计算实锁路径 runs/.locks/<run-id>.lock；mkdir -p
       2. open(O_RDWR|O_CREAT, 0o644) + fcntl.LOCK_EX|LOCK_NB
       3. 失败 → 读 .lock 内 JSON（pid/created_at/path_target）→ kill -0 pid
-            - ESRCH（pid 死）→ 自动清理 .lock 文件 + 重试一次（最多 1 次）
-            - 否则 raise LockBusyError
+            - ESRCH（pid 死）+ mtime 二次校验通过 → 自动清理 .lock 文件 + 重试一次（最多 1 次）
+            - mtime 二次校验失败（pid 复用窗口）→ raise LockBusyError（保守）
+            - pid 存活 → raise LockBusyError
       4. 成功 → 把 LockHandle 写入 .lock 文件（json.dumps + fsync）
       5. requirement 类（run_id.startswith("REQ-")）→ 建 symlink
       6. atexit + signal handler 注册 release
@@ -174,8 +243,15 @@ def acquire(run_id: str, repo_root: Path) -> LockHandle:
     lock_path = locks_dir / f"{run_id}.lock"
 
     fd = os.open(str(lock_path), os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        ok = _try_fcntl_lock(fd)
+    except OSError:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        raise
 
-    ok = _try_fcntl_lock(fd)
     if not ok:
         # 取锁失败：读当前锁持有者信息
         lock_data = _read_lock_json(lock_path)
@@ -184,18 +260,18 @@ def acquire(run_id: str, repo_root: Path) -> LockHandle:
             created_at = lock_data.get("created_at", "")
             path_target = lock_data.get("path_target", "")
             if not _is_pid_alive(holder_pid):
-                # 残锁：pid 已死，清理并重试一次（防活锁：只重试一次）
-                logger.info("stale lock detected (pid=%d dead), cleaning up", holder_pid)
-                try:
+                # pid 已死：需二次校验 mtime 缓解 pid 复用误清窗口（详见 detailed-design.md §5.1）
+                if not _is_stale_by_mtime(lock_path, created_at):
+                    # mtime 校验不通过：created_at 与 mtime 太近，保守视为活锁
+                    logger.debug(
+                        "pid=%d dead but mtime check failed, treating as alive (pid reuse window)",
+                        holder_pid,
+                    )
                     os.close(fd)
-                    os.unlink(lock_path)
-                except OSError as exc:
-                    logger.debug("stale lock cleanup failed: %s", exc)
-
-                # 重试一次
-                fd = os.open(str(lock_path), os.O_RDWR | os.O_CREAT, 0o644)
-                ok = _try_fcntl_lock(fd)
-                if not ok:
+                    raise LockBusyError(holder_pid, created_at, path_target)
+                # 真 stale：清理并重试一次
+                new_fd = _retry_after_stale(fd, lock_path)
+                if new_fd is None:
                     # 重试仍失败（极小概率：连续竞争）
                     retry_data = _read_lock_json(lock_path)
                     if retry_data:
@@ -204,8 +280,8 @@ def acquire(run_id: str, repo_root: Path) -> LockHandle:
                             retry_data.get("created_at", ""),
                             retry_data.get("path_target", ""),
                         )
-                    os.close(fd)
                     raise LockBusyError(0, "", str(lock_path))
+                fd = new_fd
             else:
                 os.close(fd)
                 raise LockBusyError(holder_pid, created_at, path_target)
@@ -240,6 +316,7 @@ def release(handle: LockHandle) -> None:
     if handle._released:
         return
     handle._released = True
+    atexit.unregister(release)
 
     try:
         fcntl.flock(handle.fd, fcntl.LOCK_UN)
