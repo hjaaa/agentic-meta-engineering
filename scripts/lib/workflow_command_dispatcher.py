@@ -10,6 +10,7 @@ CLI 用法：
 """
 from __future__ import annotations
 
+import difflib
 import sys
 from pathlib import Path
 
@@ -35,6 +36,56 @@ _CMD_MAP: dict[str, str] = {
 
 _VALID_CMDS = set(_CMD_MAP.keys())
 
+# Fuzzy 匹配词典：分命令集与模板集两段，总长 ≥ 10（F-012 AC-09）
+#
+# 命令集：9 个合法命令名（含常见拼写变体）→ 拼写变体也含在内，先试命令集
+_FUZZY_CMDS: list[str] = list(_VALID_CMDS) + [
+    "stat",         # status 简写
+    "lst",          # list 拼错
+    "cancl",        # cancel 拼错
+    "rol",          # rollback 缩写
+]
+# 模板别名词典：variant → canonical 名（acceptance #1/#2 覆盖）
+# key = 用户可能输入的变体，value = 应该建议给用户的正式模板名
+_FUZZY_TEMPLATE_ALIASES: dict[str, str] = {
+    "standar-8phase": "standard-8phase",       # 编辑距离 1 拼写错（acceptance #1）
+    "standard8phase": "standard-8phase",       # 缺连字符变体
+    "std-8phase": "standard-8phase",           # 缩写变体
+    "review-emb": "code-review-embedded",      # 短名（acceptance #2）
+    "review-embedded": "code-review-embedded", # 缺 code- 前缀
+    "req-bootstrap": "requirement-bootstrap",  # 缩写
+    "requirement-boot": "requirement-bootstrap",
+    "feature-development": "feature-dev",      # 全写变体
+}
+# 公开给测试用的合并词典（acceptance #3 验证 ≥ 10 词）
+_FUZZY_TEMPLATES: list[str] = list(_FUZZY_TEMPLATE_ALIASES.keys())
+
+
+def _fuzzy_match(cmd: str) -> tuple[str | None, bool]:
+    """对 cmd 做 fuzzy 匹配，返回 (canonical_name, is_command)。
+
+    优先尝试命令集（is_command=True），未命中再试模板别名集（is_command=False）。
+    两者均不命中返回 (None, False)。
+    """
+    # 1. 命令集：优先匹配
+    hits = difflib.get_close_matches(cmd, _FUZZY_CMDS, n=1, cutoff=0.6)
+    if hits:
+        matched = hits[0]
+        if matched in _VALID_CMDS:
+            return matched, True
+        # 命中了拼写变体（如 "cancl"）→ 找最接近的正式命令名
+        canonical = difflib.get_close_matches(matched, list(_VALID_CMDS), n=1, cutoff=0.5)
+        if canonical:
+            return canonical[0], True
+
+    # 2. 模板别名集：fuzzy 查 key，返回对应 canonical value
+    template_hits = difflib.get_close_matches(cmd, list(_FUZZY_TEMPLATE_ALIASES.keys()), n=1, cutoff=0.6)
+    if template_hits:
+        canonical_template = _FUZZY_TEMPLATE_ALIASES[template_hits[0]]
+        return canonical_template, False
+
+    return None, False
+
 
 def dispatch(cmd: str, args: list[str]) -> int:
     """派发到对应命令模块的 main(args) 函数，返回 exit code。
@@ -49,11 +100,28 @@ def dispatch(cmd: str, args: list[str]) -> int:
         2  — 鉴别拦截（approve/reject 非 tty / hook BLOCKED）
     """
     if cmd not in _VALID_CMDS:
-        print(
-            f"ERROR: 未知命令 {cmd!r}；可用命令：{', '.join(sorted(_VALID_CMDS))}",
-            file=sys.stderr,
-        )
-        return 1
+        matched, is_command = _fuzzy_match(cmd)
+        if matched and is_command:
+            print(
+                f"NOTE: 已 fuzzy 匹配 {cmd!r} → {matched!r}",
+                file=sys.stderr,
+            )
+            cmd = matched
+        elif matched and not is_command:
+            print(
+                f"NOTE: {cmd!r} 看起来像 workflow 模板名 {matched!r}；"
+                f"您可能想 `/workflow:run {matched}`?",
+                file=sys.stderr,
+            )
+            return 1
+        else:
+            suggestion = difflib.get_close_matches(cmd, list(_VALID_CMDS), n=1, cutoff=0.5)
+            hint = f"；您是不是想输入 {suggestion[0]!r}?" if suggestion else ""
+            print(
+                f"ERROR: 未知命令 {cmd!r}；可用命令：{', '.join(sorted(_VALID_CMDS))}{hint}",
+                file=sys.stderr,
+            )
+            return 1
 
     module_name = _CMD_MAP[cmd]
     try:
