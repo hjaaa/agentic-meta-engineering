@@ -1813,7 +1813,7 @@ readonly APPROVAL_PYTHON_PATTERN='python3?[[:space:]]+([^[:space:]]+/)?(scripts/
 | `workflow_reject.py`（AC-03b/c） | attempt=1 < max=3 → 写 [approval_rejected, approval_repair_started]；attempt=3 → 写 [rejected, node_failed, workflow_failed] 三条原子；reason 让 batch ≥4KB → manifest fallback（v6 P2 修订；3500 字节单字段在外置时入选）；attempt 计数从 jsonl 反扫 | 5 |
 | `run_state.py` rebuild 新事件 | node_ready → state=awaiting + current_node=N；approval_repair_started → state=awaiting + pending_approval=N；approval_repair_completed → state=approval_pending；node_completed 在 awaiting → state=running | 5 |
 | `workflow_state_validator.CMD_ALLOWED_STATES` | continue/save/status/cancel/rollback 在 awaiting_claude_action 下 allowed；approve/reject 在 awaiting 下 raise WorkflowError | 7 |
-| `workflow_status.py --verbose` | ready/running/blocked/paused/done 分类正确；stale 30 分钟阈值触发 WARN；env override 1 分钟 → 立即 stale；**incomplete_dispatch 诊断（v8 REV-007 P2）：jsonl [workflow_started, node_started(N1)] 无后续终态事件 → blocked 行 reason=incomplete_dispatch + node=N1**；blocked reason 枚举 ∈ {incomplete_dispatch, awaiting_deps, awaiting_claude_action} | 6 |
+| `workflow_status.py --verbose` | ready/running/blocked/awaiting/done 5 分类正确（与 features.json F-009 acceptance AC-1 同源）；stale 30 分钟阈值触发 WARN；env override 1 分钟 → 立即 stale；**incomplete_dispatch 诊断（v8 REV-007 P2）：jsonl [workflow_started, node_started(N1)] 无后续终态事件 → blocked 行 reason=incomplete_dispatch + node=N1**；blocked reason 枚举 ∈ {incomplete_dispatch, awaiting_deps, awaiting_claude_action} | 6 |
 | `workflow_loader.py` AC-10 字段 | 7 字段全合法 yaml 通过 schema；allowed_tools 非 list[str] → schema 错；output_format 非 dict → schema 错 | 5 |
 | launcher fuzzy（AC-09） | 编辑距离 ≤ 2 命中；fuzzy 词典 ≥ 10 词 hit；`workflow list --json` 输出有效 JSON | 4 |
 
