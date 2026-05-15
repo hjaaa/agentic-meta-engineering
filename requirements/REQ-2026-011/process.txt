@@ -100,3 +100,5 @@ REQ-2026-011 语义事件日志
 2026-05-15 11:01:07 [review:needs_attention] F-006 rev1 needs_attention(82) 5维[91/74/78/91/92] 0/2 major (F-CR-002 max≤0 静默 / F-CR-005 main CC=16+102 行)/4 minor (F-CR-008/011/016/018)；critic 5 rejected/6 not_proven/7 not_rebutted；3 follow-up 入 IB-22/23/24；待派 rev2 或 sign-off
 2026-05-15 11:17:29 [save] F-006 rev2 修复完成（fe2fc03：抽 _extract_max_attempts/_validate_reason/_print_reject_summary + warning + 测试 helper + 断言锚定；main 102→82 行 CC≈16→10；F-006 scoped 18 + 1412 全套 0 回归）；进 rev2 post-dev gate + /code-review
 2026-05-15 11:34:17 [review:approved] F-006 rev2 code-review looks_clean(88) 0/0/2 minor (F2-CR-004 lib→e2e sys.path hack + EH-NEW-001 bool 测试盲区)；critic 3 rejected/4 not_proven/2 not_rebutted；rev1 6 keep 全闭合；trend-G-meta 未触发；3 follow-up 入 IB-24/25/26；等 tty signoff
+2026-05-15 11:35:24 [signoff] REV-REQ-2026-011-code-F-006-002 approved by hj19961223@gmail.com
+2026-05-15 11:36:15 [save] F-006 完成（status=done / rev2 looks_clean 88 / signoff approved / 释放派发锁 / 2 minor follow-up 入 IB-25/26 + IB-24 已存合并；trend-G-meta 未触发；6/13 features done）
