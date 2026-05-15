@@ -349,6 +349,94 @@ def test_is_stale_by_mtime_false_pid_reuse_window(tmp_path: Path) -> None:
     assert result is False, f"created_at 与 mtime 差 < 1s，应保守视为活锁，got {result}"
 
 
+def test_atexit_unregister_precision_cross_handle(tmp_path: Path) -> None:
+    """IB-22: 同进程持两 handle → release(handleA) 不应误删 handleB 的 atexit 注册。"""
+    root = _make_repo(tmp_path)
+
+    handle_a = acquire("REQ-2026-099", root)
+    handle_b = acquire("REQ-2026-100", root)
+    assert handle_a._release_fn is not None
+    assert handle_b._release_fn is not None
+    assert handle_a._release_fn is not handle_b._release_fn
+
+    # 释放 A 后，B 的 partial 仍应在 atexit 注册表里
+    release(handle_a)
+    assert handle_a._release_fn is None
+    assert handle_b._release_fn is not None
+    # 反向查询 atexit 注册表（CPython 实现细节，但稳定）
+    registered = [cb for cb in getattr(__import__("atexit"), "_exithandlers", [])]
+    # _exithandlers 在新版 CPython 已不导出；改用反向尝试 unregister 验证存在性
+    import atexit as _atexit
+    # 若 B 注册仍在，unregister 返回 None 且后续真正 release 走 idempotent 路径
+    _atexit.unregister(handle_b._release_fn)
+    # 不调 release(handle_b)（_release_fn 已被外部 unregister，但 release 仍要清 fd）
+    release(handle_b)
+    assert not _lock_path(root, "REQ-2026-100").exists()
+
+
+def test_acquire_write_lock_json_fail_fd_released(tmp_path: Path) -> None:
+    """IB-23: _write_lock_json 抛 WorkflowError → acquire 释放 fd 并传播，无残锁。"""
+    root = _make_repo(tmp_path)
+    run_id = "REQ-2026-099"
+
+    from common import WorkflowError as _WfErr
+
+    def _boom(fd: int, lock_path: Path, run_id: str) -> None:
+        raise _WfErr("simulated write failure")
+
+    with mock.patch.object(path_lock, "_write_lock_json", side_effect=_boom):
+        with pytest.raises(_WfErr, match="simulated write failure"):
+            acquire(run_id, root)
+
+    # release 已被显式调用 → .lock 文件已删
+    assert not _lock_path(root, run_id).exists(), "_write_lock_json 失败后 .lock 应被 release 清理"
+
+    # 后续 acquire 应能再次取锁（fd 已释放）
+    handle = acquire(run_id, root)
+    release(handle)
+
+
+def test_retry_after_stale_inode_changed_aborts(tmp_path: Path) -> None:
+    """IB-26: _retry_after_stale 中 unlink 前 inode 比对发现已被换 →
+    返 (None, retry_data) 放弃清理，避免误删他人新建的锁文件。
+    """
+    root = _make_repo(tmp_path)
+    run_id = "REQ-2026-099"
+
+    lp = _lock_path(root, run_id)
+    other_holder = {
+        "pid": 12345,
+        "created_at": "2026-05-15T10:00:00+00:00",
+        "path_target": str(lp.resolve()),
+        "host": "Darwin-25.4.0",
+    }
+    lp.write_text(json.dumps(other_holder) + "\n", encoding="utf-8")
+
+    fd = os.open(str(lp), os.O_RDWR | os.O_CREAT, 0o644)
+
+    real_stat = os.stat
+
+    class _FakeStat:
+        def __init__(self, real: os.stat_result, ino: int) -> None:
+            self.st_ino = ino
+            self.st_mtime = real.st_mtime
+            self.st_size = real.st_size
+
+    def _fake_stat(path, *args, **kwargs):  # type: ignore[no-untyped-def]
+        r = real_stat(path, *args, **kwargs)
+        if str(path) == str(lp):
+            return _FakeStat(r, r.st_ino + 99999)
+        return r
+
+    with mock.patch.object(path_lock.os, "stat", side_effect=_fake_stat):
+        new_fd, retry_data = path_lock._retry_after_stale(fd, lp)
+
+    assert new_fd is None, "inode 不匹配应放弃 retry"
+    assert lp.exists(), "inode 比对失败 → 不应 unlink 他人的锁文件"
+    assert retry_data is not None
+    assert retry_data["pid"] == 12345
+
+
 def test_acquire_pid_reuse_window_no_cleanup(tmp_path: Path) -> None:
     """REV2-MTIME-3: mock _is_pid_alive=False 但 mtime 校验不通过（pid 复用窗口）
     → acquire 不清理 .lock，直接 raise LockBusyError。

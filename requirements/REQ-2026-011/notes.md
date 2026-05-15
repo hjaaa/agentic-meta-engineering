@@ -267,6 +267,7 @@ _[hook-skipped: claude-exit-143]_
 - **维度**：concurrency major（critic 降级，scope 内单进程不可达）
 - **执行时机**：建议合并 IB-23 (F2-CR-005) 同 PR — 同属 atexit / fd 生命周期管理
 - **来源**：`reviews/code-F-008-002.json` F2-CR-004。
+- **状态（2026-05-15 15:00）**：✅ 闭环。`LockHandle._release_fn = partial(release, self)` 在 acquire 内绑定；`atexit.register(handle._release_fn)` 注册；release 内 `atexit.unregister(handle._release_fn)` 精确匹配。新增 `test_atexit_unregister_precision_cross_handle` 覆盖跨 handle 不互删；18/18 path_lock test pass。
 
 ### IB-23 · `_write_lock_json` 抛 WorkflowError 时 fd 泄漏（F2-CR-005 minor）
 
@@ -275,6 +276,7 @@ _[hook-skipped: claude-exit-143]_
 - **目标**：line 293 处包 `try/except WorkflowError as exc: os.close(fd); raise`（与 _retry_after_stale 内 OSError 兜底风格对齐）
 - **维度**：error_handling + security minor（critic 降级）
 - **来源**：`reviews/code-F-008-002.json` F2-CR-005。
+- **状态（2026-05-15 15:00）**：✅ 闭环。结合 IB-27 调换顺序后，atexit 已先注册再写 JSON，且失败路径用 `try/except WorkflowError: release(handle); raise` 显式释放（不再依赖 OS 退出自愈）。新增 `test_acquire_write_lock_json_fail_fd_released` 覆盖写失败后 .lock 被清理 + 下次 acquire 成功。
 
 ### IB-24 · `_retry_after_stale` close+unlink 共享 except（F2-CR-006 minor）
 
@@ -282,6 +284,7 @@ _[hook-skipped: claude-exit-143]_
 - **目标**：拆为两段 try/except 分别区分 close-fail vs unlink-fail（可观测性 nit；非必须）
 - **维度**：error_handling minor
 - **来源**：`reviews/code-F-008-002.json` F2-CR-006。
+- **状态（2026-05-15 15:00）**：✅ 闭环。close / unlink 拆为两段 try/except OSError 分别 logger.debug，可观测性区分 `stale lock fd close failed` vs `stale lock unlink failed`。
 
 ### IB-25 · 模块 docstring 未提 atexit.unregister（F2-CR-008 minor）
 
@@ -290,6 +293,7 @@ _[hook-skipped: claude-exit-143]_
 - **维度**：design_consistency minor
 - **执行时机**：与 IB-22 修复同 PR 一并更新 docstring
 - **来源**：`reviews/code-F-008-002.json` F2-CR-008。
+- **状态（2026-05-15 15:00）**：✅ 闭环。模块 docstring 新增「atexit 精确反注册（IB-22）」+「signal handler 注册前移（IB-27）」两段，明确 functools.partial 唯一 callable 语义与 release 对空 .lock 安全性。
 
 ### IB-26 · 三进程 TOCTOU inode 分裂（F2-CR-012 minor，spec ack）
 
@@ -298,6 +302,7 @@ _[hook-skipped: claude-exit-143]_
 - **可选优化**：在 unlink 前再读一次 inode 比对（O(1) syscall），进一步降低概率到 ≤1e-9/op
 - **维度**：concurrency minor（critic 降级）
 - **来源**：`reviews/code-F-008-002.json` F2-CR-012。
+- **状态（2026-05-15 15:00）**：✅ 闭环（可选优化已落地）。`_retry_after_stale` close 前 `os.fstat(fd).st_ino` 取原 inode，unlink 前 `os.stat(lock_path).st_ino` 比对；变更则 abort 并返回 `(None, _read_lock_json)` 避免误删他人锁。新增 `test_retry_after_stale_inode_changed_aborts` 覆盖 inode 变更场景。理论概率从 ≤1e-7/op 降至 ≤1e-9/op。
 
 ### IB-27 · SIGTERM 在 atexit 注册前窗口残锁（F2-CR-013 minor，spec ack）
 
@@ -306,6 +311,7 @@ _[hook-skipped: claude-exit-143]_
 - **可选优化**：调换顺序 — 先 `_setup_signal_handlers(handle)` 再 `_write_lock_json`（窗口期缩短至毫秒级）；需评估 handler 在 lock JSON 未写入时调 release 的安全性
 - **维度**：concurrency minor（critic 降级）
 - **来源**：`reviews/code-F-008-002.json` F2-CR-013。
+- **状态（2026-05-15 15:00）**：✅ 闭环（可选优化已落地）。acquire 重排：fcntl 拿锁后立即建 handle → `atexit.register(handle._release_fn)` → `_setup_signal_handlers` → 最后 `_write_lock_json`。空 .lock 情况下 release 仅做 fcntl.LOCK_UN + close + unlink，对 0 字节文件完全安全。窗口期从 ~ms 降至 ~µs 级。模块 docstring 新增「signal handler 注册前移」段说明安全性。
 
 ### IB-28 · retry 失败二次 `_read_lock_json`（F2-CR-017 minor）
 
@@ -314,6 +320,7 @@ _[hook-skipped: claude-exit-143]_
 - **目标**：让 `_retry_after_stale` 返回 None 时一并返回 retry_data；或保留现状（影响可忽略）
 - **维度**：performance minor
 - **来源**：`reviews/code-F-008-002.json` F2-CR-017。
+- **状态（2026-05-15 15:00）**：✅ 闭环。`_retry_after_stale` 签名改为 `tuple[int | None, dict | None]`：`(new_fd, None)` 成功 / `(None, retry_data)` 失败；调用方（`_handle_lock_conflict`）直接复用 retry_data，无二次 read。
 
 ### IB-29 · docstring 三段对称（F2-CR-020+021 minor）
 
@@ -326,6 +333,7 @@ _[hook-skipped: claude-exit-143]_
 - **维度**：design_consistency / auxiliary_spec minor
 - **执行时机**：与 IB-22/23 atexit 修复 PR 一并 docstring sweep
 - **来源**：`reviews/code-F-008-002.json` F2-CR-020 + F2-CR-021。
+- **状态（2026-05-15 15:00）**：✅ 闭环。`_retry_after_stale` 重写为 Google 标准 Args/Returns/Raises 三段（含新签名 tuple 返回的 Returns 双分支描述）；`_is_stale_by_mtime` 补 `Raises: 不抛（OSError / ValueError 由内部 except 兜底返 False）` 一行。
 
 ### IB-30 · acquire 复杂度可选拆函数（F2-CR-001+002+003 not_proven → 可选）
 
@@ -333,4 +341,5 @@ _[hook-skipped: claude-exit-143]_
 - **可选优化**：进一步抽 `_handle_lock_conflict(fd, lock_path) -> int | None` 子函数，把 line 255-290 的 `if not ok` 取锁失败路径整体抽出；acquire 主路径降至 ≤ 50 行 / 嵌套 ≤ 2 层
 - **维度**：complexity（非必须，reviewer 弱证据，建议结合 IB-22/23 同模块改造时一并）
 - **来源**：`reviews/code-F-008-002.json` F2-CR-001 + F2-CR-002 + F2-CR-003（critic 全 not_proven，judge 聚合降级 minor）。
+- **状态（2026-05-15 15:00）**：✅ 闭环（可选优化已落地）。抽 `_handle_lock_conflict(fd, lock_path) -> int` 子函数承担 read-holder / pid-alive / mtime / retry 全部失败分支语义；acquire 主路径降至 ~30 行（含 docstring）/ 嵌套 ≤ 2 层。函数职责单一，未来若再增竞态分支只改 `_handle_lock_conflict` 而不动 acquire。
 

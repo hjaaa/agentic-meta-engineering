@@ -7,6 +7,17 @@
       释放 fcntl + close + 删 .lock 文件；不删 symlink（dangling 由下次 acquire 容忍）。
   - LockBusyError：第二进程取锁失败时抛出（持有方 pid + created_at + path_target）。
 
+atexit 精确反注册（IB-22）：
+  atexit.unregister(func) 按函数对象匹配 → 移除该函数的所有注册；为避免单进程持
+  多 handle 时一次 release 误删其它 handle 的注册，每个 handle 注册的是
+  functools.partial(release, handle) 唯一可寻 callable，handle 上以 _release_fn
+  字段保存以便 release 精确反注册。
+
+signal handler 注册前移（IB-27）：
+  signal/atexit 在 _write_lock_json 之前注册；窗口期 SIGTERM 调 release 时 .lock 文
+  件可能尚未写入 JSON，release 仅做 fcntl.LOCK_UN + close + unlink，对空 .lock
+  文件完全安全。
+
 跨平台：fcntl.LOCK_EX 在 macOS Darwin 25.4 与 Linux 行为一致（BSD flock 语义）。
 """
 from __future__ import annotations
@@ -22,7 +33,9 @@ import signal
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from functools import partial
 from pathlib import Path
+from typing import Any
 
 from common import WorkflowError
 
@@ -48,13 +61,18 @@ class LockBusyError(WorkflowError):
 
 @dataclass
 class LockHandle:
-    """acquire 返回的不透明句柄；release 时按此释放。"""
+    """acquire 返回的不透明句柄；release 时按此释放。
+
+    `_release_fn` 是 functools.partial(release, self) 在 acquire 内绑定，供 release
+    向 atexit 精确反注册（IB-22）。外部禁止直接读写。
+    """
 
     run_id: str
     lock_path: Path
     symlink_path: Path | None
     fd: int
     _released: bool = field(default=False, init=False, repr=False)
+    _release_fn: Any = field(default=None, init=False, repr=False)
 
 
 def _is_pid_alive(pid: int) -> bool:
@@ -84,6 +102,9 @@ def _is_stale_by_mtime(lock_path: Path, created_at_iso: str, threshold_seconds: 
     Returns:
         True：created_at 比 mtime 早 ≥ threshold_seconds，视为真 stale
         False：created_at 与 mtime 接近，pid 复用窗口可能，保守视为活锁
+
+    Raises:
+        不抛（OSError / ValueError 由内部 except 兜底返 False）。
     """
     try:
         st_mtime = lock_path.stat().st_mtime
@@ -182,22 +203,61 @@ def _setup_signal_handlers(handle: LockHandle) -> None:
         logger.debug("signal handler setup failed (best-effort): %s", exc)
 
 
-def _retry_after_stale(fd: int, lock_path: Path) -> int | None:
-    """残锁清理后重试取锁，返回新 fd（成功）或 None（重试仍失败）。
+def _retry_after_stale(fd: int, lock_path: Path) -> tuple[int | None, dict | None]:
+    """残锁清理后重试取锁。
 
     调用前提：已确认 pid 已死且 mtime 二次校验通过（视为真 stale）。
     副作用：关闭并释放传入的 fd，清理 .lock 文件，重新 open + fcntl 尝试。
-    返回新 fd 表示取锁成功；返回 None 时新 fd 已关闭。
+
+    Args:
+        fd: 当前已 open 但未拿到 fcntl 锁的 fd（本函数负责 close）
+        lock_path: .lock 文件路径
+
+    Returns:
+        (new_fd, None): 取锁成功，new_fd 为新 fd
+        (None, retry_data): 取锁失败，new_fd 已关闭；retry_data 为竞态期间新写
+            入 .lock 的 holder 信息（dict），若 .lock 已被清理或读取失败为 None。
+            调用方避免再次 _read_lock_json（IB-28）。
 
     Raises:
-        OSError: _try_fcntl_lock 罕见 OSError（EBADF/EINVAL/EDEADLK）
+        OSError: _try_fcntl_lock 罕见 OSError（EBADF/EINVAL/EDEADLK）。
     """
     logger.info("stale lock at %s, cleaning up and retrying", lock_path)
+
+    # IB-26: 记录原 inode，unlink 前比对避免误删他人新创建的锁文件
+    # （≤1e-7/op → ≤1e-9/op，详见 detailed-design.md §5.1 三进程 TOCTOU 兜底）
+    try:
+        original_inode: int | None = os.fstat(fd).st_ino
+    except OSError as exc:
+        logger.debug("inode capture failed: %s", exc)
+        original_inode = None
+
     try:
         os.close(fd)
+    except OSError as exc:
+        logger.debug("stale lock fd close failed: %s", exc)
+
+    if original_inode is not None:
+        try:
+            current_inode = os.stat(lock_path).st_ino
+            if current_inode != original_inode:
+                # inode 已被换过 → 他人已 unlink+create，本进程退出 retry，避免误删
+                logger.debug(
+                    "inode changed (%d → %d), another process handled stale; abort retry",
+                    original_inode,
+                    current_inode,
+                )
+                return None, _read_lock_json(lock_path)
+        except FileNotFoundError:
+            # 已被他人 unlink；后续 open(O_CREAT) 自然创建新文件
+            pass
+        except OSError as exc:
+            logger.debug("inode check stat failed: %s", exc)
+
+    try:
         os.unlink(lock_path)
     except OSError as exc:
-        logger.debug("stale lock cleanup failed: %s", exc)
+        logger.debug("stale lock unlink failed: %s", exc)
 
     new_fd = os.open(str(lock_path), os.O_RDWR | os.O_CREAT, 0o644)
     try:
@@ -210,14 +270,66 @@ def _retry_after_stale(fd: int, lock_path: Path) -> int | None:
         raise
 
     if ok:
-        return new_fd
+        return new_fd, None
 
-    # 重试仍失败，关闭 fd
+    # 重试仍失败，读 holder 信息一次（IB-28：返调用方复用，避免二次 read）
+    retry_data = _read_lock_json(lock_path)
     try:
         os.close(new_fd)
     except OSError:
         pass
-    return None
+    return None, retry_data
+
+
+def _handle_lock_conflict(fd: int, lock_path: Path) -> int:
+    """fcntl 取锁失败分支：读 holder → 判活 → 可能 mtime 校验 → 可能重试。
+
+    IB-30 抽出降 acquire 主路径复杂度。
+
+    Args:
+        fd: 已 open 但未拿到 fcntl 锁的 fd（本函数负责关闭或转交）
+        lock_path: 实锁路径
+
+    Returns:
+        新 fd（取锁成功，可能等于传入 fd 或重试后新 fd）。
+
+    Raises:
+        LockBusyError: 持有方存活 / pid 复用窗口 / 残锁清理后仍冲突。
+        OSError: _retry_after_stale 罕见 fcntl OSError 重抛。
+    """
+    lock_data = _read_lock_json(lock_path)
+    if not lock_data:
+        os.close(fd)
+        raise LockBusyError(0, "", str(lock_path))
+
+    holder_pid = lock_data.get("pid", 0)
+    created_at = lock_data.get("created_at", "")
+    path_target = lock_data.get("path_target", "")
+
+    if _is_pid_alive(holder_pid):
+        os.close(fd)
+        raise LockBusyError(holder_pid, created_at, path_target)
+
+    # pid 已死：mtime 二次校验缓解 pid 复用误清窗口（详见 detailed-design.md §5.1）
+    if not _is_stale_by_mtime(lock_path, created_at):
+        logger.debug(
+            "pid=%d dead but mtime check failed, treating as alive (pid reuse window)",
+            holder_pid,
+        )
+        os.close(fd)
+        raise LockBusyError(holder_pid, created_at, path_target)
+
+    # 真 stale：清理并重试一次
+    new_fd, retry_data = _retry_after_stale(fd, lock_path)
+    if new_fd is None:
+        if retry_data:
+            raise LockBusyError(
+                retry_data.get("pid", 0),
+                retry_data.get("created_at", ""),
+                retry_data.get("path_target", ""),
+            )
+        raise LockBusyError(0, "", str(lock_path))
+    return new_fd
 
 
 def acquire(run_id: str, repo_root: Path) -> LockHandle:
@@ -226,17 +338,13 @@ def acquire(run_id: str, repo_root: Path) -> LockHandle:
     流程：
       1. 计算实锁路径 runs/.locks/<run-id>.lock；mkdir -p
       2. open(O_RDWR|O_CREAT, 0o644) + fcntl.LOCK_EX|LOCK_NB
-      3. 失败 → 读 .lock 内 JSON（pid/created_at/path_target）→ kill -0 pid
-            - ESRCH（pid 死）+ mtime 二次校验通过 → 自动清理 .lock 文件 + 重试一次（最多 1 次）
-            - mtime 二次校验失败（pid 复用窗口）→ raise LockBusyError（保守）
-            - pid 存活 → raise LockBusyError
-      4. 成功 → 把 LockHandle 写入 .lock 文件（json.dumps + fsync）
+      3. 失败 → 委派 `_handle_lock_conflict`（读 holder / 判活 / mtime / 残锁重试）
+      4. 成功 → 注册 atexit + signal handler，再写 JSON 元数据（_write_lock_json 失败显式 release）
       5. requirement 类（run_id.startswith("REQ-")）→ 建 symlink
-      6. atexit + signal handler 注册 release
 
     Raises:
-        LockBusyError: 持有者活着
-        OSError: 锁文件 IO 失败
+        LockBusyError: 持有者活着或残锁清理后仍冲突。
+        OSError: 锁文件 IO 失败。
     """
     locks_dir = repo_root / "runs" / ".locks"
     locks_dir.mkdir(parents=True, exist_ok=True)
@@ -253,57 +361,27 @@ def acquire(run_id: str, repo_root: Path) -> LockHandle:
         raise
 
     if not ok:
-        # 取锁失败：读当前锁持有者信息
-        lock_data = _read_lock_json(lock_path)
-        if lock_data:
-            holder_pid = lock_data.get("pid", 0)
-            created_at = lock_data.get("created_at", "")
-            path_target = lock_data.get("path_target", "")
-            if not _is_pid_alive(holder_pid):
-                # pid 已死：需二次校验 mtime 缓解 pid 复用误清窗口（详见 detailed-design.md §5.1）
-                if not _is_stale_by_mtime(lock_path, created_at):
-                    # mtime 校验不通过：created_at 与 mtime 太近，保守视为活锁
-                    logger.debug(
-                        "pid=%d dead but mtime check failed, treating as alive (pid reuse window)",
-                        holder_pid,
-                    )
-                    os.close(fd)
-                    raise LockBusyError(holder_pid, created_at, path_target)
-                # 真 stale：清理并重试一次
-                new_fd = _retry_after_stale(fd, lock_path)
-                if new_fd is None:
-                    # 重试仍失败（极小概率：连续竞争）
-                    retry_data = _read_lock_json(lock_path)
-                    if retry_data:
-                        raise LockBusyError(
-                            retry_data.get("pid", 0),
-                            retry_data.get("created_at", ""),
-                            retry_data.get("path_target", ""),
-                        )
-                    raise LockBusyError(0, "", str(lock_path))
-                fd = new_fd
-            else:
-                os.close(fd)
-                raise LockBusyError(holder_pid, created_at, path_target)
-        else:
-            os.close(fd)
-            raise LockBusyError(0, "", str(lock_path))
+        fd = _handle_lock_conflict(fd, lock_path)
 
-    # 取锁成功，写入当前进程信息
-    _write_lock_json(fd, lock_path, run_id)
-
-    symlink_path = _make_symlink_if_needed(run_id, lock_path, repo_root)
-
+    # 取锁成功（fcntl 已持锁），先建 handle 并注册 cleanup —— SIGTERM 窗口前移（IB-27）
     handle = LockHandle(
         run_id=run_id,
         lock_path=lock_path,
-        symlink_path=symlink_path,
+        symlink_path=None,
         fd=fd,
     )
-
-    atexit.register(release, handle)
+    handle._release_fn = partial(release, handle)
+    atexit.register(handle._release_fn)
     _setup_signal_handlers(handle)
 
+    # 写入 JSON 元数据（可能失败）；失败显式 release 后再传播 —— fd 兜底（IB-23）
+    try:
+        _write_lock_json(fd, lock_path, run_id)
+    except WorkflowError:
+        release(handle)
+        raise
+
+    handle.symlink_path = _make_symlink_if_needed(run_id, lock_path, repo_root)
     return handle
 
 
@@ -312,11 +390,14 @@ def release(handle: LockHandle) -> None:
 
     幂等：多次调用安全（_released 标志保护）。
     LOCK_UN 包 try/except OSError: pass（参考 IB-03 既有惯例）。
+    atexit 反注册按 functools.partial 对象精确匹配（IB-22），不影响其它 handle。
     """
     if handle._released:
         return
     handle._released = True
-    atexit.unregister(release)
+    if handle._release_fn is not None:
+        atexit.unregister(handle._release_fn)
+        handle._release_fn = None
 
     try:
         fcntl.flock(handle.fd, fcntl.LOCK_UN)
