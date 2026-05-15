@@ -251,6 +251,7 @@ def test_ac06_approval_repair_happy_path(tmp_path: Path) -> None:
     completed = next(e for e in events if e["type"] == "approval_repair_completed")
     assert completed["node_id"] == "gate-A"
     assert completed["data"]["attempt"] == 1
+    assert completed["data"]["output"] == {"fixed": True}
 
 
 # ---------------------------------------------------------------------------

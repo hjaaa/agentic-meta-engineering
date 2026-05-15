@@ -108,3 +108,6 @@ REQ-2026-011 语义事件日志
 2026-05-15 12:51:33 [review:blocked] F-007 rev1 code-review blocked(62) 5维[95/82/88/88/70/55/75] 1 critical (F-CR-001 approval_repair_completed 漏 data.attempt 必填) + 5 major (F-CR-005/006/007 错误码缺失 + F-CR-009/010 dead import) + 4 minor (F-CR-018/023/025/026)；critic 10 rejected/6 keep/10 not_proven downgrade；rev2 修复派发
 2026-05-15 16:30:00 [development] F-007 rev2 修复完成（c9bc3bf：data.attempt 必填 + E-NODE-RESULT-005~008+099 错误码 + dead import x2 + assert attempt==1 + _ 解包 x7 + 死变量 + try 覆盖；11 AC 全通过，全套 410 passed 0 回归）
 2026-05-15 13:06:17 [review:approved] F-007 rev2 code-review looks_clean(88) 5维[95/82/88/88/90/90/90]；rev1 1 critical + 5 major + 4 minor 全闭合（F-CR-001 data.attempt 写入 + 错误码 5/6/7 + dead import 9/10 + 18/23/25/26）；rev2 新引入 4 minor：critic 0 rejected/3 not_proven (→ suggestion)/1 not_rebutted (F2-CR-004 test_ac06 漏 data.output 断言)；trend-G-meta MARGINAL；等 tty signoff
+2026-05-15 13:06:56 [signoff] REV-REQ-2026-011-code-F-007-002 approved by hj19961223@gmail.com
+2026-05-15 13:09:10 [signoff] REV-REQ-2026-011-code-F-007-002 approved by hj19961223@gmail.com
+2026-05-15 13:09:10 [save] F-007 完成（status=done / rev2 looks_clean 88 / signoff approved / F2-CR-004 housekeeping data.output 断言补齐 / 释放派发锁 / 7/13 features done；3 suggestion (F2-CR-001/002/003) 入 IB sweep）
