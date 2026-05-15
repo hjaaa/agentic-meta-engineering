@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-010",
+  "status": "DONE",
+  "commit_sha": "e625960",
+  "files_changed": [
+    "scripts/lib/workflow_dispatcher.py",
+    "tests/lib/test_dispatch_loop_until.py"
+  ],
+  "test_summary": "1471 passed, 8 skipped in 50.30s（pytest 全套；rev2 新增 TC-F10-U5 OSError 路径）",
+  "touches_violations": [],
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-15T17:00:00+08:00"
+}
