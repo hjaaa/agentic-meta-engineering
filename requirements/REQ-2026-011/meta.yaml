@@ -101,12 +101,12 @@ reviews:
       - REV-REQ-2026-011-definition-002
     stale: false
   outline-design:
-    latest: REV-REQ-2026-011-outline-design-004
+    latest: REV-REQ-2026-011-outline-design-005
     conclusion: looks_clean
-    reviewed_commit: 4542a4f
+    reviewed_commit: ca5c0e5
     artifact_hashes:
       artifacts/outline-design.md: 
-        379fb36d2192c590533fc52c8e25e76a52735b10536e57e54d1f980aac8288a5
+        d41b1b8f87c657e7fc92ed68481c62f77be946b7328491286c41efb8267f81c0
       artifacts/requirement.md: 
         86a31b69f1d1b0c7a20940f86ec8c8ad993f6f1e1b1950ac328dcf6bc3f4d184
     history:
@@ -114,18 +114,19 @@ reviews:
       - REV-REQ-2026-011-outline-design-002
       - REV-REQ-2026-011-outline-design-003
       - REV-REQ-2026-011-outline-design-004
+      - REV-REQ-2026-011-outline-design-005
     stale: false
   detail-design:
-    latest: REV-REQ-2026-011-detail-design-011
+    latest: REV-REQ-2026-011-detail-design-012
     conclusion: looks_clean
-    reviewed_commit: 5531e7f
+    reviewed_commit: ca5c0e5
     artifact_hashes:
       artifacts/detailed-design.md: 
-        f909b166811f08f7cc21cd8548dba5320a41712a0f85bce7792a32775f42f2e7
+        55115b43d8ec19d132e21a2be69ca5d2b5519e5a3f9e82ae68e6ca80109aac24
       artifacts/features.json: 
         e05957428c01111babb122eac6af1871456cc9f6e0cfac8a5a5a5fc572a02c6a
       artifacts/outline-design.md: 
-        0863aa3cdd222ab08168eb50d9d4814c9f28045c0e3d05b2caee31de7176ee4a
+        d41b1b8f87c657e7fc92ed68481c62f77be946b7328491286c41efb8267f81c0
     history:
       - REV-REQ-2026-011-detail-design-001
       - REV-REQ-2026-011-detail-design-002
@@ -138,6 +139,7 @@ reviews:
       - REV-REQ-2026-011-detail-design-009
       - REV-REQ-2026-011-detail-design-010
       - REV-REQ-2026-011-detail-design-011
+      - REV-REQ-2026-011-detail-design-012
     stale: false
   code:
     by_feature:

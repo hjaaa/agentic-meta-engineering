@@ -88,3 +88,5 @@ REQ-2026-011 语义事件日志
 2026-05-15 09:43:09 [save] B3 完成（a83c03d / 60e9051：IB-08 approval_* 终态守卫 + IB-21a run_artifact_checks 异常包装 + IB-21b dispatch_node CCN 11→4 字典分发 + F-CR-004 OSError 父类捕获；7 new tests + 1394 全套 0 回归）；进 B4a (IB-13 拆 workflow_continue.py)
 2026-05-15 09:53:15 [save] B4a 完成（b860c2f：IB-13 拆 workflow_continue.py 860→281 + 新 workflow_scheduler.py 379 + workflow_outcome_router.py 309；3 测试 import 同步；1394 全套 0 回归 0 行为变更）；进 B4b (IB-20 拆 artifact_spec_renderer.py)
 2026-05-15 09:58:11 [save] B4b 完成（b494f3a：IB-20 拆 artifact_spec_renderer.py 104 行 + workflow_dispatcher.py 685→606；test import 同步；1394 全套 0 回归 0 行为变更）；IB sweep 5/5 批全部完成（13 项 + IB-08 共 14 项 follow-up 闭环）；下一步 next 派 F-006
+2026-05-15 10:14:12 [review:approved] outline-design refresh-005 looks_clean (IB-13 source ref 校正，无语义偏离)；等 tty signoff
+2026-05-15 10:14:12 [review:approved] detail-design refresh-012 looks_clean(95) (IB-13 source ref + D-015 #4 commit 数自洽，14=13+1, P2=2)；等 tty signoff
