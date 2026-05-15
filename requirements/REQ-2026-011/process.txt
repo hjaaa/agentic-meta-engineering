@@ -141,3 +141,6 @@ REQ-2026-011 语义事件日志
 2026-05-15 17:13:11 [signoff] REV-REQ-2026-011-detail-design-014 approved by hj19961223@gmail.com
 2026-05-15 17:13:11 [signoff] REV-REQ-2026-011-detail-design-014 approved by hj19961223@gmail.com
 2026-05-15 17:13:51 [save] doc-refresh 批闭环（34920a9+563dc93+db7ee30+signoff：F-010 housekeeping + §3.3.4 loop_node 同步 + §3.7 verbose 5 分类 + §5.4 跨段对齐 + REV-013/014 supersedes 链 + tty signoff；F-CR-010/011/012 + IB-34 三处全闭合；trend-D-design-doc-drift 解除；features.json F-009 description 单点 enhancement 延后避免 R005 横扫）
+2026-05-15 17:14:58 [save] 会话节点：F-010 P0 闭环 + doc-refresh 批闭环；10/13 features done；trend-G-meta 正向终结；下一步派 F-011
+2026-05-15 21:16:02 [development] F-011 派发开始（model=sonnet，complexity=medium；touches 5 文件 = workflow_continue.py 加 _poll_sub_workflows + 1 单元 + 1 e2e + 2 fixture；落地 AC-08 父子完成回填 + on_subworkflow_failure ∈ {fail|continue|skip} 矩阵；依赖 F-004 DAG scheduler 已 done）
+2026-05-15 21:28:31 [development] F-011 派发完成（model=sonnet / commit=faa6807 + 0f95075 / 5 文件 = workflow_continue.py 加 _poll_sub_workflows + 3 helper + 10 unit + 1 e2e + 2 fixture；10 new unit + 1 new e2e + 1471 baseline = 1482 passed 0 回归；touches_violations=[]）；进 post-dev gate + /code-review

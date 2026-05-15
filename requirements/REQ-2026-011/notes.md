@@ -403,3 +403,8 @@ _[hook-skipped: claude-exit-143]_
 - **执行时机**：development→testing 切换前 doc-refresh PR（与 D-015 #4 + IB-02 + 后续 F-010/F-011/F-013 等 review 中暴露的设计文档微调一并）
 - **来源**：`reviews/code-F-009-001.json` F-CR-010 + F-CR-011 + trend-D-design-doc-drift 信号。
 
+
+
+## 会话经验（2026-05-15 17:15）
+
+_本轮无新经验_
