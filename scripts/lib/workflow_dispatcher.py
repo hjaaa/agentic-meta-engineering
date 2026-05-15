@@ -152,7 +152,7 @@ def dispatch_node(
             # env 当前未在 sub_workflow 节点使用；run_state 用于写 parent_run_id 入 sub run meta
             result = _dispatch_sub_workflow_node(node, run_state, run_dir, root, jsonl_path)
         elif "artifact" in node:                          # AC-02 第 8 类
-            result = _dispatch_artifact_node(node, run_dir, root, jsonl_path)
+            result = _dispatch_artifact_node(node, run_state, run_dir, root, env, jsonl_path)
         else:
             raise WorkflowError(f"未知节点类型: {node_id}")
 
@@ -534,15 +534,84 @@ def _dispatch_sub_workflow_node(
 # artifact 节点 dispatcher（AC-02 第 8 类，F-005 落地）
 # ============================================================================
 
+def _render_artifact_spec(spec: dict, run_state: RunState, env: dict[str, Any]) -> dict:
+    """对 artifact spec 内所有字符串字段做变量展开，返回同形 dict。
+
+    展开字段（与 run_artifact_checks 消费的 5 类 key 对齐）：
+      - must_exist[]、must_not_exist[]：路径字符串
+      - schema_check[].script、schema_check[].args[]
+      - must_contain_sections[].file、must_contain_sections[].sections[]
+      - must_match_regex[].file、must_match_regex[].pattern
+
+    路径类变量使用 escape_for_bash=False：裸字面值传给 Path()，
+    加 shell 引号会让 Path("'foo'") 解析失败。
+    """
+    def _s(val: str) -> str:
+        return substitute_vars(val, run_state.node_outputs, env, escape_for_bash=False)
+
+    rendered: dict = {}
+
+    # must_exist / must_not_exist：路径字符串列表
+    for key in ("must_exist", "must_not_exist"):
+        if key in spec:
+            rendered[key] = [_s(item) for item in (spec[key] or [])]
+
+    # schema_check：script + args 展开
+    if "schema_check" in spec:
+        rendered_checks = []
+        for chk in (spec["schema_check"] or []):
+            rendered_chk = dict(chk)
+            if "script" in chk:
+                rendered_chk["script"] = _s(chk["script"])
+            if "args" in chk:
+                rendered_chk["args"] = [_s(a) for a in (chk["args"] or [])]
+            rendered_checks.append(rendered_chk)
+        rendered["schema_check"] = rendered_checks
+
+    # must_contain_sections：file + sections 展开
+    if "must_contain_sections" in spec:
+        rendered_mcs = []
+        for mcs in (spec["must_contain_sections"] or []):
+            rendered_mcs_item = dict(mcs)
+            if "file" in mcs:
+                rendered_mcs_item["file"] = _s(mcs["file"])
+            if "sections" in mcs:
+                rendered_mcs_item["sections"] = [_s(sec) for sec in (mcs["sections"] or [])]
+            rendered_mcs.append(rendered_mcs_item)
+        rendered["must_contain_sections"] = rendered_mcs
+
+    # must_match_regex：file + pattern 展开
+    if "must_match_regex" in spec:
+        rendered_mmr = []
+        for mmr in (spec["must_match_regex"] or []):
+            rendered_mmr_item = dict(mmr)
+            if "file" in mmr:
+                rendered_mmr_item["file"] = _s(mmr["file"])
+            if "pattern" in mmr:
+                rendered_mmr_item["pattern"] = _s(mmr["pattern"])
+            rendered_mmr.append(rendered_mmr_item)
+        rendered["must_match_regex"] = rendered_mmr
+
+    # 其余字段原样保留（不含 $VAR 引用）
+    for key, val in spec.items():
+        if key not in rendered:
+            rendered[key] = val
+
+    return rendered
+
+
 def _dispatch_artifact_node(
     node: dict,
+    run_state: RunState,
     run_dir: Path,
     root: Path,
+    env: dict[str, Any],
     jsonl_path: Path,
 ) -> DispatchResult:
     """artifact 第 8 类 dispatcher（AC-02）。
 
     职责：
+      - 用 _render_artifact_spec 对 spec 内所有 $VAR 引用做变量展开（escape_for_bash=False）
       - 调 run_artifact_checks.run_artifact_checks(spec, cwd=root) 跑 5 类校验
       - failures 为空 → 写 node_completed（success path）
       - failures 非空 → raise WorkflowError，由外层转 node_failed（D-008 职责分工）
@@ -557,7 +626,8 @@ def _dispatch_artifact_node(
     from run_artifact_checks import run_artifact_checks  # 避免顶层循环导入
 
     node_id: str = node.get("id", "<unknown>")
-    spec = node.get("artifact") or {}
+    raw_spec = node.get("artifact") or {}
+    spec = _render_artifact_spec(raw_spec, run_state, env)
     failures = run_artifact_checks(spec, cwd=root)
     if failures:
         raise WorkflowError(

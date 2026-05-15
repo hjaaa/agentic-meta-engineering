@@ -259,3 +259,77 @@ def test_standard_8phase_yaml_no_check_meta_schema() -> None:
     assert "check_meta_schema" not in content, (
         "standard-8phase.yaml 内不应含 'check_meta_schema'（应已改为 check_meta.py）"
     )
+
+
+# ============================================================================
+# TC-F05-6 / TC-F05-7：$VAR 展开覆盖（F-CR-001 acceptance 兜底，F-CR-005 要求）
+# ============================================================================
+
+def test_artifact_var_expansion_happy(tmp_jsonl: Path, tmp_path: Path) -> None:
+    """happy path：$ARTIFACTS_DIR 被正确展开，文件真实存在 → outcome=completed。
+
+    验收标准（F-CR-005）：
+    - spec 使用 $ARTIFACTS_DIR/foo.txt 字面引用
+    - env 注入 ARTIFACTS_DIR=str(tmp_path / "artifacts")
+    - tmp_path/artifacts/foo.txt 真实存在
+    - 结果：outcome=completed + 1 node_started + 1 node_completed
+    """
+    artifacts_dir = tmp_path / "artifacts"
+    artifacts_dir.mkdir()
+    (artifacts_dir / "foo.txt").write_text("hello", encoding="utf-8")
+
+    node = {
+        "id": "check-var-expansion-happy",
+        "artifact": {"must_exist": ["$ARTIFACTS_DIR/foo.txt"]},
+    }
+    run_state = _make_run_state()
+    env = {"ARTIFACTS_DIR": str(artifacts_dir)}
+
+    # 不 mock run_artifact_checks，使用真实展开 + 真实文件校验
+    result = dispatch_node(node, run_state, tmp_path, tmp_path, env, tmp_jsonl)
+
+    assert result.outcome == "completed", f"应 completed，实际 {result.outcome}"
+
+    events = _read_events(tmp_jsonl)
+    types = [e["type"] for e in events]
+    assert types.count("node_started") == 1, "node_started 应恰好 1 条"
+    assert types.count("node_completed") == 1, "node_completed 应恰好 1 条"
+    assert types.count("node_failed") == 0, "不应有 node_failed"
+
+
+def test_artifact_var_expansion_failure(tmp_jsonl: Path, tmp_path: Path) -> None:
+    """failure path：$ARTIFACTS_DIR 被展开但文件不存在 → outcome=failed，错误消息含展开后路径。
+
+    验收标准（F-CR-005）：
+    - spec 使用 $ARTIFACTS_DIR/foo.txt 字面引用，但文件未创建
+    - 结果：outcome=failed + 1 node_failed
+    - node_failed.data.error 含展开后的真实路径，不含字面字符串 '$ARTIFACTS_DIR'
+    """
+    artifacts_dir = tmp_path / "artifacts"
+    artifacts_dir.mkdir()
+    # 故意不创建 foo.txt
+
+    node = {
+        "id": "check-var-expansion-failure",
+        "artifact": {"must_exist": ["$ARTIFACTS_DIR/foo.txt"]},
+    }
+    run_state = _make_run_state()
+    env = {"ARTIFACTS_DIR": str(artifacts_dir)}
+
+    result = dispatch_node(node, run_state, tmp_path, tmp_path, env, tmp_jsonl)
+
+    assert result.outcome == "failed", f"应 failed，实际 {result.outcome}"
+
+    events = _read_events(tmp_jsonl)
+    failed_events = [e for e in events if e["type"] == "node_failed"]
+    assert len(failed_events) == 1, "应恰好 1 条 node_failed"
+
+    error_msg = failed_events[0].get("data", {}).get("error", "")
+    # 展开后的路径应出现在错误消息中
+    assert str(artifacts_dir / "foo.txt") in error_msg, (
+        f"错误消息应含展开后路径 {artifacts_dir / 'foo.txt'}，实际：{error_msg!r}"
+    )
+    # 字面 $ARTIFACTS_DIR 不应出现（已被展开）
+    assert "$ARTIFACTS_DIR" not in error_msg, (
+        f"错误消息不应含字面 '$ARTIFACTS_DIR'（应已展开），实际：{error_msg!r}"
+    )
