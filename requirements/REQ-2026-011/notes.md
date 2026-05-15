@@ -211,3 +211,46 @@
 ## 会话经验（2026-05-14 22:33）
 
 _[hook-skipped: claude-exit-143]_
+
+
+## F-005 rev2 follow-up minors（2026-05-15 09:13 沉淀）
+
+> 来源：`reviews/code-F-005-002.json` 各维度 issues（6 follow-up not_rebutted/not_proven + 1 dropped；rev2 looks_clean(82) signoff approved）。
+> 处置原则：**不阻塞 F-006 派发**；trend-G-meta 未触发（修复必然代价非纯倒退）；建议归"同函数 / 拆模块 / hardening"三件套独立 PR。
+
+### IB-19 · `_render_artifact_spec` 同函数 PR（F-CR2-001 + F-CR2-002 + F-CR2-004 合并）
+
+- **现状**：rev2 新增 `scripts/lib/workflow_dispatcher.py:537-600` `_render_artifact_spec` 函数 4 类字段平铺（must_exist/not_exist + schema_check + must_contain_sections + must_match_regex），CCN=26（critic 实测，超阈值 10 的 2.6 倍）；同时 `_dispatch_artifact_node:603` 参数=6 含 dead `run_dir`（grep 验证函数体内 0 引用）；line 595-598「其余字段原样保留」浅拷贝引用共享潜在 mutation（生产 yaml 字段全集 = {must_exist, schema_check, must_contain_sections} 全命中显式拷贝路径，line 595-598 永不触发但防御性不足）。
+- **目标**：单 PR 1 commit（同函数同次重构最经济）：
+  1. 拆 4 子 helper：`_render_list_field(spec, key, fn) -> list` / `_render_schema_check_items(items, fn) -> list` / `_render_must_contain_items(items, fn) -> list` / `_render_must_match_items(items, fn) -> list`；每个 CCN ≤ 5
+  2. `_render_artifact_spec` 主函数仅做字段存在性判断 + 调各 helper + 原样保留其余字段，CCN ≤ 6
+  3. 删 `_dispatch_artifact_node` 的 `run_dir` 参数（dead）→ 6 → 5 阈值内；调用点同步删
+  4. 「其余字段原样保留」改为 `copy.deepcopy(val)` 或仅 list/dict 深拷贝
+- **预估**：30 行变更 + 2-3 个新 unit test 覆盖各 helper 边界 + 既有 9 TC 全过
+- **维度**：complexity (主) + error_handling (mutation 防御性)
+- **来源**：`reviews/code-F-005-002.json` F-CR2-001 (major) + F-CR2-002 (minor) + F-CR2-004 (minor)。
+
+### IB-20 · `artifact_spec_renderer.py` 拆模块独立 PR（F-CR2-003）
+
+- **现状**：`scripts/lib/workflow_dispatcher.py` 文件 650 行（rev1 580 +70），超 500 阈值 +150（rev1 baseline +80 → rev2 +150 恶化）；rev2 新增 `_render_artifact_spec` ~70 行是主因。critic 确认属"修复必然代价"（为修 F-CR-001 必须新增 spec 展开 helper），非纯倒退。
+- **目标**：独立 PR 纯重构（move + rename + import 同步 + tests 不动）：
+  1. 移 `_render_artifact_spec`（含 IB-19 拆出的 4 子 helper）到 `scripts/lib/artifact_spec_renderer.py` 独立模块
+  2. `workflow_dispatcher.py` 仅保留 `from artifact_spec_renderer import _render_artifact_spec`
+  3. 对齐 IB-13 `workflow_continue.py` 拆模块同模式
+- **预估**：拆分后 `workflow_dispatcher.py` 可降回 ~580 行（仍超阈值 +80 但回到 rev1 baseline）；`artifact_spec_renderer.py` ~80 行
+- **执行时机**：建议**在 IB-19 之后**，避免 IB-19 拆 helper 与 IB-20 拆模块同 PR 混合
+- **维度**：complexity（独立 PR，IB 中**最大单项**）
+- **来源**：`reviews/code-F-005-002.json` F-CR2-003 (major pre_existing 恶化)。
+
+### IB-21 · `run_artifact_checks` 异常包装 hardening（F-CR2-007 + F-CR2-006 同模块）
+
+- **现状**：
+  - `scripts/lib/workflow_dispatcher.py:631` `failures = run_artifact_checks(spec, cwd=root)` 无 try/except 包装；run_artifact_checks 若内部抛 `OSError` / `PermissionError` 等会逃逸到 `dispatch_node:159` except Exception 通用兜底，`node_failed.data.error` 为 Python 原生异常字符串而非业务可读消息
+  - `scripts/lib/workflow_dispatcher.py:111` `dispatch_node` CCN=11 pre_existing 未恶化（rev1 = rev2）
+- **目标**：同模块 IB sweep 一并：
+  1. `run_artifact_checks(spec, cwd=root)` 调用外加 `try/except (OSError, ScriptError) as exc: raise WorkflowError(f"artifact 节点 {node_id!r} 校验失败：{exc}") from exc`
+  2. `dispatch_node` 字典分发表替换 elif 链（IB-09 ~ IB-12 sweep 同模式扩展），CCN 回到常数 ≈4
+- **执行时机**：建议合并到 IB-09 ~ IB-12 lint sweep 一次 hardening 单 PR；亦可与 F-CR-004（rev1 dropped scope-out，run_artifact_checks._check_schema 改 OSError）合并
+- **维度**：error_handling minor + complexity minor
+- **来源**：`reviews/code-F-005-002.json` F-CR2-006 (pre_existing 未恶化) + F-CR2-007 (suggestion pre_existing) + 关联 rev1 F-CR-004 (dropped scope-out)。
+

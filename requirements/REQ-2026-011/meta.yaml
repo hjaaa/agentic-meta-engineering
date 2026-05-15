@@ -195,12 +195,13 @@ reviews:
       F-005:
         history:
           - REV-REQ-2026-011-code-F-005-001
-        latest: REV-REQ-2026-011-code-F-005-001
-        conclusion: blocked
-        reviewed_commit: 5a96880
+          - REV-REQ-2026-011-code-F-005-002
+        latest: REV-REQ-2026-011-code-F-005-002
+        conclusion: looks_clean
+        reviewed_commit: ea3b4a4
         artifact_hashes:
           artifacts/features.json: 
             e05957428c01111babb122eac6af1871456cc9f6e0cfac8a5a5a5fc572a02c6a
           artifacts/tasks/F-005.md: 
-            5bb7b64f84834a9c784cbf15784cf5dac27fef7f5ff85f628d1fc6e7e34d61c2
+            d32529617935d99c76feee6b04e106938c4e0af6fa802cf59269e111dbc57c70
         stale: false
