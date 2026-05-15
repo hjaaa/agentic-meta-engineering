@@ -1,14 +1,14 @@
 """F-004 rev2 · e2e：DAG 主链路完整跑通（F-CR-001 / F-CR-002 回归保护）。
 
 覆盖范围：
-  1. test_dag_multi_sink_full_chain
+  1. test_dag_multi_sink_full_chain_三节点依次派发到workflow_completed
      fixture workflow_dag_multi_sink.yaml（3 节点 A→B / A→C，多 sink），
      调 _main_loop（同 main() 内部）让 mock dispatch_node 返 completed × 3：
      - F-CR-002 bootstrap：current_node=None 起步 → _select_next_dispatch_target 取 a
      - F-CR-001 _advance_after_completed 按 depends_on_explicit=True 分流：
        a completed 后通过 _select_next_dispatch_target 取 [b, c] 串行 [0]=b → b 完后 c
      - finalize 写 workflow_completed
-  2. test_standard_8phase_dag_bootstrap_validate_first_then_second_layer
+  2. test_standard_8phase_dag_bootstrap_validate_首节点优先二层节点跟进
      调真实 main() 跑 .claude/workflows/requirement/standard-8phase.yaml，
      mock dispatch_node 让 bootstrap-validate completed，断言：
      - bootstrap-validate（无 next 字段、depends_on=[]）首派
@@ -50,7 +50,7 @@ def _read_jsonl(path: Path) -> list[dict]:
 # ============================================================================
 
 
-def test_dag_multi_sink_full_chain(tmp_path):
+def test_dag_multi_sink_full_chain_三节点依次派发到workflow_completed(tmp_path):
     """3 节点 DAG A→B / A→C 完整跑通：bootstrap 取 a → advance 推 b → advance 推 c →
     finalize workflow_completed。
 
@@ -104,7 +104,6 @@ def test_dag_multi_sink_full_chain(tmp_path):
     assert types[-1] == "workflow_completed", (
         f"末事件应为 workflow_completed，实际尾部 = {types[-3:]!r}"
     )
-    completed_node_ids = [e["node_id"] for e in events if e["type"] == "node_completed"]
     # 注：node_completed 由真实 dispatcher 写入，本测 mock dispatch_node 后 dispatcher 不写事件；
     # 仅通过 mock_dispatch.call_args_list 验证派发顺序（A→B→C 串行）。
     dispatched_ids = [
@@ -128,7 +127,7 @@ def test_dag_multi_sink_full_chain(tmp_path):
 # ============================================================================
 
 
-def test_standard_8phase_dag_bootstrap_validate_first_then_second_layer(tmp_path):
+def test_standard_8phase_dag_bootstrap_validate_首节点优先二层节点跟进(tmp_path):
     """调真实 main() 跑 standard-8phase.yaml：
 
     - F-CR-002 bootstrap：真新 run（current_node 起初 None）应通过 main_loop 入口的
@@ -168,8 +167,6 @@ def test_standard_8phase_dag_bootstrap_validate_first_then_second_layer(tmp_path
 
     # mock dispatcher：前 2 次 completed，第 3 次起返 approval_pending 优雅退出
     call_log: list[str] = []
-
-    from workflow_dispatcher import DispatchResult as _DR  # noqa: F401
 
     def dispatch_side_effect(node, *args, **kwargs):
         nid = node.get("id")

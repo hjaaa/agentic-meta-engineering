@@ -110,6 +110,9 @@ def _dag_next(run_state: RunState, workflow: dict) -> str | None:
     """DAG 分支（depends_on_explicit=True）：取 `_ready_nodes`[0] 串行派发。
 
     F-CR-003 拆分自 `_select_next_dispatch_target`，单一职责让 CCN ≤ 2。
+
+    Returns:
+      str | None: 下一个待派发节点 ID；若无 ready 节点（拓扑跑完或全部阻塞）返回 None
     """
     ready = _ready_nodes(run_state, workflow)
     return ready[0] if ready else None
@@ -119,6 +122,9 @@ def _legacy_first_node(workflow: dict) -> str | None:
     """退化路径分支 a：真新 run → 返回 yaml 首节点 id（首个含 id 的节点）。
 
     F-CR-008 子拆：单一职责让 CCN ≤ 4、嵌套深度 ≤ 2。
+
+    Returns:
+      str | None: workflow.nodes 中第一个含 id 的节点 ID；yaml 无节点时返回 None
     """
     for node in workflow.get("nodes") or []:
         if isinstance(node, dict) and node.get("id"):
@@ -139,6 +145,9 @@ def _legacy_resume_from_last_visited(
 
     F-CR-008 子拆 + F-CR-007 WARN 守卫：yaml 已无 last_visited 节点（迁移 / rename
     / 删节点）—— spec 严重事件，必须 WARN 暴露排查线索（对齐 _handle_retry:184-188 风格）。
+
+    Returns:
+      str | None: last_visited 节点的 next 节点 ID；无 SUCCESS_TERMINAL 节点或 yaml 缺失时返回 None
     """
     last_visited_id: str | None = None
     for nid, out in run_state.node_outputs.items():
@@ -174,6 +183,9 @@ def _legacy_bootstrap_or_resume(
       (b) 有 SUCCESS_TERMINAL 节点 → 反扫 node_outputs 取最后 SUCCESS_TERMINAL
           节点，走 `_next_node(last_visited, None)` 推进。
       关键反向：on_failure=skip 让 N1 skipped 后，N1 不会被错误重新派发。
+
+    Returns:
+      str | None: 下一个待派发节点 ID；拓扑末尾或无法推进时返回 None
     """
     any_visited = any(
         (out or {}).get("state") in SUCCESS_TERMINAL
@@ -193,6 +205,9 @@ def _legacy_advance(
     F-CR-007 同模式扫描：node_map.get 返 None 时（yaml 改名 / 删节点 / 迁移）必须
     WARN 暴露排查线索，禁止静默 return（对齐 _legacy_resume_from_last_visited 与
     _finalize_after_rebuild_if_last_topology_node 同款 WARN）。
+
+    Returns:
+      str | None: current_node 的 next 节点 ID；current_node 在 yaml 缺失或已是末尾时返回 None
     """
     cur_node = node_map.get(run_state.current_node)
     if cur_node is None:
@@ -386,7 +401,11 @@ def _handle_failure(
         return _handle_abort(run_state, node, jsonl_path, error, on_failure)
 
 
-def _finalize_if_topology_done(run_state: RunState, jsonl_path: Path) -> bool:
+def _finalize_if_topology_done(
+    run_state: RunState,
+    jsonl_path: Path,
+    workflow: dict | None = None,
+) -> bool:
     """末节点 outcome=completed/loop_done/sub_workflow_done 推进后，若 next_id is None
     说明拓扑跑完——写 workflow_completed 事件 + 翻 state=completed，返回 True 让调用方 break。
 
@@ -402,6 +421,15 @@ def _finalize_if_topology_done(run_state: RunState, jsonl_path: Path) -> bool:
     返回值：True 表示已写 workflow_completed（调用方应 break）；False 表示还有后继节点。
     """
     if run_state.current_node is None:
+        # IB-09：DAG 路径补形式正确性 assert，防后续重构破坏不变量。
+        # happy path 下 _advance_after_completed + _handle_skip/abort 早返保证
+        # current_node=None ⟺ 全节点 SUCCESS_TERMINAL，assert 在 happy path 不触发；
+        # 若未来新增绕过路径，assert 第一时间暴露。
+        if workflow is not None and workflow.get("depends_on_explicit"):
+            assert _is_dag_topology_done(run_state, workflow), (
+                f"_finalize_if_topology_done DAG 分支：current_node=None 但 topology 未全 SUCCESS_TERMINAL，"
+                f"可能由失败处理路径绕过 _handle_skip/abort 早返触发；请检查最新 advance 路径"
+            )
         append_event(jsonl_path, {"type": "workflow_completed", "data": {}})
         run_state.state = "completed"
         return True
@@ -476,7 +504,7 @@ def _route_outcome(
         # node_completed 事件已由 dispatcher 写入；仅更新 RunState + 推进指针
         # F-CR-001：传入 workflow + node_map 让 advance 按 depends_on_explicit 分流
         _advance_after_completed(run_state, node, result, workflow, node_map)
-        if _finalize_if_topology_done(run_state, jsonl_path):
+        if _finalize_if_topology_done(run_state, jsonl_path, workflow):
             return False
         return True
 
@@ -499,7 +527,7 @@ def _route_outcome(
         # 循环/子 workflow 完成：推进到下一节点
         # F-CR-001：与 completed 分支同步传 workflow + node_map
         _advance_after_completed(run_state, node, result, workflow, node_map)
-        if _finalize_if_topology_done(run_state, jsonl_path):
+        if _finalize_if_topology_done(run_state, jsonl_path, workflow):
             return False
         return True
 
@@ -533,13 +561,16 @@ def _route_outcome(
         return False
 
 
-def _is_dag_topology_done(workflow: dict, run_state: RunState) -> bool:
+def _is_dag_topology_done(run_state: RunState, workflow: dict) -> bool:
     """DAG 路径拓扑跑完判定（F-CR-004 抽出）。
 
     复合判定（v6 P1-3 + v8 P1 修订）：
       - 全节点 state ∈ SUCCESS_TERMINAL
       - 不存在 failed 节点（has_failed 即放弃 finalize，由 _route_outcome 失败矩阵接管）
       - _ready_nodes 空（无更多可派发）
+
+    Returns:
+      bool: True 当且仅当所有节点 state ∈ SUCCESS_TERMINAL 且无 failed 且无更多 ready；否则 False
     """
     node_states = {
         n["id"]: (run_state.node_outputs.get(n["id"]) or {}).get("state")
@@ -558,8 +589,45 @@ def _is_legacy_topology_done(last_node: dict) -> bool:
     """单链路径拓扑跑完判定（F-CR-004 抽出）。
 
     单链末节点 = `_next_node(last_node, None) is None`。
+
+    Returns:
+      bool: True 当且仅当 last_node 无后继（next 字段缺失或为 None）；否则 False
     """
     return _next_node(last_node, None) is None
+
+
+def _scan_last_visited(
+    events: list[dict],
+    node_map: dict[str, dict],
+) -> tuple[str | None, bool]:
+    """从 events 反扫最后 visited 节点 ID，返回 (last_node_id_or_None, emitted_warn)。
+
+    用于 _finalize_after_rebuild_if_last_topology_node 的失败路径反扫；从主函数抽出
+    使主函数 CCN ≈ 6，给后续重构留余量。
+
+    v8 REV-007 P1：候选集含 node_completed 与 node_skipped，不含 node_failed——
+    failed 节点由失败矩阵决定 workflow_failed/retry/skip，finalize 不接管。
+
+    F-CR-007：yaml 已无该节点（迁移 / rename / 删节点）时必须 WARN 暴露排查线索，
+    禁止静默 return None（对齐 _handle_retry:184-188 风格）。
+
+    Returns:
+      tuple[str | None, bool]: (last_node_id_or_None, True if emitted WARN else False)
+    """
+    last_visited_id: str | None = None
+    for evt in events:
+        if evt.get("type") in ("node_completed", "node_skipped"):
+            last_visited_id = evt.get("node_id")
+    if not last_visited_id:
+        return None, False
+    if node_map.get(last_visited_id) is None:
+        print(
+            f"WARN: jsonl 提及节点 {last_visited_id!r} 但 yaml node_map 缺失，"
+            f"yaml 可能与 run 历史不一致，跳过 finalize 补救",
+            file=sys.stderr,
+        )
+        return None, True
+    return last_visited_id, False
 
 
 def _finalize_after_rebuild_if_last_topology_node(
@@ -584,7 +652,7 @@ def _finalize_after_rebuild_if_last_topology_node(
       详见两 helper 的 docstring。
 
     F-CR-004 重构：判定子句下沉到 _is_dag_topology_done / _is_legacy_topology_done，
-    本函数 CCN ≤ 6（IO + 反扫 + 分流 + finalize 写盘）。
+    F-CR2-005 重构：WARN-and-scan 块抽为 _scan_last_visited，本函数 CCN ≈ 6。
 
     返回：True 表示已补写 workflow_completed（调用方应跳过 while）；False 表示无需补救。
     """
@@ -599,29 +667,13 @@ def _finalize_after_rebuild_if_last_topology_node(
             f"last_visited 反扫可能漏算: {warnings}",
             file=sys.stderr,
         )
-    # v8 REV-007 P1：反扫 last_visited（含 node_completed 与 node_skipped）——
-    # 单链末节点是 skipped 时，原 last_completed 反扫会返 None → 漏写 workflow_completed。
-    # 反扫候选集**不含** node_failed：failed 节点由失败矩阵决定 workflow_failed/retry/skip，
-    # finalize 不接管（与 DAG 路径 has_failed → return False 一致）。
-    last_visited_id: str | None = None
-    for evt in events:
-        if evt.get("type") in ("node_completed", "node_skipped"):
-            last_visited_id = evt.get("node_id")
+    last_visited_id, _ = _scan_last_visited(events, node_map)
     if not last_visited_id:
         return False
-    last_node = node_map.get(last_visited_id)
-    if last_node is None:
-        # F-CR-007：yaml 已无该节点（迁移 / rename / 删节点）—— spec 严重事件，
-        # 必须 WARN 暴露排查线索，禁止静默 return（参考 _handle_retry:184-188 风格）。
-        print(
-            f"WARN: jsonl 提及节点 {last_visited_id!r} 但 yaml node_map 缺失，"
-            f"yaml 可能与 run 历史不一致，跳过 finalize 补救",
-            file=sys.stderr,
-        )
-        return False
+    last_node = node_map[last_visited_id]  # _scan_last_visited 已确认 key 存在
 
     if workflow.get("depends_on_explicit"):
-        is_last = _is_dag_topology_done(workflow, run_state)
+        is_last = _is_dag_topology_done(run_state, workflow)
     else:
         is_last = _is_legacy_topology_done(last_node)
 
@@ -672,6 +724,14 @@ def _main_loop(
         next_id = _select_next_dispatch_target(run_state, workflow, node_map)
         if next_id is not None:
             run_state.current_node = next_id
+        else:
+            # IB-10：bootstrap 无可派发节点时打 WARN，让人类可见（yaml/jsonl 不一致时易触发）。
+            # while 因 current_node 假值不进入，函数静默返回；WARN 对齐 _finalize_after_rebuild:493 风格。
+            print(
+                f"WARN: bootstrap 阶段无可派发节点，state=running 但 workflow 停止推进，"
+                f"yaml/jsonl 可能不一致 (run_id={run_state.run_id})",
+                file=sys.stderr,
+            )
 
     while run_state.state == "running" and run_state.current_node:
         node = node_map.get(run_state.current_node)
@@ -737,7 +797,7 @@ def _resume_run(run_id: str, run_state: "RunState", jsonl_path: Path) -> int:
     try:
         validate_state_for_cmd("continue", run_id, run_state.state)
     except WorkflowError as exc:
-        print(str(exc), file=sys.stderr)
+        print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
     # run_resumed 不映射 WORKFLOW_EVENT_TO_STATE，保持原 state 语义不变（详细设计 §1.2）
