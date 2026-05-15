@@ -75,3 +75,5 @@ REQ-2026-011 语义事件日志
 2026-05-14 22:27:26 [signoff] REV-REQ-2026-011-code-F-004-002 approved by hj19961223@gmail.com
 2026-05-14 22:27:26 [save] F-004 完成（status=done / rev2 looks_clean 90 / signoff approved / 释放派发锁 / 9 minor follow-up 入 IB backlog（lint + 形式正确性 assert + 模块拆分三件套）；trend-Q-orphan-scheduler 反模式消除）
 2026-05-14 22:30:58 [save] F-004 rev2 follow-up IB sweep：IB-09 ~ IB-18 (10 条) 沉淀 notes.md；IB-09/12 形式正确性 + IB-13 拆模块为大件单独 PR；IB-10/11/14/15/16/17 lint sweep 可合并；IB-18 跨文件命名归团队规范层
+2026-05-14 22:33:00 [save] 会话节点：F-004 P0 闭环 + IB-09~IB-18 沉淀；4/13 features done；dispatch lock 释放；next F-005
+2026-05-15 08:25:08 [save] F-005 派发完成（model=sonnet，complexity=light fallback；7 new tests + 1381 全套 0 回归；commit f65a74e；touches_violations=[]）；进 post-dev gate + /code-review

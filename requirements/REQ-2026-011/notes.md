@@ -206,3 +206,8 @@
 - **目标**：在 CLAUDE.md §0 或 `context/team/engineering-spec/` 补「测试函数名允许中文以提升 AC 可读性」豁免条款，统一规范后再回头处理这类 finding，避免后续 reviewer 反复触发同一 finding。
 - **维度**：团队规范层（非代码 IB，跟 F-CR-005 类似归"风格双标"）。
 - **来源**：`reviews/code-F-004-002.json` F-CR2-014（critic rejected）+ 之前的 F-CR-005（F-003 同模式 follow-up）。
+
+
+## 会话经验（2026-05-14 22:33）
+
+_[hook-skipped: claude-exit-143]_
