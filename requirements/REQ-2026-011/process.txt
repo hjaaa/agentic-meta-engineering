@@ -83,3 +83,4 @@ REQ-2026-011 语义事件日志
 2026-05-15 09:12:23 [signoff] REV-REQ-2026-011-code-F-005-002 approved by hj19961223@gmail.com
 2026-05-15 09:14:25 [signoff] REV-REQ-2026-011-code-F-005-002 approved by hj19961223@gmail.com
 2026-05-15 09:14:25 [save] F-005 完成（status=done / rev2 looks_clean 82 / signoff approved / 释放派发锁 / 6 follow-up 入 IB-19/20/21 sweep；trend-G-meta 未触发）
+2026-05-15 09:27:03 [save] B1 IB-19 完成（1a25db4：_render_artifact_spec CCN 26→6 拆 4 helper + _dispatch_artifact_node 删 dead run_dir 6→5 params + deepcopy 防御；4 新 helper TC + 1387 全套 0 回归）；进 B2
