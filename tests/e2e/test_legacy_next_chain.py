@@ -25,8 +25,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "scripts" / "lib"))
 
 from run_state import RunState, append_event  # noqa: E402
-from workflow_continue import (  # noqa: E402
-    _main_loop,
+from workflow_continue import _main_loop  # noqa: E402
+from workflow_scheduler import (  # noqa: E402
     _ready_nodes,
     _select_next_dispatch_target,
 )

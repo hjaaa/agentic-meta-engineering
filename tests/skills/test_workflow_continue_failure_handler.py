@@ -27,7 +27,7 @@ if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
 from run_state import RunState, append_event, read_events  # noqa: E402
-from workflow_continue import _handle_failure, _handle_retry, _handle_skip, _handle_abort  # noqa: E402
+from workflow_outcome_router import _handle_failure, _handle_retry, _handle_skip, _handle_abort  # noqa: E402
 
 
 # ============================================================================

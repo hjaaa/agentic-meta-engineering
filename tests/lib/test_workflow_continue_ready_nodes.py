@@ -31,7 +31,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "scripts" / "lib"))
 
 from run_state import RunState  # noqa: E402
-from workflow_continue import (  # noqa: E402
+from workflow_scheduler import (  # noqa: E402
     _finalize_after_rebuild_if_last_topology_node,
     _ready_nodes,
     _select_next_dispatch_target,
