@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-011",
+  "status": "DONE",
+  "commit_sha": "faa6807",
+  "files_changed": [
+    "scripts/lib/workflow_continue.py",
+    "tests/lib/test_poll_subworkflows.py",
+    "tests/e2e/test_sub_workflow_backfill.py",
+    "tests/fixtures/workflow_parent_sub.yaml",
+    "tests/fixtures/workflow_child_simple.yaml"
+  ],
+  "test_summary": "10 new (test_poll_subworkflows) + 1 new (test_sub_workflow_backfill) + 1471 baseline = 1482 passed in 49.99s",
+  "touches_violations": [],
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-15T12:00:00+08:00"
+}
