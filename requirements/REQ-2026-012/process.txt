@@ -8,3 +8,4 @@
 2026-05-16 21:22:16 [save] 4 项 detail-design 待决问题前置闭环：D-006 F-B 不补 Read bats / D-007 F-C 不锁版本 / D-008 F-E 不加 exclude（实测 benchmarks=0）/ D-009 F-F step-name 留 detail-design
 2026-05-16 21:25:04 [save] outline-design.md 起草完成：4 层模块视图 + 6 模块详细 + 2 时序图 + D-001~D-009 ADR 映射 + R-1~R-7 回滚；sourcing strict 0/0
 2026-05-16 21:33:19 [signoff] REV-REQ-2026-012-outline-design-002 approved by hj19961223@gmail.com
+2026-05-16 21:34:20 [phase-transition] outline-design → detail-design：6 项 error gate 全过；v2 outline verdict looks_clean(91) + tty signoff approved 放行
