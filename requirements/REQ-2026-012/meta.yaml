@@ -33,3 +33,14 @@ tags:                                    # 可选；长尾标签，不归一化
 outcome: ""                    # shipped / abandoned / rolled-back
 completed_at: ""               # ISO8601，completed 时填
 lessons_extracted: false       # /knowledge:extract-experience 是否已跑
+reviews:
+  definition:
+    latest: REV-REQ-2026-012-definition-001
+    conclusion: looks_clean
+    reviewed_commit: 74b7807
+    artifact_hashes:
+      artifacts/requirement.md: 
+        037e1cd354890b9d9fef47b172fe72c855ee4aa9d22e2a76c72fb558951593a4
+    history:
+      - REV-REQ-2026-012-definition-001
+    stale: false
