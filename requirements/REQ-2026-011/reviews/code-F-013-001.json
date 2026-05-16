@@ -1,0 +1,95 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-011-code-F-013-001",
+  "requirement_id": "REQ-2026-011",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-16 10:29:14",
+  "reviewed_commit": "5b19bb3",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "c5f9555755d739ede599dacaaee97d6f54946f97309820d04e566a9ff022091b"
+    },
+    {
+      "path": "artifacts/tasks/F-013.md",
+      "sha256": "4df1004a1f5a8c22bd2342c05e368ddd168673ef2228bfdec051825efb35c7c2"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 85,
+  "dimensions": {
+    "design_consistency": {
+      "score": 82,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_dispatcher.py:221,258,304 三处 _dispatch_*_node 新写 node_ready 事件缺 run_id 冗余字段；detailed-design.md:101 明确写入侧保持冗余 run_id，§3.3.3 line 677 设计代码示例也含 'run_id': run_state.run_id；rebuild 不消费故功能 OK，但日志/审计/外部消费用途丢失，归 IB sweep 补齐"
+        }
+      ]
+    },
+    "security": {
+      "score": 90,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 90,
+      "issues": []
+    },
+    "complexity": {
+      "score": 75,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/workflow_loader.py:323-374 _validate_nodes_schema CCN 21→39 +18 / 嵌套 2→5 +3（实测高于 critic 报告的 28/5）；F-013 AC-10 6 字段校验全部追加在主函数尾部，违反单一职责；建议抽 _validate_node_run_params(node, nid, report, file_label) helper（参 IB-32 / IB-37 同模式 sweep）"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_loader.py:364-369 W100 错误消息仅说类型不符，未带实际收到的值，定位时人工还得 grep yaml，建议追加 f-string actual value 类似既存:285/295 模式"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_loader.py:355-359 idle_timeout 校验仅接受正整数；与设计意图（None=节点默认 timeout 表）冲突，但根因在 F-001 既有 schema + detailed-design 文档未澄清 nullable 语义，F-013 测试 test_workflow_loader_runparams.py 固化了此行为，建议在 IB-34 doc-refresh 与 F-001 schema 重审一并处理"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_dispatcher.py:46,420 + workflow_loader.py:1075,1085 等共 4+ 行越 ruff line-length=120；F-013 引入 2 行新超限（loader:1075,1085）；归 IB-32 同批 lint sweep"
+        }
+      ]
+    },
+    "performance": {
+      "score": 90,
+      "issues": []
+    },
+    "history_context": {
+      "score": 92,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "复杂度趋势 trend-CR-A-module-bloat 单函数维度新信号：_validate_nodes_schema CCN +18（21→39）是本期最大单点恶化，与 IB-32 workflow_status._classify_nodes CCN≈18、IB-37 dispatch() CCN=12 同模式；建议 IB sweep 时把 _validate_node_run_params helper 抽取一并做（与 IB-31/IB-34 同批 PR）",
+    "设计 drift trend-D-design-doc-drift 单点新信号：node_ready 事件 run_id 字段三处缺漏 vs detailed-design §2.2.1 + §3.3.3 写入侧冗余约定；F-013 是 AC-04a 改写责任主体，下一次同类 dispatcher 改写需在 spec 卡点把 run_id 列入必填模板",
+    "trend-G-meta 正向终结持续 F-007→F-008→F-010→F-011→F-012→F-013 六连：本轮 22 candidate 经 critic 9 rejected/3 not_proven/10 not_rebutted，Judge 独立验证后 0 keep critical / 0 keep major-blocking / 6 follow-up（IB-32 复用 / IB-34 doc-refresh / IB-39 line-length），rev2 自查闭合 tests/skills 11 测试对齐 AC-04a，pre-existing 污染（F-001 idle_timeout）准确剔除"
+  ],
+  "scope": {
+    "feature_id": "F-013"
+  },
+  "supersedes": null,
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-16T10:38:18.573555+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
+  }
+}
