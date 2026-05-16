@@ -51,3 +51,19 @@ reviews:
       - REV-REQ-2026-012-definition-001
       - REV-REQ-2026-012-definition-002
     stale: false
+  outline-design:
+    latest: REV-REQ-2026-012-outline-design-002
+    conclusion: looks_clean
+    reviewed_commit: 044ade9
+    artifact_hashes:
+      artifacts/outline-design.md: 
+        3e85166063ff28132f1d18ca9e56153a70ff457942f547c2258573c64efc7ee2
+      artifacts/requirement.md: 
+        a043bb9764edf6a5fc60471120bb2a8624c0206baec92967a203ac8d533c474a
+      artifacts/tech-feasibility.md: 
+        8e424df5badaf9527219f177f589351adbdf549cb93f60951d89778c27eabd43
+      plan.md: cc94f4e659d7334136bbf70d3a12b3bee0f1ffd41a62c719d60b32f54ca03bf5
+    history:
+      - REV-REQ-2026-012-outline-design-001
+      - REV-REQ-2026-012-outline-design-002
+    stale: false
