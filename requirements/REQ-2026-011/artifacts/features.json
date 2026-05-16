@@ -372,7 +372,7 @@
       "depends_on_features": [],
       "complexity": "light",
       "acceptance": [
-        "fuzzy：'standar-8phase'（拼写错）→ hit standard-8phase（编辑距离=2）",
+        "fuzzy：'standar-8phase'（拼写错）→ hit standard-8phase（编辑距离 ≤ 2）",
         "fuzzy：'review-emb'（短名）→ hit code-review-embedded",
         "fuzzy 词典 ≥ 10 词 hit 单测全过",
         "workflow list --json → stdout 为有效 JSON（json.loads 不抛）；含 schema_version + items[]",

@@ -1169,6 +1169,20 @@ def _poll_sub_workflows(
     ...
 ```
 
+**fail-closed 契约（IB-36 补 PEP 3134 chained traceback 显式声明）**：
+
+`_poll_sub_workflows` 内部的三个 helper（`_handle_child_completed` /
+`_handle_child_failed_by_policy` / `_handle_child_cancelled`）写父事件时调
+`append_event`，**任何 OS/IO 异常或下游 `WorkflowError` 都必须使用
+`raise WorkflowError(...) from exc` 包装向上抛**，确保：
+
+- 异常类型对外统一为 `WorkflowError`（main loop 单点 except）
+- 原始失败源通过 `__cause__` 字段（PEP 3134）保留完整 traceback 链，便于排障
+- 不允许在 helper 内吞异常或 `raise WorkflowError(...)` 不带 `from exc`
+
+回归覆盖：`tests/lib/test_poll_subworkflows_fail_closed.py` AC-9/10/11 三测试
+mock `append_event` 抛 `WorkflowError`，断言 `exc_info.value.__cause__ is not None`。
+
 ### 3.7 `scripts/lib/workflow_status.py` 改动（对应 ADR D-002 / D-010 / D-011 / AC-06）
 
 #### 3.7.1 `--verbose` flag + 树形增强
