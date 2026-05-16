@@ -19,7 +19,13 @@ if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
 from common import REPO_ROOT, WorkflowError, infer_run_id_from_branch  # noqa: E402
-from run_state import RunState, _resolve_run_dir, read_events, SUCCESS_TERMINAL  # noqa: E402
+from run_state import (  # noqa: E402
+    RunState,
+    SUCCESS_TERMINAL,
+    WARN_JSONL_UNREADABLE_PREFIX,
+    _resolve_run_dir,
+    read_events,
+)
 
 # ---------------------------------------------------------------------------
 # F-009 常量：stale 阈值（env 覆盖，非整数 fallback 30）
@@ -87,6 +93,82 @@ def _is_stale(last_event_ts: str | None, threshold_min: int) -> bool:
     return age_min >= threshold_min
 
 
+# ---------------------------------------------------------------------------
+# IB-31 helper：节点分类计算（done/failed/running/awaiting/ready/blocked 6 类）
+# ---------------------------------------------------------------------------
+
+def _compute_terminal_ids(
+    node_outputs: dict,
+) -> tuple[set[str], set[str]]:
+    """从 node_outputs 提取 done / failed 节点 id 集合。
+
+    Returns:
+        (done_ids, failed_ids)：done_ids 命中 SUCCESS_TERMINAL；failed_ids 命中 'failed'。
+    """
+    done_ids: set[str] = set()
+    failed_ids: set[str] = set()
+    for nid, entry in node_outputs.items():
+        s = (entry or {}).get("state")
+        if s in SUCCESS_TERMINAL:
+            done_ids.add(nid)
+        elif s == "failed":
+            failed_ids.add(nid)
+    return done_ids, failed_ids
+
+
+def _compute_awaiting_nodes(
+    run_state: RunState,
+    run_dir: Path,
+) -> list[dict]:
+    """根据 run_state.state 与末位事件确定 awaiting 节点列表。
+
+    Args:
+        run_state: 当前 RunState。
+        run_dir:   run 目录路径，用于反扫 jsonl 末位事件确定 kind。
+
+    Returns:
+        list[{"id": str, "kind": str}]；非 awaiting_claude_action 状态返回空列表。
+    """
+    if run_state.state != "awaiting_claude_action" or not run_state.current_node:
+        return []
+    kind = _infer_awaiting_kind(run_dir)
+    return [{"id": run_state.current_node, "kind": kind}]
+
+
+def _compute_blocked_nodes(
+    workflow: dict,
+    run_state: RunState,
+    done_ids: set[str],
+    running_ids: set[str],
+    awaiting_ids: set[str],
+    ready_ids: set[str],
+) -> list[dict]:
+    """计算 blocked 节点列表：workflow.nodes 去除已分类节点后剩余 + reason 标注。
+
+    Args:
+        workflow:     workflow yaml dict（需含 nodes 列表）。
+        run_state:    当前 RunState。
+        done_ids:     已成功完成节点 id 集合。
+        running_ids:  当前 running 节点 id 集合。
+        awaiting_ids: 当前 awaiting 节点 id 集合。
+        ready_ids:    当前 ready 节点 id 集合。
+
+    Returns:
+        list[{"id": str, "reason": str, "extra": str}]。
+    """
+    seen: set[str] = done_ids | running_ids | awaiting_ids | ready_ids
+    blocked: list[dict] = []
+    for node in (workflow.get("nodes") or []):
+        if not isinstance(node, dict):
+            continue
+        nid = node.get("id")
+        if not nid or nid in seen:
+            continue
+        reason, extra = _blocked_reason(nid, node, run_state, done_ids, running_ids)
+        blocked.append({"id": nid, "reason": reason, "extra": extra})
+    return blocked
+
+
 def _classify_nodes(
     run_state: RunState,
     workflow: dict,
@@ -105,56 +187,29 @@ def _classify_nodes(
     """
     from workflow_scheduler import _ready_nodes  # noqa: E402
 
-    node_outputs = run_state.node_outputs
-    current = run_state.current_node
-    run_state_str = run_state.state
+    done_ids, failed_ids = _compute_terminal_ids(run_state.node_outputs)
 
-    # done / failed 集合
-    done_ids: set[str] = set()
-    failed_ids: set[str] = set()
-    for nid, entry in node_outputs.items():
-        s = (entry or {}).get("state")
-        if s in SUCCESS_TERMINAL:
-            done_ids.add(nid)
-        elif s == "failed":
-            failed_ids.add(nid)
-
-    # running
     running_ids: set[str] = set()
-    if run_state_str == "running" and current:
-        running_ids.add(current)
+    if run_state.state == "running" and run_state.current_node:
+        running_ids.add(run_state.current_node)
 
-    # awaiting — 反扫末位事件确定 kind
-    awaiting_nodes: list[dict] = []
-    if run_state_str == "awaiting_claude_action" and current:
-        kind = _infer_awaiting_kind(run_dir)
-        awaiting_nodes.append({"id": current, "kind": kind})
-
+    awaiting_nodes = _compute_awaiting_nodes(run_state, run_dir)
     awaiting_ids = {n["id"] for n in awaiting_nodes}
 
-    # ready
+    # ready（IB-32：workflow 数据结构异常时 fail-soft + WARN，便于诊断而非静默吞）
     ready_ids: set[str] = set()
     try:
         ready_ids = set(_ready_nodes(run_state, workflow))
-    except Exception:  # workflow 格式异常时 fail-soft
-        ready_ids = set()
+    except (KeyError, TypeError, AttributeError) as exc:
+        print(
+            f"WARN: _ready_nodes failed ({type(exc).__name__}): "
+            f"ready 节点判定 fail-soft 置空，blocked 列表可能偏多",
+            file=sys.stderr,
+        )
 
-    # blocked = 所有已知节点，去掉 done / failed / running / awaiting / ready
-    all_node_ids: list[str] = [
-        n["id"] for n in (workflow.get("nodes") or [])
-        if isinstance(n, dict) and n.get("id")
-    ]
-    seen: set[str] = done_ids | failed_ids | running_ids | awaiting_ids | ready_ids
-
-    blocked_nodes: list[dict] = []
-    for node in (workflow.get("nodes") or []):
-        if not isinstance(node, dict):
-            continue
-        nid = node.get("id")
-        if not nid or nid in seen:
-            continue
-        reason, extra = _blocked_reason(nid, node, run_state, done_ids, running_ids)
-        blocked_nodes.append({"id": nid, "reason": reason, "extra": extra})
+    blocked_nodes = _compute_blocked_nodes(
+        workflow, run_state, done_ids, running_ids, awaiting_ids, ready_ids,
+    )
 
     return {
         "done": [{"id": nid} for nid in sorted(done_ids)],
@@ -176,6 +231,7 @@ def _infer_awaiting_kind(run_dir: Path) -> str:
         'skill_result' 或 'approval_repair'（默认 'skill_result'）。
     """
     jsonl_path = run_dir / "run-state.jsonl"
+    # warnings already surfaced in main() AC-08 check —— 此处仅 kind 推断，丢弃二次 warnings
     events, _ = read_events(jsonl_path)
     # 逆序找首条 node_ready 或 approval_repair_started
     for evt in reversed(events):
@@ -224,6 +280,66 @@ def _blocked_reason(
     return "awaiting_deps", ""
 
 
+# ---------------------------------------------------------------------------
+# IB-31 helper：verbose 渲染辅助（_fmt_node_list 从内嵌提升 + stale 警告抽离）
+# ---------------------------------------------------------------------------
+
+def _fmt_node_list(nodes: list[dict], cat: str) -> str:
+    """将节点列表渲染为单行字符串（含 reason / kind 标注）。
+
+    Args:
+        nodes: 节点 dict 列表（含 id 与可选 reason/extra/kind 字段）。
+        cat:   分类 key（blocked / awaiting / 其他）。
+
+    Returns:
+        逗号拼接的渲染字符串，空列表返回 "(none)"。
+    """
+    if not nodes:
+        return "(none)"
+    parts: list[str] = []
+    for n in nodes:
+        nid = n["id"]
+        if cat == "blocked":
+            reason = n.get("reason", "")
+            extra = n.get("extra", "")
+            if extra:
+                parts.append(f"{nid} ({reason}: {extra})")
+            else:
+                parts.append(f"{nid} ({reason})")
+        elif cat == "awaiting":
+            kind = n.get("kind", "skill_result")
+            parts.append(f"{nid} (kind={kind})")
+        else:
+            parts.append(nid)
+    return ", ".join(parts)
+
+
+def _render_stale_warn(last_event_ts: str | None, threshold_min: int) -> str | None:
+    """渲染 stale heartbeat WARN 行，若未超时返回 None。
+
+    Args:
+        last_event_ts: ISO 8601 时间戳字符串，或 None。
+        threshold_min: 超时阈值（分钟）。
+
+    Returns:
+        WARN 行字符串（带 "  WARN: " 缩进前缀），或 None。
+    """
+    if not last_event_ts:
+        return None
+    try:
+        last = datetime.datetime.fromisoformat(last_event_ts.replace("Z", "+00:00"))
+    except (ValueError, AttributeError):
+        return None
+    if not _is_stale(last_event_ts, threshold_min):
+        return None
+    now = datetime.datetime.now(datetime.timezone.utc)
+    age_min = int((now - last).total_seconds() / 60)
+    return (
+        f"  WARN: stale heartbeat (age={age_min}min"
+        f" ≥ {threshold_min}min threshold)"
+    )
+
+
 def _render_status_verbose(
     run_state: RunState,
     run_dir: Path,
@@ -243,49 +359,24 @@ def _render_status_verbose(
     lines = [base]
 
     # heartbeat / stale
-    ts = run_state.last_event_ts
-    if ts:
-        try:
-            last = datetime.datetime.fromisoformat(ts.replace("Z", "+00:00"))
-        except (ValueError, AttributeError):
-            last = None
-        if last:
-            now = datetime.datetime.now(datetime.timezone.utc)
-            age_min = int((now - last).total_seconds() / 60)
-            if _is_stale(ts, STALE_THRESHOLD_MINUTES):
-                lines.append(
-                    f"  WARN: stale heartbeat (age={age_min}min"
-                    f" ≥ {STALE_THRESHOLD_MINUTES}min threshold)"
-                )
+    warn_line = _render_stale_warn(run_state.last_event_ts, STALE_THRESHOLD_MINUTES)
+    if warn_line:
+        lines.append(warn_line)
 
     # 节点分类（workflow 加载失败时 fail-soft 跳过）
     if workflow is None:
         return "\n".join(lines)
 
+    # IB-32：workflow 数据结构异常时 fail-soft + WARN，便于诊断
     try:
         classes = _classify_nodes(run_state, workflow, run_dir)
-    except Exception:
+    except (KeyError, TypeError, AttributeError) as exc:
+        print(
+            f"WARN: _classify_nodes failed ({type(exc).__name__}): "
+            f"节点分类 fail-soft 跳过，仅渲染基础段",
+            file=sys.stderr,
+        )
         return "\n".join(lines)
-
-    def _fmt_node_list(nodes: list[dict], cat: str) -> str:
-        if not nodes:
-            return "(none)"
-        parts: list[str] = []
-        for n in nodes:
-            nid = n["id"]
-            if cat == "blocked":
-                reason = n.get("reason", "")
-                extra = n.get("extra", "")
-                if extra:
-                    parts.append(f"{nid} ({reason}: {extra})")
-                else:
-                    parts.append(f"{nid} ({reason})")
-            elif cat == "awaiting":
-                kind = n.get("kind", "skill_result")
-                parts.append(f"{nid} (kind={kind})")
-            else:
-                parts.append(nid)
-        return ", ".join(parts)
 
     for cat, label in [
         ("ready", "ready"),
@@ -302,6 +393,89 @@ def _render_status_verbose(
     return "\n".join(lines)
 
 
+# ---------------------------------------------------------------------------
+# IB-31 helper：main 子流程（AC-08 jsonl 不可读 + workflow soft 加载）
+# ---------------------------------------------------------------------------
+
+def _check_jsonl_readable(run_state: RunState) -> bool:
+    """AC-08：jsonl 读取失败 warning 转 ERROR: 落 stderr，返回 False 则 main 应 exit 1。
+
+    Args:
+        run_state: 已 rebuild 的 RunState（warnings 含 read_events 收集的 jsonl 解析问题）。
+
+    Returns:
+        True 表示 jsonl 可读；False 表示发现 jsonl 不可读，已落 stderr。
+    """
+    unreadable = [
+        w for w in run_state.warnings
+        if WARN_JSONL_UNREADABLE_PREFIX in w
+    ]
+    if not unreadable:
+        return True
+    for w in unreadable:
+        print(f"ERROR: jsonl unreadable: {w}", file=sys.stderr)
+    return False
+
+
+def _load_workflow_soft(
+    run_state: RunState,
+    run_dir: Path,
+    root: Path,
+) -> dict | None:
+    """fail-soft 加载 workflow yaml，加载失败返回 None 并落 WARN 到 stderr。
+
+    Args:
+        run_state: 当前 RunState。
+        run_dir:   run 目录路径。
+        root:      repo 根路径。
+
+    Returns:
+        workflow dict，或加载失败时 None。
+    """
+    try:
+        from workflow_continue import _load_workflow_for_run  # noqa: E402
+        return _load_workflow_for_run(run_state, run_dir, root)
+    except ImportError as exc:
+        print(
+            f"WARN: workflow_continue import failed ({type(exc).__name__}): "
+            f"verbose 节点分类段跳过 ({exc})",
+            file=sys.stderr,
+        )
+    except (OSError, WorkflowError) as exc:
+        print(
+            f"WARN: workflow yaml load failed ({type(exc).__name__}): "
+            f"verbose 节点分类段跳过 ({exc})",
+            file=sys.stderr,
+        )
+    return None
+
+
+def _parse_args(args: list[str]) -> tuple[str | None, bool]:
+    """解析命令行参数，返回 (positional_run_id, verbose)。"""
+    verbose = "--verbose" in args
+    positional = [a for a in args if a != "--verbose"]
+    run_id = positional[0] if positional else None
+    return run_id, verbose
+
+
+def _resolve_target_run(
+    run_id_arg: str | None,
+    root: Path,
+) -> tuple[str, Path] | None:
+    """解析目标 run：未给 id 时按分支推断；解析失败统一打 candidates 并返回 None。"""
+    run_id = run_id_arg or infer_run_id_from_branch(root)
+    if not run_id:
+        _print_candidates(root)
+        return None
+    try:
+        run_dir = _resolve_run_dir(run_id, root)
+    except WorkflowError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        _print_candidates(root)
+        return None
+    return run_id, run_dir
+
+
 def main(args: list[str], repo_root: Path | None = None) -> int:
     """status 命令主入口。
 
@@ -313,50 +487,24 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
         exit code（0 成功，1 失败）。
     """
     root = repo_root or REPO_ROOT
+    run_id_arg, verbose = _parse_args(args)
 
-    # 解析 --verbose flag
-    verbose = "--verbose" in args
-    positional = [a for a in args if a != "--verbose"]
-
-    run_id = positional[0] if positional else None
-    if not run_id:
-        run_id = infer_run_id_from_branch(root)
-    if not run_id:
-        # 列出候选
-        _print_candidates(root)
+    resolved = _resolve_target_run(run_id_arg, root)
+    if resolved is None:
         return 1
+    run_id, run_dir = resolved
 
-    try:
-        run_dir = _resolve_run_dir(run_id, root)
-    except WorkflowError as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
-        _print_candidates(root)
-        return 1
-
-    jsonl_path = run_dir / "run-state.jsonl"
-    events, warnings = read_events(jsonl_path)
+    events, warnings = read_events(run_dir / "run-state.jsonl")
     run_state = RunState.rebuild(events, run_id=run_id, warnings=warnings)
 
-    # AC-08: jsonl 读取失败 → stderr + exit 1
-    unreadable = [w for w in run_state.warnings if "jsonl 读取失败" in w]
-    if unreadable:
-        for w in unreadable:
-            print(f"ERROR: jsonl unreadable: {w}", file=sys.stderr)
+    if not _check_jsonl_readable(run_state):
         return 1
 
-    # status 对所有已存在 run 有效，无额外 state 限制
     if not verbose:
         print(_render_status(run_state, run_dir))
         return 0
 
-    # --verbose 模式：加载 workflow（fail-soft）
-    workflow: dict | None = None
-    try:
-        from workflow_continue import _load_workflow_for_run  # noqa: E402
-        workflow = _load_workflow_for_run(run_state, run_dir, root)
-    except Exception:
-        pass  # fail-soft：渲染基础段，跳过节点分类
-
+    workflow = _load_workflow_soft(run_state, run_dir, root)
     print(_render_status_verbose(run_state, run_dir, workflow))
     return 0
 

@@ -117,7 +117,7 @@ def test_e2e_jsonl_unreadable_exit_one(tmp_path, capsys):
         rc = workflow_status.main([run_id, "--verbose"], repo_root=tmp_path)
         captured = capsys.readouterr()
         assert rc != 0
-        assert "jsonl unreadable" in captured.err
+        assert "ERROR: jsonl unreadable" in captured.err
     finally:
         # 恢复权限以便 tmp_path 清理
         jsonl_path.chmod(0o644)

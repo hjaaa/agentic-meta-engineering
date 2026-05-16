@@ -99,6 +99,10 @@ TERMINAL_STATES: frozenset[str] = frozenset({"completed", "failed", "cancelled"}
 # 字面量再定义（v6→v7→v8 三轮 drift 复发风险的永久消除点）。
 SUCCESS_TERMINAL: frozenset[str] = frozenset({"completed", "skipped"})
 
+# F-009 IB-33：jsonl 读取失败 warning 的统一前缀。read_events / workflow_status.main
+# 两处必须严格同源，避免字串硬编码 drift 导致 AC-08（jsonl unreadable → stderr+exit 1）漏检。
+WARN_JSONL_UNREADABLE_PREFIX: str = "jsonl 读取失败"
+
 # state 派生表（最近一次 workflow 级事件 → state 字符串）
 WORKFLOW_EVENT_TO_STATE: dict[str, str] = {
     "workflow_started": "running",
@@ -279,7 +283,7 @@ def read_events(jsonl_path: Path) -> tuple[list[dict[str, Any]], list[str]]:
         with jsonl_path.open("r", encoding="utf-8") as fh:
             lines = fh.readlines()
     except OSError as exc:
-        warnings.append(f"jsonl 读取失败: {exc}")
+        warnings.append(f"{WARN_JSONL_UNREADABLE_PREFIX}: {exc}")
         return events, warnings
 
     last_idx = len(lines) - 1
