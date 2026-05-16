@@ -2,20 +2,22 @@
   "schema_version": "1.0",
   "feature_id": "F-013",
   "status": "DONE_WITH_CONCERNS",
-  "commit_sha": "10596cacb01d23780aa9b52c46b7aea63498c7a6",
+  "commit_sha": "163ab29",
   "files_changed": [
     "scripts/lib/workflow_loader.py",
     "scripts/lib/workflow_dispatcher.py",
     "tests/lib/test_workflow_loader_runparams.py",
-    "tests/lib/test_dispatch_skill_contract.py"
+    "tests/lib/test_dispatch_skill_contract.py",
+    "tests/skills/test_workflow_dispatcher_bash_skill_prompt.py",
+    "tests/skills/test_workflow_dispatcher_dispatch.py"
   ],
-  "test_summary": "24 new + 478 existing = 502 passed in 14.52s（pytest tests/lib/）",
+  "test_summary": "rev2 全套：1524 passed, 8 skipped, 0 failed（pytest tests/）",
   "touches_violations": [],
   "concerns": [
     "设计漂移：detailed-design.md §3.4.2 line 843 提到 ALLOWED_NODE_FIELDS / _validate_node_fields（行号附近：400）—— loader 当前没有此集合，使用 per-field if-block 模式。已按现状走 per-field 不引入新概念。归 IB-34 doc-refresh 批次后续处理。",
-    "既有测试破坏：AC-04a 改写（node_completed → node_ready + outcome=awaiting_claude_action）导致 tests/skills/test_workflow_dispatcher_bash_skill_prompt.py 和 tests/skills/test_workflow_dispatcher_dispatch.py 内多条测试失败（预期 outcome=completed 和 node_completed 事件）。这两个文件不在 F-013 touches 约束内，无法在本 feature 内修复；CI pytest tests/ 会报失败。建议在 IB-34 doc-refresh 批次或独立 IB ticket 中同步更新上述 tests/skills/ 测试。"
+    "rev2 已对齐 tests/skills/ 11 测试到 AC-04a 新行为（node_ready + awaiting_claude_action）：TC-S1/TC-S2/TC-S3/TC-P1/TC-P2 改验 node_ready 事件；TC-D3 agent/skill/prompt outcome 断言对齐；test_dispatch_agent_node 改验 node_ready{node_kind,external_action_contract}。"
   ],
   "missing_context": "",
   "block_reason": "",
-  "timestamp": "2026-05-16T10:00:00+08:00"
+  "timestamp": "2026-05-16T10:30:00+08:00"
 }
