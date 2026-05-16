@@ -430,3 +430,42 @@ _[hook-skipped: claude-exit-143]_
 ## 会话经验（2026-05-15 17:15）
 
 _本轮无新经验_
+
+## F-012 rev1 follow-up（2026-05-16 09:21 沉淀）
+
+> 来源：`reviews/code-F-012-001.json` Judge 把 4 项判 follow-up（rev1 looks_clean(90) signoff approved；critic 3 rejected/4 not_proven/4 not_rebutted；trend-G-meta 正向终结持续 F-007→F-008→F-010→F-011→F-012）。处置原则：development→testing 切换前与 IB-31 / IB-34 同批 sweep；4 项全 minor 不阻塞 F-013 派发。
+
+### IB-37 · `dispatch()` CCN=12 临界（F-CR-004 suggestion）
+
+- **现状**：`scripts/lib/workflow_command_dispatcher.py:90` `dispatch()` rev1 加 fuzzy 后 CCN ≈ 12（重算：1 + if cmd not in [+1] + if matched/is_command [+2] + elif matched/not is_command [+2] + if suggestion [+1] + 4 except [+4] + SystemExit code 三元 [+1]）；嵌套深度 4 临界。
+- **可选优化**：抽 `_handle_unknown_cmd(cmd) -> int` 子函数承担 fuzzy 三路分支（命中命令名 / 命中模板名 / 完全 miss）；`dispatch()` 主路径降至 CCN ≤ 6 / 嵌套 ≤ 3。
+- **维度**：complexity suggestion（critic 全 not_rebutted；Judge follow-up）。
+- **执行时机**：与 IB-31（workflow_continue.py / workflow_status.py 拆模块 sweep）同批 PR。
+- **来源**：`reviews/code-F-012-001.json` F-CR-004。
+
+### IB-38 · `json.dumps` UnicodeEncodeError 理论风险（F-CR-006 minor）
+
+- **现状**：`scripts/lib/workflow_list.py:177` `print(json.dumps({...}, ensure_ascii=False))` 无 try/except；理论上 `run_dir.name` 若含非法 UTF-16 surrogate pair 会抛 `UnicodeEncodeError`，stdout 截断。
+- **可触发性**：极低——`run_dir` 来自 `sorted(base_dir.iterdir())`，macOS/Linux UTF-8 文件系统下 `run_dir.name` 为合法 str；critic 反证未给出实际触发路径。
+- **可选硬化**：包 `try/except (UnicodeEncodeError, TypeError) as exc: print('ERROR: JSON encode failed', file=sys.stderr); return 1`。
+- **维度**：error_handling minor（critic not_proven；Judge follow-up）。
+- **执行时机**：与 IB-37 同 PR 顺手做（同模块 dispatcher / list housekeeping）。
+- **来源**：`reviews/code-F-012-001.json` F-CR-006。
+
+### IB-39 · features.json AC-09 #1 "编辑距离=2" typo（F-CR-010 minor，pre-existing）
+
+- **现状**：`requirements/REQ-2026-011/artifacts/features.json:375` AC-09 acceptance #1 写 "（编辑距离=2）"；代码注释 `scripts/lib/workflow_command_dispatcher.py:51` 与实际 Levenshtein('standar-8phase','standard-8phase')=1 自洽；detailed-design.md §7.1 line 1818 写 "≤ 2" 兼容。
+- **目标**：把 features.json AC-09 #1 "（编辑距离=2）" 改为 "（编辑距离=1）" 或 "（编辑距离 ≤ 2）"。
+- **维度**：design_consistency / auxiliary_spec minor（trend-D-design-doc-drift 收敛信号）。
+- **执行时机**：与 IB-34 doc-refresh 批次同批（development→testing 切换前），与 IB-34 §3.7 + §4.5 + IB-36 fail-closed 契约一并；features.json 改动会触发 GATE-FEATURES-SCHEMA + R005 stale 横扫，必须集中一次。
+- **来源**：`reviews/code-F-012-001.json` F-CR-010（pre-existing 52c268f）。
+
+### IB-40 · `_fuzzy_match` 二阶段 cutoff=0.5 缺注释（F-CR-011 minor）
+
+- **现状**：`scripts/lib/workflow_command_dispatcher.py:77` 二阶段 `difflib.get_close_matches(matched, _VALID_CMDS, cutoff=0.5)` 使用 cutoff=0.5（一阶段 line 71/82 用 0.6，与 features.json description 描述一致）；二阶段降阈支撑 'rol' / 'cancl' 拼写变体回归正名（SequenceMatcher ratio 0.46~0.50 < 0.6 必须降阈）。critic 反证"有意降阈"站得住，但 description 与代码注释均未明示二阶段降阈。
+- **目标**：二选一：
+  - 选项 A：在 `_fuzzy_match` 注释补一段 "二阶段使用 cutoff=0.5 支撑 'rol'/'cancl' 拼写变体回归正名 ratio=0.46~0.50"
+  - 选项 B：features.json F-012 description 把 cutoff=0.6 改成 "主路径 cutoff=0.6，二阶段 cutoff=0.5（支撑 ratio < 0.6 的拼写变体）"
+- **维度**：design_consistency minor（trend-D-design-doc-drift 同信号延续）。
+- **执行时机**：与 IB-39 同批（doc-refresh + IB-34 一并），避免多次 R005 横扫。选项 A 仅注释改动（不动 features.json hash 锁），可独立先做；选项 B 需走 features.json 改动批次。
+- **来源**：`reviews/code-F-012-001.json` F-CR-011。
