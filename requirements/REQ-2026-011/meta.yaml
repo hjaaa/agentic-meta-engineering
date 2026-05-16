@@ -1,6 +1,6 @@
 id: REQ-2026-011
 title: workflow runtime DAG 调度与节点 dispatcher 补全（参考 Archon 设计）
-phase: testing
+phase: completed
 created_at: '2026-05-13 08:36:31'
 branch: feat/req-2026-011
 base_branch: develop
@@ -87,8 +87,8 @@ tags:
 - approval-loop
 - path-lock
 - claude-code-contract
-outcome: ''
-completed_at: ''
+outcome: shipped
+completed_at: '2026-05-16 12:07:56'
 lessons_extracted: true
 reviews:
   definition:
@@ -282,3 +282,4 @@ reviews:
           artifacts/features.json: c5f9555755d739ede599dacaaee97d6f54946f97309820d04e566a9ff022091b
           artifacts/tasks/F-013.md: 4df1004a1f5a8c22bd2342c05e368ddd168673ef2228bfdec051825efb35c7c2
         stale: false
+archived_at: '2026-05-16 12:07:56'
