@@ -246,7 +246,7 @@ REQ-2026-012 F-A 前置发现：tests/lib/test_routing_e2e.sh 是 routing 路径
 
 | AC | 机器断言命令 | 通过条件 |
 |---|---|---|
-| AC-1 | `gh run view <run-id> --log \| grep -E 'Run routing e2e shell tests.*PASS=3 FAIL=0'` | grep 命中 |
+| AC-1 | `RUN_ID=$(gh run list --workflow=quality-check.yml --branch=feat/req-2026-012 --limit=1 --json databaseId -q '.[0].databaseId'); gh run view "$RUN_ID" --log \| grep -E 'Run routing e2e shell tests.*PASS=3 FAIL=0'` | grep 命中 |
 | AC-2 | `ls .claude/hooks/tests/test_protect-*.sh 2>/dev/null \| wc -l` | 输出 `0` |
 | AC-3 | `grep -E 'pip install (pyyaml ruamel|-r requirements/ci.txt)' .github/workflows/quality-check.yml` | 只命中 `-r requirements/ci.txt` 形态 |
 | AC-4 | `ruff check scripts tests --select=F; grep -E 'ruff check scripts tests --select=F' .github/workflows/quality-check.yml` | ruff exit 0 + grep 命中 |
@@ -257,17 +257,19 @@ REQ-2026-012 F-A 前置发现：tests/lib/test_routing_e2e.sh 是 routing 路径
 
 ## 4. PR 拆分顺序
 
+依赖关系（数字编号，与 features.json 对齐；plan.md 字母编号见 §1 映射表）：
+
 ```
-F-002 ┐
-F-001 ┼── 并行可推（无依赖）
-F-003 ┘                            ┌── F-004 ── F-005 ── F-006
-                                   │   (机械)   (语义)   (扩范围)
-F-007 ── 依赖 F-003（消费 ci.txt） ┤
-                                   │
-                                   └── 与 F-A~F-F 互独立可并行
+F-001  (无依赖)
+F-002  (无依赖)
+F-003  (无依赖)
+F-004  (无依赖) ── F-005 ── F-006
+F-007  ── 依赖 F-003（消费 ci.txt）
 ```
 
-- **建议顺序**：F-002（删旧测试，热身）→ F-001（routing e2e 入 CI，含草稿 PR 验证 D-005）→ F-003（ci.txt + workflow + onboarding）→ F-004 → F-005 → F-006 → F-007（含 experience.md 沉淀）。
+- F-001 / F-002 / F-003 / F-004 间互独立，可并行推。
+- 硬链：F-004 → F-005 → F-006（清债顺序约束）；F-003 → F-007（make ci-local-deps 用 ci.txt）。
+- **建议顺序**：F-002（删旧测试，热身）→ F-001（routing e2e 入 CI，含草稿 PR 验证 D-005）→ F-003（ci.txt + workflow + onboarding）→ F-004 → F-005 → F-006 → F-007（Makefile + experience.md 沉淀）。
 - 每个 feature 一个独立 PR，符合 AC-7 可回滚约束。
 
 ## 5. 风险复盘（来自 outline-design R-1~R-7）
