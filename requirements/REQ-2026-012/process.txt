@@ -3,3 +3,4 @@
 2026-05-16 20:13:53 [save] definition 一轮回灯收口：D-001~D-005 决议入决策表+plan ADR，routing yaml 路径修正，AC-8 + 7 feature 拆分（F-D→F-D1/F-D2），sourcing strict 0/0
 2026-05-16 20:26:19 [signoff] REV-REQ-2026-012-definition-002 approved by hj19961223@gmail.com
 2026-05-16 20:27:37 [phase-transition] definition → tech-research：6 项 error gate 全过；v2 verdict looks_clean(93) + tty signoff approved 放行
+2026-05-16 21:14:16 [save] tech-feasibility.md 起草完成：7 feature 逐项评估 + R-1~R-7 风险表 + 4.1 人时合计 + 4 项 detail-design 待决；sourcing strict 0/0
