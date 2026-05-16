@@ -26,8 +26,8 @@
 | F-A | 将 `tests/lib/test_routing_e2e.sh` 纳入 CI 一个 step | 无 | 风险最低、信号最强，优先做。入 CI 前先开**草稿 PR** 单 step 验证 Ubuntu runner 行为（D-005 决议） |
 | F-B | 删除 `.claude/hooks/tests/test_protect-branch.sh` + `test_protect-reviews.sh`；如有缺口补 0-2 条 bats | 无 | bats V-01/V-03 已覆盖三分支阻断 + reviews 写保护 + 14 类 Bash redirect；不再维护指向旧 hook 名的 shell 测试（D-002 选 A） |
 | F-C | 新建 `requirements/ci.txt` 收敛 CI/test pip 清单；workflow + onboarding 同源引用；非 Python 工具（bats / hyperfine）仍由 `apt-get` 走 workflow + 文档（D-001 选 A） | 无 | 不动 `pyproject.toml [project]` 表，避免顺手引入包结构改造 |
-| F-D1 | ruff F 类**机械清理**：unused import / unused var / f-string 等 | 无 | 大量条目、低 review 强度，单 PR 一次清完 |
-| F-D2 | ruff F 类**语义清理**：F821 等需理解上下文的问题 | F-D1（可重叠 review 但合并顺序固定 D1→D2） | review 强度高、可能牵动 import 重排 |
+| F-D1 | ruff F 类**机械清理**：F401×65 + F841×21 + F541×3 = 89 条 | 无 | 大量条目、低 review 强度，单 PR 一次清完；tech-research 阶段先固化 ruff 版本基线 |
+| F-D2 | ruff F 类**语义清理**：F821×6 条（`RoutingPlan` / `Any` 未导入） | F-D1（可重叠 review 但合并顺序固定 D1→D2） | review 强度高，多为 `from typing import Any` / 测试 fixture 漏导入 |
 | F-E | CI ruff 范围扩展至 `ruff check scripts tests --select=F`（改 `.github/workflows/quality-check.yml:82`） | F-D1 + F-D2 全部合并 | F-E 单独 revert 时 ruff 范围回退 `scripts/`，清债成果保留（AC-7） |
 | F-F | `make ci-local` 入口：默认镜像 CI（含 hyperfine、`pytest --ignore=tests/benchmarks/`），含 routing e2e step | F-A 起步可用 | 后续若日常推 PR 太慢再补 `ci-fast`（D-004 决议） |
 
@@ -48,7 +48,7 @@
 
 ## 风险
 
-- **ruff 清债工作量被低估**：本地试跑给出 ≈ 95 条 F 类问题，但若含跨文件 F821，修起来可能牵动 import 重组；应对：tech-research 阶段对 95 条做粗分类，超 1 天工作量则把 F-D 再拆。
+- **ruff 清债基线已固化**（2026-05-16 实测）：`ruff check scripts tests --select=F` 命中 95 条 F 类问题，`scripts/` 已 0 条，95 条全在 `tests/`。分布 F401×65 / F841×21 / F541×3 / F821×6 —— F-D1 机械范围 = 89 条（F401+F841+F541），F-D2 语义范围 = 6 条（F821，集中在 `tests/lib/test_code_review_routing.py` 的 `RoutingPlan` 与 `tests/lib/test_submit_codex.py` 的 `Any`）。子目录 top 3：`tests/lib/` 35 / `tests/gates/` 28 / `tests/e2e/` 9。tech-research 阶段在 ubuntu-latest 同版本 ruff 复跑确认基线不漂移后才开 F-D1 任务。
 - **旧 hook 测试还有别处引用**：单纯删除可能漏掉文档 / Skill / Hook 配置中残留的引用；应对：删除前 grep 全仓引用，迁移优先于删除。
 - **CI 环境依赖缺失**：`tests/lib/test_routing_e2e.sh` 可能依赖本地存在的 `jq` / `bash` 版本 / Python 路径；应对：纳入 CI 前先在 workflow runner image 上单跑一次确认。
 - **依赖清单切到 pyproject 后破坏本地直装习惯**：现有 onboarding 写的是 `pip install pyyaml`；应对：无论选哪种方案，同步更新 `context/team/onboarding/`。
