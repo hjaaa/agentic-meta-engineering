@@ -838,25 +838,50 @@ def _expand_implicit_depends_on(workflow: dict[str, Any]) -> None:
     workflow["depends_on_explicit"] = all_explicit
 ```
 
-#### 3.4.2 节点 schema 字段白名单扩展（AC-10）
+#### 3.4.2 节点 schema 7 字段类型校验（AC-10）
 
-在 `scripts/lib/workflow_loader.py` 既有 `_validate_node_fields` / `ALLOWED_NODE_FIELDS`（行号附近：400）追加 7 字段：
+`scripts/lib/workflow_loader.py` 现使用 **per-field if-block 模式**（无 `ALLOWED_NODE_FIELDS` 集合 / 无 `_validate_node_fields` 入口；与 `provider` / `effort` / `thinking` / `trigger_rule` / `context` 等既有公共字段校验同模板）。AC-10 把 7 字段类型校验抽到独立 helper `_validate_node_run_params(node, nid, report, file_label)`，由 `_validate_nodes_schema` 在公共字段校验后调用：
 
 ```python
-ALLOWED_NODE_FIELDS: set[str] = {
-    # ... 既有
-    # AC-10 Claude 运行参数白名单（透传到 node_ready.data.external_action_contract）
-    "allowed_tools",
-    "denied_tools",
-    "mcp",
-    "skills",
-    "agents",
-    "idle_timeout",
-    "output_format",
-}
+def _validate_node_run_params(
+    node: dict[str, Any], nid: str, report: Report, file_label: str
+) -> None:
+    """AC-10：校验 7 个 Claude 运行参数字段类型。"""
+    # idle_timeout：int ≥ 1 或 None（None 表示沿用 NODE_TYPE_DEFAULT_TIMEOUT_MS 节点
+    # 类型默认 timeout，与 _apply_defaults 行为对齐——显式传 null 与字段缺失语义等价）
+    if "idle_timeout" in node and node["idle_timeout"] is not None:
+        val = node["idle_timeout"]
+        if not (isinstance(val, int) and val >= 1):
+            report.add(file_label, Severity.ERROR, "W100",
+                       f"节点 {nid}.idle_timeout 必须是正整数或 null，实际 {val!r}")
+    # 5 个 list[str] 字段（allowed_tools / denied_tools / mcp / skills / agents）
+    for list_field in ("allowed_tools", "denied_tools", "mcp", "skills", "agents"):
+        if list_field not in node:
+            continue
+        val = node[list_field]
+        if not isinstance(val, list):
+            report.add(file_label, Severity.ERROR, "W100",
+                       f"节点 {nid}.{list_field} 必须是数组，实际 {type(val).__name__}")
+        elif not all(isinstance(item, str) for item in val):
+            report.add(file_label, Severity.ERROR, "W100",
+                       f"节点 {nid}.{list_field} 各元素必须是字符串，实际 {val!r}")
+    # output_format：dict 或 None
+    if "output_format" in node and node["output_format"] is not None:
+        val = node["output_format"]
+        if not isinstance(val, dict):
+            report.add(file_label, Severity.ERROR, "W100",
+                       f"节点 {nid}.output_format 必须是 mapping 或 null，实际 {type(val).__name__}")
 ```
 
-校验：`allowed_tools / denied_tools / mcp / skills / agents` 为 list[str]；`idle_timeout` 为 int 或 None；`output_format` 为 dict 或 None。
+**字段类型契约**：
+
+| 字段 | 类型 | 缺省语义 |
+|---|---|---|
+| `allowed_tools` / `denied_tools` / `mcp` / `skills` / `agents` | `list[str]` | 缺省 / 空 list → `[]`（contract 透传时见 §2.2.1） |
+| `idle_timeout` | `int (≥1) \| null` | `null` ⇒ 沿用 `NODE_TYPE_DEFAULT_TIMEOUT_MS[<node_type>]`（与 `_apply_defaults` 仅在 `"idle_timeout" not in node` 时补默认的行为一致；显式 `idle_timeout: null` 与不写字段语义等价） |
+| `output_format` | `dict \| null` | `null` ⇒ 不约束输出结构 |
+
+> 历史漂移：v6 ~ v14 §3.4.2 引用 `ALLOWED_NODE_FIELDS / _validate_node_fields(行号附近：400)`，但 `workflow_loader.py` 自 fee71457 起一直使用 per-field if-block 模式无此集合 / 函数。v16 doc-refresh 把描述对齐到代码现状（IB-34 闭合）。idle_timeout `int|null` 的 nullable 语义同步落实——v6 ~ v15 实现拒 None 是 F-001 既有 schema 与 design 描述的双向 drift，v16 同批闭合。
 
 ### 3.5 `scripts/lib/append_events.py` 新建（对应 ADR D-014）
 
