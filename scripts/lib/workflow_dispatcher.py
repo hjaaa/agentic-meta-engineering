@@ -193,27 +193,41 @@ def dispatch_node(
 # 7 类节点 dispatcher（bash/skill/prompt 已在 F-006 落地；agent → F-010；approval 已落地；loop/sub_workflow → F-011）
 # ============================================================================
 
+def _build_external_action_contract(node: dict) -> dict:
+    """AC-10：从 yaml 节点提取 7 字段透传 contract（缺省值见详细设计 §2.2.1）。"""
+    return {
+        "allowed_tools": node.get("allowed_tools", []),
+        "denied_tools":  node.get("denied_tools", []),
+        "mcp":           node.get("mcp", []),
+        "skills":        node.get("skills", []),
+        "agents":        node.get("agents", []),
+        "idle_timeout":  node.get("idle_timeout"),
+        "output_format": node.get("output_format"),
+    }
+
+
 def _dispatch_agent_node(
     node: dict,
     env: dict[str, Any],
     jsonl_path: Path,
 ) -> DispatchResult:
-    """Agent 节点 stub。
+    """Agent 节点：写 node_ready + external_action_contract，返回 awaiting_claude_action。
 
-    真实逻辑在 F-010 实现（mock_agent_dispatch fixture + 主 Claude 集成）。
-
-    P1-b（codex round-3 2026-05-12）：必须写 node_completed 事件，否则 crash 后
-    RunState.rebuild 看不到完成事件，会把节点当 unfinished 重派——破坏 F-010
-    AC-05 mock fixture 的真实保证。其他节点类型（skill/prompt/bash）入口处都写了
-    node_completed，agent 节点为了对齐补上。
+    AC-04a / AC-10：真实 agent 执行由主 Claude Code 反扫末位 node_ready 后触发；
+    本期 contract 仅透传到 jsonl（save_node_result.py 不消费 contract 字段）。
     """
     node_id: str = node.get("id", "<unknown>")
+    contract = _build_external_action_contract(node)
     append_event(jsonl_path, {
-        "type": "node_completed",
+        "type": "node_ready",
         "node_id": node_id,
-        "data": {"output": ""},  # stub 输出留空；F-010 真接入后由 fixture / 主 Claude 填
+        "data": {
+            "node_kind": "agent",
+            "external_action_contract": contract,
+            "agent": node.get("agent", ""),
+        },
     })
-    return DispatchResult(outcome="completed")
+    return DispatchResult(outcome="awaiting_claude_action")
 
 
 def _dispatch_skill_node(
@@ -222,10 +236,11 @@ def _dispatch_skill_node(
     env: dict[str, Any],
     jsonl_path: Path,
 ) -> DispatchResult:
-    """Skill 节点：渲染 args 中的变量（escape_for_bash=True）+ 写 node_completed{output: {skill, args}}。
+    """Skill 节点：渲染 args + 写 node_ready{skill, args, external_action_contract}。
 
-    主 Claude 实际调用 skill 由后续集成层 PR 接管。
-    args 中每个 value 调 substitute_vars escape_for_bash=True（默认安全转义）。
+    AC-04a / AC-10：写 node_ready 而非 node_completed；真实 skill 调用由主 Claude Code
+    反扫末位 node_ready 后执行；save_node_result.py --kind=skill_result 写 node_completed。
+    args 中每个 value 调 substitute_vars escape_for_bash=True（防注入）。
     """
     node_id: str = node.get("id", "<unknown>")
     skill_name: str = node.get("skill", "")
@@ -239,13 +254,18 @@ def _dispatch_skill_node(
         for k, v in raw_args.items()
     }
 
-    output = {"skill": skill_name, "args": rendered_args}
+    contract = _build_external_action_contract(node)
     append_event(jsonl_path, {
-        "type": "node_completed",
+        "type": "node_ready",
         "node_id": node_id,
-        "data": {"output": output},
+        "data": {
+            "node_kind": "skill",
+            "external_action_contract": contract,
+            "skill": skill_name,
+            "args": rendered_args,
+        },
     })
-    return DispatchResult(outcome="completed", output=output)
+    return DispatchResult(outcome="awaiting_claude_action")
 
 
 def _dispatch_prompt_node(
@@ -256,9 +276,9 @@ def _dispatch_prompt_node(
     root: Path,
     jsonl_path: Path,
 ) -> DispatchResult:
-    """Prompt 节点：取 prompt / prompt_file 文本 + 变量替换（escape_for_bash=True）+ 写 node_completed。
+    """Prompt 节点：取 prompt / prompt_file 文本 + 变量替换 + 写 node_ready{prompt, external_action_contract}。
 
-    主 Claude 实际消费 prompt 由后续集成层 PR 接管。
+    AC-04a / AC-10：写 node_ready 而非 node_completed；真实 prompt 消费由主 Claude Code 执行。
     优先取 node["prompt"]（inline 字符串），其次 node["prompt_file"]（相对仓库根读文件）。
     prompt_file 读不到 → raise WorkflowError，由 dispatch_node 入口的 except 转 node_failed。
     escape_for_bash=True：prompt 文本会作为 Claude 的 shell 参数传递，需防注入。
@@ -280,12 +300,17 @@ def _dispatch_prompt_node(
         raise WorkflowError(f"prompt 节点 {node_id!r} 既无 prompt 也无 prompt_file")
 
     rendered = substitute_vars(raw_text, run_state.node_outputs, env, escape_for_bash=True)
+    contract = _build_external_action_contract(node)
     append_event(jsonl_path, {
-        "type": "node_completed",
+        "type": "node_ready",
         "node_id": node_id,
-        "data": {"output": rendered},
+        "data": {
+            "node_kind": "prompt",
+            "external_action_contract": contract,
+            "prompt": rendered,
+        },
     })
-    return DispatchResult(outcome="completed", output=rendered)
+    return DispatchResult(outcome="awaiting_claude_action")
 
 
 def _dispatch_bash_node(

@@ -357,6 +357,19 @@ def _validate_nodes_schema(workflow: dict[str, Any], report: Report, file_label:
         ):
             report.add(file_label, Severity.ERROR, "W100",
                        f"节点 {nid}.idle_timeout 必须是正整数")
+        # AC-10 Claude 运行参数白名单：list[str] 字段（allowed_tools / denied_tools / mcp / skills / agents）
+        for list_field in ("allowed_tools", "denied_tools", "mcp", "skills", "agents"):
+            if list_field in node:
+                val = node[list_field]
+                if not isinstance(val, list):
+                    report.add(file_label, Severity.ERROR, "W100",
+                               f"节点 {nid}.{list_field} 必须是数组")
+                elif not all(isinstance(item, str) for item in val):
+                    report.add(file_label, Severity.ERROR, "W100",
+                               f"节点 {nid}.{list_field} 元素必须全为字符串")
+        if "output_format" in node and node["output_format"] is not None and not isinstance(node["output_format"], dict):
+            report.add(file_label, Severity.ERROR, "W100",
+                       f"节点 {nid}.output_format 必须是 mapping 或 null")
         # 子结构必填校验
         _validate_node_substructures(node, nid, report, file_label)
 
