@@ -88,6 +88,8 @@ def _handle_skip(
     node: dict,
     jsonl_path: Path,
     error: str | None,
+    workflow: dict,
+    node_map: dict[str, dict],
 ) -> bool:
     """skip 策略：写 node_skipped 事件，推进 current_node，返回 True（主循环继续）。
 
@@ -95,7 +97,11 @@ def _handle_skip(
 
     返回值：True（调用方应继续循环，推进到下一节点）。
 
-    注意：node_skipped.data.reason 遵循 spec §2.1，记录实际错误信息。
+    注意：
+      - node_skipped.data.reason 遵循 spec §2.1，记录实际错误信息。
+      - depends_on_explicit=True（DAG）走 _select_next_dispatch_target；
+        False（单链）保持 _next_node。与 _advance_after_completed 同源（F-CR-001），
+        修复 DAG yaml 节点无 next 字段时 skip 路径无法推进的 bug。
     """
     node_id = node["id"]
     # node_skipped 事件：node_id 在顶层（与 run_state.rebuild 读法一致）
@@ -115,7 +121,13 @@ def _handle_skip(
         "state": "skipped",
         "data": {"reason": error or "on_failure=skip 但无具体错误"},
     }
-    next_id = _next_node(node, None)
+    if workflow.get("depends_on_explicit"):
+        # DAG 路径：先清 current_node（已记 skipped 入 node_outputs，
+        # 让 _ready_nodes 不把它当 current 跳过），再走 scheduler 取下个 ready。
+        run_state.current_node = None
+        next_id = _select_next_dispatch_target(run_state, workflow, node_map)
+    else:
+        next_id = _next_node(node, None)
     run_state.current_node = next_id
     print(
         f"INFO: 节点 {node_id!r} 跳过（on_failure=skip），推进到 {next_id!r}",
@@ -166,6 +178,8 @@ def _handle_failure(
     on_failure: str,
     jsonl_path: Path,
     error: str | None,
+    workflow: dict,
+    node_map: dict[str, dict],
 ) -> bool:
     """按 on_failure 策略路由到对应助手函数。
 
@@ -173,13 +187,15 @@ def _handle_failure(
       True  → 调用方继续循环（_handle_skip 成功推进）
       False → 调用方 break（_handle_retry 等待下次 / _handle_abort 终结 workflow）
 
-    注意：dispatcher 已写 node_failed 事件，本函数不重复写；
-         仅通过助手函数写 node_skipped / workflow_failed 两类新事件。
+    注意：
+      - dispatcher 已写 node_failed 事件，本函数不重复写；
+        仅通过助手函数写 node_skipped / workflow_failed 两类新事件。
+      - workflow + node_map 透传给 _handle_skip，让 DAG 路径走 scheduler 推进。
     """
     if on_failure == "retry":
         return _handle_retry(run_state, node, jsonl_path, error)
     elif on_failure == "skip":
-        return _handle_skip(run_state, node, jsonl_path, error)
+        return _handle_skip(run_state, node, jsonl_path, error, workflow, node_map)
     else:
         return _handle_abort(run_state, node, jsonl_path, error, on_failure)
 
@@ -242,6 +258,9 @@ def _route_outcome(
       sub_workflow_done  → _advance_after_completed（推进 current_node）→ True
       approval_pending   → state=approval_pending → False
       sub_workflow_pending → state 保持 running → False（等待子 workflow 回调）
+      awaiting_claude_action → state=awaiting_claude_action → False
+                            （F-002/F-013：dispatcher 已写 node_ready；
+                             等 Claude 调 save_node_result.py 推进）
       failed             → _handle_failure 返回值（retry/skip/abort 决定）
       未知 outcome       → 写 workflow_failed，state=failed → False
     """
@@ -288,10 +307,19 @@ def _route_outcome(
         # 子 workflow 已发起但尚未完成；state 保持 running，等待回调续跑
         return False
 
+    elif outcome == "awaiting_claude_action":
+        # F-002/F-013: dispatcher 已写 node_ready 事件（含 external_action_contract），
+        # main loop 在此暂停，等待 Claude Code 调 save_node_result.py --kind=skill_result 推进。
+        # rebuild 会从 node_ready 事件恢复同 state；此处仅更新 in-memory state 让 while 退出。
+        run_state.state = "awaiting_claude_action"
+        return False
+
     elif outcome == "failed":
         # 按 on_failure 策略路由：retry / skip / abort
         on_failure: str = node.get("on_failure", "retry")
-        return _handle_failure(run_state, node, on_failure, jsonl_path, result.error)
+        return _handle_failure(
+            run_state, node, on_failure, jsonl_path, result.error, workflow, node_map
+        )
 
     else:
         # 未知 outcome（防御性兜底）：写 workflow_failed，避免 state 留 running 引发静默死循环
