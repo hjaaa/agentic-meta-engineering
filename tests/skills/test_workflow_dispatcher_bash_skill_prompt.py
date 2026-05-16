@@ -7,10 +7,10 @@
   TC-B4  bash 节点：OSError → outcome=failed，error 为异常信息
   TC-B5  bash 节点：$ENV_VAR 被裸字面值替换（escape_for_bash=False）
   TC-B6  bash 节点：cwd=root（仓库根），而非 run_dir
-  TC-S1  skill 节点：成功路径——渲染 args + 写 node_completed + output 结构正确
+  TC-S1  skill 节点：成功路径——渲染 args + 写 node_ready + external_action_contract 结构正确（AC-04a）
   TC-S2  skill 节点：缺 skill 字段 → raise WorkflowError → dispatch_node 写 node_failed
   TC-S3  skill 节点：args 中变量被 escape_for_bash=True 渲染
-  TC-P1  prompt 节点：inline prompt 文本渲染 + 写 node_completed
+  TC-P1  prompt 节点：inline prompt 文本渲染 + 写 node_ready（AC-04a）
   TC-P2  prompt 节点：prompt_file 存在 → 读取文件内容后渲染
   TC-P3  prompt 节点：prompt_file 不存在 → dispatch_node 写 node_failed
   TC-P4  prompt 节点：既无 prompt 也无 prompt_file → dispatch_node 写 node_failed
@@ -244,10 +244,10 @@ def test_bash_node_cwd_is_root_not_run_dir(jsonl_path, base_run_state, tmp_path)
 # TC-S1 · skill 节点成功路径
 # ============================================================================
 
-def test_skill_node_success_writes_node_completed_with_output(
+def test_skill_node_success_writes_node_ready_with_contract(
     jsonl_path, base_run_state, tmp_path
 ):
-    """skill 节点成功路径：output 结构为 {skill, args}，写 node_completed 事件。"""
+    """skill 节点成功路径（AC-04a）：写 node_ready 事件，data 含 node_kind/skill/args/external_action_contract。"""
     node = {
         "id": "skill-ok",
         "skill": "my-skill",
@@ -255,25 +255,28 @@ def test_skill_node_success_writes_node_completed_with_output(
     }
     result = _dispatch_skill_node(node, base_run_state, {}, jsonl_path)
 
-    assert result.outcome == "completed"
-    assert result.output is not None
-    assert result.output["skill"] == "my-skill"
-    assert "key1" in result.output["args"]
+    assert result.outcome == "awaiting_claude_action"
 
     events, _ = read_events(jsonl_path)
-    completed = [e for e in events if e.get("type") == "node_completed"]
-    assert len(completed) == 1
-    assert completed[0]["node_id"] == "skill-ok"
-    assert completed[0]["data"]["output"]["skill"] == "my-skill"
+    ready = [e for e in events if e.get("type") == "node_ready"]
+    assert len(ready) == 1
+    assert ready[0]["node_id"] == "skill-ok"
+    assert ready[0]["data"]["node_kind"] == "skill"
+    assert ready[0]["data"]["skill"] == "my-skill"
+    assert "key1" in ready[0]["data"]["args"]
+    assert "external_action_contract" in ready[0]["data"]
 
 
 def test_skill_node_no_args_success(jsonl_path, base_run_state):
-    """skill 节点无 args 时，output.args 为空 dict，仍返回 completed。"""
+    """skill 节点无 args 时，node_ready.data.args 为空 dict，返回 awaiting_claude_action（AC-04a）。"""
     node = {"id": "skill-noarg", "skill": "bare-skill"}
     result = _dispatch_skill_node(node, base_run_state, {}, jsonl_path)
 
-    assert result.outcome == "completed"
-    assert result.output["args"] == {}
+    assert result.outcome == "awaiting_claude_action"
+    events, _ = read_events(jsonl_path)
+    ready = [e for e in events if e.get("type") == "node_ready"]
+    assert len(ready) == 1
+    assert ready[0]["data"]["args"] == {}
 
 
 # ============================================================================
@@ -299,7 +302,7 @@ def test_skill_node_missing_skill_field_returns_failed(
 # ============================================================================
 
 def test_skill_node_args_substituted_with_escape(jsonl_path, tmp_path):
-    """skill 节点 args 中的 $ENV_VAR 以 escape_for_bash=True 渲染（加单引号）。"""
+    """skill 节点 args 中的 $ENV_VAR 以 escape_for_bash=True 渲染（加单引号），写入 node_ready（AC-04a）。"""
     rs = RunState(run_id="REQ-TEST-002")
     env = {"MY_VAR": "my value"}
     node = {
@@ -309,16 +312,19 @@ def test_skill_node_args_substituted_with_escape(jsonl_path, tmp_path):
     }
     result = _dispatch_skill_node(node, rs, env, jsonl_path)
 
-    assert result.outcome == "completed"
+    assert result.outcome == "awaiting_claude_action"
+    events, _ = read_events(jsonl_path)
+    ready = [e for e in events if e.get("type") == "node_ready"]
+    assert len(ready) == 1
     # escape_for_bash=True 时，"my value" 会被包成 'my value'
-    rendered = result.output["args"]["param"]
+    rendered = ready[0]["data"]["args"]["param"]
     assert "my value" in rendered
     # 验证有 shell 引号（单引号包裹）
     assert rendered.startswith("'") and rendered.endswith("'")
 
 
 def test_skill_node_args_node_output_substituted(jsonl_path):
-    """skill 节点 args 中 $nodeId.output 通过 run_state.node_outputs 解析。"""
+    """skill 节点 args 中 $nodeId.output 通过 run_state.node_outputs 解析，写入 node_ready（AC-04a）。"""
     rs = RunState(run_id="REQ-TEST-003")
     rs.node_outputs["upstream"] = {
         "output": "upstream-result",
@@ -332,8 +338,11 @@ def test_skill_node_args_node_output_substituted(jsonl_path):
     }
     result = _dispatch_skill_node(node, rs, {}, jsonl_path)
 
-    assert result.outcome == "completed"
-    rendered = result.output["args"]["data"]
+    assert result.outcome == "awaiting_claude_action"
+    events, _ = read_events(jsonl_path)
+    ready = [e for e in events if e.get("type") == "node_ready"]
+    assert len(ready) == 1
+    rendered = ready[0]["data"]["args"]["data"]
     assert "upstream-result" in rendered
 
 
@@ -341,33 +350,34 @@ def test_skill_node_args_node_output_substituted(jsonl_path):
 # TC-P1 · prompt 节点 inline 文本
 # ============================================================================
 
-def test_prompt_node_inline_writes_node_completed(jsonl_path, base_run_state, tmp_path):
-    """prompt 节点 inline 文本路径：渲染后写 node_completed，output=渲染后文本。"""
+def test_prompt_node_inline_writes_node_ready(jsonl_path, base_run_state, tmp_path):
+    """prompt 节点 inline 文本路径（AC-04a）：渲染后写 node_ready，data.prompt=渲染后文本。"""
     env = {"RUN_ID": "REQ-2026-010"}
     node = {"id": "prompt-inline", "prompt": "请处理 $RUN_ID"}
     result = _dispatch_prompt_node(
         node, base_run_state, env, tmp_path, tmp_path, jsonl_path
     )
 
-    assert result.outcome == "completed"
-    assert "REQ-2026-010" in (result.output or "")
+    assert result.outcome == "awaiting_claude_action"
 
     events, _ = read_events(jsonl_path)
-    completed = [e for e in events if e.get("type") == "node_completed"]
-    assert len(completed) == 1
-    assert "REQ-2026-010" in completed[0]["data"]["output"]
+    ready = [e for e in events if e.get("type") == "node_ready"]
+    assert len(ready) == 1
+    assert ready[0]["data"]["node_kind"] == "prompt"
+    assert "REQ-2026-010" in ready[0]["data"]["prompt"]
+    assert "external_action_contract" in ready[0]["data"]
 
 
 def test_prompt_node_inline_via_dispatch_node(jsonl_path, base_run_state, tmp_path):
-    """通过 dispatch_node 入口，prompt inline 节点成功路径写 node_started + node_completed。"""
+    """通过 dispatch_node 入口，prompt inline 节点成功路径写 node_started + node_ready（AC-04a）。"""
     node = {"id": "prompt-dispatch", "prompt": "hello world"}
     result = dispatch_node(node, base_run_state, tmp_path, tmp_path, {}, jsonl_path)
 
-    assert result.outcome == "completed"
+    assert result.outcome == "awaiting_claude_action"
     events, _ = read_events(jsonl_path)
     types = [e.get("type") for e in events]
     assert "node_started" in types
-    assert "node_completed" in types
+    assert "node_ready" in types
 
 
 # ============================================================================
@@ -377,7 +387,7 @@ def test_prompt_node_inline_via_dispatch_node(jsonl_path, base_run_state, tmp_pa
 def test_prompt_node_prompt_file_reads_and_renders(
     jsonl_path, base_run_state, tmp_path
 ):
-    """prompt_file 存在时，读取文件内容并渲染变量后写 node_completed。"""
+    """prompt_file 存在时，读取文件内容并渲染变量后写 node_ready（AC-04a）。"""
     prompt_file = tmp_path / "prompts" / "test.md"
     prompt_file.parent.mkdir(parents=True)
     prompt_file.write_text("请处理 $RUN_ID 的任务", encoding="utf-8")
@@ -388,12 +398,12 @@ def test_prompt_node_prompt_file_reads_and_renders(
         node, base_run_state, env, tmp_path, tmp_path, jsonl_path
     )
 
-    assert result.outcome == "completed"
-    assert "REQ-2026-010" in (result.output or "")
+    assert result.outcome == "awaiting_claude_action"
 
     events, _ = read_events(jsonl_path)
-    completed = [e for e in events if e.get("type") == "node_completed"]
-    assert len(completed) == 1
+    ready = [e for e in events if e.get("type") == "node_ready"]
+    assert len(ready) == 1
+    assert "REQ-2026-010" in ready[0]["data"]["prompt"]
 
 
 # ============================================================================
