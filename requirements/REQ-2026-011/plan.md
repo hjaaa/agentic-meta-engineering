@@ -235,3 +235,19 @@
   - **IB-01**：`SUCCESS_TERMINAL = {"completed", "skipped"}` 抽到 `scripts/lib/run_state.py` 共享常量（F-004 进入 development 前补 modules）
   - **IB-02**：`outline-design.md:135` 末节点判定文案 P3 readability 统一（F-004 同 PR 顺带 fix）
 - **phase-transition gate**：11/11 全过 exit=0（PLAN-FRESHNESS W002 由本节刷新消除）
+
+### development（2026-05-14 ~ 2026-05-16 完成）
+
+- **产物**：13 个 feature 全部 done（F-001~F-013），13 个 task receipt.json 全部 `status ∈ {DONE, DONE_WITH_CONCERNS}` + `touches_violations=[]`
+- **code-review**：13 features 各 1~2 轮 code-review，最终全部 `looks_clean` + signoff approved
+- **趋势信号**：trend-G-meta 正向终结 6 连（F-007→F-013 同 looks_clean 85-90 模式）+ trend-CR-A-module-bloat 由 IB sweep 收敛 + trend-D-design-doc-drift 由 IB-34 doc-refresh 闭合
+- **IB sweep 总批次**：IB-31~IB-40 共 10 项 follow-up 全闭合（batch A/B/C/D/E：workflow_status.py 拆 helper / dispatcher CCN / json.dumps Unicode 兜底 / cutoff 注释 / test 文件拆分 / fail-closed __cause__ 契约 / features.json AC-09 typo / detailed-design.md §3.4.2 重写对齐 per-field if-block）
+- **detail-design refresh**：REV-016 looks_clean(92) + signoff approved（commit c286c0e + 085252b）
+- **phase-transition gate (development → testing)**：11/11 全过 exit=0（2026-05-16 11:02:45）
+
+### testing（2026-05-16 完成）
+
+- **pytest**：1524 passed / 0 failed / 8 skipped，与开发期快照零回归
+- **AC 覆盖**：13/13 features acceptance[] 全部有对应测试文件命中，无断层
+- **traceability-consistency-checker**：PASS（需求 → 设计 → 代码 → 测试 4 层链全过；唯一 F-CR-013 minor drift 已经 REV-016 闭合）
+- **submit gate**：16/16 全过 exit=0（含 GH-AUTH / BASE-REACHABLE / BRANCH-MATCH / AHEAD-OF-ORIGIN 等 submit-only gate）；唯一 warning 由本节刷新消除
