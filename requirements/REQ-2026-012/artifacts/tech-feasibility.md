@@ -15,7 +15,7 @@ refs-tech-feasibility: true
 
 - CI 现状：单一 workflow `.github/workflows/quality-check.yml` 串 step 序列（来源：.github/workflows/quality-check.yml）；触发 `pull_request` + `push: main / develop`（来源：.github/workflows/quality-check.yml:7）；runner 为 `ubuntu-latest` + Python 3.11 + 单条 `pip install` 字面量（来源：.github/workflows/quality-check.yml:34）+ `apt-get install bats`（来源：.github/workflows/quality-check.yml:36）+ `apt-get install hyperfine`（来源：.github/workflows/quality-check.yml:42）；ruff 仅 lint `scripts/`（来源：.github/workflows/quality-check.yml:82）。
 - 待入 CI 的 shell e2e：tests/lib/test_routing_e2e.sh 用 mktemp 起临时 git 仓库 + 切回 REPO_ROOT 调 `scripts.lib.code_review_routing` 的内部 API（来源：tests/lib/test_routing_e2e.sh:21）；脚本明确读 `.claude/code-review-routing.yaml` 绝对路径（来源：tests/lib/test_routing_e2e.sh）。
-- 待删除的旧 shell 测试：.claude/hooks/tests/test_protect-branch.sh 与 .claude/hooks/tests/test_protect-reviews.sh 均硬编码 `HOOK=".claude/hooks/protect-branch.sh"`（来源：.claude/hooks/tests/test_protect-branch.sh:4），而该 hook 文件已不存在（已在 definition 阶段经预检命令确认）。
+- 待删除的旧 shell 测试：原 .claude/hooks/tests/test_protect-branch.sh 与 test_protect-reviews.sh 均以 `HOOK=".claude/hooks/protect-branch.sh"` 硬编码已不存在路径（已在 definition 阶段经预检命令确认；现已于 F-002 commit d7624d2 整体删除，删前内容可经 `git show d7624d2~1:.claude/hooks/tests/test_protect-branch.sh` 取回）。
 - bats 覆盖：tests/hooks/test_pre_tool_use_guard.bats 已 V-01 三分支阻断 + V-03 reviews 写保护 + 14 类 Bash 重定向（来源：tests/hooks/test_pre_tool_use_guard.bats:39）。
 - ruff F 类基线：scripts/=0、tests/=95；F401×65 / F841×21 / F541×3 / F821×6；F821 真实位置见下文 F-D2 评估。
 - Makefile 现状：仅 `gates-validate` / `gates-render` 两个 target（来源：Makefile:4）。
@@ -45,11 +45,11 @@ refs-tech-feasibility: true
 
 **依据**：
 - 全仓 grep `test_protect-(branch|reviews)\.sh` 命中仅 requirement.md 自身（已在 definition 阶段验证；后续 commit 后会自我消除）。
-- 两脚本均硬编码 `.claude/hooks/protect-branch.sh`（来源：.claude/hooks/tests/test_protect-branch.sh:4），目标文件不存在，脚本本地执行直接 fail（已在 definition 阶段验证）。
+- 两脚本均硬编码 `.claude/hooks/protect-branch.sh`，目标文件不存在，脚本本地执行直接 fail（已在 definition 阶段验证；脚本本身已于 F-002 commit d7624d2 删除）。
 - bats 已覆盖等价场景：V-01 develop/main/master 分支阻断 + reviews 写保护 + 14 类 Bash redirect（来源：tests/hooks/test_pre_tool_use_guard.bats:39），与旧脚本断言 1:1 重合。
 
 **负例缺口判断**：
-- 旧 test_protect-branch.sh 包含两条 bats 未显式覆盖的用例：`main + Read → exit 0`（来源：.claude/hooks/tests/test_protect-branch.sh:43）、`develop + Read → exit 0`（来源：.claude/hooks/tests/test_protect-branch.sh:61）。
+- 旧 test_protect-branch.sh 包含两条 bats 未显式覆盖的用例（`main + Read → exit 0` / `develop + Read → exit 0`，删前内容可由 `git show d7624d2~1:.claude/hooks/tests/test_protect-branch.sh` 取回行 43 / 行 61）。
 - 但这两条"非写操作 → 放行"的语义在 pre-tool-use-guard.sh 由 PreToolUse matcher 控制（matcher 不命中 Read 工具 → hook 根本不会被调用，来源：.claude/hooks/pre-tool-use-guard.sh:101），bats 模拟"Read on protected branch"会变成测试 settings.json matcher 配置而非 hook 本身——价值有限。
 - detail-design 阶段评估：可选追加 1 条 bats 验证 `tool_name="Read"` 输入下 guard 直接 fail-open（无意义工具调用应快速放行），其它缺口为 0。
 
