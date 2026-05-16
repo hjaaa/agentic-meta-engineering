@@ -40,6 +40,7 @@
 - [`ai-writes-code-by-assumed-field-name.md`](ai-writes-code-by-assumed-field-name.md) — AI 写消费方代码时凭直觉用字段名（prompt / workflow_template_path）与 schema/产出方实际名（message / template_path）脱节；`.get(default)` 掩盖错误从硬失败降为静默缺失，必跨文件 grep 验证
 - [`in-memory-state-without-jsonl-event-breaks-rebuild.md`](in-memory-state-without-jsonl-event-breaks-rebuild.md) — 任何对 RunState 持久化字段的 in-memory 修改必须配对写 jsonl 事件，否则 crash 后 rebuild 看不到变更，重派同一步
 - [`event-driven-completion-must-write-on-outcome.md`](event-driven-completion-must-write-on-outcome.md) — 工作流终结事件（workflow_completed 等）只能由 outcome 处理函数显式写入，不能凭"loop 退出后 current_node is None"投影推断——rebuild 出同样投影会让自然完成 / crash 两类场景被误并
+- [`dispatcher-outcome-routing-needs-e2e-real-run.md`](dispatcher-outcome-routing-needs-e2e-real-run.md) — dispatcher 返回的每个 outcome 在 router 端必须有对应分支；单测 mock 看不出"缺分支"，必须 E2E 真跑（agent/skill/prompt 等节点类型）+ 穷举枚举校验
 
 ## 什么值得沉淀
 

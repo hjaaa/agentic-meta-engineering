@@ -58,3 +58,18 @@ D-014 硬规则：
 - `requirements/REQ-2026-009/plan.md:164` — D-014 ADR
 - `requirements/REQ-2026-009/process.txt` — F-012 rev1~6 演化记录（11 轮 review-loop 演化曲线）
 - `requirements/REQ-2026-009/artifacts/review-20260510-154609.md` — F-011 rev3 trend-G-meta 终结判定
+
+## 复发案例 · 2026-05-16（REQ-2026-011 / F-014 vs F-CR-001）
+
+F-CR-001（F-004 rev2 review）发现 `_advance_after_completed` 在 DAG 路径下应走 `_select_next_dispatch_target` 而不是 `_next_node(node, None)`，subagent 严格 scope 守住"只改 completed / loop_done / sub_workflow_done 三处"。reviewer 与 critic 都没在同函数文件内做"同 helper 风格扫描"——`_handle_skip` 函数（同文件、同模块、同模式）也写死 `_next_node(node, None)`，DAG 路径下 skip 会推进为 None 停掉 main loop。
+
+bug 一直存活到 submit codex round-1 才被外部 reviewer 一句话抓出（P2 finding）。代价：
+
+- 1 个增量 commit + 3 个新回归测试（test_handle_skip_dag_advances_via_scheduler 等）
+- 1 轮 codex round-2 re-review 通过
+- 4 个 ruff F-class 副产物（详见 `local-ruff-scope-vs-ci-fullset.md` 复发案例同期记录）
+
+**应预防的反例**：F-CR-001 修复时 reviewer prompt 应该加一句「全文搜 `_next_node\(.*, None\)` 同模式扫描，所有出现都按 DAG / single-chain 双轨改造」，可一次性把 F-014 P2 也修了。
+
+教训补强：subagent dispatch 时把"同模式扫描"列为强制 checkpoint，而不是 reviewer 抓到才补——尤其在「公共 helper 已在 v1 / v2 改造过一轮」的场景下。
+
