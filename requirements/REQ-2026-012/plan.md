@@ -94,3 +94,27 @@
 - **Decision**：F-A 实施时先开草稿 PR、单 step 跑 `bash tests/lib/test_routing_e2e.sh`，确认 Ubuntu 结果后再合入正式 step
 - **Consequences**：好：避免正式 PR 当场红；差：F-A 至少 2 个 commit（草稿验证 + 合入正式）
 - **时间**：2026-05-16 20:10:00
+
+### D-006 F-B 不补 Read fail-open bats 用例
+- **Context**：tech-feasibility 评估指出 PreToolUse matcher 不命中 Read 工具，hook 根本不会被调用；bats 模拟 Read 等于在测 settings.json matcher 配置而非 hook 逻辑（来源：.claude/hooks/pre-tool-use-guard.sh:101）
+- **Decision**：F-B 任务仅删除 `.claude/hooks/tests/test_protect-branch.sh` + `.claude/hooks/tests/test_protect-reviews.sh`，不补任何 bats；负例缺口判定为 0
+- **Consequences**：好：F-B 工作量从 0.2 人时降到 ~0.1；差：若未来 settings.json matcher 配置回退、bats 不能立即提示——但该风险与本需求 scope 无关
+- **时间**：2026-05-16 21:21:02
+
+### D-007 F-C ci.txt 不锁版本
+- **Context**：本仓库现在写 `pip install pyyaml ruamel.yaml "pathspec>=0.12,<1.0" ruff pytest`（来源：.github/workflows/quality-check.yml:34），pathspec 已带上下界，其它无锁；用户偏好"先 CI 可用，不引入包管理重构"
+- **Decision**：requirements/ci.txt 保留 pathspec 现有 `>=0.12,<1.0` 范围、其它包不锁；若后续 CI 因 ruff/pytest 大版本变更红，开独立需求加锁（lock-file 方案在该需求里再评估）
+- **Consequences**：好：当前 scope 干净，无包管理风格改造；差：CI 严格可重现性低一档，依赖大版本上线可能踩坑
+- **时间**：2026-05-16 21:21:02
+
+### D-008 F-E 不加 `extend-exclude = ["tests/benchmarks"]`
+- **Context**：tech-research 阶段实测 `ruff check tests/benchmarks --select=F` 命中 **0 条**；当前 `tests/benchmarks/` 只有 `__init__.py` + `test_routing_perf.py`（来源：tests/benchmarks），后者无 F 类违规
+- **Decision**：F-E 把 ruff 范围扩到 `scripts tests --select=F` 时不动 `pyproject.toml` 的 ruff `[tool.ruff.lint]` 段（来源：pyproject.toml:11），不加 extend-exclude
+- **Consequences**：好：配置面更小、改动可逆；差：若未来 benchmarks 加新文件触发 F 类，CI 当场红——但这是良性信号，便于贡献者立即看到
+- **时间**：2026-05-16 21:21:02
+
+### D-009 F-F Makefile step-name 命名表留 detail-design 同步出
+- **Context**：reviewer v2 suggestion 建议在 Makefile 顶部固化 step-name 命名表；命名本身依赖 Makefile 实现稿，预先猜测有漂移风险
+- **Decision**：不在 outline-design 阶段预定 step-name；detail-design 阶段与 Makefile 验证同步出表，作为 F-F 任务的内置交付物；当前 tech-feasibility 中的草案命名（`ci-local-deps` / `ci-local-gates` / `ci-local-pytest` / `ci-local-settings-check` / `ci-local-bats` / `ci-local-ruff` / `ci-local-render-check` / `ci-local-routing-e2e`）仅作参考
+- **Consequences**：好：避免现在猜名后期返工；差：F-F 任务的设计与实现必须共同 owner，命名漂移会在同一 PR 内自我修正
+- **时间**：2026-05-16 21:21:02

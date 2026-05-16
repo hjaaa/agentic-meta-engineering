@@ -219,12 +219,14 @@ ci-local-routing-e2e:
 | F-F | 1.5 | Makefile 完整翻译 + 跨平台 |
 | **合计** | **4.1** | 不含 review 等待与 PR round-trip |
 
-## 待决问题留 detail-design
+## 待决问题（已闭环至 plan.md ADR）
 
-1. **F-B 是否补 bats**：detail-design 阶段评估是否追加 1 条 `tool_name="Read"` 输入下的 fail-open 用例；当前判断为非必须。
-2. **F-C ci.txt 是否锁版本**：本次默认不锁版本（保留 `>=` `<` 范围）；若后续 CI 因 ruff/pytest 大版本变更红，开独立需求加锁。
-3. **F-E benchmarks exclude**：在 F-D1 试跑后决定是否加 `extend-exclude = ["tests/benchmarks"]`（来源：pyproject.toml:11）。
-4. **F-F step-name 命名表**：在 Makefile 顶部固化（reviewer v2 suggestion），与 workflow step name 1:1 对照，避免漂移。
+> 4 项在 outline-design 阶段开始前一轮回灯全部闭环，相关 ADR 见 plan.md。
+
+1. ✅ **F-B 不补 Read fail-open bats**：matcher 不命中 Read，hook 不会被调用；详见 plan.md D-006。
+2. ✅ **F-C ci.txt 不锁版本**：保留 pathspec `>=0.12,<1.0`，其它包不锁；详见 plan.md D-007。
+3. ✅ **F-E 不加 extend-exclude**：实测 `ruff check tests/benchmarks --select=F` 命中 **0 条**，直接扩范围安全；详见 plan.md D-008。
+4. ✅ **F-F step-name 命名表**：留 detail-design 与 Makefile 同步出表，避免现在猜名后期返工；当前草案命名仅作参考；详见 plan.md D-009。
 
 ## 引用源汇总
 
