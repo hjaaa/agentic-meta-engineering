@@ -52,14 +52,15 @@ def base_run_state() -> RunState:
 
 
 # ============================================================================
-# TC-D1 · DispatchOutcome 7 个枚举值可用
+# TC-D1 · DispatchOutcome 8 个枚举值可用（F-002 引入 awaiting_claude_action）
 # ============================================================================
 
-def test_dispatch_outcome_all_seven_values_are_valid():
-    """DispatchOutcome 的 7 个合法字符串都能作为 DispatchResult.outcome 赋值，
+def test_dispatch_outcome_all_eight_values_are_valid():
+    """DispatchOutcome 的 8 个合法字符串都能作为 DispatchResult.outcome 赋值，
     且赋值后不抛异常（Literal 是静态类型，运行时仅做值层面验证）。"""
     valid_outcomes = [
         "completed",
+        "awaiting_claude_action",  # F-002 / AC-04a：skill/prompt/agent dispatcher 写 node_ready
         "approval_pending",
         "failed",
         "loop_continue",
@@ -304,13 +305,14 @@ def test_dispatch_agent_node_writes_node_ready_event(tmp_path):
     node = {"id": "ac05-agent", "agent": {"name": "code-review-judge"}}
 
     # 路径 1：直接调 _dispatch_agent_node
-    result = _dispatch_agent_node(node, {}, jsonl_path)
+    result = _dispatch_agent_node(node, rs, {}, jsonl_path)
     assert result.outcome == "awaiting_claude_action"
 
     events, _ = read_events(jsonl_path)
     ready = [e for e in events if e.get("type") == "node_ready"]
     assert len(ready) == 1, f"_dispatch_agent_node 应写 1 条 node_ready，实际 {events}"
     assert ready[0]["node_id"] == "ac05-agent"
+    assert ready[0]["run_id"] == "REQ-AG-001"
     assert ready[0]["data"]["node_kind"] == "agent"
     assert "external_action_contract" in ready[0]["data"]
 

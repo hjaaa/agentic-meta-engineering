@@ -70,11 +70,6 @@ def _node_ready_event(events: list[dict]) -> dict | None:
     return next((e for e in events if e.get("type") == "node_ready"), None)
 
 
-def _node_completed_event(events: list[dict]) -> dict | None:
-    """返回第一条 type=node_completed 事件，无则 None。"""
-    return next((e for e in events if e.get("type") == "node_completed"), None)
-
-
 # ============================================================================
 # _build_external_action_contract 单元测试
 # ============================================================================
@@ -201,7 +196,7 @@ def test_prompt_node_default_contract_in_node_ready(tmp_jsonl: Path, tmp_path: P
 def test_agent_node_default_contract_in_node_ready(tmp_jsonl: Path) -> None:
     """agent 节点缺省 7 字段 → node_ready.data.external_action_contract == 7 缺省。"""
     node = {"id": "agent-default", "agent": "my-agent"}
-    result = _dispatch_agent_node(node, {}, tmp_jsonl)
+    result = _dispatch_agent_node(node, _make_run_state(), {}, tmp_jsonl)
 
     assert result.outcome == "awaiting_claude_action", (
         f"agent 节点应返回 awaiting_claude_action，实际 {result.outcome!r}"
@@ -221,7 +216,7 @@ def test_agent_node_default_contract_in_node_ready(tmp_jsonl: Path) -> None:
 def test_agent_node_allowed_tools_propagated(tmp_jsonl: Path) -> None:
     """agent 节点 allowed_tools 透传到 node_ready.data.external_action_contract。"""
     node = {"id": "agent-tools", "agent": "my-agent", "allowed_tools": ["Bash"]}
-    _dispatch_agent_node(node, {}, tmp_jsonl)
+    _dispatch_agent_node(node, _make_run_state(), {}, tmp_jsonl)
 
     events = _read_events(tmp_jsonl)
     ready_evt = _node_ready_event(events)

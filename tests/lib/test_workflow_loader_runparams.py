@@ -157,13 +157,17 @@ def test_all_list_fields_empty_pass(tmp_path: Path) -> None:
 
 
 # ============================================================================
-# 边界：idle_timeout=None（yaml null）→ W100（既有逻辑：None 不是正整数）
+# 边界：idle_timeout=None（yaml null）→ 通过 schema（int|null 均合法）
 # ============================================================================
 
-def test_idle_timeout_null_triggers_w100(tmp_path: Path) -> None:
-    """idle_timeout=null（yaml null → Python None）→ W100（既有逻辑不接受 None）。"""
-    assert _has_w100_error(tmp_path, {"idle_timeout": None}), (
-        "idle_timeout=null 应触发 W100（既有逻辑：None 不是正整数），实际未触发"
+def test_idle_timeout_null_is_valid(tmp_path: Path) -> None:
+    """idle_timeout=null（yaml null → Python None）→ 通过 schema。
+
+    detailed-design.md §3.4.2：idle_timeout 类型为 int|null；null 表示沿用
+    NODE_TYPE_DEFAULT_TIMEOUT_MS 中的节点类型默认值。
+    """
+    assert _no_errors(tmp_path, {"idle_timeout": None}), (
+        "idle_timeout=null 应通过 schema 校验（int|null 均合法），实际有 error"
     )
 
 

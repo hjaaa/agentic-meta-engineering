@@ -126,7 +126,7 @@ def _dispatch_node_by_type_key(
     各 handler 签名不同，无法用统一字典映射——保留 if 链 self-contained 语义。
     """
     if "agent" in node:
-        return _dispatch_agent_node(node, env, jsonl_path)
+        return _dispatch_agent_node(node, run_state, env, jsonl_path)
     if "skill" in node:
         return _dispatch_skill_node(node, run_state, env, jsonl_path)
     if "prompt" in node or "prompt_file" in node:
@@ -208,6 +208,7 @@ def _build_external_action_contract(node: dict) -> dict:
 
 def _dispatch_agent_node(
     node: dict,
+    run_state: RunState,
     env: dict[str, Any],
     jsonl_path: Path,
 ) -> DispatchResult:
@@ -221,6 +222,7 @@ def _dispatch_agent_node(
     append_event(jsonl_path, {
         "type": "node_ready",
         "node_id": node_id,
+        "run_id": run_state.run_id,
         "data": {
             "node_kind": "agent",
             "external_action_contract": contract,
@@ -258,6 +260,7 @@ def _dispatch_skill_node(
     append_event(jsonl_path, {
         "type": "node_ready",
         "node_id": node_id,
+        "run_id": run_state.run_id,
         "data": {
             "node_kind": "skill",
             "external_action_contract": contract,
@@ -304,6 +307,7 @@ def _dispatch_prompt_node(
     append_event(jsonl_path, {
         "type": "node_ready",
         "node_id": node_id,
+        "run_id": run_state.run_id,
         "data": {
             "node_kind": "prompt",
             "external_action_contract": contract,

@@ -352,26 +352,40 @@ def _validate_nodes_schema(workflow: dict[str, Any], report: Report, file_label:
         if "thinking" in node and not _is_valid_thinking(node["thinking"]):
             report.add(file_label, Severity.ERROR, "W100",
                        f"节点 {nid}.thinking 字段非法")
-        if "idle_timeout" in node and not (
-            isinstance(node["idle_timeout"], int) and node["idle_timeout"] >= 1
-        ):
-            report.add(file_label, Severity.ERROR, "W100",
-                       f"节点 {nid}.idle_timeout 必须是正整数")
-        # AC-10 Claude 运行参数白名单：list[str] 字段（allowed_tools / denied_tools / mcp / skills / agents）
-        for list_field in ("allowed_tools", "denied_tools", "mcp", "skills", "agents"):
-            if list_field in node:
-                val = node[list_field]
-                if not isinstance(val, list):
-                    report.add(file_label, Severity.ERROR, "W100",
-                               f"节点 {nid}.{list_field} 必须是数组")
-                elif not all(isinstance(item, str) for item in val):
-                    report.add(file_label, Severity.ERROR, "W100",
-                               f"节点 {nid}.{list_field} 元素必须全为字符串")
-        if "output_format" in node and node["output_format"] is not None and not isinstance(node["output_format"], dict):
-            report.add(file_label, Severity.ERROR, "W100",
-                       f"节点 {nid}.output_format 必须是 mapping 或 null")
+        # AC-10 Claude 运行参数白名单（list[str] / int|None / dict|None 共 7 字段）
+        _validate_node_run_params(node, nid, report, file_label)
         # 子结构必填校验
         _validate_node_substructures(node, nid, report, file_label)
+
+
+def _validate_node_run_params(
+    node: dict[str, Any], nid: str, report: Report, file_label: str
+) -> None:
+    """AC-10：校验 7 个 Claude 运行参数字段类型（allowed_tools / denied_tools / mcp /
+    skills / agents 为 list[str]；idle_timeout 为 int≥1 或 None；output_format 为
+    dict 或 None）。`idle_timeout=None` 表示沿用 NODE_TYPE_DEFAULT_TIMEOUT_MS 中节点
+    类型默认 timeout（与 detailed-design §3.4.2 一致）。
+    """
+    if "idle_timeout" in node and node["idle_timeout"] is not None:
+        val = node["idle_timeout"]
+        if not (isinstance(val, int) and val >= 1):
+            report.add(file_label, Severity.ERROR, "W100",
+                       f"节点 {nid}.idle_timeout 必须是正整数或 null，实际 {val!r}")
+    for list_field in ("allowed_tools", "denied_tools", "mcp", "skills", "agents"):
+        if list_field not in node:
+            continue
+        val = node[list_field]
+        if not isinstance(val, list):
+            report.add(file_label, Severity.ERROR, "W100",
+                       f"节点 {nid}.{list_field} 必须是数组，实际 {type(val).__name__}")
+        elif not all(isinstance(item, str) for item in val):
+            report.add(file_label, Severity.ERROR, "W100",
+                       f"节点 {nid}.{list_field} 各元素必须是字符串，实际 {val!r}")
+    if "output_format" in node and node["output_format"] is not None:
+        val = node["output_format"]
+        if not isinstance(val, dict):
+            report.add(file_label, Severity.ERROR, "W100",
+                       f"节点 {nid}.output_format 必须是 mapping 或 null，实际 {type(val).__name__}")
 
 
 def _validate_node_substructures(
