@@ -1,3 +1,4 @@
 2026-05-16 19:54:30 [phase-transition] bootstrap → definition：6 项门禁全过（META-SCHEMA/INDEX-INTEGRITY/SOURCING/PLAN-FRESHNESS/WORKSPACE-CLEAN/REVIEW-VERDICT），5 项 skip（features.json/tasks/* 路径未触达）
 2026-05-16 20:01:22 [save] requirement.md 起草完成：check-sourcing strict 0 error；4 决策点 + 7 待澄清条目 入清单等用户回灯
 2026-05-16 20:13:53 [save] definition 一轮回灯收口：D-001~D-005 决议入决策表+plan ADR，routing yaml 路径修正，AC-8 + 7 feature 拆分（F-D→F-D1/F-D2），sourcing strict 0/0
+2026-05-16 20:26:19 [signoff] REV-REQ-2026-012-definition-002 approved by hj19961223@gmail.com
