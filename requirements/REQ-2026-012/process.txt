@@ -11,3 +11,4 @@
 2026-05-16 21:34:20 [phase-transition] outline-design → detail-design：6 项 error gate 全过；v2 outline verdict looks_clean(91) + tty signoff approved 放行
 2026-05-16 21:44:05 [save] detail-design 三件套起草：detailed-design.md 401 行 + features.json (7 feat) + 7 task.md；schema 全过；strict 0/0
 2026-05-16 21:59:34 [signoff] REV-REQ-2026-012-detail-design-002 approved by hj19961223@gmail.com
+2026-05-16 22:04:00 [phase-transition] detail-design → task-planning：6 项 error gate 全过；v2 detail verdict looks_clean(92) + tty signoff approved 放行；features.json + 7 task.md 已就位
