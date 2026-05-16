@@ -1,0 +1,88 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-011-code-F-006-001",
+  "requirement_id": "REQ-2026-011",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-15 10:54:38",
+  "reviewed_commit": "f0eba38",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "e05957428c01111babb122eac6af1871456cc9f6e0cfac8a5a5a5fc572a02c6a"
+    },
+    {
+      "path": "artifacts/tasks/F-006.md",
+      "sha256": "428279db022fb4a63610f7e8efeda6d84a4a6cedf8ef9fda30e69a7859c71f32"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 82,
+  "dimensions": {
+    "design_consistency": {
+      "score": 91,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "tests/e2e/test_approval_reject_repair.py:139 末态仅断言 state.state=='running' + pending_approval is None，未 assert events[-1].data.output=={'decision':'approved'}（注：L158-159 已存在，但 node_completed 的 state 派生未额外校验）"
+        },
+        {
+          "severity": "minor",
+          "description": "tests/lib/test_workflow_reject_repair.py:130-285 prompt_ref 字段（workflow_reject.py:114 写入 'approval.on_reject.prompt'）无测试断言锚定，detailed-design §2.2.2 L151 显式列为必填字段"
+        }
+      ]
+    },
+    "security": {
+      "score": 92,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 92,
+      "issues": []
+    },
+    "complexity": {
+      "score": 74,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/workflow_reject.py:145-247 main 函数 ~102 行 + 分支圈复杂度估算 CC≈16（isatty + reason 校验 ×2 + run_id + run_dir + state 校验 + max_attempts 解析三元 + branch 输出二分），建议抽 _extract_max_attempts/_print_summary 至少把 max_attempts 解析三元拆出来"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 78,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/workflow_reject.py:211 max_attempts<=0/非 int 静默降级到 D-009 默认 3 而无 logging.warning（workflow_loader.py:394-403 on_reject 校验仅查字段存在，不校验类型/范围；对比 L411-415 retry.max_attempts 校验 int>=0 的差异），yaml 写 max_attempts: 0/-2 会绕过 loader 进入静默 fallback；建议加 warning 留排查线索"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_reject.py:72,79 logging.warning 缺 run_id/node_id 上下文（workflow_continue.py:214 同模式也缺，但 F-006 是新引入应直接补全；低成本改进）"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 90,
+      "issues": []
+    },
+    "performance": {
+      "score": 92,
+      "issues": []
+    },
+    "history_context": {
+      "score": 90,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "complexity + error_handling 同函数叠加：workflow_reject.main 的高 CC 与 max_attempts 静默降级在同一函数（L145-247），抽 _extract_max_attempts(node_def) 同时解决两个问题——降 CC + 集中处理非法值 warning",
+    "测试契约锚定缺位（design_consistency 维度内聚合）：prompt_ref 字段（设计 §2.2.2 必填）+ e2e node_completed.data.output 格式（设计 §3.2.1）+ approval_repair_started.data.max_attempts 在 D-009 默认场景的断言，三处测试缺口同源——建议加 _assert_after_reject(events, attempt, max) helper 统一校验",
+    "workflow_continue.py:176 _load_workflow_for_run 与 workflow_reject.py:46 _load_workflow_node 是 95% 重复（约定路径 + meta.yaml 降级），属 trend-G-meta 边缘——建议下一轮抽 workflow_loader_helpers.load_workflow_for_run(run_state, run_dir, root) 共用，但本轮不阻断"
+  ],
+  "scope": {
+    "feature_id": "F-006"
+  },
+  "supersedes": null
+}

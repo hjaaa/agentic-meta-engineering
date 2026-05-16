@@ -1,0 +1,118 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-011-code-F-009-001",
+  "requirement_id": "REQ-2026-011",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-15 15:39:12",
+  "reviewed_commit": "c8c6d09",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "e05957428c01111babb122eac6af1871456cc9f6e0cfac8a5a5a5fc572a02c6a"
+    },
+    {
+      "path": "artifacts/tasks/F-009.md",
+      "sha256": "46b9e61c68f21927f0e19d9471b8069318c94e1aaf3023ff28839897d0e5e60e"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 86,
+  "dimensions": {
+    "design_consistency": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "detailed-design.md:1170 pseudocode 残留 'paused (k)' 与 features.json:278 五分类 AC 不一致；实现已正确去掉 paused，但设计文档需同步消歧"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_status.py:227 _render_status_verbose 缺少 detailed-design.md:1165 pseudocode 中的 indent 参数；当前 main 调用链顶层只调一次 verbose，不影响功能，建议补对齐 pseudo 注解"
+        }
+      ]
+    },
+    "security": {
+      "score": 95,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 95,
+      "issues": []
+    },
+    "complexity": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_status.py:90-166 _classify_nodes CCN≈18；逻辑为 6 分类线性聚合，可读性尚可，建议后续 IB sweep 提取 done/failed/awaiting/blocked 各自小函数"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_status.py:227-302 _render_status_verbose CCN≈13；可在后续将 stale 计算与节点段格式化拆为两个 helper"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_status.py:305-361 main CCN≈12；可在后续将参数解析与渲染分支拆开"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 82,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/workflow_status.py:265-268 _classify_nodes 调用处 bare except 直接 return；建议至少 logger.debug 一行，避免分类逻辑静默退化为'空 verbose 段'难定位"
+        },
+        {
+          "severity": "major",
+          "description": "scripts/lib/workflow_status.py:354-358 verbose 模式 workflow load 'except: pass'；fail-soft 合理但缺日志，定位 workflow yaml 错误时无线索"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_status.py:137-140 _ready_nodes 调用宽 except 后置空集；同根因建议合并日志策略"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_status.py:178-179 _infer_awaiting_kind read_events warnings 被丢弃；调用 _classify_nodes 时也未聚合"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_status.py:341 'jsonl 读取失败' 字串硬编码比对；建议提取常量与 run_state.py 同源"
+        },
+        {
+          "severity": "minor",
+          "description": "tests/e2e/test_status_verbose_stale.py:120 断言 'jsonl unreadable' 但未校验 'ERROR:' 前缀；与生产 stderr 格式契约的 e2e 覆盖度可补"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 92,
+      "issues": []
+    },
+    "performance": {
+      "score": 95,
+      "issues": []
+    },
+    "history_context": {
+      "score": 90,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "趋势观察 trend-D-design-doc-drift 轻度触发：reviewer 把 detailed-design.md §3.7 pseudocode（paused/indent/list 返回类型）当强契约报了 4 条 major，critic 全数 rejected/not_proven。后续 IB sweep 把设计 §3.7 pseudocode 与 features.json AC 做一次对齐归一（删 paused、把 indent 注释为'未来扩展'、明确返回类型 str），避免下一轮 review 再被误读。",
+    "F-CR-004 / F-CR-005 同根因（verbose 路径多处宽 except 静默），建议批量加 logger.debug 单点收敛——属可读性增强，不阻断 sign-off。",
+    "complexity 三项（_classify_nodes / _render_status_verbose / main）合计可见 CCN 偏高但单一职责清晰，列入 F-009 完成后 IB sweep 抽小函数。"
+  ],
+  "scope": {
+    "feature_id": "F-009"
+  },
+  "supersedes": null,
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-15T15:49:37.841721+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
+  }
+}

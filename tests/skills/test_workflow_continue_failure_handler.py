@@ -27,7 +27,7 @@ if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
 from run_state import RunState, append_event, read_events  # noqa: E402
-from workflow_continue import _handle_failure, _handle_retry, _handle_skip, _handle_abort  # noqa: E402
+from workflow_outcome_router import _handle_failure, _handle_retry, _handle_skip, _handle_abort  # noqa: E402
 
 
 # ============================================================================
@@ -106,7 +106,10 @@ def test_handle_failure_retry_below_max_retries_keeps_current_node(
     # 预写 1 条 node_failed 事件（模拟已失败 1 次；node_id 在顶层，与 dispatcher 格式一致）
     append_event(jsonl_path, {"type": "node_failed", "node_id": "node-a", "data": {"error": "err"}})
 
-    result = _handle_failure(run_state, node_with_retry, "retry", jsonl_path, "some error")
+    result = _handle_failure(
+        run_state, node_with_retry, "retry", jsonl_path, "some error",
+        workflow={}, node_map={},
+    )
 
     assert result is False  # main loop 应 break
     assert run_state.state == "running"  # state 保持 running（等下次 continue 重派）
@@ -130,7 +133,10 @@ def test_handle_failure_skip_writes_node_skipped_and_advances(
     """
     run_state = RunState(run_id="REQ-2026-010", current_node="node-a", state="running")
 
-    result = _handle_failure(run_state, node_with_skip, "skip", jsonl_path, "some error")
+    result = _handle_failure(
+        run_state, node_with_skip, "skip", jsonl_path, "some error",
+        workflow={}, node_map={},
+    )
 
     assert result is True  # main loop 应继续循环
     assert run_state.current_node == "node-b"  # 推进到 node-b
@@ -161,7 +167,10 @@ def test_handle_failure_abort_writes_workflow_failed(
     """
     run_state = RunState(run_id="REQ-2026-010", current_node="node-a", state="running")
 
-    result = _handle_failure(run_state, node_with_abort, "abort", jsonl_path, "fatal error")
+    result = _handle_failure(
+        run_state, node_with_abort, "abort", jsonl_path, "fatal error",
+        workflow={}, node_map={},
+    )
 
     assert result is False  # main loop 应 break
     assert run_state.state == "failed"
@@ -196,7 +205,10 @@ def test_handle_failure_retry_exhausted_upgrades_to_abort(
     append_event(jsonl_path, {"type": "node_failed", "node_id": "node-a", "data": {"error": "err1"}})
     append_event(jsonl_path, {"type": "node_failed", "node_id": "node-a", "data": {"error": "err2"}})
 
-    result = _handle_failure(run_state, node_with_retry, "retry", jsonl_path, "err3")
+    result = _handle_failure(
+        run_state, node_with_retry, "retry", jsonl_path, "err3",
+        workflow={}, node_map={},
+    )
 
     assert result is False  # main loop 应 break
     assert run_state.state == "failed"
@@ -292,7 +304,10 @@ def test_handle_failure_default_on_failure_is_retry(
 
     # 节点无 on_failure 字段，默认应为 retry
     on_failure = node_no_on_failure.get("on_failure", "retry")
-    result = _handle_failure(run_state, node_no_on_failure, on_failure, jsonl_path, "error")
+    result = _handle_failure(
+        run_state, node_no_on_failure, on_failure, jsonl_path, "error",
+        workflow={}, node_map={},
+    )
 
     # retry 未达上限：state=running，返回 False（不是 abort 写 workflow_failed）
     assert result is False

@@ -1,0 +1,105 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-011-code-F-001-001",
+  "requirement_id": "REQ-2026-011",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-14 16:04:03",
+  "reviewed_commit": "aa3a608",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "e05957428c01111babb122eac6af1871456cc9f6e0cfac8a5a5a5fc572a02c6a"
+    },
+    {
+      "path": "artifacts/tasks/F-001.md",
+      "sha256": "9af462a8d735eb2fa8e78a1a0f7664c9c1b06536ecd5c210b7e076321ab71b0b"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 86,
+  "dimensions": {
+    "design_consistency": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/append_events.py:231 event_id 格式 (ts-type-uuid-seq) 偏离 detailed-design §3.5 描述的 node_id-purpose 命名，但 F-001 接口未传入这两个参数，属另派文档同步项"
+        }
+      ]
+    },
+    "security": {
+      "score": 92,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/append_events.py:30 注释 POSIX PIPE_BUF 引用对 regular file 不严格成立（PIPE_BUF 只保证 pipe），属术语误导，逻辑正确"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/append_events.py:77 公开 API append_events / append_events_with_manifest 未在 docstring 标注 NOT thread-safe（同进程跨线程并发未由 LOCK_EX 保护）"
+        }
+      ]
+    },
+    "complexity": {
+      "score": 84,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/append_events.py:180-267 append_events_with_manifest 总长 88 行（含 19 行 docstring/注释），实际逻辑 ~57 行；接近 80 行阈值但未越红线"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 82,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/append_events.py:142-149 _persist_field_to_manifest 中 os.write/fsync/replace 任一失败时残留 .tmp 文件，缺 finally 清理（成本极低，建议 rev1 修）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/append_events.py:171 _append_index_line 中 fcntl.flock(LOCK_UN) 缺显式 try/except 兜底（依赖 fd close 隐式释放）"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 86,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/append_events.py:180 append_events_with_manifest docstring Args 段未列 jsonl_path / events / run_dir 三个公开参数，仅描述 large_field_paths"
+        }
+      ]
+    },
+    "performance": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/append_events.py:211,263 慢路径触发时同事件 json.dumps encode 2 次（dry-run + 重 dry-run），仅 ≥4KB 慢路径影响，整体 < 10KB"
+        }
+      ]
+    },
+    "history_context": {
+      "score": 92,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "EH-001 .tmp 残留：在 _persist_field_to_manifest 加 finally 段 tmp_path.unlink(missing_ok=True)，与 manifest_path 存在性检查互斥，5 行内可修",
+    "CC-1 PIPE_BUF 注释术语：把第 30 行注释改成 'POSIX 单次 write 原子上限保守取值'，去掉 PIPE_BUF 字眼避免误导后续 reviewer",
+    "SPEC-013 docstring 补齐：append_events_with_manifest 的 Args 段补全 jsonl_path / events / run_dir 三个参数说明",
+    "CC-3 公开 API 在 module docstring 顶部加一行 'NOT thread-safe within single process; LOCK_EX guards cross-process only'",
+    "跨维度洞察：所有 minor 都在 manifest 慢路径（≥4KB 触发），快路径 (3 事件 <4KB) 零问题；F-001 的 R-T03 根除目标已达成，慢路径属 F-006/F-007 后续场景再迭代"
+  ],
+  "scope": {
+    "feature_id": "F-001"
+  },
+  "supersedes": null
+}

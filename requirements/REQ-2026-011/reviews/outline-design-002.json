@@ -1,0 +1,54 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-011-outline-design-002",
+  "requirement_id": "REQ-2026-011",
+  "phase": "outline-design",
+  "reviewer": "outline-design-quality-reviewer",
+  "reviewed_at": "2026-05-14 09:18:50",
+  "reviewed_commit": "33e919a",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "9b7e71b421cc7322b6550ac2c5ccdfb7cbca6d660f682e7c576efa38d301d033"
+    },
+    {
+      "path": "artifacts/requirement.md",
+      "sha256": "86a31b69f1d1b0c7a20940f86ec8c8ad993f6f1e1b1950ac328dcf6bc3f4d184"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 87,
+  "dimensions": {
+    "alignment_with_requirement": {
+      "score": 92,
+      "issues": []
+    },
+    "module_decomposition": {
+      "score": 86,
+      "issues": []
+    },
+    "tech_choice_rationale": {
+      "score": 88,
+      "issues": []
+    },
+    "scalability": {
+      "score": 85,
+      "issues": []
+    },
+    "integration_with_existing": {
+      "score": 86,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "第 471 行：AC-10 透传段提到『dispatcher 三处的 env 构造段读取这些字段并写入 subprocess 调用参数』，但 allowed_tools/denied_tools/mcp/skills/agents 这 5 个字段在 Claude Code CLI 上通常以参数形式而非 env 形式传入；detail-design 阶段应明确每字段是 env 还是 CLI 参数（不影响本期通过）。",
+    "第 467 行：AC-08 父 run 反扫子 run jsonl 末位事件的『反扫成本』未量化（每次 continue 都跑一次反扫 vs 仅在父节点是 sub_workflow 类型时跑），detail-design 阶段可补一个软上限（如 ≤ 10ms）便于 micro-benchmark 配套。"
+  ],
+  "scope": null,
+  "supersedes": "REV-REQ-2026-011-outline-design-001",
+  "architectural_concerns": [
+    "AC-08 sub_workflow 父子回填若按『父 run 每次 continue 反扫子 run jsonl』实现，未来若子 run 数量增长（同一父下挂多个子 run）反扫成本会线性放大；当前规模可扛，但 sub_workflow 嵌套深度 > 2 层或同层并行子 run > 5 个时建议改为事件驱动回填（子 run completed 时主动写父 run 一条 child_* 事件）。",
+    "AC-04b『awaiting_claude_action』状态承载了两类语义（等 skill 完成 / 等 approval repair），通过 --kind 区分；语义复用降低了状态机维度膨胀，但若未来出现第三类 awaiting 场景（如 AI loop 等待外部输入），--kind 集合会持续扩张，detail-design 阶段需评估是否引入 sub-state 字段而非 --kind 字符串枚举。"
+  ]
+}

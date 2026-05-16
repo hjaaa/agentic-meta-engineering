@@ -1,0 +1,67 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-011-detail-design-013",
+  "requirement_id": "REQ-2026-011",
+  "phase": "detail-design",
+  "reviewer": "detail-design-quality-reviewer",
+  "reviewed_at": "2026-05-15 17:07:43",
+  "reviewed_commit": "563dc93",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/detailed-design.md",
+      "sha256": "dc83dc32e1da9fdaad3e2856e18e9acd336b662bb09f6cfb24a3df328a821c14"
+    },
+    {
+      "path": "artifacts/features.json",
+      "sha256": "e05957428c01111babb122eac6af1871456cc9f6e0cfac8a5a5a5fc572a02c6a"
+    },
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "d41b1b8f87c657e7fc92ed68481c62f77be946b7328491286c41efb8267f81c0"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 88,
+  "dimensions": {
+    "consistency_with_outline": {
+      "score": 95,
+      "issues": []
+    },
+    "interface_completeness": {
+      "score": 90,
+      "issues": []
+    },
+    "data_model_soundness": {
+      "score": 90,
+      "issues": []
+    },
+    "sequence_correctness": {
+      "score": 90,
+      "issues": []
+    },
+    "feature_granularity": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 1816 行 §5.4 单元测试矩阵 `workflow_status.py --verbose` 行残留 `ready/running/blocked/paused/done` 旧分类，本批 refresh 已在 §3.7 line 1181/1195 同步为 `ready/running/blocked/awaiting/done` 5 分类（features.json AC-1 line 278 一致），但 §5.4 同主题行未同步——属于本批 IB-34 doc-refresh 范围内跨段一致性遗漏；不影响实现（_classify_nodes 实际返回 awaiting）但会误导后续按矩阵开发者，建议次轮 sweep 顺手对齐"
+        }
+      ]
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "§5.4 line 1816 `paused` → `awaiting`（保持本批 §3.7 + features.json AC-1 + 实际代码 workflow_status.py:163 / 283 四方一致）",
+    "§5.4 line 1811 `_dispatch_loop_node` 测试矩阵行可顺手补充 TimeoutExpired / OSError 双捕分支与 env iter 注入条目（与 §3.3.4 line 720-756 实现伪代码 + dispatcher.py:461-472 实际代码对齐）；本轮不阻塞但是 IB-34 后续 sweep 自然延伸",
+    "features.json F-009 description（line 263）仍写 6 分类 `ready/running/blocked/paused/awaiting/done`，与同条 acceptance（line 278）的 5 分类 `ready/running/blocked/awaiting/done` 自身不一致；建议 description 删除 `paused` 与 acceptance / detailed-design §3.7 / 实际代码三方对齐"
+  ],
+  "scope": null,
+  "supersedes": "REV-REQ-2026-011-detail-design-012",
+  "features_json_validation": {
+    "valid": true,
+    "issues": [],
+    "enhancement_suggestions": [
+      "F-009 description (line 263) 与 acceptance (line 278) 节点分类口径自身不一致（description 含 paused 6 分类 vs acceptance 5 分类无 paused）；非机械合法性问题但语义破坏 AC 派发上下文一致性，建议次轮一并 sweep"
+    ]
+  }
+}

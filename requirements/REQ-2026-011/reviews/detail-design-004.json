@@ -1,0 +1,83 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-011-detail-design-004",
+  "requirement_id": "REQ-2026-011",
+  "phase": "detail-design",
+  "reviewer": "detail-design-quality-reviewer",
+  "reviewed_at": "2026-05-14 11:34:08",
+  "reviewed_commit": "5738090",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/detailed-design.md",
+      "sha256": "5596a03e3a854d5dcf635b5bfa39974ddd07054aa80e28aa2bab522c98c97878"
+    },
+    {
+      "path": "artifacts/features.json",
+      "sha256": "bb763dff0f346456dffa7da38f8d05cca6c2a9560f96471f0e18cdc231fc2188"
+    },
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "379fb36d2192c590533fc52c8e25e76a52735b10536e57e54d1f980aac8288a5"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 90,
+  "dimensions": {
+    "consistency_with_outline": {
+      "score": 94,
+      "issues": []
+    },
+    "interface_completeness": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 99 行 §2.2 line 99 约定 '§3.x 示例一律不写 run_id 字段，与现有所有 append_event 调用站一致'，但 §3.3 line 498-499 / 521-524 / 590-595 dispatcher 示例都显式写 'run_id': run_state.run_id；且现实代码 scripts/lib/workflow_dispatcher.py:129-133 + 160-165 也写 run_id —— 约定 / 示例 / 现实代码三处不一致，development 阶段写代码会困惑。建议改约定表述（如 'node_started/node_failed 是历史保留写法'）或删除 §3.3 示例中冗余 run_id"
+        }
+      ]
+    },
+    "data_model_soundness": {
+      "score": 94,
+      "issues": []
+    },
+    "sequence_correctness": {
+      "score": 93,
+      "issues": []
+    },
+    "feature_granularity": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "第 33 行 features.json F-002 description 与 detailed-design.md v4 §2.1 / §3.8.2（line 66-72 / 1060-1065）直接冲突：F-002 仍写 'WORKFLOW_EVENT_TO_STATE 加 node_ready → awaiting_claude_action / approval_repair_started → awaiting_claude_action / approval_repair_completed → approval_pending'，但 v4 已修订为'不扩展该扁平映射，三事件全部走 §3.8.3 if/elif 专门分支'。development 阶段开发者按 F-002 实现会重新引入 P1-1 bug（扁平映射先命中 → 专门分支不可达 → current_node / pending_approval 副作用被吞）"
+        },
+        {
+          "severity": "major",
+          "description": "第 86 行 features.json F-004 description + 第 115 行 acceptance #8 与 detailed-design.md v4 §3.6.3 P1-3 修复直接冲突：features.json 仍写 '_finalize_after_rebuild_if_last_topology_node 适配 DAG 末节点判定（出度=0）' + '_finalize_after_rebuild_if_last_topology_node：DAG 末节点（出度=0）→ 补 workflow_completed'，但 v4 已改为 'all_terminal (∈ {completed, skipped, failed}) ∧ _ready_nodes 为空'。开发者按 F-004 acceptance 实现会重新引入多 sink DAG 过早 workflow_completed bug"
+        },
+        {
+          "severity": "minor",
+          "description": "第 49-52 行 F-002 acceptance 已覆盖 'node_ready → state=awaiting + current_node=N'，但缺反向断言证明专门分支真的命中（如：'mock 把 node_ready 加进 WORKFLOW_EVENT_TO_STATE → current_node 应为 None，证明扁平映射会吞副作用'）；类似 F-004 acceptance 缺'多 sink DAG 任一先 completed 不触发完成事件' 回归断言（§7.1 line 1632 测试矩阵补了，但 features.json 没同步）"
+        }
+      ]
+    }
+  },
+  "required_fixes": [
+    "[major] features.json F-002 description 第 33 行删除 'WORKFLOW_EVENT_TO_STATE 加 node_ready → awaiting_claude_action / approval_repair_started → awaiting_claude_action / approval_repair_completed → approval_pending' 表述，改为 'WORKFLOW_EVENT_TO_STATE 不扩展（保持 6 项原状）；三个新事件 node_ready / approval_repair_started / approval_repair_completed 走 RunState.rebuild 的 if/elif 专门分支（设 current_node / pending_approval / state，必须插入到 elif ev_type in WORKFLOW_EVENT_TO_STATE 之前）'，与 detailed-design.md v4 §2.1 / §3.8.2 对齐",
+    "[major] features.json F-004 description 第 86 行 + acceptance #8 第 115 行删除 '出度=0' 表述，改为 'all_terminal (∈ {completed, skipped, failed}) ∧ _ready_nodes 为空' 判定；同步补 acceptance 'e2e：多 sink DAG（A/B 均无下游）任一先 completed 不触发 workflow_completed，必须 A∧B 都 completed 才触发'，与 detailed-design.md v4 §3.6.3 + §7.1 line 1632 对齐"
+  ],
+  "suggestions": [
+    "[minor] detailed-design.md §2.2 line 99 约定与 §3.3 / 现实代码不一致，建议在 line 99 末尾补一句：'例外：dispatcher 入口 node_started / node_failed 沿用既有 workflow_dispatcher.py:129-165 写法（显式 run_id=run_state.run_id），不破坏既有调用站；本期新增的 node_ready / approval_repair_* 不写 run_id 字段'，避免开发者在 §3.3 示例与约定之间困惑",
+    "[minor] features.json F-002 acceptance 建议补反向断言：'mock 把 node_ready 加进 WORKFLOW_EVENT_TO_STATE → current_node 应为 None，证明扁平映射先命中会吞副作用（P1-1 回归门禁）'，把 detailed-design.md v4 §3.8.3 line 1099-1103 单测语义抬到 features 层",
+    "[trivial] detailed-design.md line 492 '`workflow_dispatcher.py:128`' 现实是 line 129（差 1 行），可在下次修订顺手更正"
+  ],
+  "scope": null,
+  "supersedes": "REV-REQ-2026-011-detail-design-003",
+  "features_json_validation": {
+    "valid": true,
+    "issues": [],
+    "enhancement_suggestions": [
+      "F-002 / F-004 description + acceptance 与 detailed-design.md v4 出现 contract drift，开 PR 前必须按 required_fixes 同步（schema 层合法，但语义层与设计文档冲突）"
+    ]
+  }
+}

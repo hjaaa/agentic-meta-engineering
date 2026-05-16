@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-009",
+  "status": "DONE",
+  "commit_sha": "c8c6d09073f475b4be11d8004b16abe43dd44bc2",
+  "files_changed": [
+    "scripts/lib/workflow_status.py",
+    "tests/lib/test_workflow_status_verbose.py",
+    "tests/e2e/test_status_verbose_stale.py"
+  ],
+  "test_summary": "24 new passed (19 unit + 5 e2e) + 1465 全套 0 回归（含原 1441）",
+  "touches_violations": [],
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-15T10:30:00+08:00"
+}

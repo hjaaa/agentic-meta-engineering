@@ -54,7 +54,7 @@ nodes:
         - $ARTIFACTS_DIR/../meta.yaml
         - $ARTIFACTS_DIR/../plan.md
       schema_check:
-        - script: scripts/lib/check_meta_schema.py
+        - script: scripts/lib/check_meta.py
           args: [$ARTIFACTS_DIR/../meta.yaml]
           expected_exit_code: 0
     depends_on: []

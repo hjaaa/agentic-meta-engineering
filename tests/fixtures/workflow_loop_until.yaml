@@ -1,0 +1,14 @@
+# F-010 e2e fixture：单节点 loop + until_bash
+# 验证：until_bash 'test "$iter" -ge 3' + max_iterations=5
+# 预期：跑 3 轮（iter=0,1,2 exit≠0）后，iter=3 exit=0 → loop_completed + workflow_completed
+name: workflow-loop-until
+version: 1
+category: assist
+provider: claude
+model: sonnet
+
+nodes:
+  - id: check-loop
+    loop:
+      until_bash: 'test "$iter" -ge 3'
+      max_iterations: 5

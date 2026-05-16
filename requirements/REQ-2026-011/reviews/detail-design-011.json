@@ -1,0 +1,69 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-011-detail-design-011",
+  "requirement_id": "REQ-2026-011",
+  "phase": "detail-design",
+  "reviewer": "detail-design-quality-reviewer",
+  "reviewed_at": "2026-05-14 15:08:41",
+  "reviewed_commit": "5531e7f",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/detailed-design.md",
+      "sha256": "f909b166811f08f7cc21cd8548dba5320a41712a0f85bce7792a32775f42f2e7"
+    },
+    {
+      "path": "artifacts/features.json",
+      "sha256": "e05957428c01111babb122eac6af1871456cc9f6e0cfac8a5a5a5fc572a02c6a"
+    },
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "0863aa3cdd222ab08168eb50d9d4814c9f28045c0e3d05b2caee31de7176ee4a"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 94,
+  "dimensions": {
+    "consistency_with_outline": {
+      "score": 95,
+      "issues": []
+    },
+    "interface_completeness": {
+      "score": 94,
+      "issues": []
+    },
+    "data_model_soundness": {
+      "score": 93,
+      "issues": []
+    },
+    "sequence_correctness": {
+      "score": 94,
+      "issues": []
+    },
+    "feature_granularity": {
+      "score": 95,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "（minor，非阻塞）detailed-design.md line 1847 `详见 F-005~F-008` 是叙述性表达（非来源引用），sourcing parser 已不触发；若想未来更稳，可改成 `详见 REQ-2026-010 F-005、F-006、F-007、F-008`（逐条枚举）—— 当前不强制",
+    "（minor，非阻塞）detailed-design.md 仍有 12+ 处 §2.2.x / §3.x 内部章节引用是文档内导航，非 sourcing 强约束；保持现状即可，sourcing gate 已 PASS"
+  ],
+  "scope": null,
+  "supersedes": "REV-REQ-2026-011-detail-design-010",
+  "features_json_validation": {
+    "valid": true,
+    "issues": [],
+    "enhancement_suggestions": [
+      "F-003（last_event_ts heartbeat）desc 仅 242 字符且实现单点，建议补 complexity: low",
+      "F-005（artifact 第 8 类 dispatcher）desc 322 字符且仅扩 dispatch_table 一条目，建议补 complexity: low",
+      "F-010（loop until_bash）/ F-012（launcher fuzzy）desc 短且独立，建议补 complexity: low 以让阶段 7 派发器走并行 sonnet 通道"
+    ]
+  },
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-14T15:11:11.566896+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
+  }
+}

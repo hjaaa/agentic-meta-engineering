@@ -1,0 +1,72 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-011-detail-design-006",
+  "requirement_id": "REQ-2026-011",
+  "phase": "detail-design",
+  "reviewer": "detail-design-quality-reviewer",
+  "reviewed_at": "2026-05-14 14:16:24",
+  "reviewed_commit": "7624fc6",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/detailed-design.md",
+      "sha256": "3f71749bfebc6857686ac64f4ad21c922b3a39b990aad62c1c96d6476f4a5a70"
+    },
+    {
+      "path": "artifacts/features.json",
+      "sha256": "4b9bf162d7162c8c0b70b1e98338aed9d6704a36ccba26d82f8bfd990bb93071"
+    },
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "379fb36d2192c590533fc52c8e25e76a52735b10536e57e54d1f980aac8288a5"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 86,
+  "dimensions": {
+    "consistency_with_outline": {
+      "score": 94,
+      "issues": []
+    },
+    "interface_completeness": {
+      "score": 92,
+      "issues": []
+    },
+    "data_model_soundness": {
+      "score": 88,
+      "issues": []
+    },
+    "sequence_correctness": {
+      "score": 90,
+      "issues": []
+    },
+    "feature_granularity": {
+      "score": 82,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "detailed-design.md:997-1003 + features.json F-004 acceptance #5/#6：_select_next_dispatch_target 退化路径分支 b 的 any_completed 判定仅扫 state=='completed'，与 §3.6.3 line 1071 v6 P1-3 修订定义的 success_terminal={'completed','skipped'} 不对齐。退化/单链路径下若末节点走 on_failure=skip 写 node_skipped（rebuild 后 node_outputs[N].state='skipped'），any_completed=False → line 1002-1003 返回 nodes[0]，重新派发已被 skipped 的首节点（应反扫 last_skipped 推进 _next_node）。同款问题在 line 1010-1012 last_completed_id 反扫循环里——只看 state=='completed'，漏看 skipped。这是 v6 P1-3 修复（把 skipped 纳入 DAG 成功终态）后在 P1-2 分支 b 留下的对称遗漏。修复：line 997-1000 any_completed 改 any_success_terminal（含 skipped）；line 1010-1012 last_completed_id 反扫条件改 in {'completed','skipped'}；features.json F-004 acceptance 补一条单链路径 N1 skipped → 推进 N2 反向回归。"
+        }
+      ]
+    }
+  },
+  "required_fixes": [
+    "[detailed-design.md §3.6.2 line 997-1018] _select_next_dispatch_target 退化路径分支 a 和分支 b 的成功终态集合（仅 'completed'）与 §3.6.3 line 1071 v6 P1-3 修订定义的 success_terminal={'completed','skipped'} 不对齐：on_failure=skip 触发 node_skipped 后退化路径会错误返回 nodes[0] / 错误推进到已 skipped 节点的 next。改两处：(a) line 997-1000 any_completed 改 any_success_terminal（含 skipped）；(b) line 1010-1012 last_completed_id 反扫条件改 in {'completed','skipped'}。同步 §3.6.2 docstring 把'反扫最后 completed'改'反扫最后成功终态'。",
+    "[features.json F-004 acceptance] 在现有 acceptance #6/#7/#8 之后补一条 P1-2 分支 b 与 P1-3 对齐的反向回归：'单链路径退化 + on_failure=skip：fixture 含 3 节点 N1/N2/N3 + 退化 yaml，事件序列 [workflow_started, node_started(N1), node_skipped(N1)] → rebuild 后 current_node is None ∧ node_outputs[N1].state==skipped → _select_next_dispatch_target 反扫得 last_success_terminal=N1 → 返回 N2 而非重投 N1'。"
+  ],
+  "suggestions": [
+    "[detailed-design.md §3.1 line 402-408] _check_node_match_or_fail 中变量命名 last_awaiting_evt 误导——循环候选集含 node_completed / approval_repair_completed / node_failed（非 awaiting 状态事件），紧接着 line 410 用 type 比对 expected_type 把非 awaiting 末位统统打成 E-NODE-RESULT-003。语义上是'末位节点级事件'，建议改名 last_node_event 或 last_node_lifecycle_evt，避免未来 reader 误以为反扫只取 awaiting 类。",
+    "[detailed-design.md §3.6.2 line 1005-1018] 分支 b 的循环 last_completed_id 反扫假设'单链路径下 dict 插入序 ≡ 完成时间序'——这个假设只在退化路径（depends_on_explicit=False，串行单链）下成立。line 990 已通过 `if workflow.get('depends_on_explicit'): return` 短路 DAG 路径，但建议在 line 1005 注释里显式补一句'分支 b 仅在 depends_on_explicit=False 退化路径执行，DAG 路径走 _ready_nodes 自然不进此分支'，预防未来若 _select_next_dispatch_target 重构后误把 DAG 路径漏掉短路。",
+    "[features.json F-007 acceptance] P1-1 反向 b/c 描述里'末位是 approval_repair_started 而非 node_ready'与代码 line 402-408 反扫候选集（含 node_completed/failed）轻微不对齐——若 jsonl 末位是 node_completed（理论上不会但单测 mock 可造），按代码会走 E-NODE-RESULT-003 而非'末位类型错位'语义。建议 features.json acceptance 文案改为'jsonl 末位节点级事件非 node_ready'（与代码反扫的真实候选集合一致），减少 development 阶段单测对接 ambiguity。"
+  ],
+  "scope": null,
+  "supersedes": "REV-REQ-2026-011-detail-design-005",
+  "features_json_validation": {
+    "valid": true,
+    "issues": [],
+    "enhancement_suggestions": [
+      "F-004 当前 complexity=heavy + estimate_days=3.0：本轮新发现的 P1-2 分支 b skipped 漏判修复涉及面在该 feature 内（line 997 / 1010 两点 + 新增一条单测），仍在 heavy 范围内无需上调；development 阶段可拆 sub-commit '退化路径 success_terminal 对齐 P1-3' 单独提交，便于 cherry-pick。",
+      "F-007 acceptance P1-1 反向 a/b/c 三条描述已与 §3.1 _check_node_match_or_fail 一一对应，作为机读派发入口完整度足够；若 development 阶段单测落地时发现末位反扫候选集语义需对齐，可顺手把 F-007 acceptance 文案改'末位节点级事件'。",
+      "F-001 acceptance #7（v6 新增 3.6KB 反向回归）已落 P2 二段触发对齐；建议 development 阶段单测同时跑 batch=3.9KB + 单字段 3.6KB 边界 case，再加 batch=4.1KB + 单字段 3.4KB 反向 case，覆盖 §3.5 dry-run 阈值附近的离散行为。"
+    ]
+  }
+}

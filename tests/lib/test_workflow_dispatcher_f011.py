@@ -371,3 +371,40 @@ def test_loop_dispatch_until_done_sequence(tmp_jsonl: Path) -> None:
     assert outcomes == ["loop_continue", "loop_continue", "loop_done"], (
         f"连续 3 轮 outcome 序列错误，期望 ['loop_continue', 'loop_continue', 'loop_done']，实际 {outcomes}"
     )
+
+
+# ============================================================================
+# IB-21b · _dispatch_node_by_type_key 未知节点类型抛 WorkflowError
+# ============================================================================
+
+def test_dispatch_node_unknown_type_returns_failed(tmp_path: Path, tmp_jsonl: Path) -> None:
+    """IB-21b：未知节点类型（无 agent/skill/prompt/.../artifact 键）→ outcome=failed + jsonl 含 node_failed。
+
+    dispatch_node 应捕获 _dispatch_node_by_type_key 抛出的 WorkflowError，
+    写 node_failed 事件并返回 outcome=failed（不向外传播异常）。
+    """
+    import json
+    from common import WorkflowError
+    from workflow_dispatcher import _dispatch_node_by_type_key, dispatch_node
+
+    node_id = "unknown-node-type"
+    node = {"id": node_id, "unknown_key": "something"}
+    rs = _make_run_state()
+
+    # dispatch_node 主入口：应返回 outcome=failed（内部吃掉 WorkflowError）
+    result = dispatch_node(node, rs, run_dir=tmp_path, root=tmp_path, env={}, jsonl_path=tmp_jsonl)
+    assert result.outcome == "failed", f"未知节点类型应返回 failed，实际 {result.outcome!r}"
+    assert "未知节点类型" in (result.error or ""), (
+        f"error 消息应含 '未知节点类型'，实际 {result.error!r}"
+    )
+
+    # jsonl 里应有 node_failed 事件
+    lines = tmp_jsonl.read_text(encoding="utf-8").splitlines()
+    events = [json.loads(ln) for ln in lines if ln.strip()]
+    failed_events = [e for e in events if e.get("type") == "node_failed"]
+    assert len(failed_events) == 1, f"期望 1 条 node_failed，实际 {len(failed_events)}"
+    assert failed_events[0].get("node_id") == node_id
+
+    # _dispatch_node_by_type_key 直接调：应抛 WorkflowError
+    with pytest.raises(WorkflowError, match="未知节点类型"):
+        _dispatch_node_by_type_key(node, rs, tmp_path, tmp_path, {}, tmp_jsonl)

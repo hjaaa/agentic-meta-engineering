@@ -78,12 +78,30 @@ VALID_EVENT_TYPES: set[str] = {
     "child_graceful_exited",  # 子 graceful 退出（≤ 30s 内完成 cancel）
     "child_force_killed",     # TaskStop forceful 兜底（30s 超时）
     "child_failed",           # 子 subagent 执行节点时抛异常（映射 spec §6.4 on_subworkflow_failure）
+    # D-007 + AC-04a：节点进入"等待 Claude 动作"状态（approval repair 入口）
+    # 注意：这 3 类事件不映射 WORKFLOW_EVENT_TO_STATE——副作用依赖 current_node / pending_approval
+    # 扁平字典无法表达，必须在 rebuild 中用独立 elif 处理（对抗审阅 P1-1 教训）
+    "node_ready",                   # AC-04a：节点就绪，等待 Claude 执行
+    "approval_repair_started",      # AC-03b：approval 修复开始（attempt 计数）
+    "approval_repair_completed",    # AC-03b：approval 修复完成，回到 approval_pending
 }
 
 # 终态 workflow 事件
 TERMINAL_WORKFLOW_EVENTS: set[str] = {
     "workflow_completed", "workflow_failed", "workflow_cancelled",
 }
+
+# 终态 state 集合（state 字符串，非事件名）；用于新 elif 分支的终态守卫。
+TERMINAL_STATES: frozenset[str] = frozenset({"completed", "failed", "cancelled"})
+
+# F-004 IB-01：node 级"成功类终态"集合——_ready_nodes 依赖判定 / 退化路径
+# last_visited 反扫 / finalize DAG 全节点判定四处必须严格同源，禁止局部 set
+# 字面量再定义（v6→v7→v8 三轮 drift 复发风险的永久消除点）。
+SUCCESS_TERMINAL: frozenset[str] = frozenset({"completed", "skipped"})
+
+# F-009 IB-33：jsonl 读取失败 warning 的统一前缀。read_events / workflow_status.main
+# 两处必须严格同源，避免字串硬编码 drift 导致 AC-08（jsonl unreadable → stderr+exit 1）漏检。
+WARN_JSONL_UNREADABLE_PREFIX: str = "jsonl 读取失败"
 
 # state 派生表（最近一次 workflow 级事件 → state 字符串）
 WORKFLOW_EVENT_TO_STATE: dict[str, str] = {
@@ -156,6 +174,18 @@ class RunState:
                 if not state.run_id:
                     state.run_id = evt.get("run_id") or state.run_id
                 state.state = "running"
+            # 注意：下方 3 个新 elif 必须在 WORKFLOW_EVENT_TO_STATE 分支之前——
+            # 这些事件的副作用依赖 current_node / pending_approval 字段，
+            # 无法通过扁平字典表达（对抗审阅 P1-1 教训）
+            elif ev_type == "node_ready" and node_id and state.state not in TERMINAL_STATES:
+                state.current_node = node_id
+                state.state = "awaiting_claude_action"
+            elif ev_type == "approval_repair_started" and node_id and state.state not in TERMINAL_STATES:
+                state.pending_approval = node_id
+                state.state = "awaiting_claude_action"
+            elif ev_type == "approval_repair_completed" and node_id and state.state not in TERMINAL_STATES:
+                # pending_approval 保留（仍在等下一次 approve/reject）
+                state.state = "approval_pending"
             elif ev_type in WORKFLOW_EVENT_TO_STATE:
                 state.state = WORKFLOW_EVENT_TO_STATE[ev_type]
             elif ev_type == "node_started" and node_id:
@@ -170,6 +200,9 @@ class RunState:
                 }
                 if state.current_node == node_id:
                     state.current_node = None
+                # node_ready 先把 state 置为 awaiting_claude_action；节点完成后回 running
+                if state.state == "awaiting_claude_action":
+                    state.state = "running"
             elif ev_type == "node_failed" and node_id:
                 node_started_at.pop(node_id, None)
                 state.node_outputs[node_id] = {
@@ -192,16 +225,16 @@ class RunState:
                 # retry：重新计为 started
                 node_started_at[node_id] = ts
                 state.current_node = node_id
-            elif ev_type == "approval_pending" and node_id:
+            elif ev_type == "approval_pending" and node_id and state.state not in TERMINAL_STATES:
                 state.pending_approval = node_id
                 state.state = "approval_pending"
-            elif ev_type == "approval_approved" and node_id:
+            elif ev_type == "approval_approved" and node_id and state.state not in TERMINAL_STATES:
                 if state.pending_approval == node_id:
                     state.pending_approval = None
                 # approve 不直接终结 workflow；后续会有 node_completed 把节点关掉
                 if state.state == "approval_pending":
                     state.state = "running"
-            elif ev_type == "approval_rejected" and node_id:
+            elif ev_type == "approval_rejected" and node_id and state.state not in TERMINAL_STATES:
                 if state.pending_approval == node_id:
                     state.pending_approval = None
                 if state.state == "approval_pending":
@@ -250,7 +283,7 @@ def read_events(jsonl_path: Path) -> tuple[list[dict[str, Any]], list[str]]:
         with jsonl_path.open("r", encoding="utf-8") as fh:
             lines = fh.readlines()
     except OSError as exc:
-        warnings.append(f"jsonl 读取失败: {exc}")
+        warnings.append(f"{WARN_JSONL_UNREADABLE_PREFIX}: {exc}")
         return events, warnings
 
     last_idx = len(lines) - 1

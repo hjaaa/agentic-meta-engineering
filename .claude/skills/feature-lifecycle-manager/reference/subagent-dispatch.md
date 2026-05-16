@@ -10,6 +10,23 @@
 
 本项目**保守档**：只串行派发，不并发（参考 superpowers `subagent-driven-development` 的 Red Flag "Never dispatch multiple implementation subagents in parallel"）。并发能力留给后续演进。
 
+## 派发顺序优先级（保守档）
+
+当多个 feature 同时 `pending` + 依赖满足时，主 Agent / 用户选下一个 feature 的标准次序：
+
+1. **按 priority 分层**（高 → 低）：`P0-baseline` → `P0` → `P1` → `P2`
+   - `priority` 字段来自 `features.json`（不在 task.md frontmatter schema 内，主 Agent 读 features.json 取）；`pr_group` 通常等同 priority
+2. **同层按 `depends_on` 拓扑序**：入度 0 节点先派；同入度按 features.json `features[]` 数组出现顺序
+3. **同档同层按 features.json 出现顺序**：稳定排序，可复现
+
+**约束**：
+- dispatcher 引擎层**仅校验 `depends_on` + `complexity`**（来自 task.md frontmatter），不引擎化 priority 排序——保守档避免 dispatcher 改造
+- priority 分层规则在**主 Agent / 用户选下一个 feature 的对话层**生效，不在自动 hook 层
+- P2 feature 即便 `depends_on: []`，也不应在 P0/P1 全 `done` 之前抢占派发——避免独立 P2 任务（如 launcher fuzzy / Claude 运行参数白名单）打乱 baseline 优先级
+- 用户显式说 "F-012 先做" → 以用户为准，按"绕过派发优先级"在 process.txt 记一行 `[save] override-priority F-012`
+
+> 来源：plan.md ADR D-015（task-planning 审阅 #3 派发顺序漂移闭环）
+
 ## 派发前置校验
 
 收到用户 "F-xxx 开始做" 或 "F-xxx 实现" 后：

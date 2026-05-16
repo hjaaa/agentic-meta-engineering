@@ -352,13 +352,40 @@ def _validate_nodes_schema(workflow: dict[str, Any], report: Report, file_label:
         if "thinking" in node and not _is_valid_thinking(node["thinking"]):
             report.add(file_label, Severity.ERROR, "W100",
                        f"节点 {nid}.thinking 字段非法")
-        if "idle_timeout" in node and not (
-            isinstance(node["idle_timeout"], int) and node["idle_timeout"] >= 1
-        ):
-            report.add(file_label, Severity.ERROR, "W100",
-                       f"节点 {nid}.idle_timeout 必须是正整数")
+        # AC-10 Claude 运行参数白名单（list[str] / int|None / dict|None 共 7 字段）
+        _validate_node_run_params(node, nid, report, file_label)
         # 子结构必填校验
         _validate_node_substructures(node, nid, report, file_label)
+
+
+def _validate_node_run_params(
+    node: dict[str, Any], nid: str, report: Report, file_label: str
+) -> None:
+    """AC-10：校验 7 个 Claude 运行参数字段类型（allowed_tools / denied_tools / mcp /
+    skills / agents 为 list[str]；idle_timeout 为 int≥1 或 None；output_format 为
+    dict 或 None）。`idle_timeout=None` 表示沿用 NODE_TYPE_DEFAULT_TIMEOUT_MS 中节点
+    类型默认 timeout（与 detailed-design §3.4.2 一致）。
+    """
+    if "idle_timeout" in node and node["idle_timeout"] is not None:
+        val = node["idle_timeout"]
+        if not (isinstance(val, int) and val >= 1):
+            report.add(file_label, Severity.ERROR, "W100",
+                       f"节点 {nid}.idle_timeout 必须是正整数或 null，实际 {val!r}")
+    for list_field in ("allowed_tools", "denied_tools", "mcp", "skills", "agents"):
+        if list_field not in node:
+            continue
+        val = node[list_field]
+        if not isinstance(val, list):
+            report.add(file_label, Severity.ERROR, "W100",
+                       f"节点 {nid}.{list_field} 必须是数组，实际 {type(val).__name__}")
+        elif not all(isinstance(item, str) for item in val):
+            report.add(file_label, Severity.ERROR, "W100",
+                       f"节点 {nid}.{list_field} 各元素必须是字符串，实际 {val!r}")
+    if "output_format" in node and node["output_format"] is not None:
+        val = node["output_format"]
+        if not isinstance(val, dict):
+            report.add(file_label, Severity.ERROR, "W100",
+                       f"节点 {nid}.output_format 必须是 mapping 或 null，实际 {type(val).__name__}")
 
 
 def _validate_node_substructures(
@@ -473,15 +500,26 @@ def _validate_node_id_uniqueness(
 # ============================================================================
 
 def _expand_implicit_depends_on(workflow: dict[str, Any]) -> None:
-    """`depends_on` 缺省 = 隐式接上一节点（spec §6.12）。"""
+    """`depends_on` 缺省 = 隐式接上一节点（spec §6.12）。
+
+    F-004（D-006 / AC-01）：加载后给 workflow dict 顶层补 `depends_on_explicit: bool`：
+      - True ：原始 YAML 中**所有节点**（首节点除外）显式声明了 depends_on
+      - False：至少一个非首节点缺省 depends_on（loader 仍补 [prev_id] 维持兼容）
+    首节点缺省 depends_on=[] 不算"隐式"，all_explicit 保持 True。
+    scheduler 据此 flag 选 `_ready_nodes`（True）/ `_next_node`（False）路径。
+    """
     nodes = workflow.get("nodes") or []
     prev_id: str | None = None
+    all_explicit = True
     for node in nodes:
         if not isinstance(node, dict):
             continue
         if "depends_on" not in node:
             node["depends_on"] = [prev_id] if prev_id else []
+            if prev_id is not None:  # 首节点缺省 depends_on=[] 不算"隐式"
+                all_explicit = False
         prev_id = node.get("id")
+    workflow["depends_on_explicit"] = all_explicit
 
 
 def _validate_dag(workflow: dict[str, Any], report: Report, file_label: str) -> None:

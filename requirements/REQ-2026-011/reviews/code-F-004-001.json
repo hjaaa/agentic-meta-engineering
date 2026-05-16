@@ -1,0 +1,117 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-011-code-F-004-001",
+  "requirement_id": "REQ-2026-011",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-14 21:41:15",
+  "reviewed_commit": "54e0718",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "e05957428c01111babb122eac6af1871456cc9f6e0cfac8a5a5a5fc572a02c6a"
+    },
+    {
+      "path": "artifacts/tasks/F-004.md",
+      "sha256": "cee14a5c2b3cf21b864cd0c8c51850ba4e14100f8b697f77c45818adb54f3e45"
+    }
+  ],
+  "conclusion": "blocked",
+  "score": 62,
+  "dimensions": {
+    "design_consistency": {
+      "score": 55,
+      "issues": [
+        {
+          "severity": "blocker",
+          "description": "F-CR-001 scripts/lib/workflow_continue.py:365 _advance_after_completed 调 _next_node 不分流 depends_on_explicit；DAG yaml 节点无 next 字段，首节点完成后 current_node=None → _finalize_if_topology_done 写 workflow_completed → DAG workflow 仅跑首节点即终止；critic not_rebutted（grep standard-8phase.yaml 无 next: 字段 + main() 调用链零 _select_next_dispatch_target 调用 + e2e 测试需手动 bootstrap 反向证据）"
+        },
+        {
+          "severity": "major",
+          "description": "F-CR-002 scripts/lib/workflow_continue.py:520-546 _main_loop while 要求外部已设 current_node 但 main() (674-713) 无任何节点调 _select_next_dispatch_target；e2e 测试 test_legacy_next_chain.py:78-80 手动 bootstrap 是反向证据；注释 main_loop 自身也不内置 scheduler bootstrap 明确承认设计缺口"
+        }
+      ]
+    },
+    "security": {
+      "score": 90,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 95,
+      "issues": []
+    },
+    "complexity": {
+      "score": 70,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "F-CR-003 scripts/lib/workflow_continue.py:109-164 _select_next_dispatch_target CCN=17 > 阈值 10；F-CR-001 修复后将成为热路径，建议拆三子函数 _dag_next / _legacy_bootstrap_or_resume / _legacy_advance，目标 CCN <= 8"
+        },
+        {
+          "severity": "major",
+          "description": "F-CR-004 scripts/lib/workflow_continue.py:452-517 _finalize_after_rebuild CCN=18 > 阈值 10；F-004 新增 DAG 分支 (497-509) 贡献主要复杂度增量；建议抽 _is_dag_topology_done(workflow,run_state) + _is_legacy_topology_done(last_node) helper"
+        },
+        {
+          "severity": "minor",
+          "description": "F-CR-008 _select_next_dispatch_target:135-164 current_node is None 分支内嵌深度 5 (def→if→if→for→if) 超阈值 4；F-CR-003 拆分后自然消除"
+        },
+        {
+          "severity": "minor",
+          "description": "F-CR-010 scripts/lib/workflow_continue.py 全文 726 行超阈值 500（F-004 +143）；建议拆 workflow_scheduler.py + workflow_outcome_router.py，可独立 follow-up"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "F-CR-007 scripts/lib/workflow_continue.py:493-495 _finalize_after_rebuild 反扫 last_visited_id 后 node_map.get 返 None 静默 return False，无 WARN；同模式 158-160 同步处理；F-004 新引入分支非存量；yaml 改名/删节点时 run 永久卡死无日志"
+        },
+        {
+          "severity": "minor",
+          "description": "F-CR-011 scripts/lib/workflow_continue.py:482 events,_=read_events(jsonl_path) 丢 warnings，与 _handle_retry:184-188 一致打印 WARN 不一致；jsonl 损坏会让 last_visited_id 反扫漏算但无告警"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 75,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "F-CR-015 tests/e2e/test_legacy_next_chain.py 名称与覆盖范围错位（fixture 同时覆盖退化与 DAG 双路径但文件名暗示仅退化）；未覆盖 main() 入口完整路径，无法捕获 F-CR-001/F-CR-002；建议新增 tests/e2e/test_standard_8phase_dag.py 调 main() 跑真实 DAG 多节点"
+        },
+        {
+          "severity": "minor",
+          "description": "F-CR-009 (downgraded by critic not_proven) _ready_nodes CCN=14 精确测量缺失，手测 8-12 区间证据不足；F-CR-003/004 拆分时跑 radon cc 实测一并处理"
+        }
+      ]
+    },
+    "performance": {
+      "score": 90,
+      "issues": []
+    },
+    "history_context": {
+      "score": 90,
+      "issues": []
+    }
+  },
+  "required_fixes": [
+    "F-CR-001 (blocker) — _advance_after_completed 按 depends_on_explicit 分流：True 调 _select_next_dispatch_target、False 保持 _next_node；新增 main_loop 多节点 e2e（3 节点 DAG fixture，覆盖 A 完成→派 B/C 完整链路）",
+    "F-CR-002 (major) — _main_loop 入口（finalize_after_rebuild 之后、while 之前）补 bootstrap：current_node is None ∧ state==running → 调 _select_next_dispatch_target 取首节点；返 None 则不进 while",
+    "F-CR-003 (major) — _select_next_dispatch_target CCN=17 拆三子函数 _dag_next / _legacy_bootstrap_or_resume / _legacy_advance，目标 CCN <= 8",
+    "F-CR-004 (major) — _finalize_after_rebuild CCN=18 抽 _is_dag_topology_done(workflow,run_state) + _is_legacy_topology_done(last_node) helper",
+    "F-CR-007 (major) — _finalize_after_rebuild:493-495 + _select_next_dispatch_target:158-160 node_map.get 返 None 时加 WARN 日志，对齐 _handle_retry:184-188 风格"
+  ],
+  "suggestions": [
+    "F-CR-008 (minor) — F-CR-003 拆分时一并消除嵌套深度 5",
+    "F-CR-010 (minor) — workflow_continue.py 726 行可独立 follow-up 拆模块（非 rev2 必修）",
+    "F-CR-011 (minor) — _finalize read_events warnings 与 _handle_retry 风格统一打 WARN",
+    "F-CR-015 (minor) — 拆 tests/e2e/test_standard_8phase_dag.py（F-CR-001 修复后该测试保护回归）",
+    "F-CR-009 (minor follow-up) — F-CR-003/004 拆分时跑 radon cc 实测 _ready_nodes CCN"
+  ],
+  "scope": {
+    "feature_id": "F-004"
+  },
+  "supersedes": null
+}

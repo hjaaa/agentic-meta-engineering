@@ -20,9 +20,20 @@ if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
 from common import REPO_ROOT, WorkflowError, infer_run_id_from_branch  # noqa: E402
-from run_state import RunState, _resolve_run_dir, append_event, read_events  # noqa: E402
+from run_state import (  # noqa: E402
+    RunState,
+    _resolve_run_dir,
+    append_event,
+    read_events,
+)
 from workflow_state_validator import validate_state_for_cmd  # noqa: E402
 from workflow_loader import load_workflow  # noqa: E402
+from workflow_scheduler import (  # noqa: E402
+    _finalize_after_rebuild_if_last_topology_node,
+    _select_next_dispatch_target,
+)
+from workflow_outcome_router import _route_outcome  # noqa: E402
+import path_lock  # noqa: E402
 
 
 def _build_node_map(workflow: dict) -> dict[str, dict]:
@@ -34,347 +45,234 @@ def _build_node_map(workflow: dict) -> dict[str, dict]:
     return {node.get("id"): node for node in nodes if node.get("id")}
 
 
-def _next_node(
-    current_node: dict,
-    hint: str | None,
-) -> str | None:
-    """确定下一个节点 ID。
+# ============================================================================
+# F-011：sub_workflow 父子完成回填（AC-08）
+# ============================================================================
 
-    优先级：
-      1. hint 非 None 时返回 hint（显式覆盖，e.g. on_reject）
-      2. 否则读 current_node.next（若存在）
-      3. 否则返回 None（拓扑末尾）
-
-    注：F-008 接入显式跳转（on_failure / on_skip）时，由调用方计算 hint 后传入；
-    node_map 不由本函数持有，保持职责单一。
-    """
-    if hint is not None:
-        return hint
-    return current_node.get("next")
-
-
-def _handle_retry(
-    run_state: RunState,
-    node: dict,
+def _handle_child_completed(
+    node_id: str,
     jsonl_path: Path,
-    error: str | None,
-) -> bool:
-    """retry 策略：统计已失败次数，未达上限则静默等待下次续跑，超出则升级为 abort。
-
-    参照 workflow_dispatcher.py:185-200 _dispatch_skill_node 风格编写。
-
-    返回值：False（调用方应 break，等待下次 continue 或因 abort 终结）。
-
-    注意：dispatcher 已写 node_failed 事件，此处不重复写；
-         超上限时才追加 workflow_failed 事件。
-    """
-    node_id = node["id"]
-    # F-5：保留 warnings，暴露 jsonl 损坏行（损坏行会导致 fail_count 偏低）
-    events, warnings = read_events(jsonl_path)
-    if warnings:
-        print(
-            f"WARN: jsonl 含 {len(warnings)} 行损坏，retry 计数可能偏低: {warnings}",
-            file=sys.stderr,
-        )
-    # node_failed 事件由 dispatcher 写入，node_id 在事件顶层（与 run_state.rebuild 读法一致）
-    fail_count = sum(
-        1 for evt in events
-        if evt.get("type") == "node_failed" and evt.get("node_id") == node_id
-    )
-    max_retries: int = node.get("max_retries", 3)
-
-    if fail_count < max_retries:
-        # 未到重试上限：current_node 保持（下次 continue 自动从该节点重派）
-        print(
-            f"INFO: 节点 {node_id!r} 失败（第 {fail_count} 次），"
-            f"将重试（max_retries={max_retries}）",
-            file=sys.stderr,
-        )
-        return False
-
-    # 超出重试上限：升级为 abort，写 workflow_failed 事件
-    print(
-        f"WARN: 节点 {node_id!r} 重试次数已达上限 {max_retries}，升级为 abort",
-        file=sys.stderr,
-    )
-    append_event(
-        jsonl_path,
-        {
-            "type": "workflow_failed",
-            "data": {
-                "node_id": node_id,
-                "error": error or f"节点 {node_id!r} 超出最大重试次数 {max_retries}",
-                "reason": "retry_exhausted",
-            },
-        },
-    )
-    run_state.state = "failed"
-    return False
-
-
-def _handle_skip(
     run_state: RunState,
-    node: dict,
-    jsonl_path: Path,
-    error: str | None,
-) -> bool:
-    """skip 策略：写 node_skipped 事件，推进 current_node，返回 True（主循环继续）。
+) -> None:
+    """子 workflow_completed → 父写 child_graceful_exited + node_completed。
 
-    参照 workflow_dispatcher.py:185-200 _dispatch_skill_node 风格编写。
-
-    返回值：True（调用方应继续循环，推进到下一节点）。
-
-    注意：node_skipped.data.reason 遵循 spec §2.1，记录实际错误信息。
+    调用方已保证父节点未关闭（幂等守卫在 _poll_sub_workflows）。
+    任一 append_event 的 OSError → 包成 WorkflowError 向上抛（fail-closed）。
     """
-    node_id = node["id"]
-    # node_skipped 事件：node_id 在顶层（与 run_state.rebuild 读法一致）
-    append_event(
-        jsonl_path,
-        {
-            "type": "node_skipped",
+    try:
+        append_event(jsonl_path, {
+            "type": "child_graceful_exited",
             "node_id": node_id,
             "data": {
-                "reason": error or "on_failure=skip 但无具体错误",
+                "sub_run_id": node_id,
+                "sub_terminal_event": "workflow_completed",
+                "on_subworkflow_failure": None,
             },
-        },
-    )
-    # 更新 node_outputs（状态=skipped）
+        })
+        append_event(jsonl_path, {
+            "type": "node_completed",
+            "node_id": node_id,
+            "data": {"output": "", "sub_workflow_done": True},
+        })
+    except WorkflowError as exc:
+        raise WorkflowError(
+            f"_poll_sub_workflows append_event failed: {exc}"
+        ) from exc
+    # 更新内存 RunState（避免重复回填 + 让 finalize 可识别拓扑完成）
     run_state.node_outputs[node_id] = {
-        "output": None,
-        "state": "skipped",
-        "data": {"reason": error or "on_failure=skip 但无具体错误"},
-    }
-    next_id = _next_node(node, None)
-    run_state.current_node = next_id
-    print(
-        f"INFO: 节点 {node_id!r} 跳过（on_failure=skip），推进到 {next_id!r}",
-        file=sys.stderr,
-    )
-    return True
-
-
-def _handle_abort(
-    run_state: RunState,
-    node: dict,
-    jsonl_path: Path,
-    error: str | None,
-    on_failure: str,
-) -> bool:
-    """abort 策略（或未知策略降级为 abort）：写 workflow_failed 事件，终结 run。
-
-    参照 workflow_dispatcher.py:185-200 _dispatch_skill_node 风格编写。
-
-    返回值：False（调用方应 break，run 终结）。
-
-    注意：未知策略先打 WARN，再走 abort 路径。
-    """
-    node_id = node["id"]
-    if on_failure != "abort":
-        print(
-            f"WARN: 未知 on_failure 策略 {on_failure!r}，降级为 abort",
-            file=sys.stderr,
-        )
-    append_event(
-        jsonl_path,
-        {
-            "type": "workflow_failed",
-            "data": {
-                "node_id": node_id,
-                "error": error or f"节点 {node_id!r} 执行失败（abort）",
-                "reason": "node_failed",
-            },
-        },
-    )
-    run_state.state = "failed"
-    return False
-
-
-def _handle_failure(
-    run_state: RunState,
-    node: dict,
-    on_failure: str,
-    jsonl_path: Path,
-    error: str | None,
-) -> bool:
-    """按 on_failure 策略路由到对应助手函数。
-
-    返回值语义：
-      True  → 调用方继续循环（_handle_skip 成功推进）
-      False → 调用方 break（_handle_retry 等待下次 / _handle_abort 终结 workflow）
-
-    注意：dispatcher 已写 node_failed 事件，本函数不重复写；
-         仅通过助手函数写 node_skipped / workflow_failed 两类新事件。
-    """
-    if on_failure == "retry":
-        return _handle_retry(run_state, node, jsonl_path, error)
-    elif on_failure == "skip":
-        return _handle_skip(run_state, node, jsonl_path, error)
-    else:
-        return _handle_abort(run_state, node, jsonl_path, error, on_failure)
-
-
-def _finalize_if_topology_done(run_state: RunState, jsonl_path: Path) -> bool:
-    """末节点 outcome=completed/loop_done/sub_workflow_done 推进后，若 next_id is None
-    说明拓扑跑完——写 workflow_completed 事件 + 翻 state=completed，返回 True 让调用方 break。
-
-    P1-c v2（codex round-4 2026-05-12）修订：
-      旧实现把 workflow_completed 写在 _main_loop 退出后并以 `current_node is None` 判断完成，
-      存在 crash 窗口——dispatcher 已写 node_completed 但 _advance_after_completed 没跑（无
-      advance 事件），重启后 RunState.rebuild 在 node_completed 分支把 current_node 置 None
-      （rebuild 凭"current_node == node_id 则置 None"判定），与"自然跑完"无法区分，导致
-      workflow_completed 被误写、剩余节点被静默截断。
-      新实现把 workflow_completed 的写入下沉到 _route_outcome——只有真的从一次成功的
-      completed/loop_done/sub_workflow_done 路径推进且无 next 时才写，crash 路径不触发。
-
-    返回值：True 表示已写 workflow_completed（调用方应 break）；False 表示还有后继节点。
-    """
-    if run_state.current_node is None:
-        append_event(jsonl_path, {"type": "workflow_completed", "data": {}})
-        run_state.state = "completed"
-        return True
-    return False
-
-
-def _advance_after_completed(
-    run_state: RunState,
-    node: dict,
-    result: "DispatchResult",  # type: ignore[name-defined]  # noqa: F821
-) -> None:
-    """completed / loop_done / sub_workflow_done 场景的公用推进逻辑。
-
-    - 更新 node_outputs（outcome=completed 时记录 output；其余场景 output 可能为 None）
-    - 推进 current_node → _next_node(node, result.next_node_hint)
-    """
-    node_id = node["id"]
-    run_state.node_outputs[node_id] = {
-        "output": result.output,
+        "output": "",
         "state": "completed",
-        "data": {"output": result.output},
+        "data": {"output": "", "sub_workflow_done": True},
     }
-    next_id = _next_node(node, result.next_node_hint)
-    run_state.current_node = next_id
+    if run_state.current_node == node_id:
+        run_state.current_node = None
 
 
-def _route_outcome(
-    run_state: RunState,
-    node: dict,
-    result: "DispatchResult",  # type: ignore[name-defined]  # noqa: F821
+def _handle_child_failed_by_policy(
+    node_id: str,
+    on_failure: str,
     jsonl_path: Path,
-) -> bool:
-    """将 dispatch_node 返回的 outcome 路由到对应处理逻辑。
+    run_state: RunState,
+) -> None:
+    """子 workflow_failed → 按 on_subworkflow_failure 策略写父事件三件套。
 
-    返回值：True=继续循环（while 条件仍满足），False=立即 break。
+    # abort 语义实现为 on_subworkflow_failure='fail'，沿用 workflow_loader.ALLOWED_ON_SUB_FAILURE 真值源
+    策略：
+    - skip     → child_failed + node_skipped
+    - fail     → child_failed + node_failed + workflow_failed（scheduler 不再推进）
+    - continue → child_failed + node_completed（继续下游）
 
-    路由表（dispatcher 已写的事件不在此重复）：
-      completed          → _advance_after_completed（推进 current_node）→ True
-      loop_continue      → loop_counters += 1 + 写 loop_counter_advanced 事件，
-                           current_node 不变 → True
-      loop_done          → _advance_after_completed（推进 current_node）→ True
-      sub_workflow_done  → _advance_after_completed（推进 current_node）→ True
-      approval_pending   → state=approval_pending → False
-      sub_workflow_pending → state 保持 running → False（等待子 workflow 回调）
-      failed             → _handle_failure 返回值（retry/skip/abort 决定）
-      未知 outcome       → 写 workflow_failed，state=failed → False
+    任一 append_event 的 OSError → 包成 WorkflowError 向上抛（fail-closed）。
     """
-    outcome = result.outcome
-    node_id = node["id"]
+    try:
+        append_event(jsonl_path, {
+            "type": "child_failed",
+            "node_id": node_id,
+            "data": {
+                "sub_run_id": node_id,
+                "sub_terminal_event": "workflow_failed",
+                "on_subworkflow_failure": on_failure,
+            },
+        })
 
-    if outcome == "completed":
-        # node_completed 事件已由 dispatcher 写入；仅更新 RunState + 推进指针
-        _advance_after_completed(run_state, node, result)
-        if _finalize_if_topology_done(run_state, jsonl_path):
-            return False
-        return True
-
-    elif outcome == "loop_continue":
-        # 循环节点继续迭代：递增计数器并写 loop_counter_advanced 事件。
-        # 仅内存 +1 在 crash 后会被 rebuild 漏读，导致 dispatcher 用旧 iteration 重派同一轮。
-        new_value = run_state.loop_counters.get(node_id, 0) + 1
-        run_state.loop_counters[node_id] = new_value
-        append_event(
-            jsonl_path,
-            {
-                "type": "loop_counter_advanced",
+        if on_failure == "skip":
+            append_event(jsonl_path, {
+                "type": "node_skipped",
                 "node_id": node_id,
-                "data": {"new_value": new_value},
-            },
-        )
-        return True
+                "data": {"reason": "child_failed", "on_subworkflow_failure": on_failure},
+            })
+            run_state.node_outputs[node_id] = {
+                "output": "",
+                "state": "skipped",
+                "data": {"reason": "child_failed", "on_subworkflow_failure": on_failure},
+            }
+        elif on_failure == "fail":
+            append_event(jsonl_path, {
+                "type": "node_failed",
+                "node_id": node_id,
+                "data": {"reason": "child_failed", "on_subworkflow_failure": on_failure},
+            })
+            # 写 workflow_failed 前先判断是否已 failed（幂等守卫）
+            if run_state.state != "failed":
+                append_event(jsonl_path, {
+                    "type": "workflow_failed",
+                    "data": {
+                        "node_id": node_id,
+                        "error": f"sub_workflow {node_id!r} failed，on_subworkflow_failure=fail",
+                    },
+                })
+                run_state.state = "failed"
+            run_state.node_outputs[node_id] = {
+                "output": "",
+                "state": "failed",
+                "data": {"reason": "child_failed", "on_subworkflow_failure": on_failure},
+            }
+        else:
+            # continue 分支：子失败但父继续下游
+            append_event(jsonl_path, {
+                "type": "node_completed",
+                "node_id": node_id,
+                "data": {"output": "", "sub_workflow_done": True},
+            })
+            run_state.node_outputs[node_id] = {
+                "output": "",
+                "state": "completed",
+                "data": {"output": "", "sub_workflow_done": True},
+            }
+    except WorkflowError as exc:
+        raise WorkflowError(
+            f"_poll_sub_workflows append_event failed: {exc}"
+        ) from exc
 
-    elif outcome in ("loop_done", "sub_workflow_done"):
-        # 循环/子 workflow 完成：推进到下一节点
-        _advance_after_completed(run_state, node, result)
-        if _finalize_if_topology_done(run_state, jsonl_path):
-            return False
-        return True
-
-    elif outcome == "approval_pending":
-        # 派发器已写 approval_pending 事件；main loop 仅设置状态并退出
-        run_state.state = "approval_pending"
-        return False
-
-    elif outcome == "sub_workflow_pending":
-        # 子 workflow 已发起但尚未完成；state 保持 running，等待回调续跑
-        return False
-
-    elif outcome == "failed":
-        # 按 on_failure 策略路由：retry / skip / abort
-        on_failure: str = node.get("on_failure", "retry")
-        return _handle_failure(run_state, node, on_failure, jsonl_path, result.error)
-
-    else:
-        # 未知 outcome（防御性兜底）：写 workflow_failed，避免 state 留 running 引发静默死循环
-        append_event(
-            jsonl_path,
-            {
-                "type": "workflow_failed",
-                "data": {
-                    "node_id": node_id,
-                    "error": f"未知 outcome: {outcome!r}",
-                },
-            },
-        )
-        run_state.state = "failed"
-        return False
+    if run_state.current_node == node_id:
+        run_state.current_node = None
 
 
-def _finalize_after_rebuild_if_last_topology_node(
+def _handle_child_cancelled(
+    node_id: str,
+    jsonl_path: Path,
     run_state: RunState,
-    node_map: dict,
+) -> None:
+    """子 workflow_cancelled → 父写 child_force_killed + node_failed。
+
+    任一 append_event 的 OSError → 包成 WorkflowError 向上抛（fail-closed）。
+    """
+    try:
+        append_event(jsonl_path, {
+            "type": "child_force_killed",
+            "node_id": node_id,
+            "data": {
+                "sub_run_id": node_id,
+                "sub_terminal_event": "workflow_cancelled",
+                "on_subworkflow_failure": None,
+            },
+        })
+        append_event(jsonl_path, {
+            "type": "node_failed",
+            "node_id": node_id,
+            "data": {"reason": "child_force_killed"},
+        })
+    except WorkflowError as exc:
+        raise WorkflowError(
+            f"_poll_sub_workflows append_event failed: {exc}"
+        ) from exc
+    run_state.node_outputs[node_id] = {
+        "output": "",
+        "state": "failed",
+        "data": {"reason": "child_force_killed"},
+    }
+    if run_state.current_node == node_id:
+        run_state.current_node = None
+
+
+def _poll_sub_workflows(
+    run_state: RunState,
+    workflow: dict,
+    run_dir: Path,
     jsonl_path: Path,
 ) -> bool:
-    """main_loop 入口的回填补救（codex round-5 2026-05-12 P2）：
+    """AC-08：每次 continue 进入 main loop 前，反扫所有 sub_runs 子 jsonl 末位状态。
 
-    P1-c v2 把 workflow_completed 写入下沉到 _route_outcome 后，引入对称 crash 窗口：
-      _advance_after_completed 已把 current_node 置 None 但 _finalize_if_topology_done
-      append_event 之前 crash → 重启时 rebuild 出 current_node=None / state=running，
-      main_loop 因 while 失败立刻退出，永远不进 _route_outcome，run 卡死。
+    若发现某子 run 处于 terminal 状态（completed/failed/cancelled），且父 run 中
+    对应 sub_workflow 节点尚未关闭：
+      - 父 run 写 child_graceful_exited / child_failed / child_force_killed 事件
+      - 按 on_subworkflow_failure 决定写 node_completed / node_skipped / node_failed
+      - 父节点关闭后由 main loop 重算 _ready_nodes 推进下游
 
-    本 helper 在 main_loop 进入循环前补救：若 current_node is None ∧ state==running
-    ∧ jsonl 最后一条 node_completed 对应的节点在拓扑上没有 next（即"末节点"），说明
-    crash 发生在自然完成的窗口里，补写 workflow_completed 把 state 翻 completed。
-    若最后 completed 的节点仍有 next（真 crash mid-stream），保留 running 状态让用户介入。
-
-    返回：True 表示已补写 workflow_completed（调用方应跳过 while）；False 表示无需补救。
+    返回：True = 至少有一个父节点状态被推进；False = 无变化
     """
-    if run_state.current_node is not None or run_state.state != "running":
+    sub_runs_dir = run_dir / "sub_runs"
+    if not sub_runs_dir.is_dir():
         return False
-    events, _ = read_events(jsonl_path)
-    last_completed_node_id: str | None = None
-    for evt in events:
-        if evt.get("type") == "node_completed":
-            last_completed_node_id = evt.get("node_id")
-    if not last_completed_node_id:
-        return False
-    last_node = node_map.get(last_completed_node_id)
-    if last_node is None:
-        return False
-    # 末节点判定：_next_node(last_node, None) is None 表示拓扑上无后继
-    if _next_node(last_node, None) is None:
-        append_event(jsonl_path, {"type": "workflow_completed", "data": {}})
-        run_state.state = "completed"
-        return True
-    return False
+
+    node_map = _build_node_map(workflow)
+    advanced = False
+
+    for sub_jsonl in sub_runs_dir.glob("*/run-state.jsonl"):
+        node_id = sub_jsonl.parent.name
+
+        # 幂等守卫：父节点已关闭（node_outputs 已有该节点）→ 跳过
+        if node_id in run_state.node_outputs:
+            continue
+
+        # fail-soft：子 jsonl 损坏（read_events 返 warnings 非空）→ 跳过该 sub_run
+        sub_events, sub_warnings = read_events(sub_jsonl)
+        if sub_warnings:
+            print(
+                f"WARN: _poll_sub_workflows 跳过损坏子 jsonl "
+                f"(node_id={node_id!r}, warnings={sub_warnings})",
+                file=sys.stderr,
+            )
+            continue
+
+        # 找子 run 末位 workflow 级事件
+        terminal_types = {"workflow_completed", "workflow_failed", "workflow_cancelled"}
+        last_terminal: str | None = None
+        for evt in reversed(sub_events):
+            if evt.get("type") in terminal_types:
+                last_terminal = evt.get("type")
+                break
+
+        if last_terminal is None:
+            # 子尚未到终态，跳过
+            continue
+
+        if last_terminal == "workflow_completed":
+            _handle_child_completed(node_id, jsonl_path, run_state)
+            advanced = True
+
+        elif last_terminal == "workflow_failed":
+            # 取父 yaml 节点的 on_subworkflow_failure；None 时默认 "fail"（fail-soft）
+            parent_node = node_map.get(node_id) or {}
+            on_failure: str = parent_node.get("on_subworkflow_failure") or "fail"
+            _handle_child_failed_by_policy(node_id, on_failure, jsonl_path, run_state)
+            advanced = True
+
+        elif last_terminal == "workflow_cancelled":
+            _handle_child_cancelled(node_id, jsonl_path, run_state)
+            advanced = True
+
+    return advanced
 
 
 def _main_loop(
@@ -396,9 +294,39 @@ def _main_loop(
 
     node_map = _build_node_map(workflow)
 
+    # F-011：进入 main loop 前反扫所有 sub_runs，回填父节点完成事件（AC-08）
+    _poll_sub_workflows(run_state, workflow, run_dir, jsonl_path)
+    # 子状态推进后，可能让父拓扑跑完 → finalize 兜底必须紧跟
+
     # round-5 P2：crash 在 advance 之后 / finalize 之前的窗口补救
-    if _finalize_after_rebuild_if_last_topology_node(run_state, node_map, jsonl_path):
+    # F-004：新签名传 workflow（DAG / 单链双分支判定）
+    if _finalize_after_rebuild_if_last_topology_node(
+        run_state, workflow, node_map, jsonl_path
+    ):
         return
+
+    # F-CR-002：main_loop 入口 bootstrap。
+    # main() 调用链 `_setup_run → _resume_run → _main_loop` 不预设 current_node；
+    # 真新 run（current_node is None）或 crash-window（rebuild 已置 None 但 jsonl 还有未跑完的
+    # 拓扑）走到这里时，需要 scheduler 算出下一个待派发节点才能进 while 循环。
+    # 上一步 _finalize_after_rebuild 已处理"拓扑跑完无需推进"的场景；走到这里
+    # 仍有 current_node is None ∧ state==running 时一定需要 bootstrap。
+    # 若 _select_next_dispatch_target 返 None（无可派发节点，但拓扑也未到 finalize 条件，
+    # 例如 yaml 与 jsonl 不一致），while 因 current_node 假值不进入，让上游或 finalize
+    # 接管——此处不强制写 workflow_failed/completed，行为对齐 v8 P1 "保持 running 不推进"
+    # 的容错语义。
+    if run_state.current_node is None and run_state.state == "running":
+        next_id = _select_next_dispatch_target(run_state, workflow, node_map)
+        if next_id is not None:
+            run_state.current_node = next_id
+        else:
+            # IB-10：bootstrap 无可派发节点时打 WARN，让人类可见（yaml/jsonl 不一致时易触发）。
+            # while 因 current_node 假值不进入，函数静默返回；WARN 对齐 _finalize_after_rebuild:493 风格。
+            print(
+                f"WARN: bootstrap 阶段无可派发节点，state=running 但 workflow 停止推进，"
+                f"yaml/jsonl 可能不一致 (run_id={run_state.run_id})",
+                file=sys.stderr,
+            )
 
     while run_state.state == "running" and run_state.current_node:
         node = node_map.get(run_state.current_node)
@@ -423,7 +351,11 @@ def _main_loop(
         # _finalize_if_topology_done 写入——只在真的从 completed/loop_done/sub_workflow_done
         # outcome 推进且无 next 时触发。crash → rebuild 看到 current_node=None 的场景不会
         # 误触发（main loop 直接因 while 失败退出，不进 _route_outcome）。
-        should_continue = _route_outcome(run_state, node, result, jsonl_path)
+        # F-CR-001：传 workflow + node_map 让 completed/loop_done/sub_workflow_done
+        # 分支按 depends_on_explicit 调 _select_next_dispatch_target 推进 DAG。
+        should_continue = _route_outcome(
+            run_state, node, result, jsonl_path, workflow, node_map
+        )
         if not should_continue:
             break
 
@@ -460,7 +392,7 @@ def _resume_run(run_id: str, run_state: "RunState", jsonl_path: Path) -> int:
     try:
         validate_state_for_cmd("continue", run_id, run_state.state)
     except WorkflowError as exc:
-        print(str(exc), file=sys.stderr)
+        print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
     # run_resumed 不映射 WORKFLOW_EVENT_TO_STATE，保持原 state 语义不变（详细设计 §1.2）
@@ -554,23 +486,40 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
-    rc = _resume_run(run_id, run_state, jsonl_path)
-    if rc != 0:
-        return rc
-
-    print(f"恢复 workflow run {run_id!r}（state={run_state.state}）")
-
-    workflow = _load_workflow_for_run(run_state, run_dir, root)
-    if workflow is None:
-        return 1
-
-    # 调用 main loop；WorkflowError 由此捕获，让 main() 返回统一 ERROR 而非裸 traceback
-    # 注：tests/skills/test_workflow_commands.py 直接调用 main()，不走 __main__ 兜底
+    # F-008: 在 _setup_run 之后、_resume_run 之前取 path_lock；LockBusyError 被 WorkflowError
+    # 兜底（继承关系），打 stderr 含 "another continue is running, pid=N" + exit 1。
+    lock_handle = None
     try:
-        _main_loop(run_state, workflow, run_dir, root, jsonl_path)
-    except WorkflowError as exc:
-        print(f"ERROR: main loop 异常退出：{exc}", file=sys.stderr)
+        lock_handle = path_lock.acquire(run_id, root)
+    except path_lock.LockBusyError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
         return 1
+    except WorkflowError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+
+    try:
+        rc = _resume_run(run_id, run_state, jsonl_path)
+        if rc != 0:
+            return rc
+
+        print(f"恢复 workflow run {run_id!r}（state={run_state.state}）")
+
+        workflow = _load_workflow_for_run(run_state, run_dir, root)
+        if workflow is None:
+            return 1
+
+        # 调用 main loop；WorkflowError 由此捕获，让 main() 返回统一 ERROR 而非裸 traceback
+        # 注：tests/skills/test_workflow_commands.py 直接调用 main()，不走 __main__ 兜底
+        try:
+            _main_loop(run_state, workflow, run_dir, root, jsonl_path)
+        except WorkflowError as exc:
+            print(f"ERROR: main loop 异常退出：{exc}", file=sys.stderr)
+            return 1
+    finally:
+        # atexit 已注册 release，此处显式 release 为双保险（try/finally 覆盖所有 return 路径）
+        if lock_handle is not None:
+            path_lock.release(lock_handle)
 
     return 0
 

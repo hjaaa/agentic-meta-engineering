@@ -1,0 +1,181 @@
+REQ-2026-011 语义事件日志
+================================
+格式：[YYYY-MM-DD HH:MM:SS CST] PHASE | EVENT | detail
+
+[2026-05-13 08:36:31 CST] bootstrap | created | 需求初始化，分支 feat/req-2026-011 从 develop 切出
+2026-05-13 08:39:31 [save] research-imported: findings.md → artifacts/research.md（来源 planning-with-files 2026-05-13），notes.md 补 P0/P1/P2 摘要与边界待确认项
+2026-05-13 08:42:41 [phase-transition] bootstrap → definition（11 gate 全过）
+2026-05-13 09:04:13 [review:approved] requirement-quality-reviewer looks_clean (85 分；major: spec 命名补 -design 后缀 + AC-06 e2e 驱动细化已闭环；minor 9 条多数已闭环 / 余 5 条留 detail-design + task-planning 阶段处理)
+2026-05-13 09:08:39 [save] user-confirm-5: AC-04 接口=save_node_result.py / status=树形 / path-lock=三件套 / 不引 feature flag / features.json 加 priority
+2026-05-13 09:10:14 [save] definition 收口：16 项已确认 + 3 项 ⏳ 归 detail-design（D-01 artifact 复用入口 / D-02 approval attempt N / D-03 stale 阈值 N），sourcing 0/0 + reviewer looks_clean(85)，待切 tech-research
+2026-05-13 10:00:35 [save] plan.md 落 D-001~D-005 五条 ADR（user-confirm-5 ADR 化）+ 风险 2 同步 D-004；sourcing strict 0/0
+2026-05-13 10:13:42 [signoff] REV-REQ-2026-011-definition-002 approved by hj19961223@gmail.com
+2026-05-13 10:15:06 [phase-transition] definition → tech-research（11 gate 全过；REV-002 looks_clean 92 + tty signoff approved）
+2026-05-13 10:42:14 [save] tech-research.md 完成 feasibility=high 17~23 天 D-01/D-02 关闭 D-03 延 detail-design Q-01~Q-05 待用户决策
+2026-05-13 11:27:11 [phase-transition] tech-research → definition (rollback) reason=需要重新讨论需求 tech-research.md 归档.rollback-20260513-112537/
+2026-05-14 08:36:52 [review:needs_revision] 用户对抗审阅 requirement.md：P1×3+P2×2+P3×1 共 6 处
+2026-05-14 08:36:53 [save] 6 处全闭环：loader explicit 标记 / AC-04 拆 a-b / run_artifact_checks 入口 / 串行 ready+D-04 follow-up，sourcing strict 0/0
+2026-05-14 08:42:32 [review:needs_revision] 用户二轮对抗审阅 requirement.md：P1×2+P2×2 共 4 处
+2026-05-14 08:42:33 [save] 4 处全闭环：on_reject 改 synthetic repair 事件流 / continue 在 awaiting 只读 / 场景4 锁路径对齐 / artifact 不双写 started，strict 0/0
+2026-05-14 08:46:40 [review:needs_revision] 用户三轮对抗审阅 requirement.md：P1×1+P2×1+P3×1 共 3 处
+2026-05-14 08:46:41 [save] 3 处全闭环：approval_repair 复用 awaiting_claude_action / 场景2 reject 改 repair 事件流 / 场景1 started 归外层，strict 0/0
+2026-05-14 08:48:56 [save] 四轮评审：删 line 19 背景段残留 [待用户确认]（现状描述非范围决策），余 4 处均合规挂 D-02/D-03
+2026-05-14 08:53:16 [phase-transition] definition → tech-research（再次进入；门禁 5/5 过；四轮对抗审阅 16 处全闭环+ADR D-006/007/008）
+2026-05-14 09:02:22 [save] tech-research.md v2 (rollback 后重写) feasibility=feasible 21~27 天 中位 23.7；5 类风险共 8 条；新发现 3 条（R-I02 R-I03 R-T03）
+2026-05-14 09:03:58 [review:approved] tech-research.md v2 user-approved (feasibility=feasible 中位 23.7 天 风险 8 条 P0 阻塞 0)
+2026-05-14 09:03:59 [phase-transition] tech-research → outline-design（门禁 5/5 过；6 条待澄清归 detail-design）
+2026-05-14 09:20:38 [save] outline-design.md v1 起草完成（10 个 H2/H3 章节 + 4 mermaid 时序图 + 2 mermaid 状态机 + 7 项技术选型）；sourcing strict 0/0；reviewer v1 needs_attention(78)
+2026-05-14 09:20:39 [save] outline-design.md v2 应对 4 required_fixes + 5 suggestions 全闭环（P2 嵌入点 / R-T01 末节点判定 / symlink 时机 / 弱引用 / 状态机改 mermaid 等）
+2026-05-14 09:20:41 [review:approved] REV-outline-design-002 looks_clean(87)；2 条新 suggestions 归 detail-design
+2026-05-14 09:44:29 [save] outline-design.md v3 用户二轮对抗审阅 4 处闭环：append_events 新 helper / artifact handler 自写 completed / AC-10 透传走 node_ready.data / lexists 不用 exists
+2026-05-14 09:48:31 [review:approved] REV-outline-design-003 looks_clean(91)；4 项关注重点全部闭环；1 suggestion + 2 architectural_concerns 归 detail-design
+2026-05-14 09:50:37 [save] outline-design.md v3 looks_clean(91)；三轮 score 78→87→91，5 维≥88；2 arch concerns 归 detail-design
+2026-05-14 09:54:08 [save] outline-design.md v4 补「架构关注点与演化触发」小节：AC-A1/A2/A3 三条本期 baseline + 触发再决策阈值；O-04/O-05 入待澄清
+2026-05-14 09:55:37 [save] architectural_concerns 全闭环存档点；下一步待用户决策：直接进 detail-design 或先重审 v4
+2026-05-14 10:02:59 [review:approved] outline-design REV-004 looks_clean(92) 5维[94/92/93/92/91] arch-concerns 全闭环
+2026-05-14 10:06:23 [signoff] REV-REQ-2026-011-outline-design-004 approved by hj19961223@gmail.com
+2026-05-14 10:08:29 [phase-transition] outline-design → detail-design 11/11 gate 过；REV-004 looks_clean(92) signoff；arch-concerns AC-A1/A2/A3 全闭环
+2026-05-14 10:13:55 [save] detail-design 6 项待澄清全闭环：D-02→D-009 / D-03→D-010 / O-01→D-011 / O-02→D-012 / O-03→D-013 / O-04→D-014
+2026-05-14 15:01:35 [signoff] REV-REQ-2026-011-detail-design-010 approved by hj19961223@gmail.com
+2026-05-14 15:11:11 [signoff] REV-REQ-2026-011-detail-design-011 approved by hj19961223@gmail.com
+2026-05-14 15:12:56 [phase-transition] detail-design → task-planning 11/11 gate 过；REV-011 looks_clean(94) signoff；11 轮迭代 4 轮对抗 17 bug 闭环
+2026-05-14 15:14:08 [save] task-planning 切入完成；待选下一步：13 features 一次性拆 / P0-baseline pilot / 先做归档
+2026-05-14 15:18:50 [save] implementation backlog 沉淀 → notes.md：IB-01 SUCCESS_TERMINAL 抽 run_state.py + IB-02 outline:135 P3
+2026-05-14 15:25:45 [save] task-planning 13 task.md 落地（F-001~F-013 frontmatter schema 全过 + features.json schema 过）
+2026-05-14 15:30:40 [phase-transition] task-planning → development（11 gate 全过 exit=0 0 warning；PLAN-FRESHNESS 已消）
+2026-05-14 15:43:12 [save] task-planning 审阅 4 处漂移闭环：ADR D-015 + F-004/F-005 touches + 派发优先级文档
+2026-05-14 15:44:46 [save] development 准入就绪：4 漂移闭环 0 hash drift + 11 gate 过；next F-001 待派
+2026-05-14 15:52:35 [save] F-001 派发完成（model=sonnet 16 tests passed）→ 进入 post-dev gate + /code-review
+2026-05-14 16:08:59 [review:approved] F-001 code-review looks_clean(86) 5维[88/92/88/84/82/86/88/92]；critic drop=17 / keep=9（2 major + 7 minor 均为低成本改进，required_fixes=0）
+2026-05-14 16:19:24 [review:approved] F-001 rev2 code-review looks_clean(91) 5维[88→改+91/92/88→91/84→86/82→91/86→93/88/92]；4 项 fix 全闭环 + 0 新 issue；5 follow-up minor 已标注；等 tty signoff
+2026-05-14 16:20:33 [signoff] REV-REQ-2026-011-code-F-001-002 approved by hj19961223@gmail.com
+2026-05-14 16:21:32 [signoff] REV-REQ-2026-011-code-F-001-002 approved by hj19961223@gmail.com
+2026-05-14 16:21:32 [save] F-001 完成（status=done / rev2 looks_clean 91 / signoff approved / 释放派发锁 / 5 follow-up minor 留 IB backlog）
+2026-05-14 16:23:25 [save] F-001 P0-baseline 闭环：rev2 looks_clean(91) + signoff approved + 锁释放 + 8 commits；5 follow-up minor 留 IB backlog；next 派 F-002 或整 IB
+2026-05-14 16:39:06 [save] IB backlog 整理：IB-01 F-004 touches 补 run_state.py；IB-02 改归 dev→testing 前 doc-refresh 批；IB-03~07 落 F-001 rev2 5 minors
+2026-05-14 16:44:20 [save] F-002 派发开始（model=sonnet，complexity=light fallback；touches 3 文件）
+2026-05-14 16:49:48 [save] F-002 派发完成（model=sonnet 30 tests passed；commit 8743134；进 post-dev + /code-review）
+2026-05-14 17:03:47 [review:needs_attention] F-002 rev1 needs_attention(82) 0/1 major (F-005)/1 minor (F-007)；critic 7→2 keep；rev2 修复派发
+2026-05-14 17:08:43 [save] F-002 rev2 修复完成（9efd08a 33 tests passed；F-005 节点守卫 + F-007 终态守卫；IB-08 既有 approval_* 同模式沉淀 notes.md）
+2026-05-14 17:18:48 [review:approved] F-002 rev2 code-review looks_clean(92) 0/0/1 minor (F-010 死 import)；critic 5→1 keep；trend-G-meta 健康；等 tty signoff
+2026-05-14 17:21:14 [signoff] REV-REQ-2026-011-code-F-002-002 approved by hj19961223@gmail.com
+2026-05-14 17:22:02 [save] F-002 完成（status=done / rev2 looks_clean 92 / signoff approved / F-010 死 import 同 rev 闭环 / 释放派发锁 / IB-08 沉淀）
+2026-05-14 17:26:19 [save] 会话节点：F-002 P0-baseline 闭环 (rev2 92 + signoff + F-010 顺手) + IB-03~08 沉淀；next F-003
+2026-05-14 20:24:52 [save] F-003 派发开始（model=sonnet，complexity=trivial fallback；touches 2 文件；既有代码已支持，主要是 unit test 锚定 + 文档说明）
+2026-05-14 20:38:17 [review:approved] F-003 code-review looks_clean(93) 5维[92/95/95/95/95/88/95/95]；critic 5→0 keep（4 rejected + 1 not_proven）；1 follow-up（F-CR-005 风格双标 - F-002 既成惯例）；等 tty signoff
+2026-05-14 20:42:39 [signoff] REV-REQ-2026-011-code-F-003-001 approved by hj19961223@gmail.com
+2026-05-14 20:43:35 [save] F-003 完成（status=done / looks_clean 93 / signoff approved / 释放派发锁 / 1 follow-up F-CR-005 沉淀团队规范）
+2026-05-14 20:54:59 [save] IB-backlog 闭环：IB-03 LOCK_UN try/except + IB-05 抽 _externalize_large_fields + IB-07 6 私有函数 docstring；IB-04 moot；17/17 AC + 1332 全套 0 回归；IB-06 等 F-004/F-009
+2026-05-14 20:58:47 [development] F-004 派发开始（model=opus，complexity=heavy；touches 7 文件 = 3 src + 3 test + 1 fixture；含 IB-01 SUCCESS_TERMINAL 抽 run_state.py 共享常量）
+2026-05-14 21:22:38 [save] F-004 派发完成（model=opus，22 new tests + 1371/1371 + 8 skipped 0 回归；commit c762a68）；进 post-dev gate + /code-review；caveat：_select_next_dispatch_target 未自动接入 main_loop bootstrap（与既有 test_main_loop_skips_finalize 冲突，超 F-004 touches）
+2026-05-14 21:45:35 [review:blocked] F-004 rev1 code-review blocked(62) 5维[55/70/80/75/90] 1 blocker (F-CR-001 DAG 推进路径不分流 → 首节点完成后误终止) + 4 major (F-CR-002/003/004/007)；critic 7→9 keep；trend-Q-orphan-scheduler 反模式首发；rev2 修复派发
+2026-05-14 22:04:29 [save] F-004 rev2 修复完成（78068f4：DAG 推进分流 + bootstrap + CCN 拆解 + WARN 日志；新增 3 测 + 改 1 测；scoped 38/38 + 1374 全套 0 回归）；进 rev2 post-dev gate + /code-review
+2026-05-14 22:23:23 [review:approved] F-004 rev2 code-review looks_clean(90) 5维[90/88/91/91/95]；rev1 5 required_fixes 全闭环（F-CR-001/002/007/008/011/015 closed + F-CR-004 partially CCN 18→10 at-threshold）；trend-Q-orphan-scheduler 反模式消除（_select_next_dispatch_target 调用点 0→2）；critic 5 rejected/2 not_proven (含 EH-1)/8 not_rebutted；等 tty signoff
+2026-05-14 22:25:55 [signoff] REV-REQ-2026-011-code-F-004-002 approved by hj19961223@gmail.com
+2026-05-14 22:27:26 [signoff] REV-REQ-2026-011-code-F-004-002 approved by hj19961223@gmail.com
+2026-05-14 22:27:26 [save] F-004 完成（status=done / rev2 looks_clean 90 / signoff approved / 释放派发锁 / 9 minor follow-up 入 IB backlog（lint + 形式正确性 assert + 模块拆分三件套）；trend-Q-orphan-scheduler 反模式消除）
+2026-05-14 22:30:58 [save] F-004 rev2 follow-up IB sweep：IB-09 ~ IB-18 (10 条) 沉淀 notes.md；IB-09/12 形式正确性 + IB-13 拆模块为大件单独 PR；IB-10/11/14/15/16/17 lint sweep 可合并；IB-18 跨文件命名归团队规范层
+2026-05-14 22:33:00 [save] 会话节点：F-004 P0 闭环 + IB-09~IB-18 沉淀；4/13 features done；dispatch lock 释放；next F-005
+2026-05-15 08:25:08 [save] F-005 派发完成（model=sonnet，complexity=light fallback；7 new tests + 1381 全套 0 回归；commit f65a74e；touches_violations=[]）；进 post-dev gate + /code-review
+2026-05-15 08:44:37 [review:blocked] F-005 rev1 code-review blocked(67) 5维[55/62/78/85/72] 1 blocker(F-CR-001 substitute_vars 缺失) + 1 配对 minor(F-CR-005 测试零覆盖) + 2 minor follow-up(F-CR-002 CCN=11 / F-CR-003 580 行) + 1 dropped(F-CR-004 scope-out)；critic 1 rejected/4 not_rebutted；rev2 修复派发
+2026-05-15 08:54:15 [save] F-005 rev2 修复完成（d980fec：substitute_vars 接入 + _render_artifact_spec helper + 2 新 TC 覆盖 $VAR 展开；9 + 14 + 1383 全套 0 回归）；进 rev2 post-dev gate + /code-review
+2026-05-15 09:09:49 [review:approved] F-005 rev2 code-review looks_clean(82) 5维[85/88/70/92/75]；rev1 2 required_fix 全闭环（F-CR-001 substitute_vars + F-CR-005 测试覆盖）；rev2 6 follow-up（F-CR2-001/002/003/004/006/007 入 IB-19/20/21 sweep）+ 1 dropped(F-CR2-005)；critic 1 rejected/1 not_proven/5 not_rebutted；trend-G-meta 未触发（修复必然代价）；等 tty signoff
+2026-05-15 09:12:23 [signoff] REV-REQ-2026-011-code-F-005-002 approved by hj19961223@gmail.com
+2026-05-15 09:14:25 [signoff] REV-REQ-2026-011-code-F-005-002 approved by hj19961223@gmail.com
+2026-05-15 09:14:25 [save] F-005 完成（status=done / rev2 looks_clean 82 / signoff approved / 释放派发锁 / 6 follow-up 入 IB-19/20/21 sweep；trend-G-meta 未触发）
+2026-05-15 09:27:03 [save] B1 IB-19 完成（1a25db4：_render_artifact_spec CCN 26→6 拆 4 helper + _dispatch_artifact_node 删 dead run_dir 6→5 params + deepcopy 防御；4 新 helper TC + 1387 全套 0 回归）；进 B2
+2026-05-15 09:35:48 [save] B2 完成（1f7af18：IB-09~12+14~17 共 8 项 lint sweep on workflow_continue.py + e2e test；assert/WARN/ERROR/CCN→6/参数顺序/docstring/死代码/混合命名；1387 全套 0 回归）；进 B3
+2026-05-15 09:43:09 [save] B3 完成（a83c03d / 60e9051：IB-08 approval_* 终态守卫 + IB-21a run_artifact_checks 异常包装 + IB-21b dispatch_node CCN 11→4 字典分发 + F-CR-004 OSError 父类捕获；7 new tests + 1394 全套 0 回归）；进 B4a (IB-13 拆 workflow_continue.py)
+2026-05-15 09:53:15 [save] B4a 完成（b860c2f：IB-13 拆 workflow_continue.py 860→281 + 新 workflow_scheduler.py 379 + workflow_outcome_router.py 309；3 测试 import 同步；1394 全套 0 回归 0 行为变更）；进 B4b (IB-20 拆 artifact_spec_renderer.py)
+2026-05-15 09:58:11 [save] B4b 完成（b494f3a：IB-20 拆 artifact_spec_renderer.py 104 行 + workflow_dispatcher.py 685→606；test import 同步；1394 全套 0 回归 0 行为变更）；IB sweep 5/5 批全部完成（13 项 + IB-08 共 14 项 follow-up 闭环）；下一步 next 派 F-006
+2026-05-15 10:14:12 [review:approved] outline-design refresh-005 looks_clean (IB-13 source ref 校正，无语义偏离)；等 tty signoff
+2026-05-15 10:14:12 [review:approved] detail-design refresh-012 looks_clean(95) (IB-13 source ref + D-015 #4 commit 数自洽，14=13+1, P2=2)；等 tty signoff
+2026-05-15 10:15:05 [signoff] REV-REQ-2026-011-outline-design-005 approved by hj19961223@gmail.com
+2026-05-15 10:15:15 [signoff] REV-REQ-2026-011-detail-design-012 approved by hj19961223@gmail.com
+2026-05-15 10:16:11 [signoff] REV-REQ-2026-011-outline-design-005 approved by hj19961223@gmail.com
+2026-05-15 10:16:11 [signoff] REV-REQ-2026-011-detail-design-012 approved by hj19961223@gmail.com
+2026-05-15 10:16:11 [save] doc-refresh 批闭环（ca5c0e5+fe018ed+signoff：4 文档 sourcing + D-015 #4 commit 数 + 2 refresh review + 2 signoff；R005/R003 全解；剩 R002 active features pending 在 testing 切换前正常状态）
+2026-05-15 10:17:58 [save] 会话节点：F-005 P0 闭环 + IB sweep 5/5 批 14 项 + doc-refresh 批闭环（sourcing/D-015#4/outline-005+detail-012 refresh signoff）；5/13 features done；phase-transition 11/11 sanity 全过；等派 F-006/F-008
+2026-05-15 10:39:41 [save] F-006 派发完成（model=opus / heavy；15 new + 1409/1409 + 8 skipped 0 回归；commit febba74；touches_violations=[]）；进 post-dev gate + /code-review
+2026-05-15 11:01:07 [review:needs_attention] F-006 rev1 needs_attention(82) 5维[91/74/78/91/92] 0/2 major (F-CR-002 max≤0 静默 / F-CR-005 main CC=16+102 行)/4 minor (F-CR-008/011/016/018)；critic 5 rejected/6 not_proven/7 not_rebutted；3 follow-up 入 IB-22/23/24；待派 rev2 或 sign-off
+2026-05-15 11:17:29 [save] F-006 rev2 修复完成（fe2fc03：抽 _extract_max_attempts/_validate_reason/_print_reject_summary + warning + 测试 helper + 断言锚定；main 102→82 行 CC≈16→10；F-006 scoped 18 + 1412 全套 0 回归）；进 rev2 post-dev gate + /code-review
+2026-05-15 11:34:17 [review:approved] F-006 rev2 code-review looks_clean(88) 0/0/2 minor (F2-CR-004 lib→e2e sys.path hack + EH-NEW-001 bool 测试盲区)；critic 3 rejected/4 not_proven/2 not_rebutted；rev1 6 keep 全闭合；trend-G-meta 未触发；3 follow-up 入 IB-24/25/26；等 tty signoff
+2026-05-15 11:35:24 [signoff] REV-REQ-2026-011-code-F-006-002 approved by hj19961223@gmail.com
+2026-05-15 11:36:15 [save] F-006 完成（status=done / rev2 looks_clean 88 / signoff approved / 释放派发锁 / 2 minor follow-up 入 IB-25/26 + IB-24 已存合并；trend-G-meta 未触发；6/13 features done）
+2026-05-15 11:38:50 [save] 会话节点：F-006 P0 闭环（rev1 needs_attention 82 → rev2 looks_clean 88 / 6 keep 全闭合 / 18 tests + 1412 全套 0 回归 / signoff approved / 释放派发锁）；6/13 features done；2 minor (lib→e2e sys.path hack + bool 盲区) + 3 IB-24/25/26 follow-up；trend-G-meta 未触发；下一步派 F-007 (P0/medium 依赖 F-006 已 done) 或 F-008 (P0/medium 无依赖)
+2026-05-15 11:46:15 [development] F-007 派发开始（model=sonnet，complexity=medium；touches 2 文件 = save_node_result.py + 测试；fail-closed 三件套 + kind 子模式）
+2026-05-15 11:54:14 [development] F-007 done：save_node_result.py + 三道 fail-closed 闸 + manifest fallback；11 AC 全通过，全套 410 passed 0 回归；commit=911c0fd
+2026-05-15 12:51:33 [review:blocked] F-007 rev1 code-review blocked(62) 5维[95/82/88/88/70/55/75] 1 critical (F-CR-001 approval_repair_completed 漏 data.attempt 必填) + 5 major (F-CR-005/006/007 错误码缺失 + F-CR-009/010 dead import) + 4 minor (F-CR-018/023/025/026)；critic 10 rejected/6 keep/10 not_proven downgrade；rev2 修复派发
+2026-05-15 16:30:00 [development] F-007 rev2 修复完成（c9bc3bf：data.attempt 必填 + E-NODE-RESULT-005~008+099 错误码 + dead import x2 + assert attempt==1 + _ 解包 x7 + 死变量 + try 覆盖；11 AC 全通过，全套 410 passed 0 回归）
+2026-05-15 13:06:17 [review:approved] F-007 rev2 code-review looks_clean(88) 5维[95/82/88/88/90/90/90]；rev1 1 critical + 5 major + 4 minor 全闭合（F-CR-001 data.attempt 写入 + 错误码 5/6/7 + dead import 9/10 + 18/23/25/26）；rev2 新引入 4 minor：critic 0 rejected/3 not_proven (→ suggestion)/1 not_rebutted (F2-CR-004 test_ac06 漏 data.output 断言)；trend-G-meta MARGINAL；等 tty signoff
+2026-05-15 13:06:56 [signoff] REV-REQ-2026-011-code-F-007-002 approved by hj19961223@gmail.com
+2026-05-15 13:09:10 [signoff] REV-REQ-2026-011-code-F-007-002 approved by hj19961223@gmail.com
+2026-05-15 13:09:10 [save] F-007 完成（status=done / rev2 looks_clean 88 / signoff approved / F2-CR-004 housekeeping data.output 断言补齐 / 释放派发锁 / 7/13 features done；3 suggestion (F2-CR-001/002/003) 入 IB sweep）
+2026-05-15 13:17:54 [save] 会话节点：F-007 P0 闭环（rev1 blocked 62 → rev2 looks_clean 88 / signoff approved / F2-CR-004 housekeeping / 释放派发锁）；7/13 features done；3 suggestion (F2-CR-001/002/003 sec/eh) 入 IB sweep；trend-G-meta MARGINAL；下一步派 F-008 (P0/medium 无依赖) 或 F-009 (P1/heavy 依赖 F-004/F-005/F-006 全 done)
+2026-05-15 13:21:50 [development] F-008 派发开始（model=sonnet，complexity=medium；touches 4 文件 = path_lock.py 新建 + workflow_continue.py main 入口接 acquire + tests/lib/test_path_lock.py 新建 + tests/e2e/test_path_lock_concurrent.py 新建；落地 D-003 三件套 + AC-05 双轨 symlink）
+2026-05-15 13:30:54 [development] F-008 派发完成（model=sonnet / commit=f9b2f98 / 4 文件 = path_lock.py 225 行 + workflow_continue.py +32 行 + 2 测试文件；10 单元 + 2 E2E + 1435 全套 0 回归；touches_violations=[]）；进 post-dev gate + /code-review
+2026-05-15 13:45:20 [review:needs_attention] F-008 rev1 needs_attention(78) 5维[72/75/80/88/80] 0/2 major (F-CR-014 缺 mtime 二次校验违 §5.1+R-6 / F-CR-004+005 acquire+retry fd 泄漏)/4 follow-up (F-CR-001/010/013/015)；critic 11 rejected/3 not_proven/4 not_rebutted；trend-D-design-doc-drift + trend-E-fd-lifecycle；待派 rev2 修复
+2026-05-15 14:01:28 [save] F-008 rev2 修复完成（1631bcb：mtime 二次校验 helper + acquire/retry fd 泄漏 try/except + _is_pid_alive pid≤0 guard + _write_lock_json WorkflowError 包装 + atexit.unregister + _retry_after_stale 抽函数；13 unit + 2 e2e + 1438 全套 0 回归）；进 rev2 post-dev gate + /code-review
+2026-05-15 14:16:34 [review:approved] F-008 rev2 code-review looks_clean(87) 5/8维[85/85/80/90/85/88/90]；rev1 5 required_fix 全闭合 (mtime + acquire/retry fd 泄漏 + pid<=0 guard + WorkflowError 包装 + atexit.unregister + _retry_after_stale 抽函数)；rev2 自引 F2-CR-004 atexit.unregister 跨 handle major + F2-CR-005 _write_lock_json fd 泄漏 minor 都 <1e-6/op 影响降级；critic 8 rejected/5 not_proven/9 not_rebutted；trend-G-meta SUPPRESSED；等 tty signoff
+2026-05-15 14:17:15 [signoff] REV-REQ-2026-011-code-F-008-002 approved by hj19961223@gmail.com
+2026-05-15 14:18:07 [signoff] REV-REQ-2026-011-code-F-008-002 approved by hj19961223@gmail.com
+2026-05-15 14:20:43 [save] F-008 完成（status=done / rev2 looks_clean 87 / signoff approved / 释放派发锁 / 9 minor follow-up 入 IB-22~IB-30 sweep；trend-G-meta SUPPRESSED；8/13 features done）
+2026-05-15 14:53:54 [save] 会话节点：F-008 P0 闭环（rev1 needs_attention 78 → rev2 looks_clean 87 / 5 required_fix 全闭合 + 9 IB-22~IB-30 follow-up / signoff approved / 释放派发锁）；8/13 features done；trend-G-meta SUPPRESSED；下一步派 F-009 (P1/medium 依赖 F-003/F-004 全 done) 或继续 IB sweep
+2026-05-15 15:07:23 [save] IB-22~IB-30 sweep 完成（59b09bf：path_lock 9 follow-up 闭环 — atexit functools.partial 精确反注册 + _write_lock_json 失败 fd 兜底 + docstring atexit/signal 语义 + close/unlink 拆 try/except + _retry_after_stale 返 tuple(fd,retry_data) + docstring 三段对称 + inode 比对 ≤1e-7→≤1e-9/op + acquire 拆 _handle_lock_conflict 主路径 ~30 行；3 新 unit test + 1441 全套 0 回归；trend-G-meta SUPPRESSED 维持）；下一步派 F-009 (P1/heavy 依赖 F-003~F-006 全 done · status doctor + heartbeat)
+2026-05-15 15:12:18 [save] 会话节点：IB-22~IB-30 sweep 9 项全闭环（59b09bf + 71bdeec / path_lock atexit-fd + inode 比对 + acquire 拆函数 / 3 新 test + 1441 全套 0 回归 / trend-G-meta SUPPRESSED 维持）；8/13 features done；下一步派 F-009 (P1/heavy 依赖 F-003~F-006 全 done · status doctor + heartbeat)
+2026-05-15 15:20:49 [development] F-009 派发开始（model=sonnet，complexity=medium；touches 3 文件 = workflow_status.py + test_workflow_status_verbose.py + test_status_verbose_stale.py；落地 D-002/D-010/D-011 + AC-06 ready/running/blocked/awaiting/done 分类 + stale 30min + reason 枚举 incomplete_dispatch/awaiting_deps/awaiting_claude_action）
+2026-05-15 15:28:37 [development] F-009 派发完成（model=sonnet / commit=c8c6d09 / 3 文件 = workflow_status.py +~140 行 + 19 unit + 5 e2e；24 new + 1465 全套 0 回归；touches_violations=[]）；进 post-dev gate + /code-review
+2026-05-15 15:43:10 [review:approved] F-009 rev1 code-review looks_clean(86) 5/8维[88/95/95/80/82/92/95/90]；14 candidate → 4 drop（F-CR-011/012/013/014 design pseudo 误读）+ 3 merge（F-CR-004/005/006 verbose fail-soft 同根因）+ 11 minor downgrade-suggestion；critic 2 rejected/8 not_proven/4 not_rebutted；trend-D-design-doc-drift 轻度触发（IB-34 doc-refresh 收敛）；4 IB sweep 沉淀 notes.md (IB-31/32/33/34)；等 tty signoff
+2026-05-15 15:49:37 [signoff] REV-REQ-2026-011-code-F-009-001 approved by hj19961223@gmail.com
+2026-05-15 15:51:14 [save] F-009 完成（status=done / rev1 looks_clean 86 / signoff approved / 释放派发锁 / 11 minor follow-up 入 IB-31/32/33/34 sweep；trend-D-design-doc-drift 轻度触发由 IB-34 收敛；9/13 features done）
+2026-05-15 16:00:46 [save] 会话节点：F-009 闭环（rev1 looks_clean 86 / signoff approved / 释放派发锁 / 11 minor follow-up 入 IB-31~IB-34 sweep）；9/13 features done；trend-D-design-doc-drift 轻度触发由 IB-34 doc-refresh 收敛；下一步派 F-010 (P1/medium 依赖 F-002/F-004/F-007 全 done · loop until_bash 两步落地) 或 F-011 (P1/medium 依赖 F-002/F-007 全 done · sub_workflow 父子完成回填)
+2026-05-15 16:09:20 [development] F-010 派发开始（model=sonnet，complexity=light fallback；touches 4 文件 = workflow_dispatcher.py + 2 测试 + 1 fixture；落地 AC-07 until_bash + max_iterations 兜底）
+2026-05-15 16:17:33 [development] F-010 派发完成（model=sonnet / commit=e9da718 / 4 文件 = workflow_dispatcher.py 扩展 _dispatch_loop_node + 抽 2 helper + 4 单元 TC + 1 e2e + fixture；1470 全套 0 回归；touches_violations=[]）；进 post-dev gate + /code-review
+2026-05-15 16:31:47 [review:approved] F-010 rev1 code-review looks_clean(82) 3 checker route accept (complexity/error-handling/design-consistency)；12 candidate → 1 dropped (F-CR-009 root 默认值 F-011 兼容性必要) + 1 dropped/降级 suggestion (F-CR-006 _dispatch_bash_node timeout 同模式无 stderr) + 1 downgrade major→minor (F-CR-011 §3.3.4 伪代码 ... 省略性质) + 9 keep follow-up；critic 1 rejected/1 not_proven/10 not_rebutted；trend-G-meta 不触发 (+77 行净增量功能)；trend-D-design-doc-drift 轻度续触发由 IB-34 收敛；F-CR-005 OSError 缺失 1 行 except 建议补但不阻塞；等 tty signoff
+2026-05-15 16:36:40 [development] F-010 rev2 修复完成（e625960：_dispatch_loop_node 补 except OSError 分支对齐 _dispatch_bash_node:323-338 双捕基线 + 1 新单元 TC-F10-U5 OSError 兜底；1471 全套 0 回归；同模式扫描确认无遗漏：subprocess.run 仅 2 处 = bash node baseline + loop node 已修复，文件 I/O OSError 是 scope-out）；进 rev2 post-dev gate + /code-review
+2026-05-15 16:41:51 [review:approved] F-010 rev2 code-review looks_clean(88) 5维 [78/95/95/82/92]；F-CR-005 rev1 唯一 major 闭合（except OSError 双捕对齐 _dispatch_bash_node:323-338 基线 + oserror: 前缀对齐 timeout: + TC-F10-U5 实跑 5/5 pass）；rev2 自身 0 critical/0 major/0 新引入 minor；rev1 9 项 follow-up 维持（IB 拆模块 sweep + tests housekeeping + IB-34 doc-refresh）；trend-G-meta 正向终结（同 F-011 rev3 模式）；trend-D 持续轻度由 IB-34 收敛；等 tty signoff
+2026-05-15 16:53:01 [signoff] REV-REQ-2026-011-code-F-010-002 approved by hj19961223@gmail.com
+2026-05-15 16:53:01 [signoff] REV-REQ-2026-011-code-F-010-002 approved by hj19961223@gmail.com
+2026-05-15 16:53:49 [save] F-010 完成（status=done / rev2 looks_clean 88 / signoff approved / 释放派发锁 / F-CR-005 唯一 major 一行 except OSError 闭合 + TC-F10-U5 / rev2 0 自引入 / rev1 9 follow-up 入 IB 三批 sweep；trend-G-meta 正向终结 同 F-011 rev3 模式；10/13 features done）
+2026-05-15 17:12:31 [review:approved] detail-design refresh-014 looks_clean(91) supersedes 013（db7ee30 §5.4 line 1816 paused→awaiting 5 分类对齐；§3.7+§5.4+features.json AC-1+workflow_status.py 四方一致；features.json F-009 description paused 单点 enhancement 延后避免 R005 横扫 10+ code-review verdict）；等 tty signoff
+2026-05-15 17:13:11 [signoff] REV-REQ-2026-011-detail-design-014 approved by hj19961223@gmail.com
+2026-05-15 17:13:11 [signoff] REV-REQ-2026-011-detail-design-014 approved by hj19961223@gmail.com
+2026-05-15 17:13:51 [save] doc-refresh 批闭环（34920a9+563dc93+db7ee30+signoff：F-010 housekeeping + §3.3.4 loop_node 同步 + §3.7 verbose 5 分类 + §5.4 跨段对齐 + REV-013/014 supersedes 链 + tty signoff；F-CR-010/011/012 + IB-34 三处全闭合；trend-D-design-doc-drift 解除；features.json F-009 description 单点 enhancement 延后避免 R005 横扫）
+2026-05-15 17:14:58 [save] 会话节点：F-010 P0 闭环 + doc-refresh 批闭环；10/13 features done；trend-G-meta 正向终结；下一步派 F-011
+2026-05-15 21:16:02 [development] F-011 派发开始（model=sonnet，complexity=medium；touches 5 文件 = workflow_continue.py 加 _poll_sub_workflows + 1 单元 + 1 e2e + 2 fixture；落地 AC-08 父子完成回填 + on_subworkflow_failure ∈ {fail|continue|skip} 矩阵；依赖 F-004 DAG scheduler 已 done）
+2026-05-15 21:28:31 [development] F-011 派发完成（model=sonnet / commit=faa6807 + 0f95075 / 5 文件 = workflow_continue.py 加 _poll_sub_workflows + 3 helper + 10 unit + 1 e2e + 2 fixture；10 new unit + 1 new e2e + 1471 baseline = 1482 passed 0 回归；touches_violations=[]）；进 post-dev gate + /code-review
+2026-05-15 21:43:39 [review:needs_attention] F-011 rev1 code-review needs_attention(85) 5维[88/82/92/75/80] 8维[90/90/90/80/72/90/90/90] 0/2 major (F-CR-008 fail-closed 测试零覆盖 + F-CR-001 workflow_continue.py 533 行)/3 minor (F-CR-003 CC=11 + F-CR-007 None 双语境 + F-CR-010 WARN 缺 run_id)；critic 4 rejected/3 not_proven/5 not_rebutted；F-CR-005 cancelled→workflow_failed 误判 spec by-design 被 critic rejected；F-CR-011/012 doc drift 归 IB-34；trend-CR-A-module-bloat + trend-CR-B-fail-closed-test-gap 新增；待派 rev2 补 3 pytest.raises(WorkflowError)
+2026-05-15 21:49:29 [development] F-011 rev2 修复完成（1ee3bc9 + 0b2e401：3 new pytest.raises(WorkflowError) AC-9/10/11 覆盖 _handle_child_completed/_handle_child_failed_by_policy/_handle_child_cancelled fail-closed 契约；1482 baseline + 3 new = 1485 passed 0 回归；统一 unittest.mock.patch 风格）；进 rev2 post-dev gate + /code-review
+2026-05-15 22:00:04 [review:approved] F-011 rev2 code-review looks_clean(88) 8维[90/97/95/85/100/92/95/100] 5维[92/88/92/95/85] supersedes REV-001；F-CR-008 fail-closed 测试零覆盖完整闭合（AC-9/10/11 三测试 + PEP 3134 chained traceback + 1485 passed 0 回归）；rev2 自引入 keep=0；critic 4 rejected/2 not_proven (F2-CR-002/003 rev2 未改 doc / F2-CR-005/006 既有惯例 / F2-CR-001 trend-CR-A 跨文件复发归 IB sweep / F2-CR-004 design 契约归 IB-34)；trend-G-meta 正向终结持续 + trend-CR-B 信号闭合 + trend-CR-A 跨文件复发由 IB sweep 收敛 + trend-D 由 IB-34 收敛；等 tty signoff
+2026-05-15 22:05:59 [signoff] REV-REQ-2026-011-code-F-011-002 approved by hj19961223@gmail.com
+2026-05-15 22:06:54 [signoff] REV-REQ-2026-011-code-F-011-002 approved by hj19961223@gmail.com
+2026-05-15 22:06:54 [development] F-011 完成（status=done / rev2 looks_clean 88 / signoff approved / 释放派发锁 / F-CR-008 fail-closed 测试零覆盖完整闭合 (AC-9/10/11 三测试 + PEP 3134 chained traceback + 1485 passed 0 回归) / rev2 自引入 keep=0；2 follow-up 入 IB sweep (F2-CR-001 test 553 行) + IB-34 (F2-CR-004 design __cause__ 契约)；trend-G-meta 正向终结持续 + trend-CR-B 信号闭合；11/13 features done）
+2026-05-15 22:11:24 [save] 会话节点：F-011 P1 闭环（rev1 needs_attention 85 → rev2 looks_clean 88 / F-CR-008 fail-closed 测试零覆盖完整闭合 AC-9/10/11 + PEP 3134 chained traceback + 1485 passed 0 回归 / signoff approved / 释放派发锁 / rev2 自引入 keep=0；critic 4 rejected+2 not_proven 全数 drop/follow-up）；11/13 features done；2 follow-up 入 IB-35（test 553 行与 IB-31 同批）+ IB-36（design __cause__ 契约入 IB-34 doc-refresh）；trend-G-meta 正向终结持续（F-007→F-008→F-010→F-011 同 looks_clean 88 模式）+ trend-CR-B 闭合 + trend-CR-A 跨文件复发归 IB sweep + trend-D 归 IB-34；下一步派 F-012 (P1/heavy 依赖 F-002 done · main loop 调度核心) 或 F-013 (P2/medium 依赖 F-004/F-005/F-007/F-008 全 done · launcher fuzzy + Claude 参数白名单)
+2026-05-15 22:16:13 [development] F-012 派发开始（model=sonnet，complexity=light fallback；touches 4 文件 = workflow_command_dispatcher.py + workflow_list.py + 2 新测试；落地 AC-09 fuzzy + list --json；P2 simple feature 设计无 §3.x 接口签名，按现状参考 + 6 条 acceptance 实施）
+2026-05-15 22:38:25 [review:approved] F-012 rev1 code-review looks_clean(90) 5维[95/95/95/85/88] 8维[88/95/95/85/90/92/95/95]；11 candidate → 7 drop（6 pre-existing fee71457/52c268f + F-CR-009 测试反证）+ 4 follow-up（F-CR-004 dispatch CCN 临界 + F-CR-006 json.dumps Unicode + F-CR-010 features.json typo + F-CR-011 二阶段 cutoff 缺注释）；critic 3 rejected/4 not_proven/4 not_rebutted；trend-G-meta 正向终结持续；等 tty signoff
+2026-05-16 09:20:56 [signoff] REV-REQ-2026-011-code-F-012-001 approved by hj19961223@gmail.com
+2026-05-16 09:22:33 [development] F-012 完成（status=done / rev1 looks_clean 90 / signoff approved / 释放派发锁 / 4 follow-up 入 IB-37~IB-40 sweep；trend-G-meta 正向终结持续 F-007→F-008→F-010→F-011→F-012 同 looks_clean 88-90 模式；12/13 features done）
+2026-05-16 09:23:26 [save] 会话节点：F-012 P2 闭环（rev1 looks_clean 90 / 4 follow-up IB-37~IB-40 / signoff approved / 释放派发锁 / 0 keep）；12/13 features done；trend-G-meta 正向终结 5 连（F-007→F-012 同 looks_clean 88-90 模式）+ trend-D 4 项 IB-34/36/39/40 归 doc-refresh 批；下一步派 F-013 (P2/light 依赖 F-002/F-007 全 done · Claude 运行参数白名单 7 字段 + node_ready contract 透传) — 本期最后一个 feature
+2026-05-16 09:45:05 [save] IB sweep batch A/B/C/D 完成（4 commits d5d6a1e+1c61c05+d3366db+a3e7926）：Batch A workflow_status.py IB-31/32/33 抽 7 helper + 3 处 WARN + WARN_JSONL_UNREADABLE_PREFIX 常量；Batch B IB-37 _handle_unknown_cmd CCN 12→8 + IB-38 json.dumps UnicodeEncodeError 兜底 + IB-40 cutoff 双档注释；Batch C IB-35 拆 test_poll_subworkflows.py 553→457 + 新 fail_closed 167 行；Batch D IB-36 §3.6.4 __cause__ 契约 + IB-39 AC-09 编辑距离 ≤ 2；1500 passed 0 回归
+2026-05-16 09:48:43 [review:approved] detail-design refresh-015 looks_clean(92) supersedes 014（IB-36 §3.6.4 fail-closed __cause__ 契约 14 行 + IB-39 features.json AC-09 编辑距离 ≤ 2 单字符；artifact_hashes 重锁 b3392419 + c5f95557；R005 stale 解除；R003 等 tty signoff）；等 tty signoff
+2026-05-16 09:49:41 [signoff] REV-REQ-2026-011-detail-design-015 approved by hj19961223@gmail.com
+2026-05-16 09:53:15 [save] 会话节点：IB sweep 10 项全闭环 + REV-015 looks_clean 92 + signoff approved；R003/R005 全绿；12/13 features done；trend-G 5 连维持；下一步派 F-013 收官
+2026-05-16 09:58:04 [development] F-013 派发开始（model=sonnet，complexity=light fallback；touches 4 文件 = workflow_loader.py 加 7 字段验证 + workflow_dispatcher.py 加 _build_external_action_contract helper + 三处 _dispatch_*_node 调用 + 2 新测试；落地 AC-10 + D-007 + AC-A3 透传契约；P2 本期最后一个 feature）
+2026-05-16 10:35:36 [review:approved] F-013 rev1 code-review looks_clean(85) 5维[75/88/82/80/N/A] 8维[75/88/82/80/90/90/90/92]；22 candidate → 9 drop + 3 not_proven drop + 1 keep major (CCN 21→39 follow-up IB-32 复用) + 5 keep minor (run_id 缺漏 + idle_timeout int|null + W100 缺值 + TC-D1 缺 awaiting + 死代码 + line-length)；critic 9 rejected/3 not_proven/8 not_rebutted；trend-G-meta 正向终结 6 连 F-007→F-013 + trend-CR-A-module-bloat 单函数新信号 + trend-D-design-doc-drift 单点新信号；rev2 1524 passed 0 failed；等 tty signoff
+2026-05-16 10:38:18 [signoff] REV-REQ-2026-011-code-F-013-001 approved by hj19961223@gmail.com
+2026-05-16 10:39:12 [signoff] REV-REQ-2026-011-code-F-013-001 approved by hj19961223@gmail.com
+2026-05-16 10:39:12 [development] F-013 完成（status=done / rev1 looks_clean 85 / signoff approved / 释放派发锁 / 1 keep major + 5 keep minor 全 follow-up 入 IB-32/IB-34/IB-37/IB-39 sweep；trend-G-meta 正向终结 6 连 F-007→F-013；13/13 features done — 本期所有 feature 闭环）
+2026-05-16 10:39:12 [save] 会话节点：F-013 P2 闭环（rev1 looks_clean 85 / 1 major + 5 minor 全 follow-up / signoff approved / 释放派发锁 / 0 keep critical）；**13/13 features done — REQ-2026-011 development 阶段所有 feature 全部闭环**；trend-G-meta 正向终结 6 连维持 + trend-CR-A-module-bloat 单函数新信号 + trend-D-design-doc-drift 单点新信号；下一步 development → testing 切换前的 doc-refresh + IB sweep 总批次（IB-31 ~ IB-40 + AC-04a run_id + idle_timeout nullable 一并）
+2026-05-16 10:56:27 [signoff] REV-REQ-2026-011-detail-design-016 approved by hj19961223@gmail.com
+2026-05-16 10:57:10 [review:approved] REV-016 detail-design refresh looks_clean(92) supersedes 015（085252b §3.4.2 重写 移除 ALLOWED_NODE_FIELDS 引用 + 加 _validate_node_run_params helper 示例 + 字段类型契约表 + idle_timeout int|null nullable 语义；R005 stale 解除 detailed-design.md hash 70964b6）；2 follow-up suggestion 不阻塞（features.json description 残留 + 字段类型契约表 idle_timeout 沿用措辞）；等 tty signoff
+2026-05-16 10:57:10 [signoff] REV-REQ-2026-011-detail-design-016 approved by hj19961223@gmail.com
+2026-05-16 10:57:10 [save] IB sweep batch E + REV-016 闭环（5d11455+085252b）：IB-32 抽 _validate_node_run_params helper（CCN 39→21）+ IB-37 dispatcher 三处 run_id 补齐（_dispatch_agent_node 签名加 run_state）+ idle_timeout int|null nullable 落实（F-001 schema 修正）+ W100 错误消息 actual value（IB sweep）+ TC-D1 valid_outcomes 补 awaiting_claude_action 第 8 值 + 死代码删除 + line-length 拆行（IB-39）；detailed-design.md §3.4.2 重写对齐 per-field if-block 现状 + idle_timeout nullable 语义（IB-34 续）；REV-016 signoff approved；1524 passed 0 failed；F-013 review 5 keep finding 全闭合；下一步 development → testing 阶段切换门禁
+2026-05-16 11:00:00 [save] 会话节点：doc-refresh + IB sweep batch E 完成（5d11455+085252b+c286c0e）；F-013 review 5 keep finding 全闭合（IB-32 helper / IB-37 run_id / idle_timeout int|null / W100 actual / TC-D1 8 值 / 死代码 / line-length）+ REV-016 detail-design refresh looks_clean(92) signoff approved；13/13 features done · R005 全绿 · 1524 passed 0 failed · trend-G 6 连 + trend-CR-A 收敛 + trend-D 闭合；2 minor follow-up 不阻塞（features.json description 残留 + §3.4.2 沿用措辞）归 testing 后续；下一步 development → testing 切换门禁
+2026-05-16 11:03:39 [phase-transition] development → testing 门禁 11/11 全过 EXIT=0；13/13 features done · 1524 passed · R005 全绿
+2026-05-16 11:08:45 [save] testing 阶段验收完成 · pytest 1524 passed / 0 failed / 8 skipped · 13/13 features AC 全覆盖 · 不阻塞 testing → completed
+2026-05-16 11:13:23 [gate:pass] traceability-consistency-checker PASS · 4 层链全过 · F-CR-013 minor drift 已经 REV-016 闭合 · 不阻塞 testing → completed
+2026-05-16 11:22:51 [save] submitted PR #72 → develop (https://github.com/hjaaa/agentic-meta-engineering/pull/72)
+2026-05-16 11:23:32 [codex-review-triggered] round=1 pr=#72
+2026-05-16 11:28:31 [codex-review-received] verdict=not_passed round=1
+2026-05-16 11:41:24 [codex-review-triggered] round=2 pr=#72
+2026-05-16 11:44:41 [codex-review-received] verdict=passed round=2

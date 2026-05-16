@@ -3,7 +3,7 @@
 覆盖范围：
   TC-D1  DispatchOutcome：7 个枚举值齐全（Literal 不可在运行时枚举，改为语义检验）
   TC-D2  DispatchResult：4 字段默认值正确
-  TC-D3  7 类节点 stub 派发——各类 1 个 case（含节点 dict 含对应键时正确路由）
+  TC-D3  7 类节点 stub 派发——各类 1 个 case（含节点 dict 含对应键时正确路由；agent/skill/prompt 返回 awaiting_claude_action，AC-04a）
   TC-D4  approval stub：写 approval_pending 事件 + substitute_vars 替换 prompt
   TC-D5  未知节点类型 → dispatch_node 写 node_failed + 返回 outcome="failed"
   TC-D6  dispatch_node 异常路径：stub 抛异常验证 except 兜底
@@ -52,14 +52,15 @@ def base_run_state() -> RunState:
 
 
 # ============================================================================
-# TC-D1 · DispatchOutcome 7 个枚举值可用
+# TC-D1 · DispatchOutcome 8 个枚举值可用（F-002 引入 awaiting_claude_action）
 # ============================================================================
 
-def test_dispatch_outcome_all_seven_values_are_valid():
-    """DispatchOutcome 的 7 个合法字符串都能作为 DispatchResult.outcome 赋值，
+def test_dispatch_outcome_all_eight_values_are_valid():
+    """DispatchOutcome 的 8 个合法字符串都能作为 DispatchResult.outcome 赋值，
     且赋值后不抛异常（Literal 是静态类型，运行时仅做值层面验证）。"""
     valid_outcomes = [
         "completed",
+        "awaiting_claude_action",  # F-002 / AC-04a：skill/prompt/agent dispatcher 写 node_ready
         "approval_pending",
         "failed",
         "loop_continue",
@@ -107,26 +108,26 @@ def _node(type_key: str, **extra) -> dict:
     return {"id": f"test-{type_key}", type_key: {}, **extra}
 
 
-def test_dispatch_node_agent_returns_completed(jsonl_path, base_run_state, tmp_path):
-    """agent 键存在时，派发到 _dispatch_agent_node → outcome=completed。"""
+def test_dispatch_node_agent_returns_awaiting_claude_action(jsonl_path, base_run_state, tmp_path):
+    """agent 键存在时，派发到 _dispatch_agent_node → outcome=awaiting_claude_action（AC-04a）。"""
     node = _node("agent")
     result = dispatch_node(node, base_run_state, tmp_path, tmp_path, {}, jsonl_path)
-    assert result.outcome == "completed"
+    assert result.outcome == "awaiting_claude_action"
 
 
-def test_dispatch_node_skill_returns_completed(jsonl_path, base_run_state, tmp_path):
-    """skill 键存在（且有合法 skill 名）时，派发到 _dispatch_skill_node → outcome=completed。"""
+def test_dispatch_node_skill_returns_awaiting_claude_action(jsonl_path, base_run_state, tmp_path):
+    """skill 键存在（且有合法 skill 名）时，派发到 _dispatch_skill_node → outcome=awaiting_claude_action（AC-04a）。"""
     # 真实实现要求 node["skill"] 为非空字符串；空值会抛 WorkflowError → outcome=failed
     node = {"id": "test-skill", "skill": "my-skill"}
     result = dispatch_node(node, base_run_state, tmp_path, tmp_path, {}, jsonl_path)
-    assert result.outcome == "completed"
+    assert result.outcome == "awaiting_claude_action"
 
 
-def test_dispatch_node_prompt_returns_completed(jsonl_path, base_run_state, tmp_path):
-    """prompt 键存在时，派发到 _dispatch_prompt_node → outcome=completed。"""
+def test_dispatch_node_prompt_returns_awaiting_claude_action(jsonl_path, base_run_state, tmp_path):
+    """prompt 键存在时，派发到 _dispatch_prompt_node → outcome=awaiting_claude_action（AC-04a）。"""
     node = _node("prompt")
     result = dispatch_node(node, base_run_state, tmp_path, tmp_path, {}, jsonl_path)
-    assert result.outcome == "completed"
+    assert result.outcome == "awaiting_claude_action"
 
 
 def test_dispatch_node_bash_returns_completed(jsonl_path, base_run_state, tmp_path):
@@ -290,9 +291,12 @@ def test_dispatch_approval_node_legacy_prompt_field_still_works(tmp_path):
     assert ap[0]["data"]["prompt"] == "legacy text REQ-LEGACY", "legacy prompt 字段应仍被识别"
 
 
-def test_dispatch_agent_node_writes_node_completed_event(tmp_path):
-    """P1-b（codex round-3）：agent stub 必须写 node_completed 事件，否则 crash 后
-    RunState.rebuild 把节点当 unfinished 重派——破坏 F-010 AC-05 mock fixture 保证。
+def test_dispatch_agent_node_writes_node_ready_event(tmp_path):
+    """AC-04a：agent 节点写 node_ready 事件（而非 node_completed），outcome=awaiting_claude_action。
+
+    旧行为：写 node_completed + outcome=completed（P1-b codex round-3 要求）。
+    新行为（F-013 rev1）：写 node_ready{node_kind, external_action_contract, agent} + outcome=awaiting_claude_action。
+    真实 agent 执行由主 Claude Code 反扫末位 node_ready 后触发；save_node_result.py 写 node_completed。
     """
     from workflow_dispatcher import _dispatch_agent_node, dispatch_node
 
@@ -301,22 +305,25 @@ def test_dispatch_agent_node_writes_node_completed_event(tmp_path):
     node = {"id": "ac05-agent", "agent": {"name": "code-review-judge"}}
 
     # 路径 1：直接调 _dispatch_agent_node
-    result = _dispatch_agent_node(node, {}, jsonl_path)
-    assert result.outcome == "completed"
+    result = _dispatch_agent_node(node, rs, {}, jsonl_path)
+    assert result.outcome == "awaiting_claude_action"
 
     events, _ = read_events(jsonl_path)
-    completed = [e for e in events if e.get("type") == "node_completed"]
-    assert len(completed) == 1, f"_dispatch_agent_node 应写 1 条 node_completed，实际 {events}"
-    assert completed[0]["node_id"] == "ac05-agent"
+    ready = [e for e in events if e.get("type") == "node_ready"]
+    assert len(ready) == 1, f"_dispatch_agent_node 应写 1 条 node_ready，实际 {events}"
+    assert ready[0]["node_id"] == "ac05-agent"
+    assert ready[0]["run_id"] == "REQ-AG-001"
+    assert ready[0]["data"]["node_kind"] == "agent"
+    assert "external_action_contract" in ready[0]["data"]
 
-    # 路径 2：经 dispatch_node 入口（同时写 node_started + node_completed）
+    # 路径 2：经 dispatch_node 入口（同时写 node_started + node_ready）
     jsonl_path2 = tmp_path / "run-state-2.jsonl"
     dispatch_node(node, rs, tmp_path, tmp_path, {}, jsonl_path2)
     events2, _ = read_events(jsonl_path2)
     types = [e["type"] for e in events2]
     assert "node_started" in types
-    assert "node_completed" in types, (
-        f"经 dispatch_node 入口的 agent 节点也必须含 node_completed，实际 {types}"
+    assert "node_ready" in types, (
+        f"经 dispatch_node 入口的 agent 节点应含 node_ready，实际 {types}"
     )
 
 

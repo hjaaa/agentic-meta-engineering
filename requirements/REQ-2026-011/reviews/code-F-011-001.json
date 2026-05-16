@@ -1,0 +1,87 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-011-code-F-011-001",
+  "requirement_id": "REQ-2026-011",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-15 21:39:38",
+  "reviewed_commit": "43161cd",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "e05957428c01111babb122eac6af1871456cc9f6e0cfac8a5a5a5fc572a02c6a"
+    },
+    {
+      "path": "artifacts/tasks/F-011.md",
+      "sha256": "08ab5fa508f41d6d929f67b2dc4a36a5b27f83aa7062cc26b272588b3e136591"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 85,
+  "dimensions": {
+    "design_consistency": {
+      "score": 90,
+      "issues": []
+    },
+    "security": {
+      "score": 90,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 90,
+      "issues": []
+    },
+    "complexity": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/workflow_continue.py:1-533 模块 533 行超 500 行阈值；本批仅扩展现有模块（+234），拆 sub_workflow_poller.py 已归 IB-31，非本 PR 必修"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_continue.py:209-276 _poll_sub_workflows CC=11 超阈值 10；可抽 _dispatch_terminal_event 优化，归 IB-31"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 72,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "tests/lib/test_poll_subworkflows.py:1-453 + tests/e2e/test_sub_workflow_backfill.py:1-159 共 612 行测试零 pytest.raises(WorkflowError) 覆盖；workflow_continue.py:61/106/179 docstring 三处明示 OSError→WorkflowError fail-closed 契约缺回归保护"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_continue.py:243-246 WARN 缺 run_id 上下文；run_state.run_id 在本函数可直接取（对照 L328 IB-10 风格）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_continue.py:70/115/188 事件 data.on_subworkflow_failure=None 与 L267-268 注释（None→默认 fail）语义混淆；建议 'n/a' 或省略字段"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 90,
+      "issues": []
+    },
+    "performance": {
+      "score": 90,
+      "issues": []
+    },
+    "history_context": {
+      "score": 90,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "trend-CR-A-module-bloat 新增信号：F-009/010/011 连续触及 workflow_continue.py 膨胀，IB-31 sub_workflow_poller.py 拆模块预案应升优先级",
+    "trend-CR-B-fail-closed-test-gap 新增信号：F-007 main loop / F-008 path_lock / F-011 sub_workflow 三连 fail-closed docstring 契约缺 pytest.raises 回归保护，建议建 IB 系统化补回归",
+    "F-CR-008 fail-closed 测试缺位虽降为 major（非 critical），但属于设计契约 vs 回归保护的结构性 gap，建议本 PR 补 3 个 pytest.raises(WorkflowError) 用例：_handle_child_completed / _handle_child_failed_by_policy / _handle_child_cancelled 各覆盖一次 OSError 链路（mock append_event raise WorkflowError）"
+  ],
+  "scope": {
+    "feature_id": "F-011"
+  },
+  "supersedes": null
+}

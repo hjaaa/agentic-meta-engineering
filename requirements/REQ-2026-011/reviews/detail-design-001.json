@@ -1,0 +1,142 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-011-detail-design-001",
+  "requirement_id": "REQ-2026-011",
+  "phase": "detail-design",
+  "reviewer": "detail-design-quality-reviewer",
+  "reviewed_at": "2026-05-14 10:31:12",
+  "reviewed_commit": "52c268f",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/detailed-design.md",
+      "sha256": "cf26a492d7448e35abeba11126a876c5cdfaa7c7a34ec4cd89a7df594b4b299c"
+    },
+    {
+      "path": "artifacts/features.json",
+      "sha256": "3e3e182a85ef24b54a1fe9518d204a354f72c15de036ed42f741a50f2740f67f"
+    },
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "379fb36d2192c590533fc52c8e25e76a52735b10536e57e54d1f980aac8288a5"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 84,
+  "dimensions": {
+    "consistency_with_outline": {
+      "score": 82,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "第 1606-1608 行：§8.2 commit 分组表引用了不存在的 feature ID F-014/F-015（features.json 仅 F-001~F-013，且 §10.1 / §10.2 / §10.4 内部一致只到 F-013）。需修正 §8.2 commit 包含范围或确认是否漏拆 features。"
+        },
+        {
+          "severity": "minor",
+          "description": "第 25 / 38 行：detailed-design 与 outline-design 在 lock 模块命名上存在漂移——outline-design v4 §3.6 / §模块清单（line 125 / line 151）一直叫 workflow_lock.py，detailed-design §3.9 改名为 path_lock.py 且仅在 D-003 落地行括注'D-014 后改名为本文件'，但未在 §1.1 增量表里显式列出'命名修订'一行，也未在 §8.1 兼容性段引用旧名给 reviewer 提示，存在跨文档反查歧义。建议 §1.1 表追一行'模块命名 | workflow_lock.py | path_lock.py（更贴近功能）'。"
+        },
+        {
+          "severity": "minor",
+          "description": "第 1486 / 1503 行：§6.1 / §6.3 把'pre-tool-use-guard.sh hook 拦截基线'标为 D-006 落地，但 §1.2 ADR 表 D-006 定义为'DAG 兼容退化判定依据'（与 hook 完全无关）。该误命名沿用自 plan.md 行 40/121 的术语漂移，需在 §6.1/§6.3 改为'D-006 hook 拦截基线（plan.md 历史代号，与 ADR 表 D-006 同号不同义，沿用 REQ-009 hook 基线）'或换码避免混淆。"
+        }
+      ]
+    },
+    "interface_completeness": {
+      "score": 86,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 158 行 vs 第 394 / 396 / 401 / 403 行：approval 系事件 payload 中 attempt 字段名复数不一致——schema 描述 §2.2.4 写 'data.attempts = max_attempts'（复数），但 §3.2.2 reject CLI 实际写入用 'data.attempt = current_attempt'（单数）；node_failed(approval_attempts_exhausted) 又用 'data.attempts'（复数）。消费方反扫时无法用统一 key 取值，需统一为单数 attempt 或在 schema 注释中明确两个字段并存的语义。"
+        },
+        {
+          "severity": "minor",
+          "description": "第 264 行：save_node_result.py 顶部从 'run_state import RunState, _resolve_run_dir, append_event, read_events'，但 _resolve_run_dir 在 scripts/lib/run_state.py 是否对外暴露（前缀下划线通常表示模块内私有）未在引用处声明；建议改为通过公开 helper（如 _setup_run）调用或在签名段注明'_resolve_run_dir 借由 run_state 包内重导出'。"
+        },
+        {
+          "severity": "minor",
+          "description": "第 290-306 行：_check_state_or_fail 显式抛 SystemExit(2)，但其调用方 main 在 §3.1 仅给出 '...' 占位，未声明 main 是否 catch 该 SystemExit；按 Python 习惯 SystemExit 会冒到顶层导致进程结束，建议在 main docstring 明确 '_check_state_or_fail 触发时 main 不 catch、直接退出 2'，避免 reviewer 误读为还需手动处理。"
+        }
+      ]
+    },
+    "data_model_soundness": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 188-191 行：manifest 目录布局示例只给了正例 event_id 命名（含 'repair' purpose），但 §2.4 列举 'purpose ∈ {repair, reject-reason, skill-output}'——三种 purpose 与本期事件类型的对应关系未在示例下方一句话注明（reject reason 走 reject-reason？approval_repair_completed.output 走 repair 还是 skill-output？），落地时容易选错命名。"
+        },
+        {
+          "severity": "minor",
+          "description": "第 196 行：manifest 原子性段写'jsonl 写失败时 manifest 文件成孤儿…按顺序，孤儿 manifest 不影响 rebuild；后台清理留 follow-up'——孤儿 manifest 清理被推到 follow-up 但未在 §11 待澄清清单和 §9 风险表里登记，建议在 §11 第 4 项或 §9 R-X 显式登记，避免随 PR 失忆。"
+        },
+        {
+          "severity": "minor",
+          "description": "第 169 / 176 行：lock 文件 payload 字段 'claude_session: null' 没有任何对应的写入路径或消费方说明（§3.9 acquire 未写入此字段，§5.1 也未引用），属于死字段。要么去掉、要么在 §2.3 字段表里标记 '保留扩展，本期写 null'。"
+        }
+      ]
+    },
+    "sequence_correctness": {
+      "score": 86,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 1131 行：§4.1 时序图标题写 '流程 A：approval_pending → approve 闭环（AC-03a，对应 ADR D-007 修订前的标准路径）'——'修订前'用词不准（D-007 本身定义就是 inline repair，本流程是 approve 不进入 repair 的标准路径），建议改为 '（AC-03a，对应 ADR D-007 标准 approve 路径，不触发 repair）'。"
+        },
+        {
+          "severity": "minor",
+          "description": "第 1295-1309 行：§4.5 on_subworkflow_failure 三分支（skip / abort / continue）的时序图只画了 skip + abort 两支，缺 continue 分支（§3.6.4 docstring 列了三分支）。建议补 continue 分支或在图下注明 'continue 分支语义 = child_failed + node_completed（视失败为成功），事件写入与 skip 仅在事件类型 node_skipped → node_completed 不同'。"
+        },
+        {
+          "severity": "minor",
+          "description": "第 1311-1344 行：§4.6 path-lock 时序图将'残锁场景'放在正常 release 之后，但残锁场景的前提条件是'P1 被 kill -9（不走 release）'，与图中 'P1 release' 完成是矛盾的；需在'Note over Lock: 残锁场景'前显式加一条 'P1 X: kill -9（不走 release）' 让时间线一致。"
+        }
+      ]
+    },
+    "feature_granularity": {
+      "score": 82,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "F-004 (estimate_days=3.0, complexity=heavy) 同时承载：(a) loader depends_on_explicit 标记位、(b) _ready_nodes 实现、(c) _select_next_dispatch_target 双路径分流、(d) _finalize_after_rebuild_if_last_topology_node 适配、(e) standard-8phase.yaml check_meta 修正附带、(f) 一个 e2e legacy_next fixture——6 个独立产出物挤在单 feature，task-planning 阶段派发并行度低。建议拆为 F-004a (loader 标记位 + check_meta 修正，trivial) + F-004b (_ready_nodes + _select_next_dispatch_target + _finalize 适配，heavy)。"
+        },
+        {
+          "severity": "minor",
+          "description": "F-006 (estimate_days=4.0, complexity=heavy) 同时改 workflow_approve.py + workflow_reject.py 两套 CLI + 三套 acceptance（approve / reject<max / reject==max）。两个 CLI 文件在仓库内属于独立模块（pre-tool-use-guard.sh 拦截 pattern 也分开 match），拆为 F-006a (approve 闭环, light) + F-006b (reject inline repair + attempts, medium) 后并行度更高，且 F-007 save_node_result.py 实际只依赖 F-006b。"
+        },
+        {
+          "severity": "minor",
+          "description": "F-001 描述里写到 manifest tmp + fsync + os.replace，但 acceptance 5 条没有覆盖 'manifest index.txt 追加并发安全'（§2.4 / §5.3 强调 index.txt 用 fcntl.LOCK_EX）；建议补 1 条 acceptance：'并发 2 个 append_events_with_manifest → index.txt 行数 = 2 且无截断'。"
+        },
+        {
+          "severity": "minor",
+          "description": "F-013 acceptance 第 7 条 'save_node_result.py 不读 contract（grep 函数体确认 7 字段未被消费）'——grep 断言作为正式 acceptance 太脆弱（实现细节稍改名即失效），建议改为 'save_node_result.py 单测：mock node_ready.data.external_action_contract={...} 后 _write_event payload 不含 7 字段' 这种行为级断言。"
+        }
+      ]
+    }
+  },
+  "required_fixes": [
+    "§8.2 commit 分组表的 F-014 / F-015 引用错误：要么修订为 F-009~F-013，要么补足 features 拆分（推荐前者，配合 feature_granularity 内 F-004 / F-006 拆分建议合并处理）。",
+    "approval 系事件 attempt 字段命名漂移：approval_rejected / approval_repair_started 用 attempt（单数）、node_failed(approval_attempts_exhausted) 用 attempts（复数）；需在 §2.2 / §3.2.2 统一为单数（推荐）或在 schema 注释里明确两键并存的语义，并同步 features F-006 / save_node_result.py 反扫逻辑。",
+    "§6.1 / §6.3 'D-006 hook 拦截基线' 与 §1.2 ADR 表 D-006 'DAG 兼容退化判定依据' 同号不同义，沿用自 plan.md 行 40/121 的术语漂移；需在 §6.1 节标题或首段显式注明两者关系，或换码避免 ADR 索引串扰。"
+  ],
+  "suggestions": [
+    "§1.1 增量表追一行 '模块命名 | workflow_lock.py（outline） | path_lock.py（detailed，更贴近功能职责）'，给跨文档 reviewer 一次性提示。",
+    "F-004 / F-006 拆分为 F-004a/F-004b / F-006a/F-006b，task-planning 阶段并行度从 2 提到 4，PR 评审颗粒度也更友好。",
+    "F-001 补 acceptance：'manifest index.txt 在并发 append_events_with_manifest 调用下保持单行原子（fcntl.LOCK_EX 验证）'，让 R-5 风险（§9）可落到测试。",
+    "F-013 acceptance 第 7 条 grep 断言改为行为级单测断言（mock contract → 检验 payload 不含 7 字段）。",
+    "§4.5 sub_workflow 时序图补 continue 分支，或图下加一行说明三分支事件差异。",
+    "§4.6 path-lock 时序图在'残锁场景'段前插一条 'P1 X: kill -9（不走 release）' 让时间线连贯。",
+    "§2.4 manifest event_id 命名 purpose ∈ {repair, reject-reason, skill-output} 三种与事件类型的映射，在 §2.4 一句话注明。",
+    "§2.3 lock 文件 'claude_session: null' 字段加一行注释'本期保留扩展位，留空'或删除以避免死字段。"
+  ],
+  "scope": null,
+  "supersedes": null,
+  "features_json_validation": {
+    "valid": true,
+    "issues": [],
+    "enhancement_suggestions": [
+      "全 13 features 均已带 complexity / priority / ac_refs / pr_group / estimate_days / depends_on_features / touches，机读字段非常完整，task-planning 派发器可直接消费。",
+      "F-004 / F-006 拆分后建议同步把 ac_refs 内部精细化（如 F-006 拆 F-006a → AC-03a，F-006b → AC-03b/c），让派发器按 AC 维度并行。",
+      "可选：每个 feature 增加 interfaces_frozen: true 字段（detailed-design §3 已冻结 Python 签名 + CLI 协议），让阶段 7 派发器跳过 prompt 段的接口探索。"
+    ]
+  }
+}

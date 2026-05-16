@@ -1,10 +1,13 @@
-"""workflow approve 命令入口（F-005）。
+"""workflow approve 命令入口（F-005 / F-006）。
 
 /workflow:approve
 
 人类专属动作：isatty 兜底 + hook 拦截（D-006）。
 
-详细设计 §1.2.6。
+F-006（AC-03a）：approve CLI 一次原子写 [approval_approved, node_completed] 两条事件，
+复用 append_events 单 LOCK_EX + 单 os.write 保证 R-T03（事件错位）根除。
+
+详细设计 §1.2.6 + §3.2.1。
 """
 from __future__ import annotations
 
@@ -16,8 +19,9 @@ _LIB_DIR = Path(__file__).resolve().parent
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
+from append_events import PayloadTooLargeError, append_events  # noqa: E402
 from common import REPO_ROOT, WorkflowError, infer_run_id_from_branch  # noqa: E402
-from run_state import RunState, _resolve_run_dir, append_event, read_events  # noqa: E402
+from run_state import RunState, _resolve_run_dir, read_events  # noqa: E402
 from workflow_state_validator import check_tty_for_approval, validate_state_for_cmd  # noqa: E402
 
 
@@ -61,14 +65,24 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
 
     node_id = run_state.pending_approval or "unknown_node"
 
+    # AC-03a：approve CLI 原子写两条事件（approval_approved + node_completed）
+    # 复用 append_events 批量写（§3.5）保 R-T03 不再适用——两条事件要么都在要么都不在
     try:
-        append_event(jsonl_path, {
-            "type": "approval_approved",
-            "run_id": run_id,
-            "node_id": node_id,
-        })
-    except WorkflowError as exc:
-        print(f"ERROR: 写 approval_approved 事件失败：{exc}", file=sys.stderr)
+        append_events(jsonl_path, [
+            {
+                "type": "approval_approved",
+                "run_id": run_id,
+                "node_id": node_id,
+            },
+            {
+                "type": "node_completed",
+                "run_id": run_id,
+                "node_id": node_id,
+                "data": {"output": {"decision": "approved"}},
+            },
+        ])
+    except (WorkflowError, PayloadTooLargeError) as exc:
+        print(f"ERROR: 写 approve 事件失败：{exc}", file=sys.stderr)
         return 1
 
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")

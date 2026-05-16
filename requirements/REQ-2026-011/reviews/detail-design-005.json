@@ -1,0 +1,68 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-011-detail-design-005",
+  "requirement_id": "REQ-2026-011",
+  "phase": "detail-design",
+  "reviewer": "detail-design-quality-reviewer",
+  "reviewed_at": "2026-05-14 13:58:25",
+  "reviewed_commit": "35bba41",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/detailed-design.md",
+      "sha256": "0a2584726beb1a01f66e6831cd5e69ec7a5c99da45cfea04d3b092322519c59e"
+    },
+    {
+      "path": "artifacts/features.json",
+      "sha256": "2f0e4cd7ee274620b2f88a67c6c3aa8f64314f13bcc39a466c4260bc6a0a9b2c"
+    },
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "379fb36d2192c590533fc52c8e25e76a52735b10536e57e54d1f980aac8288a5"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 94,
+  "dimensions": {
+    "consistency_with_outline": {
+      "score": 95,
+      "issues": []
+    },
+    "interface_completeness": {
+      "score": 95,
+      "issues": []
+    },
+    "data_model_soundness": {
+      "score": 94,
+      "issues": []
+    },
+    "sequence_correctness": {
+      "score": 94,
+      "issues": []
+    },
+    "feature_granularity": {
+      "score": 93,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "features.json 第 7/85/153/218 行：F-001 / F-004 / F-006 / F-008 title 长度 >50 字符（含中文 + 符号），略超规范软门限 30 字。可在不影响阶段 7 派发的前提下在后续 commit 简化（例：F-006 'approval 闭环' / F-008 'path_lock 三件套 + workflow_continue 取锁'）；不阻塞，建议作为 backlog。"
+        }
+      ]
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "features.json 4 条 title 超 30 字（含中文），不影响 schema/可读性，但 task-planning 阶段 PR 标题派生时可能略冗长，建议未来在 sandbox 或 task-planning 阶段微调；本轮不阻塞 looks_clean。",
+    "已纳入 review checklist 的『features.json description / acceptance 与 detailed-design.md 同步性』本轮专项核验全部 PASS（F-002 / F-004 / F-005 / F-006 / F-007 / F-009 / F-013 7 条 feature 跨文件双向 grep 抽检均一致）；建议保留为 detail-design 阶段稳定 checklist。",
+    "建议 task-planning 阶段对 F-004（complexity=heavy, estimate=3.0 days, acceptance=10 条）做拆分评估——可能拆 F-004a (loader depends_on_explicit) + F-004b (_ready_nodes + scheduler 双路径) + F-004c (_finalize 末节点判定)，但 detail-design 阶段拆分会牺牲『DAG scheduler 一次重构 + ADR D-004 不引 feature flag』的内聚性，不建议在本阶段动。"
+  ],
+  "scope": null,
+  "supersedes": "REV-REQ-2026-011-detail-design-004",
+  "features_json_validation": {
+    "valid": true,
+    "issues": [],
+    "enhancement_suggestions": [
+      "13 条 feature 全部含 complexity / depends_on_features / touches / priority / pr_group / estimate_days / ac_refs 字段，阶段 7 派发条件完备，可走最优并行策略",
+      "F-001 / F-004 / F-006 / F-008 title 长度 >30 字（含中文），不阻塞 schema 但 task-planning 阶段 PR 标题派生略冗长，可在阶段 6 转 7 时统一精简"
+    ]
+  }
+}

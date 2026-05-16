@@ -24,6 +24,7 @@ _LIB_DIR = Path(__file__).resolve().parent
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
+from artifact_spec_renderer import _render_artifact_spec  # noqa: E402
 from common import WorkflowError  # noqa: E402（WorkflowError 统一定义在 common，禁止本地重定义）
 from run_state import RunState, append_event  # noqa: E402
 from substitute_vars import substitute_vars  # noqa: E402
@@ -42,6 +43,7 @@ DispatchOutcome = Literal[
     "loop_done",
     "sub_workflow_pending",
     "sub_workflow_done",
+    "awaiting_claude_action",  # F-002：节点就绪等待 Claude 执行（node_ready / approval_repair_started 路径）
 ]
 
 
@@ -107,6 +109,44 @@ def _build_env(run_state: RunState, run_dir: Path, root: Path) -> dict[str, str]
 # 入口：dispatch_node（详细设计 §1.5 派发规则）
 # ============================================================================
 
+def _dispatch_node_by_type_key(
+    node: dict,
+    run_state: RunState,
+    run_dir: Path,
+    root: Path,
+    env: dict[str, Any],
+    jsonl_path: Path,
+) -> DispatchResult:
+    """按 node 内含的类型键派发到对应 _dispatch_*_node。
+
+    顺序优先级（与历史 elif 链一致）：
+      agent > skill > prompt/prompt_file > bash > approval > loop > sub_workflow > artifact
+
+    抽离为独立函数（IB-21b），使 dispatch_node 主函数 CCN 降为 ≈ 4。
+    各 handler 签名不同，无法用统一字典映射——保留 if 链 self-contained 语义。
+    """
+    if "agent" in node:
+        return _dispatch_agent_node(node, run_state, env, jsonl_path)
+    if "skill" in node:
+        return _dispatch_skill_node(node, run_state, env, jsonl_path)
+    if "prompt" in node or "prompt_file" in node:
+        # prompt_file 是 prompt 节点的另一种写法，统一派发（§1.6 描述两者互斥）
+        return _dispatch_prompt_node(node, run_state, env, run_dir, root, jsonl_path)
+    if "bash" in node:
+        return _dispatch_bash_node(node, run_state, env, run_dir, root, jsonl_path)
+    if "approval" in node:
+        return _dispatch_approval_node(node, env, run_state, jsonl_path)
+    if "loop" in node:
+        return _dispatch_loop_node(node, env, run_state, jsonl_path, root)
+    if "sub_workflow" in node:
+        # env 当前未在 sub_workflow 节点使用；run_state 用于写 parent_run_id 入 sub run meta
+        return _dispatch_sub_workflow_node(node, run_state, run_dir, root, jsonl_path)
+    if "artifact" in node:                              # AC-02 第 8 类
+        return _dispatch_artifact_node(node, run_state, root, env, jsonl_path)
+    node_id: str = node.get("id", "<unknown>")
+    raise WorkflowError(f"未知节点类型: {node_id}")
+
+
 def dispatch_node(
     node: dict,
     run_state: RunState,
@@ -115,13 +155,15 @@ def dispatch_node(
     env: dict[str, Any],
     jsonl_path: Path,
 ) -> DispatchResult:
-    """按 node dict 内含的键派发到 7 类节点处理函数。
+    """按 node dict 内含的键派发到 8 类节点处理函数。
 
     进入时写 node_started 事件；异常时写 node_failed 事件并返回 outcome="failed"。
     未知节点类型抛 WorkflowError（被 except 捕获后写 node_failed）。
 
     派发优先级（按 detailed-design.md:158-165）：
-      agent > skill > prompt > bash > approval > loop > sub_workflow
+      agent > skill > prompt > bash > approval > loop > sub_workflow > artifact
+
+    类型识别委托给 _dispatch_node_by_type_key（IB-21b），主函数 CCN ≤ 4。
     """
     node_id: str = node.get("id", "<unknown>")
 
@@ -133,26 +175,7 @@ def dispatch_node(
     })
 
     try:
-        # 按 node dict 内含键识别类型（顺序即优先级）
-        if "agent" in node:
-            result = _dispatch_agent_node(node, env, jsonl_path)
-        elif "skill" in node:
-            result = _dispatch_skill_node(node, run_state, env, jsonl_path)
-        elif "prompt" in node or "prompt_file" in node:
-            # prompt_file 是 prompt 节点的另一种写法，统一派发（§1.6 描述两者互斥）
-            result = _dispatch_prompt_node(node, run_state, env, run_dir, root, jsonl_path)
-        elif "bash" in node:
-            result = _dispatch_bash_node(node, run_state, env, run_dir, root, jsonl_path)
-        elif "approval" in node:
-            result = _dispatch_approval_node(node, env, run_state, jsonl_path)
-        elif "loop" in node:
-            result = _dispatch_loop_node(node, env, run_state, jsonl_path)
-        elif "sub_workflow" in node:
-            # env 当前未在 sub_workflow 节点使用；run_state 用于写 parent_run_id 入 sub run meta
-            result = _dispatch_sub_workflow_node(node, run_state, run_dir, root, jsonl_path)
-        else:
-            raise WorkflowError(f"未知节点类型: {node_id}")
-
+        return _dispatch_node_by_type_key(node, run_state, run_dir, root, env, jsonl_path)
     except Exception as exc:
         # 所有异常（含 WorkflowError）统一转换为 outcome=failed，写 node_failed 事件
         # 这是规范要求的"转换为 outcome=failed"，而非吞没异常
@@ -165,34 +188,48 @@ def dispatch_node(
         })
         return DispatchResult(outcome="failed", error=error_msg)
 
-    return result
-
 
 # ============================================================================
 # 7 类节点 dispatcher（bash/skill/prompt 已在 F-006 落地；agent → F-010；approval 已落地；loop/sub_workflow → F-011）
 # ============================================================================
 
+def _build_external_action_contract(node: dict) -> dict:
+    """AC-10：从 yaml 节点提取 7 字段透传 contract（缺省值见详细设计 §2.2.1）。"""
+    return {
+        "allowed_tools": node.get("allowed_tools", []),
+        "denied_tools":  node.get("denied_tools", []),
+        "mcp":           node.get("mcp", []),
+        "skills":        node.get("skills", []),
+        "agents":        node.get("agents", []),
+        "idle_timeout":  node.get("idle_timeout"),
+        "output_format": node.get("output_format"),
+    }
+
+
 def _dispatch_agent_node(
     node: dict,
+    run_state: RunState,
     env: dict[str, Any],
     jsonl_path: Path,
 ) -> DispatchResult:
-    """Agent 节点 stub。
+    """Agent 节点：写 node_ready + external_action_contract，返回 awaiting_claude_action。
 
-    真实逻辑在 F-010 实现（mock_agent_dispatch fixture + 主 Claude 集成）。
-
-    P1-b（codex round-3 2026-05-12）：必须写 node_completed 事件，否则 crash 后
-    RunState.rebuild 看不到完成事件，会把节点当 unfinished 重派——破坏 F-010
-    AC-05 mock fixture 的真实保证。其他节点类型（skill/prompt/bash）入口处都写了
-    node_completed，agent 节点为了对齐补上。
+    AC-04a / AC-10：真实 agent 执行由主 Claude Code 反扫末位 node_ready 后触发；
+    本期 contract 仅透传到 jsonl（save_node_result.py 不消费 contract 字段）。
     """
     node_id: str = node.get("id", "<unknown>")
+    contract = _build_external_action_contract(node)
     append_event(jsonl_path, {
-        "type": "node_completed",
+        "type": "node_ready",
         "node_id": node_id,
-        "data": {"output": ""},  # stub 输出留空；F-010 真接入后由 fixture / 主 Claude 填
+        "run_id": run_state.run_id,
+        "data": {
+            "node_kind": "agent",
+            "external_action_contract": contract,
+            "agent": node.get("agent", ""),
+        },
     })
-    return DispatchResult(outcome="completed")
+    return DispatchResult(outcome="awaiting_claude_action")
 
 
 def _dispatch_skill_node(
@@ -201,10 +238,11 @@ def _dispatch_skill_node(
     env: dict[str, Any],
     jsonl_path: Path,
 ) -> DispatchResult:
-    """Skill 节点：渲染 args 中的变量（escape_for_bash=True）+ 写 node_completed{output: {skill, args}}。
+    """Skill 节点：渲染 args + 写 node_ready{skill, args, external_action_contract}。
 
-    主 Claude 实际调用 skill 由后续集成层 PR 接管。
-    args 中每个 value 调 substitute_vars escape_for_bash=True（默认安全转义）。
+    AC-04a / AC-10：写 node_ready 而非 node_completed；真实 skill 调用由主 Claude Code
+    反扫末位 node_ready 后执行；save_node_result.py --kind=skill_result 写 node_completed。
+    args 中每个 value 调 substitute_vars escape_for_bash=True（防注入）。
     """
     node_id: str = node.get("id", "<unknown>")
     skill_name: str = node.get("skill", "")
@@ -218,13 +256,19 @@ def _dispatch_skill_node(
         for k, v in raw_args.items()
     }
 
-    output = {"skill": skill_name, "args": rendered_args}
+    contract = _build_external_action_contract(node)
     append_event(jsonl_path, {
-        "type": "node_completed",
+        "type": "node_ready",
         "node_id": node_id,
-        "data": {"output": output},
+        "run_id": run_state.run_id,
+        "data": {
+            "node_kind": "skill",
+            "external_action_contract": contract,
+            "skill": skill_name,
+            "args": rendered_args,
+        },
     })
-    return DispatchResult(outcome="completed", output=output)
+    return DispatchResult(outcome="awaiting_claude_action")
 
 
 def _dispatch_prompt_node(
@@ -235,9 +279,9 @@ def _dispatch_prompt_node(
     root: Path,
     jsonl_path: Path,
 ) -> DispatchResult:
-    """Prompt 节点：取 prompt / prompt_file 文本 + 变量替换（escape_for_bash=True）+ 写 node_completed。
+    """Prompt 节点：取 prompt / prompt_file 文本 + 变量替换 + 写 node_ready{prompt, external_action_contract}。
 
-    主 Claude 实际消费 prompt 由后续集成层 PR 接管。
+    AC-04a / AC-10：写 node_ready 而非 node_completed；真实 prompt 消费由主 Claude Code 执行。
     优先取 node["prompt"]（inline 字符串），其次 node["prompt_file"]（相对仓库根读文件）。
     prompt_file 读不到 → raise WorkflowError，由 dispatch_node 入口的 except 转 node_failed。
     escape_for_bash=True：prompt 文本会作为 Claude 的 shell 参数传递，需防注入。
@@ -259,12 +303,18 @@ def _dispatch_prompt_node(
         raise WorkflowError(f"prompt 节点 {node_id!r} 既无 prompt 也无 prompt_file")
 
     rendered = substitute_vars(raw_text, run_state.node_outputs, env, escape_for_bash=True)
+    contract = _build_external_action_contract(node)
     append_event(jsonl_path, {
-        "type": "node_completed",
+        "type": "node_ready",
         "node_id": node_id,
-        "data": {"output": rendered},
+        "run_id": run_state.run_id,
+        "data": {
+            "node_kind": "prompt",
+            "external_action_contract": contract,
+            "prompt": rendered,
+        },
     })
-    return DispatchResult(outcome="completed", output=rendered)
+    return DispatchResult(outcome="awaiting_claude_action")
 
 
 def _dispatch_bash_node(
@@ -388,27 +438,73 @@ def _dispatch_loop_node(
     env: dict[str, Any],
     run_state: RunState,
     jsonl_path: Path,
+    root: Path = Path("."),
 ) -> DispatchResult:
     """Loop 节点：迭代计数从 run_state.loop_counters[node_id] 读取。
 
-    逻辑（F-011）：
-    1. 读取当前迭代次数（loop_counters[node_id]，首次为 0）
-    2. 写 loop_iteration_started 事件（data.iteration = current_iteration）
-    3. 写 loop_iteration_completed 事件（data.iteration = current_iteration）
-    4. 若 current_iteration + 1 >= max_iterations → outcome="loop_done"
-       否则 → outcome="loop_continue"（workflow_continue.py 负责递增计数器并继续同节点）
+    AC-07 扩展：
+    - 新增 node["loop"]["until_bash"]: str 字段
+    - 每轮迭代前先跑 until_bash；exit=0 → loop_completed + outcome=loop_done
+    - exit≠0 → 继续既有 loop_iteration_started/completed 路径
+    - 达到 max_iterations → loop_max_iterations_exceeded + outcome=loop_done
+    - until_bash timeout（30s） → error 写 data.error = "timeout: <cmd>"，按 max_iterations 兜底
+    - until_bash 不传 → 完全走既有路径（保护 F-011 历史行为）
 
     约束：
     - data["iteration"] 必须存在，供 RunState.rebuild 中 loop_counters 累计消费
     - max_iterations 取自 node["loop"]["max_iterations"]；缺省视为 1
     """
+    import os  # 用于注入 iter 环境变量
+
     node_id: str = node.get("id", "<unknown>")
     loop_cfg: dict = node.get("loop") or {}
     max_iterations: int = int(loop_cfg.get("max_iterations", 1))
+    until_bash: str | None = loop_cfg.get("until_bash")
 
     # 当前迭代索引（0-based）：首次不在 loop_counters 中，取 0
     current_iteration: int = run_state.loop_counters.get(node_id, 0)
 
+    # AC-07：until_bash 优先判定（仅在传入时生效）
+    if until_bash:
+        rendered_until = substitute_vars(
+            until_bash, run_state.node_outputs, env, escape_for_bash=False
+        )
+        try:
+            proc = subprocess.run(
+                ["bash", "-c", rendered_until],
+                cwd=str(root),
+                capture_output=True,
+                text=True,
+                timeout=30.0,
+                env={**os.environ, "iter": str(current_iteration)},
+            )
+            if proc.returncode == 0:
+                # exit=0 → until 条件成立，跳过本轮迭代直接完成
+                append_event(jsonl_path, {
+                    "type": "loop_completed",
+                    "node_id": node_id,
+                    "data": {"iteration": current_iteration},
+                })
+                return DispatchResult(outcome="loop_done")
+            # exit≠0 → 条件不成立，继续走迭代路径
+        except subprocess.TimeoutExpired:
+            # timeout 不视为 loop_done，继续走迭代路径；error 记录在 completed 事件
+            _write_loop_iteration_with_error(
+                jsonl_path, node_id, current_iteration,
+                f"timeout: {rendered_until}",
+            )
+            return _loop_check_max_or_continue(
+                node_id, current_iteration, max_iterations, jsonl_path
+            )
+        except OSError as exc:
+            _write_loop_iteration_with_error(
+                jsonl_path, node_id, current_iteration, f"oserror: {exc}",
+            )
+            return _loop_check_max_or_continue(
+                node_id, current_iteration, max_iterations, jsonl_path
+            )
+
+    # 既有路径（until_bash 不传，或 until_bash exit≠0 时）
     append_event(jsonl_path, {
         "type": "loop_iteration_started",
         "node_id": node_id,
@@ -422,7 +518,45 @@ def _dispatch_loop_node(
     })
 
     # 已完成 current_iteration 轮（0-based），下一轮编号为 current_iteration + 1
+    return _loop_check_max_or_continue(
+        node_id, current_iteration, max_iterations, jsonl_path
+    )
+
+
+def _write_loop_iteration_with_error(
+    jsonl_path: Path,
+    node_id: str,
+    iteration: int,
+    error: str,
+) -> None:
+    """写 loop_iteration_started + loop_iteration_completed（含 error 字段）。"""
+    append_event(jsonl_path, {
+        "type": "loop_iteration_started",
+        "node_id": node_id,
+        "data": {"iteration": iteration},
+    })
+    append_event(jsonl_path, {
+        "type": "loop_iteration_completed",
+        "node_id": node_id,
+        "data": {"iteration": iteration, "error": error},
+    })
+
+
+def _loop_check_max_or_continue(
+    node_id: str,
+    current_iteration: int,
+    max_iterations: int,
+    jsonl_path: Path,
+) -> DispatchResult:
+    """达到 max_iterations → 写 loop_max_iterations_exceeded + outcome=loop_done；
+    否则 → outcome=loop_continue。
+    """
     if current_iteration + 1 >= max_iterations:
+        append_event(jsonl_path, {
+            "type": "loop_max_iterations_exceeded",
+            "node_id": node_id,
+            "data": {"max_iterations": max_iterations, "iteration": current_iteration},
+        })
         return DispatchResult(outcome="loop_done")
     return DispatchResult(outcome="loop_continue")
 
@@ -525,3 +659,61 @@ def _dispatch_sub_workflow_node(
         )
 
     return DispatchResult(outcome="sub_workflow_pending")
+
+
+# ============================================================================
+# artifact 节点 dispatcher（AC-02 第 8 类，F-005 落地）
+# ============================================================================
+
+def _dispatch_artifact_node(
+    node: dict,
+    run_state: RunState,
+    root: Path,
+    env: dict[str, Any],
+    jsonl_path: Path,
+) -> DispatchResult:
+    """artifact 第 8 类 dispatcher（AC-02）。
+
+    职责：
+      - 用 _render_artifact_spec 对 spec 内所有 $VAR 引用做变量展开（escape_for_bash=False）
+      - 调 run_artifact_checks.run_artifact_checks(spec, cwd=root) 跑 5 类校验
+      - failures 为空 → 写 node_completed（success path）
+      - failures 非空 → raise WorkflowError，由外层转 node_failed（D-008 职责分工）
+
+    禁止：
+      - 写 node_started（外层已写）
+      - 直接写 node_failed（由外层 try/except 兜底）
+
+    Raises:
+      WorkflowError: artifact 校验失败（含失败明细列表）
+    """
+    from run_artifact_checks import run_artifact_checks  # 避免顶层循环导入
+
+    node_id: str = node.get("id", "<unknown>")
+    raw_spec = node.get("artifact") or {}
+    spec = _render_artifact_spec(raw_spec, run_state, env)
+    try:
+        failures = run_artifact_checks(spec, cwd=root)
+    except (OSError, ValueError) as exc:
+        raise WorkflowError(
+            f"artifact 节点 {node_id!r} 校验过程异常：{type(exc).__name__}: {exc}"
+        ) from exc
+    if failures:
+        raise WorkflowError(
+            f"artifact 节点 {node_id!r} 校验失败：\n  - " + "\n  - ".join(failures)
+        )
+
+    # 统计实际校验项数：failures 为空时，spec 内各类目项数之和
+    checks_run = sum(
+        len(spec.get(k) or [])
+        for k in (
+            "must_exist", "must_not_exist", "schema_check",
+            "must_contain_sections", "must_match_regex",
+        )
+    )
+    append_event(jsonl_path, {
+        "type": "node_completed",
+        "node_id": node_id,
+        "data": {"output": {"artifact_pass": True, "checks_run": checks_run}},
+    })
+    return DispatchResult(outcome="completed")
