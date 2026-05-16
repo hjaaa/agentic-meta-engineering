@@ -16,3 +16,4 @@
 2026-05-16 22:16:59 [development] F-002 派发：删旧 hook shell 测试（trivial / haiku）
 2026-05-16 23:02:42 [signoff] REV-REQ-2026-012-code-F-002-001 approved by hj19961223@gmail.com
 2026-05-16 23:07:09 [development] F-002 done：code-review looks_clean(92) + tty signoff approved；dispatch lock 已释放
+2026-05-16 23:11:43 [save] dev 进度 1/7（F-002 done score=92）；F-001/F-003/F-004 待派；恢复见 plan.md F-D1→F-D2→F-E 硬链
