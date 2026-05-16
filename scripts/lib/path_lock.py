@@ -30,7 +30,6 @@ import logging
 import os
 import platform
 import signal
-import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from functools import partial

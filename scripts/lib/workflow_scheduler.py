@@ -370,8 +370,8 @@ def _finalize_if_topology_done(
         # 若未来新增绕过路径，assert 第一时间暴露。
         if workflow is not None and workflow.get("depends_on_explicit"):
             assert _is_dag_topology_done(run_state, workflow), (
-                f"_finalize_if_topology_done DAG 分支：current_node=None 但 topology 未全 SUCCESS_TERMINAL，"
-                f"可能由失败处理路径绕过 _handle_skip/abort 早返触发；请检查最新 advance 路径"
+                "_finalize_if_topology_done DAG 分支：current_node=None 但 topology 未全 SUCCESS_TERMINAL，"
+                "可能由失败处理路径绕过 _handle_skip/abort 早返触发；请检查最新 advance 路径"
             )
         append_event(jsonl_path, {"type": "workflow_completed", "data": {}})
         run_state.state = "completed"

@@ -30,7 +30,6 @@ from workflow_state_validator import validate_state_for_cmd  # noqa: E402
 from workflow_loader import load_workflow  # noqa: E402
 from workflow_scheduler import (  # noqa: E402
     _finalize_after_rebuild_if_last_topology_node,
-    _next_node,
     _select_next_dispatch_target,
 )
 from workflow_outcome_router import _route_outcome  # noqa: E402

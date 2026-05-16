@@ -33,7 +33,8 @@ if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
 from run_state import RunState, read_events  # noqa: E402
-from workflow_continue import _main_loop, _build_node_map, _next_node  # noqa: E402
+from workflow_continue import _main_loop, _build_node_map  # noqa: E402
+from workflow_scheduler import _next_node  # noqa: E402
 
 
 # ============================================================================
