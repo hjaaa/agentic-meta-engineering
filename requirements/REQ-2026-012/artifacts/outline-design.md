@@ -76,11 +76,13 @@ inputs:
 | CI workflow | .github/workflows/quality-check.yml | 改 `pip install` 行；改 `ruff check` 范围；加 routing-e2e step | F-A / F-C / F-E |
 | 依赖事实源 | requirements/ci.txt（新建） | 新建 5 行清单 | F-C |
 | ruff 配置 | pyproject.toml | 不改（D-008 决议） | F-E（消费方） |
-| Makefile | Makefile | 新增 ci-local + 8 个子 target | F-F |
+| 本地镜像入口层（Makefile） | Makefile | 新增 ci-local + 8 个子 target | F-F |
 | Hook 测试 | .claude/hooks/tests/ | 删 2 文件 | F-B |
-| 业务测试 | tests/lib/ + tests/lifecycle/ | 4 处 import 补 + 89 处机械清理 | F-D1 / F-D2 |
+| 业务测试 | tests/lib/ + tests/gates/ + tests/e2e/ + tests/lifecycle/（机械清理覆盖 89 处；语义清理 4 处仅落 tests/lib/ + tests/lifecycle/） | 4 处 import 补 + 89 处机械清理 | F-D1 / F-D2 |
 | Onboarding | context/team/onboarding/learning-path/01-environment.md | 改 `pip install` 行 | F-C |
 | 经验沉淀 | context/team/experience/test-assets-must-be-wired-into-ci.md | 新建 | F-F 收尾 |
+
+**PR 合并硬链**：F-D1 → F-D2 → F-E 是顺序依赖（来源：requirements/REQ-2026-012/plan.md）；F-A / F-B / F-C / F-F 之间无强依赖、可并行；F-E 单独 revert 时 F-D1 / F-D2 的清债成果保留（来源：requirements/REQ-2026-012/artifacts/requirement.md）。
 
 ## 3. 模块详细设计（概要）
 
@@ -121,6 +123,9 @@ ci-local：聚合 target，按 workflow step 顺序串行依赖 8 个子 target
 ├── ci-local-ruff          → ruff check scripts tests --select=F
 ├── ci-local-render-check  → python3 scripts/gates/migration/render-docs.py --check
 └── ci-local-routing-e2e   → bash tests/lib/test_routing_e2e.sh
+# 注：hyperfine 路径默认嵌在 ci-local-bats 内由 V-06 用例触发（保持 D-004「镜像 CI」语义），
+#     不单独建 ci-local-hyperfine target；若 detail-design 阶段证伪 V-06 实际跑 hyperfine
+#     则补 ci-local-hyperfine 子 target 占位。
 ```
 
 **FAIL 断言契约**：每个子 target 失败时 stderr 末段写一行 `FAIL: <step-name>`；`make ci-local 2>&1 | grep -E '^FAIL: '` 自动断言失败 step（AC-5）。step-name 列表在 detail-design 阶段固定为 Makefile 顶部的 `# FAIL labels:` 注释表，作为 contract 来源。
@@ -131,7 +136,7 @@ ci-local：聚合 target，按 workflow step 顺序串行依赖 8 个子 target
 
 - **F-A 新增**：`bash tests/lib/test_routing_e2e.sh` 入 CI step；脚本本身不动；草稿 PR 验证 Ubuntu runner 行为后再合入正式 step（D-005）。
 - **F-B 删除**：`.claude/hooks/tests/test_protect-branch.sh` + `.claude/hooks/tests/test_protect-reviews.sh`；不补任何 bats（D-006）。
-- **F-D1 机械清理**：89 处 F401 / F841 / F541，通过 `ruff check --fix` + 手工 review 完成；范围限 `tests/`（scripts/ 已 0 条）。
+- **F-D1 机械清理**：89 处 F401 / F841 / F541，通过 `ruff check --fix` + 手工 review 完成；范围限 `tests/`（scripts/ 已 0 条），子目录分布 tests/lib/ 35 + tests/gates/ 28 + tests/e2e/ 9 + tests/integration/ 7 + tests/skills/ 6 + tests/lifecycle/ 5 + tests/agents/ 2 + tests/hooks/ 2 + tests/workflows/ 1（来源：requirements/REQ-2026-012/plan.md）。
 - **F-D2 语义清理**：4 处 F821 集中在 tests/lib/test_code_review_routing.py:396 / tests/lib/test_code_review_routing.py:732 / tests/lifecycle/test_submit_codex.py:744 / tests/lifecycle/test_submit_codex.py:790，仅补 typing import。
 
 ### 3.5 Onboarding（context/team/onboarding/learning-path/01-environment.md）
