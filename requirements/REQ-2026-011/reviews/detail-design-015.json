@@ -62,5 +62,11 @@
     "enhancement_suggestions": [
       "features.json 整体已含 complexity/depends_on_features 等增强字段，本次 delta 不影响阶段 7 派发策略；保持现状。"
     ]
+  },
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-16T09:49:41.683637+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
   }
 }
