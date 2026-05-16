@@ -1,0 +1,66 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-011-detail-design-015",
+  "requirement_id": "REQ-2026-011",
+  "phase": "detail-design",
+  "reviewer": "detail-design-quality-reviewer",
+  "reviewed_at": "2026-05-16 09:47:02",
+  "reviewed_commit": "a3e7926",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/detailed-design.md",
+      "sha256": "b33924199b63cc68ca070f2139795071f8dc9000a5f0f66aa6eb53c9210e6982"
+    },
+    {
+      "path": "artifacts/features.json",
+      "sha256": "c5f9555755d739ede599dacaaee97d6f54946f97309820d04e566a9ff022091b"
+    },
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "d41b1b8f87c657e7fc92ed68481c62f77be946b7328491286c41efb8267f81c0"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 92,
+  "dimensions": {
+    "consistency_with_outline": {
+      "score": 95,
+      "issues": []
+    },
+    "interface_completeness": {
+      "score": 92,
+      "issues": []
+    },
+    "data_model_soundness": {
+      "score": 90,
+      "issues": []
+    },
+    "sequence_correctness": {
+      "score": 92,
+      "issues": []
+    },
+    "feature_granularity": {
+      "score": 92,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "doc-refresh delta 仅两处微小收敛：detailed-design.md §3.6.4 后追加 14 行 fail-closed 契约段（IB-36，约 line 1170 起）声明 _poll_sub_workflows 三 helper 必须 raise WorkflowError(...) from exc + PEP 3134 __cause__ 保留 + 回归测试 tests/lib/test_poll_subworkflows_fail_closed.py AC-9/10/11；features.json F-012 AC-09 acceptance[0] '编辑距离=2' → '编辑距离 ≤ 2' 单字符调整，与 detailed-design.md §7.1 line 1832 表述自洽。",
+    "consistency_with_outline：新加 fail-closed 段是 outline-design.md 已有 fail-closed 哲学（line 87/109/335/370/478 等多处）在 detail 层的细化，未引入主架构变更；PEP 3134 __cause__ 属 detail 层实现细节，outline 未涉及亦无矛盾。",
+    "interface_completeness：fail-closed 契约明确异常类型对外统一为 WorkflowError、原始 traceback 由 __cause__ 保留，helper 接口语义比 REV-014 更严；无新接口签名引入。",
+    "data_model_soundness：无表/字段/事件 schema 改动；features.json 仍合法 schema_version + 13 features + 必填字段齐全。",
+    "sequence_correctness：fail-closed 段只是补全 helper 内异常向上抛的契约（不吞、必带 from exc），与 §3.6.4 原 sequence 一致；无时序图改动。",
+    "feature_granularity：F-012 AC-09 单字符调整不影响粒度/复杂度/依赖。",
+    "supersedes 链 REV-014 (looks_clean 91, approved) → REV-015 合法：上一审无悬挂 blocker/major、artifact hash drift 由 doc-refresh 触发、新 hash 由 save-review.sh 自动重算锁入。"
+  ],
+  "scope": null,
+  "supersedes": "REV-REQ-2026-011-detail-design-014",
+  "features_json_validation": {
+    "valid": true,
+    "issues": [],
+    "enhancement_suggestions": [
+      "features.json 整体已含 complexity/depends_on_features 等增强字段，本次 delta 不影响阶段 7 派发策略；保持现状。"
+    ]
+  }
+}
