@@ -179,3 +179,5 @@ REQ-2026-011 语义事件日志
 2026-05-16 11:28:31 [codex-review-received] verdict=not_passed round=1
 2026-05-16 11:41:24 [codex-review-triggered] round=2 pr=#72
 2026-05-16 11:44:41 [codex-review-received] verdict=passed round=2
+2026-05-16 12:07:57 [archived] (PR #72 merged at 2026-05-16 12:07:56)
+2026-05-16 12:19:08 [signoff] REV-REQ-2026-011-definition-003 approved by hj19961223@gmail.com

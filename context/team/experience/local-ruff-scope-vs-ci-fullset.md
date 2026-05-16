@@ -78,3 +78,18 @@ lint/check 步骤（mypy / black / 其他自定义脚本），把全部步骤都
 - `requirements/REQ-2026-009/process.txt` — 10:02 CI fail / 10:08 修 6 项 ruff / 10:10 push
 - `.github/workflows/quality-check.yml:82` — `ruff check scripts/ --select=F` 唯一事实源
 - `local-pass-vs-ci-pass-rounds.md` — 5 种本地 vs CI 漂移类型的总论
+
+## 复发案例 · 2026-05-16（REQ-2026-011）
+
+PR #72 submit 后 CI quality-check 第一次跑挂同模式 4 个 F-class：
+
+```
+F401 path_lock.py:33 unused import `sys`（F-008 引入就死，development 期一直没人本地跑 select=F）
+F401 workflow_continue.py:33 unused import `_next_node`（F-014 修 P2 时把 router 改走 _select_next_dispatch_target，re-export 变 dead）
+F541 workflow_scheduler.py:373-374 两个 f-string 无占位符（pre-existing）
+```
+
+链路与 REQ-2026-009 完全一致：development 期所有 commit 都没本地跑 `ruff check scripts/ --select=F`（hook 只跑改动文件的 lint，scope ≠ CI），submit 后才暴露 4 个累积。本案再次验证此条经验**仍然有效**，修复成本固定（1 commit + 1 push 即清掉）。
+
+防御建议：把 `ruff check scripts/ --select=F` 加进 pre-submit hook 或 `/requirement:submit` 的 GATE-RUFF-STRICT 候选 gate。
+

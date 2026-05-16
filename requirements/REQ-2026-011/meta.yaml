@@ -1,11 +1,10 @@
-# ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-011
 title: workflow runtime DAG 调度与节点 dispatcher 补全（参考 Archon 设计）
-phase: testing
-created_at: "2026-05-13 08:36:31"     # 格式 YYYY-MM-DD HH:MM:SS（Asia/Shanghai），见 context/team/engineering-spec/time-format.md
+phase: completed
+created_at: '2026-05-13 08:36:31'
 branch: feat/req-2026-011
 base_branch: develop
-project: agentic-meta-engineering      # 关联 context/project/<project>/
+project: agentic-meta-engineering
 services: []
 gates_passed:
   - phase: definition
@@ -54,33 +53,31 @@ gates_passed:
   - phase: development
     at: '2026-05-14 15:30:00'
     via: managing-requirement-lifecycle
-    notes: task-planning → development 门禁 11/11 全过（GATE-META-SCHEMA /
-      INDEX-INTEGRITY / SOURCING / PLAN-FRESHNESS / WORKSPACE-CLEAN /
-      REVIEW-VERDICT / FEATURES-SCHEMA / TASK-FRONTMATTER / POST-DEV-RECEIPT /
-      TRACEABILITY / TOUCHES-VIOLATION）；13 task.md F-001~F-013 落地 schema 13/13
-      全过 + features.json schema 过；task-planning 不走单独 reviewer 评审（schema
-      自动校验为质量门）；plan.md 同步追加阶段进度 快照消 PLAN-FRESHNESS warning；下一步从 P0-baseline
+    notes: task-planning → development 门禁 11/11 全过（GATE-META-SCHEMA / 
+      INDEX-INTEGRITY / SOURCING / PLAN-FRESHNESS / WORKSPACE-CLEAN / 
+      REVIEW-VERDICT / FEATURES-SCHEMA / TASK-FRONTMATTER / POST-DEV-RECEIPT / 
+      TRACEABILITY / TOUCHES-VIOLATION）；13 task.md F-001~F-013 落地 schema 13/13 
+      全过 + features.json schema 过；task-planning 不走单独 reviewer 评审（schema 
+      自动校验为质量门）；plan.md 同步追加阶段进度 快照消 PLAN-FRESHNESS warning；下一步从 P0-baseline 
       F-001 起派 implementer subagent
   - phase: testing
     at: '2026-05-16 11:02:45'
     via: managing-requirement-lifecycle
-    notes: development → testing 门禁 11/11 全过（GATE-META-SCHEMA /
-      INDEX-INTEGRITY / SOURCING / PLAN-FRESHNESS / WORKSPACE-CLEAN /
-      REVIEW-VERDICT / FEATURES-SCHEMA / TASK-FRONTMATTER / POST-DEV-RECEIPT /
-      TRACEABILITY / TOUCHES-VIOLATION）；13/13 features done · 1524 passed 0
-      failed · R005 全绿（detail-design REV-016 looks_clean 92 + signoff
-      approved；outline-design REV-005 + definition REV-002 + 13 code-review
-      均 looks_clean stale=false）· trend-G-meta 6 连正向终结（F-007→F-013 同
-      looks_clean 85-90 模式）+ trend-CR-A-module-bloat 由 IB sweep 收敛 +
-      trend-D-design-doc-drift 由 IB-34 doc-refresh 闭合；2 minor follow-up
-      不阻塞归 testing 后续（features.json description 残留 + §3.4.2 沿用措辞）
-pr_url: "https://github.com/hjaaa/agentic-meta-engineering/pull/72"
+    notes: development → testing 门禁 11/11 全过（GATE-META-SCHEMA / INDEX-INTEGRITY 
+      / SOURCING / PLAN-FRESHNESS / WORKSPACE-CLEAN / REVIEW-VERDICT / 
+      FEATURES-SCHEMA / TASK-FRONTMATTER / POST-DEV-RECEIPT / TRACEABILITY / 
+      TOUCHES-VIOLATION）；13/13 features done · 1524 passed 0 failed · R005 
+      全绿（detail-design REV-016 looks_clean 92 + signoff approved；outline-design 
+      REV-005 + definition REV-002 + 13 code-review 均 looks_clean stale=false）· 
+      trend-G-meta 6 连正向终结（F-007→F-013 同 looks_clean 85-90 模式）+ 
+      trend-CR-A-module-bloat 由 IB sweep 收敛 + trend-D-design-doc-drift 由 IB-34 
+      doc-refresh 闭合；2 minor follow-up 不阻塞归 testing 后续（features.json description
+      残留 + §3.4.2 沿用措辞）
+pr_url: https://github.com/hjaaa/agentic-meta-engineering/pull/72
 pr_number: 72
-log_layout: split                      # split（默认，工具日志→process.tool.log / 语义事件→process.txt） | legacy（老格式，全写 process.txt）
-
-# ============ 语义组（definition 阶段补齐，供跨需求检索） ============
-feature_area: scripts                  # workflow 引擎 runtime / dispatcher 主要在 scripts/lib/workflow_*
-change_type: feature                   # 新增 DAG scheduler + artifact dispatcher + approval 闭环 + AI 契约
+log_layout: split
+feature_area: scripts
+change_type: feature
 affected_modules:
   - scripts/lib/workflow_continue.py
   - scripts/lib/workflow_dispatcher.py
@@ -96,22 +93,21 @@ tags:
   - approval-loop
   - path-lock
   - claude-code-contract
-
-# ============ 结果组（completed 时才填） ============
-outcome: ""                            # shipped / abandoned / rolled-back
-completed_at: ""                       # ISO8601，completed 时填
-lessons_extracted: false               # /knowledge:extract-experience 是否已跑
+outcome: shipped
+completed_at: '2026-05-16 12:07:56'
+lessons_extracted: true
 reviews:
   definition:
-    latest: REV-REQ-2026-011-definition-002
+    latest: REV-REQ-2026-011-definition-003
     conclusion: looks_clean
-    reviewed_commit: 5a27b98
+    reviewed_commit: c34b792
     artifact_hashes:
       artifacts/requirement.md: 
-        69ba062d2014a8c629fa72d497393ea226989338cec112b31a28afe3cbabd33e
+        86a31b69f1d1b0c7a20940f86ec8c8ad993f6f1e1b1950ac328dcf6bc3f4d184
     history:
       - REV-REQ-2026-011-definition-001
       - REV-REQ-2026-011-definition-002
+      - REV-REQ-2026-011-definition-003
     stale: false
   outline-design:
     latest: REV-REQ-2026-011-outline-design-005
@@ -204,7 +200,7 @@ reviews:
           - REV-REQ-2026-011-code-F-004-002
         latest: REV-REQ-2026-011-code-F-004-002
         conclusion: looks_clean
-        reviewed_commit: '101b7b0'
+        reviewed_commit: 101b7b0
         artifact_hashes:
           artifacts/features.json: 
             e05957428c01111babb122eac6af1871456cc9f6e0cfac8a5a5a5fc572a02c6a
@@ -325,3 +321,4 @@ reviews:
           artifacts/tasks/F-013.md: 
             4df1004a1f5a8c22bd2342c05e368ddd168673ef2228bfdec051825efb35c7c2
         stale: false
+archived_at: '2026-05-16 12:07:56'
