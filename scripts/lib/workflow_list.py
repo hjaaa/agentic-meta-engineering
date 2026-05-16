@@ -174,7 +174,19 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
         entries = filtered
 
     if json_mode:
-        print(json.dumps({"schema_version": "1.0", "items": entries}, ensure_ascii=False))
+        # IB-38：理论极低风险兜底——run_dir.name 来自 sorted(base_dir.iterdir())，
+        # macOS/Linux UTF-8 文件系统下应为合法 str；但若上游写入了含非法 UTF-16
+        # surrogate pair 的 entry（如外部脚本/恶意 fixture），ensure_ascii=False 时
+        # json.dumps → stdout 编码会抛 UnicodeEncodeError 截断输出。TypeError 是
+        # 同道兜底（非 json-serializable 类型钻进 entry 值）。
+        try:
+            print(json.dumps({"schema_version": "1.0", "items": entries}, ensure_ascii=False))
+        except (UnicodeEncodeError, TypeError) as exc:
+            print(
+                f"ERROR: JSON encode failed ({type(exc).__name__}): {exc}",
+                file=sys.stderr,
+            )
+            return 1
         return 0
 
     if not entries:

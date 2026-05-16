@@ -66,25 +66,65 @@ def _fuzzy_match(cmd: str) -> tuple[str | None, bool]:
 
     优先尝试命令集（is_command=True），未命中再试模板别名集（is_command=False）。
     两者均不命中返回 (None, False)。
+
+    cutoff 双档说明（IB-40）：
+      - 主路径（命令集 / 模板别名集首次匹配）cutoff=0.6——features.json F-012 description
+        约定的标准阈值，与 acceptance #1 编辑距离 ≤ 2 自洽。
+      - 二阶段（拼写变体 → canonical 命令名兜底）cutoff=0.5——'rol' / 'cancl' 等拼写变体
+        SequenceMatcher ratio 落在 0.46~0.50 区间，必须降阈才能回归到 'rollback' / 'cancel'。
+        本档仅作用于 _FUZZY_CMDS 已经一阶段命中后的命令名归一化，输入空间受限不扩张攻击面。
     """
-    # 1. 命令集：优先匹配
+    # 1. 命令集：优先匹配（一阶段 cutoff=0.6）
     hits = difflib.get_close_matches(cmd, _FUZZY_CMDS, n=1, cutoff=0.6)
     if hits:
         matched = hits[0]
         if matched in _VALID_CMDS:
             return matched, True
-        # 命中了拼写变体（如 "cancl"）→ 找最接近的正式命令名
+        # 命中了拼写变体（如 "cancl"）→ 找最接近的正式命令名（二阶段 cutoff=0.5）
         canonical = difflib.get_close_matches(matched, list(_VALID_CMDS), n=1, cutoff=0.5)
         if canonical:
             return canonical[0], True
 
-    # 2. 模板别名集：fuzzy 查 key，返回对应 canonical value
+    # 2. 模板别名集：fuzzy 查 key，返回对应 canonical value（一阶段 cutoff=0.6）
     template_hits = difflib.get_close_matches(cmd, list(_FUZZY_TEMPLATE_ALIASES.keys()), n=1, cutoff=0.6)
     if template_hits:
         canonical_template = _FUZZY_TEMPLATE_ALIASES[template_hits[0]]
         return canonical_template, False
 
     return None, False
+
+
+def _handle_unknown_cmd(cmd: str) -> tuple[str | None, int]:
+    """处理 _VALID_CMDS 未覆盖的输入：fuzzy 三路分支（IB-37）。
+
+    Args:
+        cmd: 用户输入但不在 _VALID_CMDS 的原始命令名。
+
+    Returns:
+        (normalized_cmd, 0)：fuzzy 命中合法命令名，调用方应改用 normalized_cmd 继续 dispatch。
+        (None, 1)：未命中或命中模板别名集，已落 stderr 错误/提示，调用方应直接 return 1。
+    """
+    matched, is_command = _fuzzy_match(cmd)
+    if matched and is_command:
+        print(
+            f"NOTE: 已 fuzzy 匹配 {cmd!r} → {matched!r}",
+            file=sys.stderr,
+        )
+        return matched, 0
+    if matched:  # is_command == False → 命中模板别名
+        print(
+            f"NOTE: {cmd!r} 看起来像 workflow 模板名 {matched!r}；"
+            f"您可能想 `/workflow:run {matched}`?",
+            file=sys.stderr,
+        )
+        return None, 1
+    suggestion = difflib.get_close_matches(cmd, list(_VALID_CMDS), n=1, cutoff=0.5)
+    hint = f"；您是不是想输入 {suggestion[0]!r}?" if suggestion else ""
+    print(
+        f"ERROR: 未知命令 {cmd!r}；可用命令：{', '.join(sorted(_VALID_CMDS))}{hint}",
+        file=sys.stderr,
+    )
+    return None, 1
 
 
 def dispatch(cmd: str, args: list[str]) -> int:
@@ -100,28 +140,10 @@ def dispatch(cmd: str, args: list[str]) -> int:
         2  — 鉴别拦截（approve/reject 非 tty / hook BLOCKED）
     """
     if cmd not in _VALID_CMDS:
-        matched, is_command = _fuzzy_match(cmd)
-        if matched and is_command:
-            print(
-                f"NOTE: 已 fuzzy 匹配 {cmd!r} → {matched!r}",
-                file=sys.stderr,
-            )
-            cmd = matched
-        elif matched and not is_command:
-            print(
-                f"NOTE: {cmd!r} 看起来像 workflow 模板名 {matched!r}；"
-                f"您可能想 `/workflow:run {matched}`?",
-                file=sys.stderr,
-            )
-            return 1
-        else:
-            suggestion = difflib.get_close_matches(cmd, list(_VALID_CMDS), n=1, cutoff=0.5)
-            hint = f"；您是不是想输入 {suggestion[0]!r}?" if suggestion else ""
-            print(
-                f"ERROR: 未知命令 {cmd!r}；可用命令：{', '.join(sorted(_VALID_CMDS))}{hint}",
-                file=sys.stderr,
-            )
-            return 1
+        normalized, rc = _handle_unknown_cmd(cmd)
+        if normalized is None:
+            return rc
+        cmd = normalized
 
     module_name = _CMD_MAP[cmd]
     try:
