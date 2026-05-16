@@ -19,18 +19,20 @@
   - 撰写新的业务测试用例
   - 把本需求拆出的 5 个候选 feature 之外的 CI 项（例如 lighthouse / bench 等）
 
-## 候选 feature（待 definition 阶段固化为 features.json）
+## 候选 feature（已与用户在 definition 一轮回灯对齐；features.json 在 task-planning 阶段固化）
 
 | 候选 ID | 名称 | 依赖 | 备注 |
 |---|---|---|---|
-| F-A | 将 `tests/lib/test_routing_e2e.sh` 纳入 CI 一个 step | 无 | 风险最低、信号最强，优先做 |
-| F-B | 旧 hook shell 测试迁移到 `pre-tool-use-guard.sh` 或删除 | 无 | 不修就别进 CI，否则一进就红 |
-| F-C | CI 依赖清单同源化（`requirements/ci.txt` 或 `pyproject [optional-dependencies]`） | 无 | 消除 workflow 与 onboarding 漂移 |
-| F-D | `scripts/` + `tests/` 目录 ruff F 类清债（≈ 95 条） | 无 | F-E 的硬前置 |
-| F-E | CI ruff 范围扩展至 `ruff check scripts tests --select=F` | F-D | 必须在 F-D 全部清理后才能开 |
-| F-F | `make ci-local` 入口，按 workflow 顺序串联本地校验 | F-A / F-B / F-C 落地后产出可用，但脚本本身可与之并行 | 兼顾"本地过、CI 反复红"经验沉淀 |
+| F-A | 将 `tests/lib/test_routing_e2e.sh` 纳入 CI 一个 step | 无 | 风险最低、信号最强，优先做。入 CI 前先开**草稿 PR** 单 step 验证 Ubuntu runner 行为（D-005 决议） |
+| F-B | 删除 `.claude/hooks/tests/test_protect-branch.sh` + `test_protect-reviews.sh`；如有缺口补 0-2 条 bats | 无 | bats V-01/V-03 已覆盖三分支阻断 + reviews 写保护 + 14 类 Bash redirect；不再维护指向旧 hook 名的 shell 测试（D-002 选 A） |
+| F-C | 新建 `requirements/ci.txt` 收敛 CI/test pip 清单；workflow + onboarding 同源引用；非 Python 工具（bats / hyperfine）仍由 `apt-get` 走 workflow + 文档（D-001 选 A） | 无 | 不动 `pyproject.toml [project]` 表，避免顺手引入包结构改造 |
+| F-D1 | ruff F 类**机械清理**：unused import / unused var / f-string 等 | 无 | 大量条目、低 review 强度，单 PR 一次清完 |
+| F-D2 | ruff F 类**语义清理**：F821 等需理解上下文的问题 | F-D1（可重叠 review 但合并顺序固定 D1→D2） | review 强度高、可能牵动 import 重排 |
+| F-E | CI ruff 范围扩展至 `ruff check scripts tests --select=F`（改 `.github/workflows/quality-check.yml:82`） | F-D1 + F-D2 全部合并 | F-E 单独 revert 时 ruff 范围回退 `scripts/`，清债成果保留（AC-7） |
+| F-F | `make ci-local` 入口：默认镜像 CI（含 hyperfine、`pytest --ignore=tests/benchmarks/`），含 routing e2e step | F-A 起步可用 | 后续若日常推 PR 太慢再补 `ci-fast`（D-004 决议） |
 
-> 顺序约束：F-D 必须先于 F-E。其它建议按 F-A → F-B → F-C → F-D → F-E → F-F 推进，便于每个 PR 独立可回滚。
+> 顺序约束：F-D1 → F-D2 → F-E 是硬链；F-A / F-B / F-C / F-F 间无强依赖，建议按 F-A → F-B → F-C → F-D1 → F-D2 → F-E → F-F 推进，便于每个 PR 独立可回滚。
+> 经验沉淀任务在 testing 阶段闭环时由 `/knowledge:extract-experience` 触发，新增 `context/team/experience/test-assets-must-be-wired-into-ci.md`，不放进 feature 列表（视为本需求的副产物）。
 
 ## 里程碑
 
@@ -63,4 +65,32 @@
 纯文档风格 / 目录命名 / 临时测试策略 不写 ADR。
 -->
 
-<!-- 暂无决策。技术预研阶段若产生方向性选择（如 ci.txt vs pyproject extras）再补 D-001。 -->
+### D-001 CI/test 依赖事实源选 `requirements/ci.txt`
+- **Context**：workflow 现写 `pip install pyyaml ruamel.yaml "pathspec>=0.12,<1.0" ruff pytest`（字面量），onboarding 只装 `pyyaml`，两者漂移；CI 又含 `bats` / `hyperfine` 这类非 Python 工具
+- **Decision**：A 案 `requirements/ci.txt`；B 案 `pyproject.toml [project.optional-dependencies]` 拒绝
+- **Consequences**：好：实现成本低、对非 Python 工具不冲突、不动 `pyproject.toml [project]` 表；差：与"现代 Python 包管理统一"风格略偏离
+- **时间**：2026-05-16 20:10:00
+
+### D-002 旧 hook shell 测试选"全删除 + 必要时补 bats"
+- **Context**：`.claude/hooks/tests/test_protect-branch.sh` 与 `test_protect-reviews.sh` 均指向已不存在的 `.claude/hooks/protect-branch.sh`；外部无引用（grep 仅命中本需求文档自身）
+- **Decision**：A 案"删除 + 必要时补 0-2 条 bats"；B 案"迁移到 pre-tool-use-guard.sh 等价测试"拒绝
+- **Consequences**：好：消除指向已死路径的测试源；差：依赖 detail-design 阶段一次性 grep 校验，确认 bats 不缺口
+- **时间**：2026-05-16 20:10:00
+
+### D-003 ruff 清债按风险拆 3 个 PR（F-D1 / F-D2 / F-E）
+- **Context**：本地基线约 95 条 F 类问题，其中机械项（unused import / unused var / f-string）与语义项（F821 等）review 强度差异大
+- **Decision**：C 案"按风险拆 3 个 PR"——F-D1 机械清理 → F-D2 语义清理 → F-E 扩范围；A "单 PR 一口气" 与 B "按子目录拆" 均拒绝
+- **Consequences**：好：每 PR 独立可 revert，F-E 单独回退不打翻 F-D1/F-D2 成果；差：PR 数量增加、需更多 review round-trip
+- **时间**：2026-05-16 20:10:00
+
+### D-004 `make ci-local` 默认镜像 CI（含 hyperfine）
+- **Context**：`make ci-local` 是"本地 CI 镜像入口"，若默认跳过慢 step，名字与行为不一致
+- **Decision**：A 案"默认含 hyperfine 路径、不跑 `tests/benchmarks/`"；B 案"默认跳 hyperfine + ci-local-full 兜底"拒绝
+- **Consequences**：好：本地 / CI 严格 1:1，无隐性 step 缺口；差：日常 push 前慢一点；后续如需快速校验可单独补 `ci-fast`
+- **时间**：2026-05-16 20:10:00
+
+### D-005 routing e2e 入 CI 前先在草稿 PR 单 step 验证
+- **Context**：用户报告本地 macOS PASS=3 FAIL=0，但 Ubuntu runner 上 PATH / locale / bash 版本可能影响 mktemp + git init + Python import 路径
+- **Decision**：F-A 实施时先开草稿 PR、单 step 跑 `bash tests/lib/test_routing_e2e.sh`，确认 Ubuntu 结果后再合入正式 step
+- **Consequences**：好：避免正式 PR 当场红；差：F-A 至少 2 个 commit（草稿验证 + 合入正式）
+- **时间**：2026-05-16 20:10:00
