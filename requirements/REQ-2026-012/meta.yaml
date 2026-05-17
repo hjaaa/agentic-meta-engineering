@@ -1,6 +1,6 @@
 id: REQ-2026-012
 title: CI 工程化补强：纳入 routing e2e、清理陈旧 hook 测试、统一依赖清单、ruff 范围扩展、本地 CI 镜像入口
-phase: development
+phase: testing
 created_at: '2026-05-16 19:47:48'
 branch: feat/req-2026-012
 base_branch: develop
@@ -24,6 +24,9 @@ gates_passed:
   via: managing-requirement-lifecycle
 - phase: development
   at: '2026-05-16 22:09:57'
+  via: managing-requirement-lifecycle
+- phase: testing
+  at: '2026-05-17 16:46:23'
   via: managing-requirement-lifecycle
 pr_url: ''
 pr_number: 0

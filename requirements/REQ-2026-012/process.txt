@@ -42,3 +42,4 @@
 2026-05-17 16:39:51 [signoff] REV-REQ-2026-012-code-F-007-001 approved by hj19961223@gmail.com
 2026-05-17 16:39:51 [development] F-007 done：code-review looks_clean(93) + tty signoff approved；2 minor critic 1 rejected 1 follow-up；dispatch lock 已释放
 2026-05-17 16:39:51 [save] dev 进度 7/7 全部 done（本会话 F-007 done score=93；AC-5 + AC-8 收口；2 follow-up：experience/INDEX.md:64-65 spec 漂移修订 + test-assets-must-be-wired-into-ci.md 补 ## 验证方法 节，留下一个清扫 REQ）；下一步 detail-design.stale 自检 + phase-transition development → testing
+2026-05-17 16:46:23 [phase-transition] development → testing：11 项 error gate 全过（含 GATE-REVIEW-VERDICT / GATE-POST-DEV-RECEIPT / GATE-TOUCHES-VIOLATION / GATE-FEATURES-SCHEMA / GATE-TASK-FRONTMATTER / GATE-TRACEABILITY 6 新 gate）；7/7 feature done + 6 task.md hash refresh 完成（D-010）；准备进入 testing 阶段
