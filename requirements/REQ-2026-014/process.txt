@@ -1,0 +1,1 @@
+2026-05-17 23:49:48 [phase-transition] bootstrap → definition：11 gate 全过；requirement.md 起草（4 场景 / D-001~D-015 / 9 验收 / 3 待澄清）

@@ -9,7 +9,10 @@ branch: feat/req-2026-014             # 例：feat/req-2026-001
 base_branch: develop   # feat/* 派生的基点分支：develop / main / master
 project: agentic-meta-engineering    # 关联 context/project/<project>/
 services: []                   # 涉及的服务仓库
-gates_passed: []
+gates_passed:
+- phase: definition
+  at: '2026-05-17 23:49:48'
+  via: managing-requirement-lifecycle
 pr_url: ""                     # /requirement:submit 成功后回写
 pr_number: 0                   # /requirement:submit 成功后回写
 log_layout: split              # split（默认，工具日志→process.tool.log / 语义事件→process.txt） | legacy（老格式，全写 process.txt）
