@@ -51,5 +51,11 @@
     "0 new finding：requirement.md / plan.md / meta.yaml 三件套 hash + 引用链 + ADR D-001~D-010 决议齐套，与 project/agentic-meta-engineering 索引声明的 area 白名单完全一致，无新违规",
     "score 91 → 93（+2）：闭环动作把 testability 维度的『可量化 acceptance』从 88 提到 92（schema-sync + baseline 把 F-A/F-D 的验收落到具体 test 文件/具体快照文件），其余维度小幅同涨；consistency 92 → 94（行号纠偏后 plan.md L18 引用 64-65 与 requirement.md 63-68 仍有最后 1 处微差但语义同段，可在 tech-research 阶段顺手补齐）",
     "项目索引未声明跨服务 / 并发 / 合规等额外动态约束，无需追加该维度"
-  ]
+  ],
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-17T18:26:43.024225+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
+  }
 }
