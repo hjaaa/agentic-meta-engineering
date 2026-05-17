@@ -33,7 +33,7 @@ ci-local: ci-local-deps ci-local-gates ci-local-pytest \
 	@echo "ci-local: ALL PASS"
 
 ci-local-deps:
-	@pip install -r requirements/ci.txt \
+	@python3 -m pip install -r requirements/ci.txt \
 	  || { echo "FAIL: ci-local-deps" >&2; exit 1; }
 
 ci-local-gates:
@@ -41,7 +41,7 @@ ci-local-gates:
 	  || { echo "FAIL: ci-local-gates" >&2; exit 1; }
 
 ci-local-pytest:
-	@pytest tests/ --ignore=tests/benchmarks/ -v \
+	@python3 -m pytest tests/ --ignore=tests/benchmarks/ -v \
 	  || { echo "FAIL: ci-local-pytest" >&2; exit 1; }
 
 ci-local-settings-check:
