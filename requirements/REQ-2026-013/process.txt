@@ -10,3 +10,4 @@
 2026-05-17 18:47:37 [phase-transition] tech-research → outline-design：11 项 gate 全过；补 commit 上轮遗留（notes.md / definition-002 signoff）
 2026-05-17 18:57:07 [signoff] REV-REQ-2026-013-outline-design-001 approved by hj19961223@gmail.com
 2026-05-17 18:57:48 [phase-transition] outline-design → detail-design：11 项 gate 全过；v1 verdict looks_clean(87) + signoff approved 放行
+2026-05-17 19:06:56 [save] detail-design 三件套落盘：detailed-design.md (493行) + features.json (5 feature) + tasks/F-001~F-005.md；plan.md +D-011；sourcing+features+task schema 全过
