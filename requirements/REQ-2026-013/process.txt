@@ -61,3 +61,4 @@
 2026-05-17 22:54:15 [codex] round-2 not_passed: 1 P1 (纯函数层 \r 残留) → fix 1 笔 (入口归一)
 2026-05-17 22:54:15 [codex] round-3 not_passed: P1 重复 (过时 commit 误报) + P2 schema-sync 方向 → docstring 加固 (按 D-007 ADR 不改代码)
 2026-05-17 22:54:15 [codex] round-4 passed (Didn't find any major issues. :tada:)
+2026-05-17 23:13:23 [archived] (PR #77 merged at 2026-05-17 23:13:23)
