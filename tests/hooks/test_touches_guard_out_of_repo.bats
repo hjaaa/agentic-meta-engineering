@@ -28,6 +28,26 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
+# F-002 out-of-repo: 字面量 ~/ 路径被 _is_out_of_repo 正确判定（codex round-1 C2 反面案例）
+# 历史 Path.resolve() 不展开 ~，~/.tmp.json 解析为 <cwd>/~/...，若 cwd 在 toplevel 子树内
+# 则 relative_to 成功 → 错误判 in-repo → out-of-repo 短路失效。
+# 修复后 Path(file_path).expanduser().resolve() 先展开 ~。
+# 直接调 _is_out_of_repo 断言返回 True——绕过 dispatch lock 依赖，精准覆盖 expanduser 修复点。
+@test "F-002 out-of-repo: literal ~/ path resolves as out-of-repo" {
+  run python3 -c "
+import sys
+sys.path.insert(0, '.claude/hooks')
+from touches_guard import _is_out_of_repo, _get_worktree_toplevel
+toplevel = _get_worktree_toplevel()
+assert toplevel is not None, 'toplevel must resolve in test cwd'
+assert _is_out_of_repo('~/.test-claude-tilde.json', toplevel) is True, \
+    f'expanduser missing: ~/.test-claude-tilde.json must be out-of-repo'
+print('OK')
+"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *OK* ]]
+}
+
 # F-002 worktree edge case: worktree cwd 内文件按 worktree-local 判定
 @test "F-002 worktree edge case: file in worktree cwd uses worktree-local check" {
   tmp_wt=$(mktemp -d)

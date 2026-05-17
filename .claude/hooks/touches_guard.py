@@ -233,7 +233,10 @@ def _is_out_of_repo(file_path: str, toplevel: Optional[Path]) -> bool:
     if toplevel is None:
         return False  # fail-open：非 git 目录走原 in-touches 路径
     try:
-        resolved = Path(file_path).resolve()
+        # codex round-1 C2：Path.resolve() 不展开 ~ → ~/.tmp.json 解析为 <cwd>/~/...
+        # 若 cwd 在 toplevel 子树内，relative_to 成功 → 错误判 in-repo → out-of-repo 短路失效。
+        # 先 expanduser 把 ~ 替换为 $HOME，再 resolve。
+        resolved = Path(file_path).expanduser().resolve()
     except (OSError, ValueError):
         return False  # fail-open：路径解析失败
     try:
