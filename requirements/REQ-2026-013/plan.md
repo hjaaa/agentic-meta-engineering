@@ -22,6 +22,14 @@
 
 F-A / F-B / F-C 互相独立可并行；F-D 是 F-E 的前置（先修规则再补节，避免补完节字数又被新规则卡）；F-D 引发的"38 文件兼容性 review"如果体量过大，再拆子需求或留入 backlog。
 
+- 包含：见上方「候选 5 feature」表 5 个 feature 的范围列
+- 不包含：
+  - 不动 framework R-rule 本身（R001~R007 语义、`check_reviews._run_r_rules` 主框架不改），只调 R005 读 hash 的方式
+  - 不补齐 38 份历史经验文件（D-003 D1 路径），列 follow-up backlog 但留下次清扫 REQ
+  - 不改 archive_runner 的 5 项硬门禁，仅加文档级流程提示 + 终端 reminder（D-002 B3 路径）
+  - 不引入新的 reviewer Agent 类型（不改 code-quality-reviewer / aux-spec / security 等 8 个既有 Agent 实现）
+  - 不改 PreToolUse hook 的其它路径（dispatch_precheck.py / pre-tool-use-guard.sh / 其它 hook 不动），只 normalize touches_guard.py 的 path 校验
+
 ### 候选风险
 
 - F-A 落地需考虑历史 ~10+ completed 需求 hash 是否要 backfill；可能需要 migration 脚本

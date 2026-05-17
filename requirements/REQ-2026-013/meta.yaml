@@ -1,32 +1,45 @@
-# ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-013
-title: "REQ-2026-012 follow-up bundle：reviewer artifact 选择 / hook 仓库外路径 normalize / archive 前预检 R-rule / experience spec 与实践对齐 / test-assets 经验补节"
-phase: bootstrap
-created_at: "2026-05-17 18:03:20"
+title: REQ-2026-012 follow-up bundle：reviewer artifact 选择 / hook 仓库外路径 normalize /
+  archive 前预检 R-rule / experience spec 与实践对齐 / test-assets 经验补节
+phase: tech-research
+created_at: '2026-05-17 18:03:20'
 branch: feat/req-2026-013
 base_branch: develop
-project: "agentic-meta-engineering"
+project: agentic-meta-engineering
 services: []
-gates_passed: []
-pr_url: ""
+gates_passed:
+- phase: definition
+  at: '2026-05-17 18:07:10'
+  via: managing-requirement-lifecycle
+- phase: tech-research
+  at: '2026-05-17 18:29:07'
+  via: managing-requirement-lifecycle
+pr_url: ''
 pr_number: 0
 log_layout: split
-
-# ============ 语义组（definition 阶段补齐，供跨需求检索） ============
-feature_area: "engineering-spec"
-change_type: "refactor"
+feature_area: engineering-spec
+change_type: refactor
 affected_modules:
-  - reviewer-agent
-  - touches-guard-hook
-  - archive-runner
-  - experience-spec-and-index
-  - test-assets-experience-doc
+- reviewer-agent
+- touches-guard-hook
+- archive-runner
+- experience-spec-and-index
+- test-assets-experience-doc
 tags:
-  - debt-cleanup
-  - follow-up-bundle
-  - from-req-2026-012
-
-# ============ 结果组（completed 时才填） ============
-outcome: ""
-completed_at: ""
+- debt-cleanup
+- follow-up-bundle
+- from-req-2026-012
+outcome: ''
+completed_at: ''
 lessons_extracted: false
+reviews:
+  definition:
+    latest: REV-REQ-2026-013-definition-002
+    conclusion: looks_clean
+    reviewed_commit: 9a7e37e
+    artifact_hashes:
+      artifacts/requirement.md: 4e00cdc7c983606df282297156f11b384c9d2bfcea447f253c8963f82370e38c
+    history:
+    - REV-REQ-2026-013-definition-001
+    - REV-REQ-2026-013-definition-002
+    stale: false
