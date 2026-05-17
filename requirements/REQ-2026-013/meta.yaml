@@ -1,7 +1,7 @@
 id: REQ-2026-013
 title: REQ-2026-012 follow-up bundle：reviewer artifact 选择 / hook 仓库外路径 normalize /
   archive 前预检 R-rule / experience spec 与实践对齐 / test-assets 经验补节
-phase: testing
+phase: completed
 created_at: '2026-05-17 18:03:20'
 branch: feat/req-2026-013
 base_branch: develop
@@ -44,8 +44,8 @@ tags:
 - debt-cleanup
 - follow-up-bundle
 - from-req-2026-012
-outcome: ''
-completed_at: ''
+outcome: shipped
+completed_at: '2026-05-17 23:13:23'
 lessons_extracted: true
 reviews:
   definition:
@@ -137,3 +137,4 @@ reviews:
           artifacts/features.json: 29b954e679de213fe21f770b247ba36e034b842b54de0e7d5ce3605b44096c55
           artifacts/tasks/F-005.md: 323f502c6fbbba33cff7c1d4719b729983d9edb76ed52cb1ac8d7b721e25a6c5
         stale: false
+archived_at: '2026-05-17 23:13:23'
