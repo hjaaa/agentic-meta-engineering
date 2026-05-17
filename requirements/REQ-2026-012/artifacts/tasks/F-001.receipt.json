@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-001",
+  "status": "DONE",
+  "commit_sha": "94bcf0b",
+  "files_changed": [".github/workflows/quality-check.yml"],
+  "test_summary": "N/A (CI workflow YAML 改动；AC-1 PASS=3 FAIL=0 由草稿 PR ubuntu runner 后续验证)",
+  "touches_violations": [],
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-17T14:43:34+08:00"
+}
