@@ -19,6 +19,7 @@ from scripts.lib.code_review_routing import (
     MAX_MUST_RULES,
     RoutingConfig,
     RoutingError,
+    RoutingPlan,
     RoutingSchemaError,
     RoutingYamlError,
     _RuleEntry,
@@ -395,7 +396,6 @@ class TestParseCustomInput:
 
     def _make_plan(self) -> "RoutingPlan":
         """创建含 must=security-checker, suggest=performance-checker 的测试计划。"""
-        from scripts.lib.code_review_routing import RoutingPlan
         return RoutingPlan(
             must_checkers={"security-checker"},
             suggest_checkers={"performance-checker"},
@@ -730,7 +730,6 @@ class TestAutoDecideUnit:
         suggest_checkers: set[str] | None = None,
         files_total: int = 1,
     ) -> "RoutingPlan":
-        from scripts.lib.code_review_routing import RoutingPlan
         must = must_checkers or set()
         sugg = suggest_checkers or set()
         return RoutingPlan(
