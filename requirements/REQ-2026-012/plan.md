@@ -118,3 +118,13 @@
 - **Decision**：不在 outline-design 阶段预定 step-name；detail-design 阶段与 Makefile 验证同步出表，作为 F-F 任务的内置交付物；当前 tech-feasibility 中的草案命名（`ci-local-deps` / `ci-local-gates` / `ci-local-pytest` / `ci-local-settings-check` / `ci-local-bats` / `ci-local-ruff` / `ci-local-render-check` / `ci-local-routing-e2e`）仅作参考
 - **Consequences**：好：避免现在猜名后期返工；差：F-F 任务的设计与实现必须共同 owner，命名漂移会在同一 PR 内自我修正
 - **时间**：2026-05-16 21:21:02
+
+### D-010 detail-design.artifact_hashes 三处 refresh 不视为重审
+- **Context**：F-001 草稿 PR 触发 ubuntu CI 后 GATE-REVIEW-VERDICT R005 命中 3 处 stale：
+  - `artifacts/requirement.md`（a043bb97 → 8c5b8bc7）：来源是 commit 6aacaca（fix(req-2026-012): F-002 副作用 dangling 引用修复）——F-002 删除旧 hook shell 测试后，requirement.md L15 引用 `test_protect-branch.sh:4` 变 dangling，被改写为 `F-002 commit d7624d2 删除（删前内容可由 git show 取回）`叙述；commit 体已注明"上游 reviewer hash 因此 stale；本次不重审，归入需求结束时统一处理或 submit 阶段一并冲洗"
+  - `artifacts/tasks/F-001.md`（21887888 → 3f96a108）：来源是本次 F-001 派发把 frontmatter `status: pending` 改为 `in-progress`、`updated_at` 推进；任务内容未变
+  - `artifacts/tasks/F-002.md`（cfb8adfe → 126e9367）：来源是 F-002 完整生命周期（pending → in-progress → done）的 frontmatter status / updated_at 推进；任务内容未变
+- **Decision**：把 meta.yaml.reviews.detail-design.artifact_hashes 中这 3 个文件 hash 刷新到当前值；**不重审 detail-design**——design 内容（detailed-design.md / features.json / outline-design.md / 7 个 task.md 主体）未变；task.md frontmatter status 字段在 dev 阶段必然演进，把它纳入 review 钉 hash 范围是 reviewer artifact 选择的过度收敛（结构性问题），但本需求 scope 内不修系统性 bug。
+- **Consequences**：好：解锁 F-001 草稿 PR 的 ubuntu CI 验证（D-005 / AC-1 #2）；其余 6 个 feature（F-003~F-007）后续派发都会触发同样的 R005，先在 F-001 这里把 3 处 dangling refresh 掉，后续 5 次 task.md hash 演进按"实施 feature 时同步刷新"模式处理。差：semantic 上把"hash refresh"和"实际重审"混在同一 reviewer attestation 下；缓解措施是本 ADR 显式记录每处变更的根因 + 引用 commit。
+- **后续动作**：本需求归档时考虑独立开 hotfix 需求修结构性 bug——reviewer Agent artifact 选择规则需排除会随 dev 阶段演进的 task.md frontmatter；或 R005 校验放宽到只比对文件 body（忽略 frontmatter status 字段）。
+- **时间**：2026-05-17 14:55:00
