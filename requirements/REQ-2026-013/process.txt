@@ -35,3 +35,9 @@
 2026-05-17 21:03:06 [review:approved] REV-REQ-2026-013-code-F-004-001 looks_clean(88) / 2 findings → 1 follow-up(schema drift) + 1 drop
 2026-05-17 21:05:51 [signoff] REV-REQ-2026-013-code-F-004-001 approved by hj19961223@gmail.com
 2026-05-17 21:06:22 [development] F-004 done：sign-off 通过 + task.md status→done + dispatch lock 释放 + schema drift (b)ack 落 notes.md
+2026-05-17 21:07:29 [save] F-004 done(88)→lock 释放 + schema drift (b)ack 落档；恢复点 next=用户选派 F-005（trivial）
+2026-05-17 21:11:28 [development] F-005 派发开始（model=sonnet, complexity=trivial, 派 implementer subagent）
+2026-05-17 21:15:57 [development] F-005 subagent 回执 DONE_WITH_CONCERNS（commit 2dd15cd, 2 concerns 均 scope 外: E002 第 28 行 + 反面案例段六段结构）
+2026-05-17 21:25:00 [review:approved] REV-REQ-2026-013-code-F-005-001 looks_clean(90) / 3 findings → 1 follow-up(反面案例段) + 2 drop（设计原文 sample-of-truth + 同目录风格多元）
+2026-05-17 21:26:20 [signoff] REV-REQ-2026-013-code-F-005-001 approved by hj19961223@gmail.com
+2026-05-17 21:27:01 [development] F-005 done：sign-off 通过 + task.md status→done + dispatch lock 释放（current_feature=null）
