@@ -1,7 +1,7 @@
 id: REQ-2026-013
 title: REQ-2026-012 follow-up bundle：reviewer artifact 选择 / hook 仓库外路径 normalize
   / archive 前预检 R-rule / experience spec 与实践对齐 / test-assets 经验补节
-phase: detail-design
+phase: task-planning
 created_at: '2026-05-17 18:03:20'
 branch: feat/req-2026-013
 base_branch: develop
@@ -19,6 +19,9 @@ gates_passed:
     via: managing-requirement-lifecycle
   - phase: detail-design
     at: '2026-05-17 18:58:00'
+    via: managing-requirement-lifecycle
+  - phase: task-planning
+    at: '2026-05-17 19:15:00'
     via: managing-requirement-lifecycle
 pr_url: ''
 pr_number: 0
