@@ -25,14 +25,20 @@ class WorkflowError(Exception):
 
 
 def infer_run_id_from_branch(repo_root: Path) -> str | None:
-    """从当前 git 分支推断 run_id（feat/req-<id> 格式）。
+    """从当前 git 分支推断 canonical run_id（feat/req-<id> 格式）。
 
     返回值：
-        str  — 分支格式匹配时返回 <id> 部分（去掉 'feat/req-' 前缀）
+        str  — 命中目录的 canonical run_id：
+                 1) 新 key 格式 feat/req-<YYYYMMDD-slug>：stripped 直接命中目录 → 返 stripped
+                 2) 旧 key 格式 feat/req-<YYYY-NNN>：stripped 找不到目录时
+                    尝试 REQ-/RUN-/REL- 前缀 + uppercase → 命中即返回带前缀形式
+                 3) 都找不到：返回 stripped（保持原行为，让调用方报路径不存在）
         None — 非 feat/req-<id> 分支，或 git 命令失败
 
-    F-005/F-009 等 9 个命令共用此函数；DRY 抽取于此，
-    避免 7 个文件各自维护 70 行副本（F-017 修复）。
+    F-005/F-009 等 9 个命令共用此函数。
+    REQ-2026-014：legacy fallback 让 feat/req-2026-014 → REQ-2026-014（与 jsonl
+    workflow_started.run_id 一致），实现 spec §11 Phase 3 "infer_run_id_from_branch
+    兼容新旧 key" 的能力（验收 #7）。
     """
     try:
         result = subprocess.run(
@@ -43,11 +49,24 @@ def infer_run_id_from_branch(repo_root: Path) -> str | None:
             timeout=5,
         )
         branch = result.stdout.strip()
-        if branch.startswith("feat/req-"):
-            return branch[len("feat/req-"):]
+        if not branch.startswith("feat/req-"):
+            return None
+        stripped = branch[len("feat/req-"):]
+
+        for base in ("requirements", "runs"):
+            if (repo_root / base / stripped).is_dir():
+                return stripped
+
+        upper = stripped.upper()
+        if not any(upper.startswith(p) for p in ("REQ-", "RUN-", "REL-")):
+            for prefix in ("REQ-", "RUN-", "REL-"):
+                candidate = f"{prefix}{upper}"
+                for base in ("requirements", "runs"):
+                    if (repo_root / base / candidate).is_dir():
+                        return candidate
+
+        return stripped
     except Exception as exc:
-        # best-effort fallback：git 命令失败（无 git / 非 git repo）是预期行为，
-        # 保留 debug 日志供诊断，不阻断调用方
         logging.debug("git rev-parse failed: %s", exc)
     return None
 
