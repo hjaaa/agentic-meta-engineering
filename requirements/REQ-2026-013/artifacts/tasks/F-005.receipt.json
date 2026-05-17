@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-005",
+  "status": "DONE_WITH_CONCERNS",
+  "commit_sha": "HEAD",
+  "files_changed": ["context/team/experience/test-assets-must-be-wired-into-ci.md"],
+  "test_summary": "F-001 pytest 7 passed / F-002 bats 5 passed (1 skip 正常) / sourcing strict: 1 E002 (既有，非本次引入)",
+  "touches_violations": [],
+  "concerns": [
+    "check_sourcing --strict 报 E002：第 28 行 '（来源：git log）' 引用路径不存在。该行属于 ## 反面案例 段，是改造前已有内容；F-005 scope 不含 ## 反面案例 段，按边界决策保留不动。后续可开 follow-up 修复此行的来源标注格式。",
+    "## 反面案例 段与 INDEX.md 五段规则（问题/根因/解法/验证方法/关联）不严格对齐，文件现为六段结构。F-005 任务未授权删除或合并该段，保留原位，转 follow-up。"
+  ],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-17T21:30:00+08:00"
+}

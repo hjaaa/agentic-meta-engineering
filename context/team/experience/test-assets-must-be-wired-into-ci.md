@@ -14,13 +14,14 @@ REQ-2026-012 F-A 前置发现：tests/lib/test_routing_e2e.sh 是 routing 路径
 
 ## 解法
 
-**两条约束**：
+1. 新增测试默认进 CI；不进 CI 必须 PR 描述说明原因
+2. CI YAML 改动需 PR 描述列出新增/删除 step
 
-1. **新增测试默认进 CI**：每次提 PR 引入 shell / e2e / contract 测试时，对应 PR 必须同时改 `.github/workflows/quality-check.yml`（或等价配置）添加 step。reviewer 必查。
-2. **不进 CI 必须说明**：若测试有合理理由不进 CI（如需要昂贵资源、跨日批处理、人为决策），PR 描述必须写明：
-   - 为何不进 CI（性能 / 资源 / 业务原因）
-   - 手跑命令（命令行 + 预期输出 + 频率）
-   - 持有者（owner，谁负责按频率手跑）
+## 验证方法
+
+- **不进 CI 的测试必须写在 PR 描述里**：手跑命令 + owner（谁负责定期跑）
+- **PR reviewer 检查项**：核对 PR 描述是否齐全；workflow yml 改动是否在 PR 描述列出
+- **持续门禁**：CI 通过即视为测试已对齐（CI 自身是 sample-of-truth）
 
 ## 反面案例
 
