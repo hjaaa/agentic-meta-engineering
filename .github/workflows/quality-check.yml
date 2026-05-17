@@ -79,7 +79,7 @@ jobs:
 
       # F-005：ruff 静态检查（select=F 起步，历史 E501 > 200 条触发降级策略，后续独立 PR 扩展）
       - name: ruff lint
-        run: ruff check scripts/ --select=F
+        run: ruff check scripts tests --select=F
 
       # D-007 强校验：gate-checklist.md 必须与 registry.yaml 保持同步。
       # 手工改 gate-checklist.md 后 PR 立即变红；需运行 make gates-render 重新生成。
