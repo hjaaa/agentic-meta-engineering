@@ -1,0 +1,133 @@
+{
+  "schema_version": "1.0",
+  "requirement_id": "REQ-2026-013",
+  "features": [
+    {
+      "id": "F-001",
+      "title": "check_reviews.py R005 hash 比对 normalize（A2 路径）",
+      "description": "在 scripts/lib/check_reviews.py 新增 _NORMALIZE_TASK_FIELDS={\"status\",\"updated_at\"} 常量 + _strip_frontmatter_fields(content, fields) + _compute_hash_with_normalize(file_path, path_str) 两个模块级函数；改造 _r005_hash_drift 的 hash 计算行（line 289）用 _compute_hash_with_normalize 替代。仅 path_str 以 artifacts/tasks/ 开头且以 .md 结尾时走 normalize；其他 artifact 走整文件 hash 旧路径保兼容。新增 pytest 用例 tests/lib/test_check_reviews_normalize.py 覆盖 frontmatter strip / body status passthrough / no-frontmatter passthrough / 3 status 取值同 hash / NFR 性能预算 < 5%；新增 tests/lib/test_check_reviews_normalize_schema_sync.py 校验白名单与 schema required_fields 一致。落地 outline-design §3.1 + detailed-design §3.1。",
+      "modules": [
+        "scripts/lib/check_reviews.py",
+        "tests/lib/test_check_reviews_normalize.py",
+        "tests/lib/test_check_reviews_normalize_schema_sync.py"
+      ],
+      "touches": [
+        "scripts/lib/check_reviews.py",
+        "tests/lib/test_check_reviews_normalize.py",
+        "tests/lib/test_check_reviews_normalize_schema_sync.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": [],
+      "complexity": "medium",
+      "acceptance": [
+        "scripts/lib/check_reviews.py 含 _NORMALIZE_TASK_FIELDS 常量 + _strip_frontmatter_fields + _compute_hash_with_normalize 两个新函数",
+        "_r005_hash_drift 函数 hash 计算行改为 _compute_hash_with_normalize(file_path, path_str)",
+        "pytest tests/lib/test_check_reviews_normalize.py 全过，含 3 status 取值产生同 hash 断言",
+        "pytest tests/lib/test_check_reviews_normalize_schema_sync.py 全过（白名单 ⊆ schema.required_fields）",
+        "性能基准：1000 次 normalize hash 路径相对整文件 hash 路径 overhead < 5%",
+        "现有 ~13 个 completed 需求跑 ci gate 后 R005 无新增"
+      ],
+      "estimate_days": 0.375,
+      "ac_refs": ["F-001-AC1", "F-001-AC2"]
+    },
+    {
+      "id": "F-002",
+      "title": "touches_guard.py out-of-repo 短路（cwd-driven）",
+      "description": "在 .claude/hooks/touches_guard.py 新增 _get_worktree_toplevel() 函数（调 git rev-parse --show-toplevel，超时 2s，异常返回 None）+ _is_out_of_repo(file_path, toplevel) 函数（toplevel 为 None 时 fail-open）。改造 _main_inner 步骤 7：for 循环前取 toplevel 一次，循环内 _is_out_of_repo 短路在 _is_in_touches 之前。touches_guard.py 顶部 docstring 加 D-011 双源声明：_REPO_ROOT (file-driven) 给 _is_in_touches；_get_worktree_toplevel (cwd-driven) 给 _is_out_of_repo。新增 tests/hooks/test_touches_guard_out_of_repo.bats 覆盖 /tmp / /var / ~/ 三类路径 + worktree edge case + NFR p99 延迟。落地 outline-design §3.2 + detailed-design §3.2。",
+      "modules": [
+        ".claude/hooks/touches_guard.py",
+        "tests/hooks/test_touches_guard_out_of_repo.bats"
+      ],
+      "touches": [
+        ".claude/hooks/touches_guard.py",
+        "tests/hooks/test_touches_guard_out_of_repo.bats"
+      ],
+      "depends_on": [],
+      "depends_on_features": [],
+      "complexity": "light",
+      "acceptance": [
+        ".claude/hooks/touches_guard.py 含 _get_worktree_toplevel + _is_out_of_repo 两个新函数",
+        "_main_inner 步骤 7 在 _is_in_touches 之前已先 _is_out_of_repo 短路",
+        "touches_guard.py 顶部 docstring 含 D-011 双源声明",
+        "bats tests/hooks/test_touches_guard_out_of_repo.bats 全过（/tmp / /var / ~/ 三类用例）",
+        "worktree edge case 用例：worktree cwd 内文件未被视为 out-of-repo",
+        "现有 bats tests/hooks/test_pre_tool_use_guard.bats 全过（V-01/V-03/14 redirect 不退化）"
+      ],
+      "estimate_days": 0.25,
+      "ac_refs": ["F-002-AC1", "F-002-AC2"]
+    },
+    {
+      "id": "F-003",
+      "title": "archive-rules.md 新增 ci gate 预检节 + archive_runner reminder（B3 纯文档兜底）",
+      "description": "在 .claude/skills/managing-requirement-lifecycle/reference/archive-rules.md 现有 § 5 项预检 之后插入新节 ## archive 前 CI gate 预检，约 280 字，含必跑命令 + refresh-only-current-req 处置原则（4 步操作流程 + notes.md 追加约定）+ 升级路径 B1/B2 说明。改造 scripts/lib/archive_runner.py _render_summary 函数：在现有终端反馈最后一行 return 之前 append 空行 + 🟢 archive 前请确认 ci gate exit 0：python3 scripts/gates/run.py --trigger=ci --strict reminder 行。不改 5 项硬门禁。新增 tests/lifecycle/test_archive_rules_ci_gate_precheck.py 覆盖文档节存在 + reminder 行存在两项断言。落地 outline-design §3.3 + detailed-design §3.3。",
+      "modules": [
+        ".claude/skills/managing-requirement-lifecycle/reference/archive-rules.md",
+        "scripts/lib/archive_runner.py",
+        "tests/lifecycle/test_archive_rules_ci_gate_precheck.py"
+      ],
+      "touches": [
+        ".claude/skills/managing-requirement-lifecycle/reference/archive-rules.md",
+        "scripts/lib/archive_runner.py",
+        "tests/lifecycle/test_archive_rules_ci_gate_precheck.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": [],
+      "complexity": "light",
+      "acceptance": [
+        "archive-rules.md 含 ## archive 前 CI gate 预检 节，节内含 python3 scripts/gates/run.py --trigger=ci --strict + refresh-only-current-req 子句 + B1/B2 升级路径说明",
+        "archive_runner.py _render_summary 输出末段含 🟢 archive 前请确认 ci gate exit 0 reminder 行",
+        "archive_runner 5 项硬门禁逻辑未改（git diff 仅在 _render_summary 末段追加）",
+        "pytest tests/lifecycle/test_archive_rules_ci_gate_precheck.py 全过"
+      ],
+      "estimate_days": 0.125,
+      "ac_refs": ["F-003-AC1"]
+    },
+    {
+      "id": "F-004",
+      "title": "context/team/experience/INDEX.md 格式约定段重写 + 38 邻居字数 baseline 落档",
+      "description": "改 context/team/experience/INDEX.md 「格式约定」段：删 正文不超过 200 字 行；改四节齐全（问题/根因/解法/验证方法）为五段结构（问题/根因/解法/验证方法/关联，第 5 段可空）；新增 正文建议 600 字内，800 字是软上限；超出考虑拆分到独立 reference 文件 一行。新建 requirements/REQ-2026-013/artifacts/experience-baseline-cjk-stats.txt 落档 38 邻居字数分布统计（min/p25/median/p75/max/count + > 600 字孤例 + 缺 ## 验证方法 节孤例清单），由 testing 阶段 V-04 生成脚本一次性产出统计行。不动 38 邻居文件正文（D1 / D-003）。落地 outline-design §3.4 + detailed-design §3.4。",
+      "modules": [
+        "context/team/experience/INDEX.md",
+        "requirements/REQ-2026-013/artifacts/experience-baseline-cjk-stats.txt"
+      ],
+      "touches": [
+        "context/team/experience/INDEX.md",
+        "requirements/REQ-2026-013/artifacts/experience-baseline-cjk-stats.txt"
+      ],
+      "depends_on": [],
+      "depends_on_features": [],
+      "complexity": "light",
+      "acceptance": [
+        "context/team/experience/INDEX.md 不再含 正文不超过 200 字 字面量",
+        "context/team/experience/INDEX.md 含 800 字 + 五段结构（## 关联）",
+        "requirements/REQ-2026-013/artifacts/experience-baseline-cjk-stats.txt 存在且含 count: 38",
+        "38 邻居文件正文未动（git diff 限 INDEX.md + baseline 落档文件）"
+      ],
+      "estimate_days": 0.0625,
+      "ac_refs": ["F-004-AC1"]
+    },
+    {
+      "id": "F-005",
+      "title": "test-assets-must-be-wired-into-ci.md 抽出 ## 验证方法 节",
+      "description": "改 context/team/experience/test-assets-must-be-wired-into-ci.md：## 解法 段从 5 条精简到 2 条（保留 新增测试默认进 CI + CI YAML 改动 PR 描述列 step）；新增 ## 验证方法 段抽出 不进 CI 必须 PR 描述说明（手跑命令 + owner）+ reviewer 检查项 + 持续门禁 3 子段。其他段（问题/根因/关联）不动。结构与 F-004 新五段规则完全对齐。本 commit 必须在 F-004 commit 之后（D-010 顺序约束）。落地 outline-design §3.4 + detailed-design §3.5。",
+      "modules": [
+        "context/team/experience/test-assets-must-be-wired-into-ci.md"
+      ],
+      "touches": [
+        "context/team/experience/test-assets-must-be-wired-into-ci.md"
+      ],
+      "depends_on": [],
+      "depends_on_features": ["F-004"],
+      "complexity": "trivial",
+      "acceptance": [
+        "test-assets-must-be-wired-into-ci.md 含 ## 验证方法 节",
+        "## 解法 段在 ## 验证方法 段之前（按 INDEX.md 五段顺序）",
+        "## 解法 段精简至 2 条规则",
+        "其他段（## 问题 / ## 根因 / ## 关联）未动",
+        "PR commit 历史中 F-005 commit 时间戳在 F-004 commit 之后"
+      ],
+      "estimate_days": 0.0625,
+      "ac_refs": ["F-005-AC1"]
+    }
+  ]
+}

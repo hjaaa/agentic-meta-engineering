@@ -147,3 +147,16 @@ F-A / F-B / F-C 互相独立可并行；F-D 是 F-E 的前置（先修规则再�
 - **Decision**：F-D commit（INDEX.md 规则修订 + 兼容性 review 清单）在 F-E commit（test-assets-must-be-wired-into-ci.md 补节）之前。同 PR squash 后是单个 merged commit，但分批 cherry-pick 时序保留。
 - **Consequences**：好——F-E 是 F-D 的可见证据，顺序符合阅读直觉；revert 时按 commit 反序可单独退 F-E。差——squash merge 后顺序信息丢失（develop 上看不到）；缓解：PR 正文 §变更摘要 段标注「F-D / F-E 顺序合入」。
 - **时间**：2026-05-17
+
+### D-011 F-B `_is_out_of_repo` 与既有 `_REPO_ROOT` 双源关系——双源并存 + 各自语义文档化
+
+- **Context**：outline-design v1 reviewer minor #3——F-B 新增 `_is_out_of_repo(fp)` 用 `git rev-parse --show-toplevel`（cwd-driven，D-006），而既有 `_is_in_touches` 已用模块级常量 `_REPO_ROOT = Path(__file__).resolve().parents[2]`（file-driven）做仓库根判定。两源在 worktree 场景行为分歧：
+  - `_REPO_ROOT`（file-driven）= 主 repo 根（hook 文件位置不变）；worktree 内文件视为 out-of-repo（false-negative）
+  - `git rev-parse --show-toplevel`（cwd-driven）= worktree 根（hook cwd 跟随用户）；worktree 内文件视为 in-repo（正确）
+- **候选**：A 全部统一到 `_REPO_ROOT`（撤 D-006 git rev-parse 路径）/ B 全部统一到 `git rev-parse`（改 `_is_in_touches` 用 subprocess）/ **C 双源并存 + 各自语义文档化**。
+- **Decision**：C。
+  - `_REPO_ROOT` 保留给 `_is_in_touches` 的 in-touches 内匹配（既有行为不动，零兼容性风险）
+  - 新增 `_get_worktree_toplevel()` 函数封装 `git rev-parse --show-toplevel`（cwd-driven），用于 `_is_out_of_repo` 路径；异常 / 非 git 目录 fall-through 到 fail-open（不短路）
+  - detail-design §3.2 显式声明：「out-of-repo 短路用 cwd-driven；in-touches 命中检测用 file-driven；两源在主 repo cwd 下表现一致，仅 worktree edge case 不同」
+- **Consequences**：好——零回归（既有 `_is_in_touches` 不动）；worktree 场景按 D-006 实测语义工作；语义边界明确不混淆。差——hook 内出现两条仓库根判定路径，未来开发者可能误以为可以互替；缓解：detail-design §3.2 加注释 + touches_guard.py 顶部加 docstring 显式标注两源语义边界。
+- **时间**：2026-05-17
