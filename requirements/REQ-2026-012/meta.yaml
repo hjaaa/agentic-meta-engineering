@@ -1,186 +1,161 @@
-# ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-012
-title: "CI 工程化补强：纳入 routing e2e、清理陈旧 hook 测试、统一依赖清单、ruff 范围扩展、本地 CI 镜像入口"
+title: CI 工程化补强：纳入 routing e2e、清理陈旧 hook 测试、统一依赖清单、ruff 范围扩展、本地 CI 镜像入口
 phase: development
-created_at: "2026-05-16 19:47:48"
+created_at: '2026-05-16 19:47:48'
 branch: feat/req-2026-012
 base_branch: develop
-project: "agentic-meta-engineering"
+project: agentic-meta-engineering
 services: []
 gates_passed:
-  - phase: definition
-    at: '2026-05-16 19:54:11'
-    via: managing-requirement-lifecycle
-  - phase: tech-research
-    at: '2026-05-16 20:27:01'
-    via: managing-requirement-lifecycle
-  - phase: outline-design
-    at: '2026-05-16 21:16:44'
-    via: managing-requirement-lifecycle
-  - phase: detail-design
-    at: '2026-05-16 21:33:48'
-    via: managing-requirement-lifecycle
-  - phase: task-planning
-    at: '2026-05-16 22:02:00'
-    via: managing-requirement-lifecycle
-  - phase: development
-    at: '2026-05-16 22:09:57'
-    via: managing-requirement-lifecycle
-pr_url: ""
+- phase: definition
+  at: '2026-05-16 19:54:11'
+  via: managing-requirement-lifecycle
+- phase: tech-research
+  at: '2026-05-16 20:27:01'
+  via: managing-requirement-lifecycle
+- phase: outline-design
+  at: '2026-05-16 21:16:44'
+  via: managing-requirement-lifecycle
+- phase: detail-design
+  at: '2026-05-16 21:33:48'
+  via: managing-requirement-lifecycle
+- phase: task-planning
+  at: '2026-05-16 22:02:00'
+  via: managing-requirement-lifecycle
+- phase: development
+  at: '2026-05-16 22:09:57'
+  via: managing-requirement-lifecycle
+pr_url: ''
 pr_number: 0
 log_layout: split
-
-# ============ 语义组（definition 阶段补齐，供跨需求检索） ============
-feature_area: "ci"                       # definition 起必填；值必须在 context/project/<project>/areas.yaml 白名单内
-change_type: "feature"                   # definition 起必填；枚举：feature / bugfix / refactor / perf / security
-affected_modules:                        # definition 起必填；自由词，建议与 services 子模块对齐
-  - github-actions-workflow
-  - tests-shell-routing
-  - hooks-tests
-  - ci-deps-manifest
-  - ruff-config
-  - makefile
-tags:                                    # 可选；长尾标签，不归一化
-  - debt-cleanup
-  - local-ci-parity
-
-# ============ 结果组（completed 时才填） ============
-outcome: ""                    # shipped / abandoned / rolled-back
-completed_at: ""               # ISO8601，completed 时填
-lessons_extracted: false       # /knowledge:extract-experience 是否已跑
+feature_area: ci
+change_type: feature
+affected_modules:
+- github-actions-workflow
+- tests-shell-routing
+- hooks-tests
+- ci-deps-manifest
+- ruff-config
+- makefile
+tags:
+- debt-cleanup
+- local-ci-parity
+outcome: ''
+completed_at: ''
+lessons_extracted: false
 reviews:
   definition:
     latest: REV-REQ-2026-012-definition-002
     conclusion: looks_clean
     reviewed_commit: 0b2a12b
     artifact_hashes:
-      artifacts/requirement.md: 
-        a043bb9764edf6a5fc60471120bb2a8624c0206baec92967a203ac8d533c474a
+      artifacts/requirement.md: a043bb9764edf6a5fc60471120bb2a8624c0206baec92967a203ac8d533c474a
     history:
-      - REV-REQ-2026-012-definition-001
-      - REV-REQ-2026-012-definition-002
+    - REV-REQ-2026-012-definition-001
+    - REV-REQ-2026-012-definition-002
     stale: false
   outline-design:
     latest: REV-REQ-2026-012-outline-design-002
     conclusion: looks_clean
     reviewed_commit: 044ade9
     artifact_hashes:
-      artifacts/outline-design.md: 
-        3e85166063ff28132f1d18ca9e56153a70ff457942f547c2258573c64efc7ee2
-      artifacts/requirement.md: 
-        a043bb9764edf6a5fc60471120bb2a8624c0206baec92967a203ac8d533c474a
-      artifacts/tech-feasibility.md: 
-        8e424df5badaf9527219f177f589351adbdf549cb93f60951d89778c27eabd43
+      artifacts/outline-design.md: 3e85166063ff28132f1d18ca9e56153a70ff457942f547c2258573c64efc7ee2
+      artifacts/requirement.md: a043bb9764edf6a5fc60471120bb2a8624c0206baec92967a203ac8d533c474a
+      artifacts/tech-feasibility.md: 8e424df5badaf9527219f177f589351adbdf549cb93f60951d89778c27eabd43
       plan.md: cc94f4e659d7334136bbf70d3a12b3bee0f1ffd41a62c719d60b32f54ca03bf5
     history:
-      - REV-REQ-2026-012-outline-design-001
-      - REV-REQ-2026-012-outline-design-002
+    - REV-REQ-2026-012-outline-design-001
+    - REV-REQ-2026-012-outline-design-002
     stale: false
   detail-design:
     latest: REV-REQ-2026-012-detail-design-002
     conclusion: looks_clean
     reviewed_commit: caeb550
     artifact_hashes:
-      artifacts/detailed-design.md: 
-        26c51e7c1c0d93625057b2584a0e052bab83a85c6d47fb56471ca2136d4e1617
-      artifacts/features.json: 
-        9a1021fe12f7d5666b3c44a5606d69362327e67cc8bc30f464cb3c9639c7c94f
-      artifacts/outline-design.md: 
-        3e85166063ff28132f1d18ca9e56153a70ff457942f547c2258573c64efc7ee2
-      artifacts/requirement.md: 
-        8c5b8bc7f57f52d76e67f121004532bd16dbf8f4dfcc2ec41263ef9a4bb2ffc2
-      artifacts/tasks/F-001.md: 
-        3f96a108865fe15ccdd723c9bcb86a0529b146ad8431c5f82f2b4a789d5399ef
-      artifacts/tasks/F-002.md: 
-        126e936742680edb6a88563bafba5a6d8be6dd59ca71f3cf2f36708e457fd220
-      artifacts/tasks/F-003.md: 
-        1170a420e69441f5b05190573bad8862c791f3cd0eb610b7f0302ecf613804df
-      artifacts/tasks/F-004.md: 
-        77da4fdb377797130e111730d147587287213e97164cc3be255cc111e8839af5
-      artifacts/tasks/F-005.md: 
-        30776b3a0baf8f6e4331559e7f43a64ade47e7289cebaacb51d2b375f44c1e60
-      artifacts/tasks/F-006.md: 
-        63c06dab9a0e1e0d3b50e4f854a09abe69184e1e42005617d5e9fd0c5e5defc7
-      artifacts/tasks/F-007.md: 
-        c0870e4965a48d096870b5d26623e22abbe4f16a1f7ac0b391c1c4a8b7af2b62
+      artifacts/detailed-design.md: 26c51e7c1c0d93625057b2584a0e052bab83a85c6d47fb56471ca2136d4e1617
+      artifacts/features.json: 9a1021fe12f7d5666b3c44a5606d69362327e67cc8bc30f464cb3c9639c7c94f
+      artifacts/outline-design.md: 3e85166063ff28132f1d18ca9e56153a70ff457942f547c2258573c64efc7ee2
+      artifacts/requirement.md: 8c5b8bc7f57f52d76e67f121004532bd16dbf8f4dfcc2ec41263ef9a4bb2ffc2
+      artifacts/tasks/F-001.md: 3f96a108865fe15ccdd723c9bcb86a0529b146ad8431c5f82f2b4a789d5399ef
+      artifacts/tasks/F-002.md: 126e936742680edb6a88563bafba5a6d8be6dd59ca71f3cf2f36708e457fd220
+      artifacts/tasks/F-003.md: 1170a420e69441f5b05190573bad8862c791f3cd0eb610b7f0302ecf613804df
+      artifacts/tasks/F-004.md: 77da4fdb377797130e111730d147587287213e97164cc3be255cc111e8839af5
+      artifacts/tasks/F-005.md: 30776b3a0baf8f6e4331559e7f43a64ade47e7289cebaacb51d2b375f44c1e60
+      artifacts/tasks/F-006.md: 63c06dab9a0e1e0d3b50e4f854a09abe69184e1e42005617d5e9fd0c5e5defc7
+      artifacts/tasks/F-007.md: c0870e4965a48d096870b5d26623e22abbe4f16a1f7ac0b391c1c4a8b7af2b62
     history:
-      - REV-REQ-2026-012-detail-design-001
-      - REV-REQ-2026-012-detail-design-002
+    - REV-REQ-2026-012-detail-design-001
+    - REV-REQ-2026-012-detail-design-002
     stale: false
-    # D-010：refresh requirement.md / tasks/F-001.md / tasks/F-002.md 当前 hash
-    # 不视为重审——requirement.md 只 fix dangling 引用 (commit 6aacaca 已记录)，
-    # task.md frontmatter status 字段在 dev 期间必然演进且不影响设计内容。详见 plan.md D-010。
   code:
     by_feature:
       F-002:
         history:
-          - REV-REQ-2026-012-code-F-002-001
+        - REV-REQ-2026-012-code-F-002-001
         latest: REV-REQ-2026-012-code-F-002-001
         conclusion: looks_clean
         reviewed_commit: 6aacaca
         artifact_hashes:
-          artifacts/features.json: 
-            9a1021fe12f7d5666b3c44a5606d69362327e67cc8bc30f464cb3c9639c7c94f
-          artifacts/tasks/F-002.md: 
-            c2b3db5969d14f9f114420daedb3b8a5fb9ed57a7a432da06554cb3badc4d20f
+          artifacts/features.json: 9a1021fe12f7d5666b3c44a5606d69362327e67cc8bc30f464cb3c9639c7c94f
+          artifacts/tasks/F-002.md: c2b3db5969d14f9f114420daedb3b8a5fb9ed57a7a432da06554cb3badc4d20f
         stale: false
       F-001:
         history:
-          - REV-REQ-2026-012-code-F-001-001
+        - REV-REQ-2026-012-code-F-001-001
         latest: REV-REQ-2026-012-code-F-001-001
         conclusion: looks_clean
         reviewed_commit: 72df2ef
         artifact_hashes:
-          artifacts/features.json: 
-            9a1021fe12f7d5666b3c44a5606d69362327e67cc8bc30f464cb3c9639c7c94f
-          artifacts/tasks/F-001.md: 
-            3f96a108865fe15ccdd723c9bcb86a0529b146ad8431c5f82f2b4a789d5399ef
+          artifacts/features.json: 9a1021fe12f7d5666b3c44a5606d69362327e67cc8bc30f464cb3c9639c7c94f
+          artifacts/tasks/F-001.md: 3f96a108865fe15ccdd723c9bcb86a0529b146ad8431c5f82f2b4a789d5399ef
         stale: false
       F-003:
         history:
-          - REV-REQ-2026-012-code-F-003-001
+        - REV-REQ-2026-012-code-F-003-001
         latest: REV-REQ-2026-012-code-F-003-001
         conclusion: looks_clean
         reviewed_commit: 1fefea9
         artifact_hashes:
-          artifacts/features.json: 
-            9a1021fe12f7d5666b3c44a5606d69362327e67cc8bc30f464cb3c9639c7c94f
-          artifacts/tasks/F-003.md: 
-            ab1c77ee2be6fa4e9e83bb1ae0d9900f31eca63f67bdf261001cb27c6ff6be8c
+          artifacts/features.json: 9a1021fe12f7d5666b3c44a5606d69362327e67cc8bc30f464cb3c9639c7c94f
+          artifacts/tasks/F-003.md: ab1c77ee2be6fa4e9e83bb1ae0d9900f31eca63f67bdf261001cb27c6ff6be8c
         stale: false
       F-004:
         history:
-          - REV-REQ-2026-012-code-F-004-001
+        - REV-REQ-2026-012-code-F-004-001
         latest: REV-REQ-2026-012-code-F-004-001
         conclusion: looks_clean
         reviewed_commit: 8321f60
         artifact_hashes:
-          artifacts/features.json: 
-            9a1021fe12f7d5666b3c44a5606d69362327e67cc8bc30f464cb3c9639c7c94f
-          artifacts/tasks/F-004.md: 
-            36fbbbe64e4c5daad93a722eb10e729e4288c595b9e5eb24ced9e69d835d50bc
+          artifacts/features.json: 9a1021fe12f7d5666b3c44a5606d69362327e67cc8bc30f464cb3c9639c7c94f
+          artifacts/tasks/F-004.md: 36fbbbe64e4c5daad93a722eb10e729e4288c595b9e5eb24ced9e69d835d50bc
         stale: false
       F-005:
         history:
-          - REV-REQ-2026-012-code-F-005-001
+        - REV-REQ-2026-012-code-F-005-001
         latest: REV-REQ-2026-012-code-F-005-001
         conclusion: looks_clean
         reviewed_commit: df4ae61
         artifact_hashes:
-          artifacts/features.json: 
-            9a1021fe12f7d5666b3c44a5606d69362327e67cc8bc30f464cb3c9639c7c94f
-          artifacts/tasks/F-005.md: 
-            30776b3a0baf8f6e4331559e7f43a64ade47e7289cebaacb51d2b375f44c1e60
+          artifacts/features.json: 9a1021fe12f7d5666b3c44a5606d69362327e67cc8bc30f464cb3c9639c7c94f
+          artifacts/tasks/F-005.md: 30776b3a0baf8f6e4331559e7f43a64ade47e7289cebaacb51d2b375f44c1e60
         stale: false
       F-006:
         history:
-          - REV-REQ-2026-012-code-F-006-001
+        - REV-REQ-2026-012-code-F-006-001
         latest: REV-REQ-2026-012-code-F-006-001
         conclusion: looks_clean
         reviewed_commit: e738789
         artifact_hashes:
-          artifacts/features.json: 
-            9a1021fe12f7d5666b3c44a5606d69362327e67cc8bc30f464cb3c9639c7c94f
-          artifacts/tasks/F-006.md: 
-            63c06dab9a0e1e0d3b50e4f854a09abe69184e1e42005617d5e9fd0c5e5defc7
+          artifacts/features.json: 9a1021fe12f7d5666b3c44a5606d69362327e67cc8bc30f464cb3c9639c7c94f
+          artifacts/tasks/F-006.md: 63c06dab9a0e1e0d3b50e4f854a09abe69184e1e42005617d5e9fd0c5e5defc7
+        stale: false
+      F-007:
+        history:
+        - REV-REQ-2026-012-code-F-007-001
+        latest: REV-REQ-2026-012-code-F-007-001
+        conclusion: looks_clean
+        reviewed_commit: 0fd604e
+        artifact_hashes:
+          artifacts/features.json: 9a1021fe12f7d5666b3c44a5606d69362327e67cc8bc30f464cb3c9639c7c94f
+          artifacts/tasks/F-007.md: 1dd6d5ffb9f91567a4f59fac80fd7fcb78f634ba66b95b089aba456002440417
         stale: false

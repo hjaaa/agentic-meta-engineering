@@ -37,3 +37,8 @@
 2026-05-17 16:15:39 [signoff] REV-REQ-2026-012-code-F-006-001 approved by hj19961223@gmail.com
 2026-05-17 16:16:10 [development] F-006 done：code-review looks_clean(95) + tty signoff approved；0 finding；dispatch lock 已释放
 2026-05-17 16:17:06 [save] 会话节点存档：dev 进度 6/7（本会话 F-005 done score=92 / F-006 done score=95；F-005 1 minor I001 suggestion 不开 follow-up；F-006 0 finding）；恢复点 next=F-007（make ci-local 入口 8 子 target + experience.md 沉淀 + INDEX.md 挂索引，medium / sonnet，AC-5/AC-8 收口）
+2026-05-17 16:23:23 [development] F-007 派发：make ci-local 入口 8 子 target + experience.md 沉淀 + INDEX.md 挂索引（medium / sonnet；AC-5 + AC-8 收口）
+2026-05-17 16:39:05 [signoff] REV-REQ-2026-012-code-F-007-001 approved by hj19961223@gmail.com
+2026-05-17 16:39:51 [signoff] REV-REQ-2026-012-code-F-007-001 approved by hj19961223@gmail.com
+2026-05-17 16:39:51 [development] F-007 done：code-review looks_clean(93) + tty signoff approved；2 minor critic 1 rejected 1 follow-up；dispatch lock 已释放
+2026-05-17 16:39:51 [save] dev 进度 7/7 全部 done（本会话 F-007 done score=93；AC-5 + AC-8 收口；2 follow-up：experience/INDEX.md:64-65 spec 漂移修订 + test-assets-must-be-wired-into-ci.md 补 ## 验证方法 节，留下一个清扫 REQ）；下一步 detail-design.stale 自检 + phase-transition development → testing
