@@ -51,6 +51,15 @@ class TestStripFrontmatterFields:
         result = _strip_frontmatter_fields(content, {"status"})
         assert result == content
 
+    def test_crlf_frontmatter_status_stripped(self):
+        # codex round-1 C1：Windows autocrlf=true checkout 出来的 task.md 是 \r\n 行尾，
+        # 历史正则硬编码 \n 无法匹配 fm 围栏 → status 不 strip → R005 假阳性。
+        # 修复后 \r?\n 兼容，CRLF 输入也能正确 strip。
+        content = "---\r\nstatus: done\r\ntitle: F-001\r\n---\r\n# body\r\n"
+        result = _strip_frontmatter_fields(content, {"status"})
+        assert "status: done" not in result
+        assert "title: F-001" in result
+
 
 @pytest.mark.parametrize("evolving_status", ["pending", "in-progress", "done"])
 def test_evolving_status_yields_same_hash(tmp_path, evolving_status):
@@ -63,6 +72,22 @@ def test_evolving_status_yields_same_hash(tmp_path, evolving_status):
         h = _compute_hash_with_normalize(fp, "artifacts/tasks/F-001.md")
         h_set.add(h)
     assert len(h_set) == 1  # 3 个 status 产生相同 hash
+
+
+def test_crlf_and_lf_same_logical_content_yield_same_hash(tmp_path):
+    """codex round-1 C1：CRLF 与 LF 行尾的同一逻辑 task.md 在 normalize 后产生相同 hash。
+
+    跨平台 round-trip 对称：A 同事 macOS LF 落 verdict / B 同事 Windows CRLF 重 checkout 后跑 R005
+    必须不假阳性。修复前 CRLF 不匹配 fm 围栏 → status 不 strip → hash 必不同 → R005 必假阳性。
+    """
+    fp_lf = tmp_path / "lf.md"
+    fp_crlf = tmp_path / "crlf.md"
+    body_lf = "---\nfeature_id: F-001\nstatus: pending\nupdated_at: '2026-05-17 18:00:00'\n---\n# body\n"
+    fp_lf.write_text(body_lf, encoding="utf-8")
+    fp_crlf.write_bytes(body_lf.replace("\n", "\r\n").encode("utf-8"))
+    h_lf = _compute_hash_with_normalize(fp_lf, "artifacts/tasks/F-001.md")
+    h_crlf = _compute_hash_with_normalize(fp_crlf, "artifacts/tasks/F-001.md")
+    assert h_lf == h_crlf, "CRLF / LF 同一逻辑内容必须 normalize 到同 hash"
 
 
 def test_writer_reader_symmetric(tmp_path):

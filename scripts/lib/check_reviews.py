@@ -73,14 +73,15 @@ def _strip_frontmatter_fields(content: str, fields: set[str]) -> str:
         去除指定字段行后的文本；frontmatter 缺失或不完整时原样返回。
     """
     import re
-    fm_match = re.match(r"^---\n(.*?)\n---\n", content, flags=re.DOTALL)
+    # 兼容 CRLF (\r\n) checkout（Windows autocrlf=true）—— frontmatter 围栏与 strip 行均放宽到 \r?\n
+    fm_match = re.match(r"^---\r?\n(.*?)\r?\n---\r?\n", content, flags=re.DOTALL)
     if not fm_match:
         return content
     fm_body = fm_match.group(1)
     new_fm_body = fm_body
     for field in fields:
         new_fm_body = re.sub(
-            rf"^{re.escape(field)}:.*$\n?",
+            rf"^{re.escape(field)}:.*(?:\r?\n|$)",
             "",
             new_fm_body,
             flags=re.MULTILINE,
