@@ -46,3 +46,4 @@
 2026-05-17 21:52:30 [testing] V-01~V-06 全过：pytest 14 pass + bats 5 ok(1 skip NFR baseline) + ci strict 13 REQ EXIT=0
 2026-05-17 21:57:01 [testing] V-03 NFR baseline 固化：p99 ≈ 162ms / 阈值 < 300ms (D-014 commit d61b01c)
 2026-05-17 22:02:16 [save] 经验沉淀 2 条到 context/team/experience/ + lessons_extracted=true（a05b53d）
+2026-05-17 22:09:04 [save] 修 subagent-dispatch.md 顺序歧义 + 沉淀 dispatch B-1 翻 status 经验（1f89d3c）
