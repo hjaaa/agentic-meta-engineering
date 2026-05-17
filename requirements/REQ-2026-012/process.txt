@@ -20,3 +20,4 @@
 2026-05-17 14:41:00 [development] F-001 派发：routing e2e 入 CI（light / haiku；subagent scope=edit+commit+receipt，草稿 PR 验证由主 Agent 后续驱动 D-005）
 2026-05-17 15:04:36 [signoff] REV-REQ-2026-012-code-F-001-001 approved by hj19961223@gmail.com
 2026-05-17 15:05:23 [development] F-001 done：code-review looks_clean(95) + tty signoff approved + 草稿 PR #74 ubuntu PASS=3 FAIL=0；dispatch lock 已释放
+2026-05-17 15:08:38 [save] dev 进度 2/7（F-001 done score=95 + PR #74 ubuntu PASS=3 FAIL=0 + D-010 hash refresh ADR）；next F-003（F-C ci.txt 同源化）；PR #74 待手动 close
