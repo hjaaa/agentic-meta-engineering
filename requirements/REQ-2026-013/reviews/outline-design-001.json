@@ -64,5 +64,11 @@
   "architectural_concerns": [
     "F-A normalize 白名单 {status, updated_at} 的 schema-sync 防漂虽然有 pytest 兜底，但白名单常量物理上仍硬编码在 check_reviews.py——长期看若 task-frontmatter-schema.yaml 出现 owner / assignee / progress 等新的「dev 期演进」字段，schema-sync 用例 fail 后需要手动同步白名单。这不是本评审 blocker（D-007 已明确接受这个 trade-off），但建议未来若白名单字段超过 4-5 个时考虑直接从 schema 派生（YAML 内加 evolves_in_dev: true 标记）",
     "F-C reminder 路径（B3）是 archive 频次低场景下的最小投入选择，长期若 archive 频次升高到周 5 次以上，主 Agent 忽略 reminder 概率会线性放大；§3.3 末段已预留 B1 / B2 升级路径，但未给量化触发条件——detail-design 阶段或下次清扫 REQ 可补一条「monthly archive 次数 > N 时升级」的观察指标"
-  ]
+  ],
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-17T18:57:07.084948+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
+  }
 }
