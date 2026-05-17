@@ -92,3 +92,17 @@ reviews:
     history:
       - REV-REQ-2026-013-detail-design-001
     stale: false
+  code:
+    by_feature:
+      F-001:
+        history:
+          - REV-REQ-2026-013-code-F-001-001
+        latest: REV-REQ-2026-013-code-F-001-001
+        conclusion: needs_attention
+        reviewed_commit: 21d6d58
+        artifact_hashes:
+          artifacts/features.json: 
+            29b954e679de213fe21f770b247ba36e034b842b54de0e7d5ce3605b44096c55
+          artifacts/tasks/F-001.md: 
+            ffe19eb34fd4d818a662cb47db9ec33b1360c126cdd3ab840e5a28a41a0cccce
+        stale: false

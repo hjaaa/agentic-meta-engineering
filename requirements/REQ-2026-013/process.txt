@@ -16,3 +16,6 @@
 2026-05-17 19:17:36 [save] task-planning 就绪：5 task 全 pending / dispatch-state 初始化；恢复点 next=用户选 F-xxx 开始派发
 2026-05-17 19:20:11 [phase-transition] task-planning → development：11 项 gate 全过（EXIT=0）；准备派发 F-001 进开发实施
 2026-05-17 19:21:51 [development] F-001 派发开始（model=sonnet, complexity=medium, 派 implementer subagent）
+2026-05-17 19:50:12 [review:needs_attention] REV-REQ-2026-013-code-F-001-001 score=82 / 1 major (F-2 schema-sync 相对路径) / 1 minor (F-1 errors=replace 护栏) / 5 drop
+2026-05-17 19:50:12 [development] F-001 rev2 派发：修 F-2 + F-1（同模式扫 0 遗漏）
+2026-05-17 19:50:12 [development] F-001 rev2 done：commit 7a39a4a + cd1666a；双 cwd 8/8 全过；receipt status=DONE
