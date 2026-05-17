@@ -1,3 +1,8 @@
 - [2026-05-17 23:38:08] [bootstrap] 设计来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md v0.2（DRAFT，huangjian + Codex 起草于 2026-05-17）。spec 已覆盖目标 / D-001~D-015 决策 / 架构（worktree_manager.py + requirement_naming.py）/ bootstrap 顺序与 rollback / meta.yaml 扩展 / submit&archive 语义 / 测试计划 / Phase 1-4 迁移步骤 / 风险表 / 验收 9 条。开发以 spec 为权威单源；阶段产出物对照抽取并补缺口（见 plan.md D-000）。
 - [2026-05-17 23:58:42] [definition] reviewer feedback 4 条处理：P3 6 类已修；P2 场景 2 dirty workspace fail-closed 已加；P1 范围 /workflow:submit 改为 /requirement:submit + 新增不包含项 + 待澄清 #5；P1 章节名仅采纳"验收 → 验收标准"，"用户场景"/"待澄清清单"保留（模板权威 + check_sourcing 硬约束 + 历史一致）
 - [2026-05-18 00:03:37] [definition] /workflow:save 用 workflow_save.py 失败：infer_run_id_from_branch 从 feat/req-2026-014 推出 2026-014（丢 REQ- 前缀），_resolve_run_dir 在 requirements/2026-014/ 找不到 → exit 1。这正是本 REQ 验收 #7 要修的 case，spec §11 Phase 3 已列入 infer_run_id_from_branch 兼容工作。退化到 process.txt [save] 兜底，不在 definition 阶段提前 patch common.py。
+
+
+## 会话经验（2026-05-18 00:11）
+
+_本轮无新经验_
