@@ -73,15 +73,19 @@ def _strip_frontmatter_fields(content: str, fields: set[str]) -> str:
         去除指定字段行后的文本；frontmatter 缺失或不完整时原样返回。
     """
     import re
-    # 兼容 CRLF (\r\n) checkout（Windows autocrlf=true）—— frontmatter 围栏与 strip 行均放宽到 \r?\n
-    fm_match = re.match(r"^---\r?\n(.*?)\r?\n---\r?\n", content, flags=re.DOTALL)
+    # codex round-2 P1：纯函数层先把 \r\n 归一到 \n，让本函数对任何调用方（含未来不走
+    # read_text 的 binary read 路径）都输出无 \r 的稳定文本，避免跨平台 round-trip 时
+    # body 行尾差异污染 hash。运行时通过 _compute_hash_with_normalize 调用链已被 read_text
+    # universal newlines 兜底，本归一是防御性加固。
+    content = content.replace("\r\n", "\n")
+    fm_match = re.match(r"^---\n(.*?)\n---\n", content, flags=re.DOTALL)
     if not fm_match:
         return content
     fm_body = fm_match.group(1)
     new_fm_body = fm_body
     for field in fields:
         new_fm_body = re.sub(
-            rf"^{re.escape(field)}:.*(?:\r?\n|$)",
+            rf"^{re.escape(field)}:.*$\n?",
             "",
             new_fm_body,
             flags=re.MULTILINE,

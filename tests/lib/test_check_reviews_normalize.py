@@ -54,11 +54,27 @@ class TestStripFrontmatterFields:
     def test_crlf_frontmatter_status_stripped(self):
         # codex round-1 C1：Windows autocrlf=true checkout 出来的 task.md 是 \r\n 行尾，
         # 历史正则硬编码 \n 无法匹配 fm 围栏 → status 不 strip → R005 假阳性。
-        # 修复后 \r?\n 兼容，CRLF 输入也能正确 strip。
+        # 修复后函数入口先归一 \r\n→\n，CRLF 输入也能正确 strip。
         content = "---\r\nstatus: done\r\ntitle: F-001\r\n---\r\n# body\r\n"
         result = _strip_frontmatter_fields(content, {"status"})
         assert "status: done" not in result
         assert "title: F-001" in result
+
+    def test_crlf_input_output_has_no_carriage_return(self):
+        # codex round-2 P1：纯函数层防御——CRLF 输入经过函数后输出必须无 \r，
+        # 避免 body / 非 strip 字段行残留 \r 污染下游 hash。
+        # 多字段 + 多行 body 覆盖：strip 命中 1 字段 + 保留 2 字段 + body 2 行。
+        content = (
+            "---\r\nfeature_id: F-001\r\nstatus: pending\r\ncomplexity: medium\r\n"
+            "---\r\n# body line 1\r\n# body line 2\r\n"
+        )
+        result = _strip_frontmatter_fields(content, {"status"})
+        assert "\r" not in result, f"输出含 \\r：{result!r}"
+        assert "status: pending" not in result
+        assert "feature_id: F-001" in result
+        assert "complexity: medium" in result
+        assert "# body line 1" in result
+        assert "# body line 2" in result
 
 
 @pytest.mark.parametrize("evolving_status", ["pending", "in-progress", "done"])
