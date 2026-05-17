@@ -43,3 +43,5 @@
 2026-05-17 21:27:01 [development] F-005 done：sign-off 通过 + task.md status→done + dispatch lock 释放（current_feature=null）
 2026-05-17 21:28:33 [save] 5/5 feature done（F-001~F-005 全 sign-off + lock released），恢复点 next=切 testing + V-01~V-05
 2026-05-17 21:47:18 [phase-transition] development → testing：11 项 gate 全过 + D-013 hotfix (F-001 双侧对称 + meta hash 迁移 19b3f87)
+2026-05-17 21:52:30 [testing] V-01~V-06 全过：pytest 14 pass + bats 5 ok(1 skip NFR baseline) + ci strict 13 REQ EXIT=0
+2026-05-17 21:57:01 [testing] V-03 NFR baseline 固化：p99 ≈ 162ms / 阈值 < 300ms (D-014 commit d61b01c)
