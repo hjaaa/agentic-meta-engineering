@@ -52,7 +52,7 @@ reviews:
     conclusion: looks_clean
     reviewed_commit: 0b2a12b
     artifact_hashes:
-      artifacts/requirement.md: a043bb9764edf6a5fc60471120bb2a8624c0206baec92967a203ac8d533c474a
+      artifacts/requirement.md: 8c5b8bc7f57f52d76e67f121004532bd16dbf8f4dfcc2ec41263ef9a4bb2ffc2
     history:
     - REV-REQ-2026-012-definition-001
     - REV-REQ-2026-012-definition-002
@@ -63,9 +63,9 @@ reviews:
     reviewed_commit: 044ade9
     artifact_hashes:
       artifacts/outline-design.md: 3e85166063ff28132f1d18ca9e56153a70ff457942f547c2258573c64efc7ee2
-      artifacts/requirement.md: a043bb9764edf6a5fc60471120bb2a8624c0206baec92967a203ac8d533c474a
-      artifacts/tech-feasibility.md: 8e424df5badaf9527219f177f589351adbdf549cb93f60951d89778c27eabd43
-      plan.md: cc94f4e659d7334136bbf70d3a12b3bee0f1ffd41a62c719d60b32f54ca03bf5
+      artifacts/requirement.md: 8c5b8bc7f57f52d76e67f121004532bd16dbf8f4dfcc2ec41263ef9a4bb2ffc2
+      artifacts/tech-feasibility.md: 601f9ec473154a9a0d554d5f9dbdc11f22909f06d2a760d65c01b828a6c040ca
+      plan.md: b45c6eb9e6bc675514b6a17a6225db25ae5bec15fc0cd14a6c070f01c1d51653
     history:
     - REV-REQ-2026-012-outline-design-001
     - REV-REQ-2026-012-outline-design-002
