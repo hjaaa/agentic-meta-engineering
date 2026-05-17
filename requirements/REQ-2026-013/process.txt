@@ -32,3 +32,6 @@
 2026-05-17 20:45:47 [signoff] REV-REQ-2026-013-code-F-003-001 approved by hj19961223@gmail.com
 2026-05-17 20:46:27 [development] F-003 done：sign-off 通过 + task.md status→done + dispatch lock 释放（current_feature=null）
 2026-05-17 20:50:45 [development] F-004 派发开始（model=sonnet, complexity=light, schema drift: count 38→41 已告知 subagent）
+2026-05-17 21:03:06 [review:approved] REV-REQ-2026-013-code-F-004-001 looks_clean(88) / 2 findings → 1 follow-up(schema drift) + 1 drop
+2026-05-17 21:05:51 [signoff] REV-REQ-2026-013-code-F-004-001 approved by hj19961223@gmail.com
+2026-05-17 21:06:22 [development] F-004 done：sign-off 通过 + task.md status→done + dispatch lock 释放 + schema drift (b)ack 落 notes.md
