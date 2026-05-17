@@ -54,6 +54,69 @@ def is_signed_off(verdict: dict) -> bool:
     return sig.get("decision") in SIGNOFF_PASS
 
 
+# ─── F-001 D-013 normalize helpers ────────────────────────────────────────────
+# 同 SIGNOFF_PASS 的循环依赖原因（line 40-43）：save_review 顶层 `from check_reviews import
+# _compute_hash_with_normalize` 锁定 sha256 算法，必须定义在 `import save_review` 之前，
+# 否则 save_review 拿到 ImportError 永久 stub，A1 双侧对称失效。
+
+
+def _strip_frontmatter_fields(content: str, fields: set[str]) -> str:
+    """仅在首对 `---` 之间用 re.sub 去掉 fields 列出字段的整行。
+
+    body 内（首对 `---` 之后）出现的 `status:` / `updated_at:` 字段行不处理。
+
+    Args:
+        content: 文件文本内容（含 frontmatter）
+        fields: 待 strip 字段名集合（如 {"status", "updated_at"}）
+
+    Returns:
+        去除指定字段行后的文本；frontmatter 缺失或不完整时原样返回。
+    """
+    import re
+    fm_match = re.match(r"^---\n(.*?)\n---\n", content, flags=re.DOTALL)
+    if not fm_match:
+        return content
+    fm_body = fm_match.group(1)
+    new_fm_body = fm_body
+    for field in fields:
+        new_fm_body = re.sub(
+            rf"^{re.escape(field)}:.*$\n?",
+            "",
+            new_fm_body,
+            flags=re.MULTILINE,
+        )
+    return content.replace(fm_match.group(0), f"---\n{new_fm_body}\n---\n", 1)
+
+
+def _compute_hash_with_normalize(file_path: Path, path_str: str) -> str:
+    """计算 file_path 的 sha256；若 path_str 命中 task.md 路径前缀，先 strip frontmatter 白名单字段再 hash。
+
+    A2 路径（D-001）：双侧 normalize——历史 verdict 钉的整文件 hash 在 dev 期演进字段
+    （status / updated_at）刷新后仍能匹配，杜绝 R005 假阳性。
+
+    Args:
+        file_path: 实际读取的文件路径
+        path_str: 在 verdict.artifact_hashes 中记录的相对路径键（用于判断是否为 task.md）
+
+    Returns:
+        sha256 16 进制 digest。
+    """
+    if not path_str.startswith("artifacts/tasks/") or not path_str.endswith(".md"):
+        # 非 task.md → 整文件 hash 旧行为，保兼容其他 artifact 类型
+        with file_path.open("rb") as f:
+            return hashlib.sha256(f.read()).hexdigest()
+    # task.md → 文本读 + 首对 --- 之间 strip 白名单字段
+    content = file_path.read_text(encoding="utf-8", errors="strict")
+    normalized = _strip_frontmatter_fields(content, _NORMALIZE_TASK_FIELDS)
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
+def _compute_raw_hash(file_path: Path) -> str:
+    """整文件 sha256，无 normalize。D-013 fallback 用于兼容历史 raw recorded hash。"""
+    with file_path.open("rb") as f:
+        return hashlib.sha256(f.read()).hexdigest()
+
+
 import save_review
 import canonical_phases  # canonical phase 枚举单一事实源（F-012 改自 phase_enum）
 
@@ -258,57 +321,6 @@ def _r004_needs_revision(
                        f"reviews.{phase}.conclusion=needs_attention，建议先修后切阶段")
 
 
-def _strip_frontmatter_fields(content: str, fields: set[str]) -> str:
-    """仅在首对 `---` 之间用 re.sub 去掉 fields 列出字段的整行。
-
-    body 内（首对 `---` 之后）出现的 `status:` / `updated_at:` 字段行不处理。
-
-    Args:
-        content: 文件文本内容（含 frontmatter）
-        fields: 待 strip 字段名集合（如 {"status", "updated_at"}）
-
-    Returns:
-        去除指定字段行后的文本；frontmatter 缺失或不完整时原样返回。
-    """
-    import re
-    fm_match = re.match(r"^---\n(.*?)\n---\n", content, flags=re.DOTALL)
-    if not fm_match:
-        return content
-    fm_body = fm_match.group(1)
-    new_fm_body = fm_body
-    for field in fields:
-        new_fm_body = re.sub(
-            rf"^{re.escape(field)}:.*$\n?",
-            "",
-            new_fm_body,
-            flags=re.MULTILINE,
-        )
-    return content.replace(fm_match.group(0), f"---\n{new_fm_body}\n---\n", 1)
-
-
-def _compute_hash_with_normalize(file_path: Path, path_str: str) -> str:
-    """计算 file_path 的 sha256；若 path_str 命中 task.md 路径前缀，先 strip frontmatter 白名单字段再 hash。
-
-    A2 路径（D-001）：双侧 normalize——历史 verdict 钉的整文件 hash 在 dev 期演进字段
-    （status / updated_at）刷新后仍能匹配，杜绝 R005 假阳性。
-
-    Args:
-        file_path: 实际读取的文件路径
-        path_str: 在 verdict.artifact_hashes 中记录的相对路径键（用于判断是否为 task.md）
-
-    Returns:
-        sha256 16 进制 digest。
-    """
-    if not path_str.startswith("artifacts/tasks/") or not path_str.endswith(".md"):
-        # 非 task.md → 整文件 hash 旧行为，保兼容其他 artifact 类型
-        with file_path.open("rb") as f:
-            return hashlib.sha256(f.read()).hexdigest()
-    # task.md → 文本读 + 首对 --- 之间 strip 白名单字段
-    content = file_path.read_text(encoding="utf-8", errors="strict")
-    normalized = _strip_frontmatter_fields(content, _NORMALIZE_TASK_FIELDS)
-    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
-
-
 def _r005_hash_drift(
     meta: dict,
     required_phases: list[str],
@@ -344,7 +356,13 @@ def _r005_hash_drift(
                 drifted.append((path_str, recorded, "<missing>"))
                 continue
             current = _compute_hash_with_normalize(file_path, path_str)
+            # D-013 双策略 fallback：task.md 路径下 recorded 可能是历史 raw 或新 normalize；
+            # normalize 不等时再 fallback 整文件 raw（兼容旧 save_review 写入的 raw hash 与
+            # 历史 completed 需求未触动的 raw recorded）。recorded 命中任一即 pass。
             if current != recorded:
+                if path_str.startswith("artifacts/tasks/") and path_str.endswith(".md"):
+                    if _compute_raw_hash(file_path) == recorded:
+                        continue
                 drifted.append((path_str, recorded, current))
         if drifted:
             for path_str, was, now in drifted:

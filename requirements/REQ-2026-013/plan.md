@@ -172,3 +172,16 @@ F-A / F-B / F-C 互相独立可并行；F-D 是 F-E 的前置（先修规则再�
   - 系统级 NFR（整条 R005 调用链 < 5%）由 testing 阶段 V-02 集成验证兜底（已在 requirement.md / detail-design §3.3 列出 V-02 范围）
 - **Consequences**：好——8/8 pytest 全过；保留微基准护栏防数量级回归；不动 features.json 避免 R005 自激。差——detailed-design §4.1 骨架字面 `< 5%` 与实际测试阈值 `< 200%` 在文档层有形式不一致；缓解：测试 docstring 内 D-012 引用 + 本 ADR 显式说明校准理由；testing 阶段 V-02 用集成测试落地系统级 5% 预算。
 - **时间**：2026-05-17
+
+
+### D-013 F-001 双侧对称修正——写入侧也走 normalize + 比对侧加 raw fallback
+
+- **Context**：dev→testing 切阶段 GATE-REVIEW-VERDICT 报 R005 5 个 task.md 全 stale。根因是 D-001 A2 路径数学不自洽：D-001 决议「只改比对侧 normalize，不动 reviewer 写入侧」，但 `save_review._compute_artifact_hashes` 写的是整文件 raw sha256，而 `check_reviews._compute_hash_with_normalize` 算的是 strip status/updated_at 后的 normalize sha256——只要 task.md 含这两个字段（schema 必填），两侧 hash 必不相等。F-001 落地时 `test_evolving_status_yields_same_hash` 自闭环只验比对侧 3 个 status 取值算出同 hash，没做端到端 round-trip 验证，缺口未抓到。
+- **候选**：A1 改写入侧用 normalize + 比对侧加 raw fallback（兼容历史 raw recorded）/ A2-stale 维持现状靠 escape-hatch 切阶段 / A3 撤回 task.md status 改动让 raw hash 匹配 / A4 重 sign-off detail-design refresh hash（违和 frozen 语义）。
+- **Decision**：A1。
+  - `save_review._compute_artifact_hashes`：task.md 路径用 `_compute_hash_with_normalize`，其它 artifact 维持整文件 sha256（避免连累 features.json / outline-design.md 等）
+  - `check_reviews._r005_hash_drift`：task.md 比对时 normalize 不等 → fallback `_compute_raw_hash` 比较；都不等才判 stale。fallback 兼容历史 completed 需求的 raw recorded（D-001 当时担心的真实场景：completed REQ task.md 未变动 / verdict 锁的是 raw → 走 fallback pass）
+  - REQ-2026-013 meta.yaml 一次性 schema migration：5 个 task.md hash 从 raw(pending) 替换为 normalize 算法值；detailed-design.md / features.json / outline-design.md 不动（仍 raw）
+  - 新增 round-trip 测试：`test_writer_reader_symmetric` / `test_r005_passes_when_only_status_changes` / `test_r005_raw_recorded_unchanged_file_falls_back` / `test_r005_real_drift_still_caught`
+- **Consequences**：好——双侧对称，dev 期 task.md 改 status R005 不假阳性；fallback 保 D-001 历史 completed 需求兼容；端到端 round-trip 测试堵住未来再失同步的口子。差——历史 completed 需求若 task.md 被改动 + recorded 是 raw → fallback 也救不了，会真判 stale（但这是正确行为）；新增"raw recorded 兼容"路径让逻辑稍复杂，缓解：注释 + 测试覆盖。F-001 acceptance 字面定义仍成立（A2 路径只是从「单侧 normalize」升级为「双侧对称 + 历史兼容」），未触发 features.json hash refresh。
+- **时间**：2026-05-17
