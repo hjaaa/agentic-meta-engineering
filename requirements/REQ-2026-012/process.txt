@@ -31,3 +31,5 @@
 2026-05-17 15:47:34 [save] dev 进度 4/7（F-004 done score=95；tests/ 89 处 F 类清完；6 F821 留 F-005）；next F-005（F-D2 F821 6 处手工 + 启用 CI ruff scope）
 2026-05-17 15:49:13 [save] 会话休止存档：dev 进度 4/7（本会话连做 F-003 + F-004 → done score=95 + 95；D-011 touches_guard /tmp 误记本会话触发 2 次，已 notes follow-up）；恢复点 next=F-005（F-D2：6 条 F821 手工 + CI ruff scope 启用，detail-design §2.2-B）
 2026-05-17 15:53:28 [development] F-005 派发：ruff F 类语义清理（实测 6 处 F821：2 RoutingPlan + 4 Any，2 import 全覆盖；light / haiku）
+2026-05-17 16:07:26 [signoff] REV-REQ-2026-012-code-F-005-001 approved by hj19961223@gmail.com
+2026-05-17 16:08:30 [development] F-005 done：code-review looks_clean(92) + tty signoff approved；1 minor (auxiliary-spec I001) keep 为 suggestion；dispatch lock 已释放

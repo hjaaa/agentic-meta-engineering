@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-005",
+  "status": "DONE",
+  "commit_sha": "df4ae61",
+  "files_changed": [
+    "tests/lib/test_code_review_routing.py",
+    "tests/lifecycle/test_submit_codex.py"
+  ],
+  "test_summary": "ruff check scripts tests --select=F: exit 0 (6 × F821 resolved); pytest tests/lib/test_code_review_routing.py tests/lifecycle/test_submit_codex.py: 66 passed",
+  "touches_violations": [],
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-17T07:57:29+00:00"
+}
