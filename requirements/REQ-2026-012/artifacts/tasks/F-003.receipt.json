@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-003",
+  "status": "DONE",
+  "commit_sha": "3b6c24f",
+  "files_changed": [
+    "requirements/ci.txt",
+    ".github/workflows/quality-check.yml",
+    "context/team/onboarding/learning-path/01-environment.md"
+  ],
+  "test_summary": "纯文件 diff；grep AC 全过；本地 pip install 验证延后到 CI ubuntu-latest（AC-3 自动断言）",
+  "touches_violations": [],
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-17T00:00:00+08:00"
+}
