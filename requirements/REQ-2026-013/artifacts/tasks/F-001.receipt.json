@@ -2,16 +2,16 @@
   "schema_version": "1.0",
   "feature_id": "F-001",
   "status": "DONE",
-  "commit_sha": "HEAD",
+  "commit_sha": "7a39a4af079c068e724cbf09f4a52888a148640b",
   "files_changed": [
     "scripts/lib/check_reviews.py",
     "tests/lib/test_check_reviews_normalize.py",
     "tests/lib/test_check_reviews_normalize_schema_sync.py"
   ],
-  "test_summary": "8 passed in 0.09s（pytest）；NFR 微基准按 D-012 校准为 < 200% 护栏，全过",
+  "test_summary": "8 passed in 0.09s（pytest）；NFR 微基准按 D-012 校准为 < 200% 护栏，全过；rev2 修复后 8/8 从仓库根与 tests/lib cwd 两种方式均全过",
   "touches_violations": [],
   "concerns": [],
   "missing_context": "",
   "block_reason": "",
-  "timestamp": "2026-05-17T20:05:00+08:00"
+  "timestamp": "2026-05-17T21:00:00+08:00"
 }
