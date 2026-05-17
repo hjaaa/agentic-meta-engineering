@@ -76,13 +76,13 @@ reviews:
       artifacts/features.json: 9a1021fe12f7d5666b3c44a5606d69362327e67cc8bc30f464cb3c9639c7c94f
       artifacts/outline-design.md: 3e85166063ff28132f1d18ca9e56153a70ff457942f547c2258573c64efc7ee2
       artifacts/requirement.md: 8c5b8bc7f57f52d76e67f121004532bd16dbf8f4dfcc2ec41263ef9a4bb2ffc2
-      artifacts/tasks/F-001.md: 3f96a108865fe15ccdd723c9bcb86a0529b146ad8431c5f82f2b4a789d5399ef
+      artifacts/tasks/F-001.md: 0430d8eb6103ae66f9ef6f74520a8fb1b29f27959c29ea009fbf355a001c7d83
       artifacts/tasks/F-002.md: 126e936742680edb6a88563bafba5a6d8be6dd59ca71f3cf2f36708e457fd220
-      artifacts/tasks/F-003.md: 1170a420e69441f5b05190573bad8862c791f3cd0eb610b7f0302ecf613804df
-      artifacts/tasks/F-004.md: 77da4fdb377797130e111730d147587287213e97164cc3be255cc111e8839af5
-      artifacts/tasks/F-005.md: 30776b3a0baf8f6e4331559e7f43a64ade47e7289cebaacb51d2b375f44c1e60
-      artifacts/tasks/F-006.md: 63c06dab9a0e1e0d3b50e4f854a09abe69184e1e42005617d5e9fd0c5e5defc7
-      artifacts/tasks/F-007.md: c0870e4965a48d096870b5d26623e22abbe4f16a1f7ac0b391c1c4a8b7af2b62
+      artifacts/tasks/F-003.md: 28dfaad88fccbc89601aa01341625525ea6cf4d27cbf8d0d77896cf2cdaea0f8
+      artifacts/tasks/F-004.md: 34f9d2904d7fd72fabd2a43800480cbfb7e95ebcabb4ec5a8a674a8b86ffe8ed
+      artifacts/tasks/F-005.md: b26707206d9a3a324450290421817b37b0df9e84acd74d1dc430b928f8ed3742
+      artifacts/tasks/F-006.md: e1d0d4ced68402e7ac6554cfd421bd86c1197d496af5a3bb0d8dca28f04dc3ae
+      artifacts/tasks/F-007.md: 1dd6d5ffb9f91567a4f59fac80fd7fcb78f634ba66b95b089aba456002440417
     history:
     - REV-REQ-2026-012-detail-design-001
     - REV-REQ-2026-012-detail-design-002
