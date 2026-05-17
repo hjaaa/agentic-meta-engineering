@@ -14,7 +14,7 @@ refs-requirement: true
 
 当前 requirement workflow 的启动路径是 `/workflow:run standard-8phase "<title>"`：在主工作目录下创建 `requirements/REQ-YYYY-NNN/`，调 `git checkout -b feat/req-YYYY-NNN`，后续所有阶段都在同一个工作目录中继续（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:26）。
 
-该模型满足单需求串行开发，但在以下 7 类场景暴露问题（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:34）：多 active requirements 并行被分支切换打断；数字递增 ID 依赖 max+1 扫描带来全局竞争；`REQ-YYYY-NNN` 无法从路径看出需求主题；长需求跨会话恢复容易续到错误分支；subagent / review-loop 共用同一 working tree；archive 不知道目录是否绑定隔离工作区。
+该模型满足单需求串行开发，但在以下 6 类场景暴露问题（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:34）：多 active requirements 并行被分支切换打断；数字递增 ID 依赖 max+1 扫描带来全局竞争；`REQ-YYYY-NNN` 无法从路径看出需求主题；长需求跨会话恢复容易续到错误分支；subagent / review-loop 共用同一 working tree；archive 不知道目录是否绑定隔离工作区。
 
 `context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md` 曾把 "git worktree 隔离" 列为未来扩展，触发条件为"多 active runs 文件冲突"（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:46）。本需求把该扩展提前转为一等能力，参考实现为 obra/superpowers 的 `using-git-worktrees` 与 `finishing-a-development-branch`（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:10）。
 
@@ -48,20 +48,22 @@ refs-requirement: true
 ### 场景 2：已在外部 worktree 中启动需求
 
 - 角色：在 Codex / Claude harness 自带 worktree 中工作的开发者
-- 前置：`git rev-parse --git-dir` 与 `git rev-parse --git-common-dir` 不同且非 submodule（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:225）
+- 前置：
+  - `git rev-parse --git-dir` 与 `git rev-parse --git-common-dir` 不同且非 submodule（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:225）
+  - 当前 worktree 工作区 clean（`git status --porcelain` 为空）；若有未提交改动则 fail-closed 终止并提示用户先 commit / stash / discard，**不**自动切换分支（spec 未覆盖；本需求作为安全收口，详见待确认 #4）
 - 主流程：
   1. 跑 `/workflow:run standard-8phase "..."`
   2. 系统检测到 linked worktree → 不嵌套创建（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:226）
-  3. 复用当前路径；若分支非目标 `feat/req-*` 则创建或切换分支，但不拥有目录清理权
+  3. 校验 clean → 通过后复用当前路径；若分支非目标 `feat/req-*` 则创建或切换分支，但不拥有目录清理权
   4. meta 写 `worktree.owner=external`
-- 期望结果：不出现 nested worktree；后续 archive 时不清理外部 worktree（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:231）。
+- 期望结果：不出现 nested worktree；不发生因 dirty workspace 自动切分支导致改动丢失；后续 archive 时不清理外部 worktree（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:231）。
 
 ### 场景 3：submit 后保留 worktree 处理 PR feedback
 
 - 角色：requirement 开发者
 - 前置：需求开发完成，准备提 PR
 - 主流程（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:233）：
-  1. 跑 `/requirement:submit` 或 `/workflow:submit`
+  1. 跑 `/requirement:submit`（本需求范围；spec 同时列举的 `/workflow:submit` 当前仓库无该命令，新建留作后续独立需求，详见待确认 #5）
   2. 系统推送 `feat/req-<requirement_key>` 分支并创建/更新 PR
   3. **不**调用 `git worktree remove`
   4. meta 可追加 `submitted_at` / `pr_url`
@@ -103,7 +105,7 @@ refs-requirement: true
 - 包含：
   - 新增模块 `scripts/lib/worktree_manager.py`（detect / select / ignore-check / create / setup / cleanup）与 `scripts/lib/requirement_naming.py`（slug 规则 + key 生成 + legacy 兼容）（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:259）
   - 改 `scripts/lib/workflow_run.py` / `workflow_bootstrap.py`：默认 worktree + 新 key 命名 + meta.worktree 块 + rollback 顺序（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:638）
-  - 改 `/workflow:submit` / `/requirement:submit` 输出与 archive cleanup 接入（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:647）
+  - 改 `/requirement:submit` 输出（保留 worktree 提示）与 `/requirement:archive` cleanup 接入（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:647）
   - `.claude/workflows/requirement/standard-8phase.yaml` 顶层增加 `worktree` 配置组（policy=auto/never/require/current 四种）（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:355）
   - `.gitignore` 一次性加入 `.worktrees/`；运行时 fail-closed 校验（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:594）
   - `run-state.jsonl` 的 `workflow_started` 事件扩展 worktree 摘要（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:333）
@@ -112,6 +114,7 @@ refs-requirement: true
 
 - 不包含：
   - 历史 `REQ-YYYY-NNN` 目录迁移；现有目录保持 legacy in-place（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:104）
+  - 新增 `/workflow:submit` / `/workflow:archive` slash command（spec line 13 列入影响范围但本需求不实现；当前仓库不存在该命令，本需求只改造 `/requirement:submit` / `/requirement:archive` 兼容入口；新建独立 slash command 留作后续需求，详见待确认 #5）
   - 直通分支（feature / docs / chore）默认 worktree——仅文档推荐，不自动化（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:82）
   - daemon / DB / Web Dashboard（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:79）
   - feature 级隔离；粒度是 run / requirement（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:80）
@@ -141,7 +144,7 @@ refs-requirement: true
 | 历史 ID 处理 | 迁移 / 兼容 | 兼容 legacy in-place | spec D-014（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:104） |
 | 分支前缀 | `feat/req-` 保留 / 新前缀 | 保留 | spec D-015（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:105） |
 
-## 验收（spec §13 直引 9 条 → 可测试断言）
+## 验收标准（spec §13 直引 9 条 → 可测试断言）
 
 1. `/workflow:run standard-8phase "x"` 在普通 repo 中默认创建 `requirements/YYYYMMDD-<slug>/` 与 `.worktrees/feat-req-YYYYMMDD-<slug>`；`git worktree list` 包含该 worktree（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:679）。
 2. 已在 linked worktree 中运行时不会创建 nested worktree；meta `worktree.owner=external`（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:680）。
@@ -166,3 +169,16 @@ refs-requirement: true
    - 依据：对齐 spec §5.4 其他 policy 的 fail-closed 风格（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:370）
    - 风险：错误信息不够引导用户切到 worktree
    - 验证时机：detail-design 阶段在 `worktree_manager.create_worktree` 单测中覆盖
+
+4. 外部 worktree 内 dirty workspace 处理策略 [待补充]
+   - 内容：场景 2 启动时若 `git status --porcelain` 非空，bootstrap 立即 fail-closed（exit 1），stderr 输出 `当前外部 worktree 存在未提交改动，请先 commit / stash / discard 后重试，或加 --no-worktree 显式逃生`；不尝试自动 stash / 切分支
+   - 依据：spec §4.2 未覆盖；自动切分支可能丢失 harness 已有修改（外部 worktree 由 Codex / Claude 自管，主仓脚本不应代为决策）
+   - 风险：误判 untracked 文件导致开发者频繁被拒；可通过对 `.worktrees` / `.claude/` / harness 内部目录加白名单缓解
+   - 验证时机：tech-research 阶段在 Codex / Claude harness 自带 worktree 中跑一次冒烟
+
+5. `/workflow:submit` / `/workflow:archive` 是否新建为权威入口 [待用户确认]
+   - 当前状态：仓库只有 `/requirement:submit` / `/requirement:archive`；spec line 13 与 §4.3 / §4.4 同时列出 `/workflow:submit` 形式，但当前不存在该 slash command
+   - 默认选择：本需求**不新建** workflow:* 入口，仅改 `/requirement:*` 兼容入口（语义不变 + worktree cleanup 接入）；新建 workflow:* 作为权威入口留作后续独立需求
+   - 备选：本需求一并新建 `/workflow:submit` / `/workflow:archive`，把 `/requirement:submit` / `/requirement:archive` 转为 deprecation 兼容糖
+   - 风险：默认选择会让 spec line 13 与实际范围不一致；建议同步反修 spec → bump v0.3 标注"workflow:submit/archive 留作后续"
+   - 验证时机：现在；若用户确认默认，本需求 plan.md 加 D-001，并反修 spec
