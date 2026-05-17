@@ -25,3 +25,4 @@
 2026-05-17 15:23:23 [signoff] REV-REQ-2026-012-code-F-003-001 approved by hj19961223@gmail.com
 2026-05-17 15:25:52 [development] F-003 done：code-review looks_clean(95) + tty signoff approved；dispatch lock 已释放；发现 touches_guard 流程 trap（/tmp 写入被误记）已记 notes.md follow-up
 2026-05-17 15:25:52 [save] dev 进度 3/7（F-003 done score=95；touches_guard /tmp 误记 follow-up 入 notes）；next F-004（F-D1 receipt-schema artifact_dir 修正，硬链 F-D1→F-D2→F-E）
+2026-05-17 15:28:28 [development] F-004 派发：ruff F 类机械清理 89 处 tests/（F401 65 + F841 21 + F541 3；medium / sonnet）
