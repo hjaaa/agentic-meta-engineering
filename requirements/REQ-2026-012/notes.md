@@ -15,3 +15,10 @@
 - detail-design.artifact_hashes 把 task.md 钉 hash 是 reviewer artifact 选择的过度收敛
 - 本需求 scope 内只刷新 3 处 hash（D-010），不修系统性 bug
 - 归档时另起 hotfix 需求，候选方向：reviewer Agent 排除 dev 期间会演进的 task.md frontmatter；或 R005 校验放宽到只比对文件 body
+
+## F-003 期间发现的 touches_guard 流程 trap（D-011 候选）
+
+- 主 Agent 在 dispatch lock 上锁（current_feature=F-003）期间用 Write 写 `/tmp/F-003-verdict.json` 准备 verdict 文件，被 `touches_guard.py` 误记入 `tasks/F-003.receipt.json.touches_violations[]`（2 条 `/tmp` 路径记录）
+- 这两条 violation 非 F-003 真实越界（/tmp 在仓库外），但 `GATE-TOUCHES-VIOLATION` 不区分仓库内外 → 会阻断 phase-transition / submit
+- 当下 scope 内处置：手动 Edit 把 violations 清空（本次 F-003 真实越界=0）
+- 归档时候选 hotfix 方向：`touches_guard.py` 在 PreToolUse 收到 path 时先 normalize → 仅记仓库根下相对路径的写入；`/tmp`、`/var`、`~` 等系统路径不记 violation
