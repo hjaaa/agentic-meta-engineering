@@ -22,3 +22,5 @@
 2026-05-17 19:58:50 [review:approved] REV-REQ-2026-013-code-F-001-002 looks_clean score=90 / 0 must_fix / 3 candidates 全 drop（reviewer 自打脸 rev1 自荐的 errors=strict）；待人 sign-off 后转 done
 2026-05-17 20:01:33 [signoff] REV-REQ-2026-013-code-F-001-002 approved by hj19961223@gmail.com
 2026-05-17 20:02:24 [development] F-001 done：sign-off 通过 + task.md status→done + dispatch lock 释放（current_feature=null）
+2026-05-17 20:03:56 [save] F-001 done 收口完成（rev1 needs_attention→rev2 looks_clean(90)→signoff→done→lock 释放）+plan.md D-012；恢复点 next=用户选 F-002/F-003/F-004 派发（F-005 依赖 F-004）
+2026-05-17 20:08:33 [development] F-002 派发开始（model=sonnet, complexity=light, 派 implementer subagent）
