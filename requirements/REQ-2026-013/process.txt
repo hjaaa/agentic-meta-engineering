@@ -9,3 +9,4 @@
 2026-05-17 18:41:50 [save] 会话休止存档：tech-feasibility.md 已落 commit 347b891（5 feature 全 high 可行 + 7 风险表 + 7h ≈ 1.5 人日 + 5 detail-design 待决）；sourcing strict 0/0；恢复点 next=切 tech-research → outline-design 起草 outline-design.md
 2026-05-17 18:47:37 [phase-transition] tech-research → outline-design：11 项 gate 全过；补 commit 上轮遗留（notes.md / definition-002 signoff）
 2026-05-17 18:57:07 [signoff] REV-REQ-2026-013-outline-design-001 approved by hj19961223@gmail.com
+2026-05-17 18:57:48 [phase-transition] outline-design → detail-design：11 项 gate 全过；v1 verdict looks_clean(87) + signoff approved 放行
