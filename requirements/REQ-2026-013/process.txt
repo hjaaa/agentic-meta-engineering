@@ -31,3 +31,4 @@
 2026-05-17 20:44:14 [review:approved] REV-REQ-2026-013-code-F-003-001 looks_clean(92) / 1 finding → 1 drop（B1/B2 测试断言：建议非缺陷）
 2026-05-17 20:45:47 [signoff] REV-REQ-2026-013-code-F-003-001 approved by hj19961223@gmail.com
 2026-05-17 20:46:27 [development] F-003 done：sign-off 通过 + task.md status→done + dispatch lock 释放（current_feature=null）
+2026-05-17 20:50:45 [development] F-004 派发开始（model=sonnet, complexity=light, schema drift: count 38→41 已告知 subagent）
