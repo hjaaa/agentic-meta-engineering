@@ -116,5 +116,11 @@
       "F-002 建议补 interfaces_frozen: true（detailed-design §3.2.2 已完整冻结 _get_worktree_toplevel / _is_out_of_repo 两个函数签名，含异常处理 / fail-open 语义）",
       "F-003 / F-004 / F-005 多是文档改 + 0-1 行代码，complexity 已标 light / trivial 合适，无需补 interfaces_frozen"
     ]
+  },
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-17T19:14:16.970636+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
   }
 }
