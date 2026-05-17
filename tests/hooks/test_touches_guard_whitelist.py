@@ -89,12 +89,21 @@ def _make_req(tmp_path: Path, req_id: str, feature_id: str,
 
 
 def _run(tg, req_dir: Path, file_path: str) -> dict:
-    """通过 OVERRIDE 注入 req_dir，跑 _main_inner，返回 receipt.json dict。"""
+    """通过 OVERRIDE 注入 req_dir，跑 _main_inner，返回 receipt.json dict。
+
+    F-002 引入 _is_out_of_repo cwd-driven 短路后，pytest tmp_path 下的 fixture
+    全部位于真仓库根之外 → 都会被短路不记 violation，覆盖原 TL-WL/TL-SR 用例预期。
+    monkey-patch _get_worktree_toplevel 让它返回 tmp_path（req_dir.parent.parent），
+    让 in-test fixture 路径被视为 in-repo，正确走 _is_in_touches 判定路径。
+    """
     payload = json.dumps(
         {"tool_name": "Write", "tool_input": {"file_path": file_path}}
     )
     old_env = os.environ.get("CLAUDE_DISPATCH_TEST_REQ_DIR_OVERRIDE")
     os.environ["CLAUDE_DISPATCH_TEST_REQ_DIR_OVERRIDE"] = str(req_dir)
+    original_toplevel_fn = tg._get_worktree_toplevel
+    test_toplevel = req_dir.parent.parent.resolve()  # = tmp_path
+    tg._get_worktree_toplevel = lambda: test_toplevel
     try:
         tg._main_inner(payload)
     finally:
@@ -102,6 +111,7 @@ def _run(tg, req_dir: Path, file_path: str) -> dict:
             os.environ.pop("CLAUDE_DISPATCH_TEST_REQ_DIR_OVERRIDE", None)
         else:
             os.environ["CLAUDE_DISPATCH_TEST_REQ_DIR_OVERRIDE"] = old_env
+        tg._get_worktree_toplevel = original_toplevel_fn
 
     # 通过 dispatch_state.json 读 feature_id
     state = json.loads((req_dir / ".dispatch-state.json").read_text("utf-8"))
@@ -170,12 +180,17 @@ def test_TL_WL_006_cross_req_plan_md_still_recorded(tg, tmp_path: Path) -> None:
 
 
 def test_TL_WL_007_unrelated_path_still_recorded(tg, tmp_path: Path) -> None:
-    """白名单只覆盖 6 类过程产物；其他越界路径正常记录（防过宽）。"""
+    """白名单只覆盖 6 类过程产物；其他越界路径正常记录（防过宽）。
+
+    F-002 后路径必须在 monkey-patched toplevel (=tmp_path) 子树内才会进入
+    _is_in_touches 判定；硬编码 /tmp/foo.py 会被 _is_out_of_repo 短路。
+    改用 tmp_path 下的无关 .py 文件保留"完全无关 + in-repo + 不在 touches → 记 violation"语义。
+    """
     feature_id = "F-WL7"
     req_dir = _make_req(tmp_path, "REQ-2099-001", feature_id,
                         touches=["src/something.py"])
 
-    out_of_scope = "/tmp/touches_guard_unrelated_xyz.py"
+    out_of_scope = str(tmp_path / "touches_guard_unrelated_xyz.py")
     data = _run(tg, req_dir, out_of_scope)
 
     violations = data.get("touches_violations", [])
@@ -335,7 +350,9 @@ def test_TL_ISO_001_override_isolates_writes_to_sandbox(
     outside = tmp_path / "outside" / "fake_real_repo"
     outside.mkdir(parents=True, exist_ok=True)
 
-    file_path = "totally/unrelated/file.py"  # 越界 → 必然记 violation
+    # F-002 兼容：必须 in monkey-patched toplevel (=tmp_path) 子树内，否则被
+    # _is_out_of_repo 短路。tmp_path 下任意 in-repo 越界路径都能复现"越界 → 记 violation"语义。
+    file_path = str(tmp_path / "totally/unrelated/file.py")
     data = _run(tg, req_dir, file_path)
 
     # sandbox 内 receipt.json 存在并含 1 条 violation
