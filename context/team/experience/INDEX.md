@@ -45,6 +45,8 @@
 - [`python-cli-tools-via-module-invocation.md`](python-cli-tools-via-module-invocation.md) — Makefile / shell 调 Python CLI 用 `python3 -m <tool>` 而非裸 `pip`/`pytest`；后者依赖 console-script shim 在 Homebrew Python / PEP 668 / 缺 setup-python 的 base image 会 fail
 - [`reviewer-artifact-selection-excludes-evolving-frontmatter.md`](reviewer-artifact-selection-excludes-evolving-frontmatter.md) — detail-design reviewer 钉 task.md hash 是过度收敛；dev 期 status/updated_at 必然演进触发 R005，需 reviewer 排除 frontmatter 或 R005 仅比 body
 - [`hook-path-normalization-out-of-repo.md`](hook-path-normalization-out-of-repo.md) — touches_guard 等仓库内 hook 须 normalize 仓库外路径（/tmp / /var / ~/）→ 不记 violation，避免主 Agent dispatch lock 期写临时文件触发 GATE-TOUCHES-VIOLATION 假阳性
+- [`dual-side-contract-needs-round-trip-test.md`](dual-side-contract-needs-round-trip-test.md) — 跨模块算法对称契约（writer-reader / encode-decode / 双侧 hash 比对）必须有 round-trip 端到端测试；单侧自闭环测不能证对侧等价
+- [`detail-design-nfr-estimate-needs-testing-calibration-adr.md`](detail-design-nfr-estimate-needs-testing-calibration-adr.md) — detail-design NFR 阈值是骨架估算，testing 实测偏离 > 2x 时落 D-XXX 校准 ADR 为绝对值；features.json acceptance 字面不动避免 R005 连锁
 
 ## 什么值得沉淀
 

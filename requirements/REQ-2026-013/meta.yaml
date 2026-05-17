@@ -1,6 +1,6 @@
 id: REQ-2026-013
-title: REQ-2026-012 follow-up bundle：reviewer artifact 选择 / hook 仓库外路径 normalize
-  / archive 前预检 R-rule / experience spec 与实践对齐 / test-assets 经验补节
+title: REQ-2026-012 follow-up bundle：reviewer artifact 选择 / hook 仓库外路径 normalize /
+  archive 前预检 R-rule / experience spec 与实践对齐 / test-assets 经验补节
 phase: testing
 created_at: '2026-05-17 18:03:20'
 branch: feat/req-2026-013
@@ -8,153 +8,132 @@ base_branch: develop
 project: agentic-meta-engineering
 services: []
 gates_passed:
-  - phase: definition
-    at: '2026-05-17 18:07:10'
-    via: managing-requirement-lifecycle
-  - phase: tech-research
-    at: '2026-05-17 18:29:07'
-    via: managing-requirement-lifecycle
-  - phase: outline-design
-    at: '2026-05-17 18:46:00'
-    via: managing-requirement-lifecycle
-  - phase: detail-design
-    at: '2026-05-17 18:58:00'
-    via: managing-requirement-lifecycle
-  - phase: task-planning
-    at: '2026-05-17 19:15:00'
-    via: managing-requirement-lifecycle
-  - phase: development
-    at: '2026-05-17 19:25:00'
-    via: managing-requirement-lifecycle
-  - phase: testing
-    at: '2026-05-17 21:50:00'
-    via: managing-requirement-lifecycle
+- phase: definition
+  at: '2026-05-17 18:07:10'
+  via: managing-requirement-lifecycle
+- phase: tech-research
+  at: '2026-05-17 18:29:07'
+  via: managing-requirement-lifecycle
+- phase: outline-design
+  at: '2026-05-17 18:46:00'
+  via: managing-requirement-lifecycle
+- phase: detail-design
+  at: '2026-05-17 18:58:00'
+  via: managing-requirement-lifecycle
+- phase: task-planning
+  at: '2026-05-17 19:15:00'
+  via: managing-requirement-lifecycle
+- phase: development
+  at: '2026-05-17 19:25:00'
+  via: managing-requirement-lifecycle
+- phase: testing
+  at: '2026-05-17 21:50:00'
+  via: managing-requirement-lifecycle
 pr_url: ''
 pr_number: 0
 log_layout: split
 feature_area: engineering-spec
 change_type: refactor
 affected_modules:
-  - reviewer-agent
-  - touches-guard-hook
-  - archive-runner
-  - experience-spec-and-index
-  - test-assets-experience-doc
+- reviewer-agent
+- touches-guard-hook
+- archive-runner
+- experience-spec-and-index
+- test-assets-experience-doc
 tags:
-  - debt-cleanup
-  - follow-up-bundle
-  - from-req-2026-012
+- debt-cleanup
+- follow-up-bundle
+- from-req-2026-012
 outcome: ''
 completed_at: ''
-lessons_extracted: false
+lessons_extracted: true
 reviews:
   definition:
     latest: REV-REQ-2026-013-definition-002
     conclusion: looks_clean
     reviewed_commit: 9a7e37e
     artifact_hashes:
-      artifacts/requirement.md: 
-        4e00cdc7c983606df282297156f11b384c9d2bfcea447f253c8963f82370e38c
+      artifacts/requirement.md: 4e00cdc7c983606df282297156f11b384c9d2bfcea447f253c8963f82370e38c
     history:
-      - REV-REQ-2026-013-definition-001
-      - REV-REQ-2026-013-definition-002
+    - REV-REQ-2026-013-definition-001
+    - REV-REQ-2026-013-definition-002
     stale: false
   outline-design:
     latest: REV-REQ-2026-013-outline-design-001
     conclusion: looks_clean
     reviewed_commit: a8d8987
     artifact_hashes:
-      artifacts/outline-design.md: 
-        50d8c2e50478d487dad90b1ddac80a5cce77c202bff06c2f7eb510352c545d0c
-      artifacts/requirement.md: 
-        4e00cdc7c983606df282297156f11b384c9d2bfcea447f253c8963f82370e38c
+      artifacts/outline-design.md: 50d8c2e50478d487dad90b1ddac80a5cce77c202bff06c2f7eb510352c545d0c
+      artifacts/requirement.md: 4e00cdc7c983606df282297156f11b384c9d2bfcea447f253c8963f82370e38c
     history:
-      - REV-REQ-2026-013-outline-design-001
+    - REV-REQ-2026-013-outline-design-001
     stale: false
   detail-design:
     latest: REV-REQ-2026-013-detail-design-001
     conclusion: looks_clean
     reviewed_commit: 3e1393f
     artifact_hashes:
-      artifacts/detailed-design.md: 
-        cfc8d1202db73ee446cced3e38cb4263a3af3682eeb74fab1ec6c2ccea2538ce
-      artifacts/features.json: 
-        29b954e679de213fe21f770b247ba36e034b842b54de0e7d5ce3605b44096c55
-      artifacts/outline-design.md: 
-        50d8c2e50478d487dad90b1ddac80a5cce77c202bff06c2f7eb510352c545d0c
-      artifacts/tasks/F-001.md:
-        3401436cd9efec7207375a5a4d14b05cb2cf3644dd9aadbeac36172502d4267c
-      artifacts/tasks/F-002.md:
-        1409c5e2e20b1df291e79718f3255918eb67dd41f4dd23e6c7d53ea4b7800ecb
-      artifacts/tasks/F-003.md:
-        fa6d275bb7a5147805ccf0a6291e0672cba532bdb8124a49ff3f9062df2d733e
-      artifacts/tasks/F-004.md:
-        93ab0ec343e3c3caf7c787da10e2f442937f642a736c6e7cc6b2be77c6e3ff5d
-      artifacts/tasks/F-005.md:
-        645a1322359f0fb4897e3d72e82179d484543e1babe2ad8dfca8ba698aa0b158
+      artifacts/detailed-design.md: cfc8d1202db73ee446cced3e38cb4263a3af3682eeb74fab1ec6c2ccea2538ce
+      artifacts/features.json: 29b954e679de213fe21f770b247ba36e034b842b54de0e7d5ce3605b44096c55
+      artifacts/outline-design.md: 50d8c2e50478d487dad90b1ddac80a5cce77c202bff06c2f7eb510352c545d0c
+      artifacts/tasks/F-001.md: 3401436cd9efec7207375a5a4d14b05cb2cf3644dd9aadbeac36172502d4267c
+      artifacts/tasks/F-002.md: 1409c5e2e20b1df291e79718f3255918eb67dd41f4dd23e6c7d53ea4b7800ecb
+      artifacts/tasks/F-003.md: fa6d275bb7a5147805ccf0a6291e0672cba532bdb8124a49ff3f9062df2d733e
+      artifacts/tasks/F-004.md: 93ab0ec343e3c3caf7c787da10e2f442937f642a736c6e7cc6b2be77c6e3ff5d
+      artifacts/tasks/F-005.md: 645a1322359f0fb4897e3d72e82179d484543e1babe2ad8dfca8ba698aa0b158
     history:
-      - REV-REQ-2026-013-detail-design-001
+    - REV-REQ-2026-013-detail-design-001
     stale: false
   code:
     by_feature:
       F-001:
         history:
-          - REV-REQ-2026-013-code-F-001-001
-          - REV-REQ-2026-013-code-F-001-002
+        - REV-REQ-2026-013-code-F-001-001
+        - REV-REQ-2026-013-code-F-001-002
         latest: REV-REQ-2026-013-code-F-001-002
         conclusion: looks_clean
         reviewed_commit: b46720d
         artifact_hashes:
-          artifacts/features.json: 
-            29b954e679de213fe21f770b247ba36e034b842b54de0e7d5ce3605b44096c55
-          artifacts/tasks/F-001.md: 
-            31ab4cd19c2186556b8f7b5483831b08c709feda0161e490ec7265a1e549ff70
+          artifacts/features.json: 29b954e679de213fe21f770b247ba36e034b842b54de0e7d5ce3605b44096c55
+          artifacts/tasks/F-001.md: 31ab4cd19c2186556b8f7b5483831b08c709feda0161e490ec7265a1e549ff70
         stale: false
       F-002:
         history:
-          - REV-REQ-2026-013-code-F-002-001
+        - REV-REQ-2026-013-code-F-002-001
         latest: REV-REQ-2026-013-code-F-002-001
         conclusion: looks_clean
         reviewed_commit: aef3cea
         artifact_hashes:
-          artifacts/features.json: 
-            29b954e679de213fe21f770b247ba36e034b842b54de0e7d5ce3605b44096c55
-          artifacts/tasks/F-002.md: 
-            3640c1c5c6c81ad8301a00f5a5610dd4cf2b9df13bfb3ed540f65ba3b473cf44
+          artifacts/features.json: 29b954e679de213fe21f770b247ba36e034b842b54de0e7d5ce3605b44096c55
+          artifacts/tasks/F-002.md: 3640c1c5c6c81ad8301a00f5a5610dd4cf2b9df13bfb3ed540f65ba3b473cf44
         stale: false
       F-003:
         history:
-          - REV-REQ-2026-013-code-F-003-001
+        - REV-REQ-2026-013-code-F-003-001
         latest: REV-REQ-2026-013-code-F-003-001
         conclusion: looks_clean
         reviewed_commit: 1d32b19
         artifact_hashes:
-          artifacts/features.json: 
-            29b954e679de213fe21f770b247ba36e034b842b54de0e7d5ce3605b44096c55
-          artifacts/tasks/F-003.md: 
-            3592fb47d75b6657dc6efe0e72a7a6133a9132cdd3858845bbeb8ee453ef0ca3
+          artifacts/features.json: 29b954e679de213fe21f770b247ba36e034b842b54de0e7d5ce3605b44096c55
+          artifacts/tasks/F-003.md: 3592fb47d75b6657dc6efe0e72a7a6133a9132cdd3858845bbeb8ee453ef0ca3
         stale: false
       F-004:
         history:
-          - REV-REQ-2026-013-code-F-004-001
+        - REV-REQ-2026-013-code-F-004-001
         latest: REV-REQ-2026-013-code-F-004-001
         conclusion: looks_clean
         reviewed_commit: 9a24a18
         artifact_hashes:
-          artifacts/features.json: 
-            29b954e679de213fe21f770b247ba36e034b842b54de0e7d5ce3605b44096c55
-          artifacts/tasks/F-004.md: 
-            7510463bac45f554237f5c45d873962274d779e33a32bdadd8952b7429eefd35
+          artifacts/features.json: 29b954e679de213fe21f770b247ba36e034b842b54de0e7d5ce3605b44096c55
+          artifacts/tasks/F-004.md: 7510463bac45f554237f5c45d873962274d779e33a32bdadd8952b7429eefd35
         stale: false
       F-005:
         history:
-          - REV-REQ-2026-013-code-F-005-001
+        - REV-REQ-2026-013-code-F-005-001
         latest: REV-REQ-2026-013-code-F-005-001
         conclusion: looks_clean
         reviewed_commit: 2dd15cd
         artifact_hashes:
-          artifacts/features.json: 
-            29b954e679de213fe21f770b247ba36e034b842b54de0e7d5ce3605b44096c55
-          artifacts/tasks/F-005.md: 
-            323f502c6fbbba33cff7c1d4719b729983d9edb76ed52cb1ac8d7b721e25a6c5
+          artifacts/features.json: 29b954e679de213fe21f770b247ba36e034b842b54de0e7d5ce3605b44096c55
+          artifacts/tasks/F-005.md: 323f502c6fbbba33cff7c1d4719b729983d9edb76ed52cb1ac8d7b721e25a6c5
         stale: false
