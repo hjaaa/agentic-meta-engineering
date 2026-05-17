@@ -61,11 +61,11 @@ REQ-2026-012（CI 工程化补强）在 development → testing → archive 三�
 ### 场景 4：F-D · 团队工程师写新经验文件
 
 - **角色**：团队工程师 + 文档 reviewer
-- **前置**：某需求归档时沉淀新经验到 `context/team/experience/<slug>.md`，参考 INDEX.md:64-65 规则
+- **前置**：某需求归档时沉淀新经验到 `context/team/experience/<slug>.md`，参考 INDEX.md:63-68（格式约定段） 规则
 - **主流程**：
   1. 工程师按当前规则「正文 200 字 + 四节齐全（问题/根因/解法/验证方法）」写
   2. **当前行为**：200 字硬规则与 38 邻居实际行为脱节（94.7% 违反），工程师困惑
-- **期望结果**：INDEX.md:64-65 规则改为「正文建议 600 字内，五段结构（问题/根因/解法/验证方法/关联）」，与既定实践对齐；列出 38 邻居中缺 `## 验证方法` 节的清单作为 follow-up 但本需求不补
+- **期望结果**：INDEX.md:63-68（格式约定段） 规则改为「正文建议 600 字内，五段结构（问题/根因/解法/验证方法/关联）」，与既定实践对齐；列出 38 邻居中缺 `## 验证方法` 节的清单作为 follow-up 但本需求不补
 
 ### 场景 5：F-E · `test-assets-must-be-wired-into-ci.md` 补节
 
@@ -92,6 +92,11 @@ REQ-2026-012（CI 工程化补强）在 development → testing → archive 三�
 - **F-C**：`.claude/skills/managing-requirement-lifecycle/reference/archive-rules.md` 加 §「archive 前流程提示」，强制要求主 Agent 在跑 archive_runner 前先跑 `python3 scripts/gates/run.py --trigger=ci --strict` 看 exit 0；`archive_runner` 终端反馈末段加 `🟢 archive 前请确认 ci gate exit 0` 一行 reminder（来源：requirements/REQ-2026-013/plan.md）
 - **F-D**：`context/team/experience/INDEX.md` 「格式约定」段从「正文不超过 200 字 / 必须包含：问题/根因/解法/验证方法」改为「正文建议 600 字内 / 必须包含：问题/根因/解法/验证方法/关联（关联段可空）」；同步补一段「兼容性 review」清单——列出 38 文件中缺 `## 验证方法` 节的孤例（仅本仓库已知就 1 个：`test-assets-must-be-wired-into-ci.md`），但本需求不补正文（来源：requirements/REQ-2026-013/plan.md）
 - **F-E**：`context/team/experience/test-assets-must-be-wired-into-ci.md` 把 `## 解法` 段的 PR 描述硬约束 + 手跑命令 + owner 三条抽出独立成 `## 验证方法` 节，与 97% 邻居结构一致；依赖 F-D 已合入（来源：requirements/REQ-2026-013/plan.md）
+
+### testing 阶段回归用例（来自 reviewer v1 建议）
+
+- **schema-sync 回归**（来自 plan.md D-007 reviewer 反馈）：testing 阶段加一条 pytest 用例——读 `context/team/engineering-spec/task-frontmatter-schema.yaml` 的 `enums.status` 字段名集合，与 `check_reviews.py` normalize 白名单（`{"status", "updated_at"}`）对照；若 schema 加新「dev 期演进」字段而白名单未同步则 fail。位置 `tests/lib/test_check_reviews_normalize_schema_sync.py`。
+- **F-D baseline 快照**（来自 reviewer v1 建议）：F-D commit 内附一份 `38 文件字数分布.txt` 作 baseline（min=139 / median=365 / max=668 / count=38 等统计），落 `requirements/REQ-2026-013/artifacts/experience-baseline-cjk-stats.txt`，方便未来 D-009 规则调整时回看决策当时的实证基础。
 
 ### 不包含（防 scope 蔓延）
 
