@@ -45,3 +45,4 @@
 2026-05-17 21:47:18 [phase-transition] development → testing：11 项 gate 全过 + D-013 hotfix (F-001 双侧对称 + meta hash 迁移 19b3f87)
 2026-05-17 21:52:30 [testing] V-01~V-06 全过：pytest 14 pass + bats 5 ok(1 skip NFR baseline) + ci strict 13 REQ EXIT=0
 2026-05-17 21:57:01 [testing] V-03 NFR baseline 固化：p99 ≈ 162ms / 阈值 < 300ms (D-014 commit d61b01c)
+2026-05-17 22:02:16 [save] 经验沉淀 2 条到 context/team/experience/ + lessons_extracted=true（a05b53d）
