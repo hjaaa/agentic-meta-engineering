@@ -113,8 +113,12 @@ REQ-2026-012（CI 工程化补强）在 development → testing → archive 三�
 
 ## 待澄清清单
 
-1. **F-B worktree / submodule 边界**：[待补充]——`git rev-parse --show-toplevel` 在 worktree（`git worktree add ../wt-feat-xxx`）下返回主仓根还是 worktree 根？submodule 下又如何？需 tech-research 阶段单跑一次实验；假设 worktree 场景下 `Path.resolve()` 后能正确识别为仓库根之下，依据是 git 文档说 worktree 的 GIT_DIR 不同但工作树 root 仍是子目录；风险：worktree 反向链接路径可能让 resolve 出非 toplevel 路径；验证时机 tech-research 第一步。
-2. **F-A normalize 边界**：[待补充]——只 strip `status` / `updated_at` 两个字段是否够？是否还有其它 dev 期会演进的 frontmatter 字段（如 `assignee` / `due_date`）？需扫 `task-frontmatter-schema.yaml` 全集，看哪些字段语义上属于「运行时状态」而非「设计内容」；假设当前 schema 只有 status / updated_at 两个会演进，其余如 complexity / depends_on / touches 都是设计期定的；验证时机 tech-research 阶段读 schema 列清单。
-3. **F-C `--trigger=ci` 是否能过滤单 req**：[待补充]——`scripts/gates/run.py --trigger=ci --strict` 默认全仓扫，本需求归档前预检希望只扫当前 req；需看 plugin precheck 是否支持 `--req=<id>` 过滤；假设支持（runner 的 `requirement_id` 已是 CLI 字段），但 ci 的 review_verdict_ci.run_all_requirements 是无 req 参数的全扫；验证时机 tech-research 第二步实测命令。
-4. **F-D 600 字弹性上限是否合理**：[待用户确认]——基于 38 文件 median 365 / max 668 的统计；600 字覆盖 ~95% 既定文件；也可以选 800 字（覆盖 ~99%）或 500 字（与 median 接近的硬约束）。
-5. **F-E 是否在本需求合？**：[待用户确认]——F-E 依赖 F-D 合入；如果坚持「整批合一」PR，则 F-E 必须等 F-D 同 PR 内先合，order 上 F-D commit → F-E commit。
+definition 一轮回灯后 5 项均已闭环 → 见 plan.md ADR D-006~D-010：
+
+1. **F-B worktree / submodule 边界** → **已闭环**（plan.md D-006）：worktree 场景实测验证按 cwd-driven normalize 工作正常（来源：requirements/REQ-2026-013/plan.md）
+2. **F-A normalize 字段集合** → **已闭环**（plan.md D-007）：task-frontmatter-schema 9 字段扫描，dev 期演进仅 status + updated_at 2 个，其余设计期 frozen（来源：context/team/engineering-spec/task-frontmatter-schema.yaml）
+3. **F-C `--trigger=ci` 单 req filter** → **已闭环**（plan.md D-008）：ci trigger 不支持 --req，B3 路径文档加 refresh-only-current-req 子句（来源：scripts/gates/plugins/review_verdict.py）
+4. **F-D 弹性上限选定** → **已闭环**（plan.md D-009）：800 字（覆盖 38 邻居 ~99%）（来源：requirements/REQ-2026-013/plan.md）
+5. **F-E 同 PR 合入顺序** → **已闭环**（plan.md D-010）：F-D commit → F-E commit，同 PR 内（来源：requirements/REQ-2026-013/plan.md）
+
+tech-research 阶段不再需要回头处理这 5 项；可直接进入预研逐 feature 的可行性评估 + 工作量预估。

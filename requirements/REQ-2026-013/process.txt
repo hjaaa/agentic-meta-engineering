@@ -1,3 +1,4 @@
 [bootstrap]
 2026-05-17 18:07:10 [phase-transition] bootstrap → definition：5 项 error gate 全过；1 warning W003 (plan.md 范围段「不包含」子条目缺，留 definition draft 时补)
 2026-05-17 18:15:06 [save] requirement.md 起草完成（5 feature 验收 / 5 决策 D-001~D-005 前置闭环 / 5 待澄清条目）；sourcing strict 0/0；待你确认进 tech-research 阶段
+2026-05-17 18:21:20 [save] definition 一轮回灯收口：D-006~D-010 决议入决策表（F-B worktree 实测 cwd-driven OK / F-A normalize 仅 status+updated_at / F-C ci 无 --req filter → 加 refresh-only-current-req 子句 / F-D 800 字 / F-E F-D→F-E commit 顺序）；5 待澄清全闭环；sourcing strict 0/0
