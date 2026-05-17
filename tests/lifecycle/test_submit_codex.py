@@ -360,7 +360,7 @@ def test_v09_constant_uniqueness() -> None:
     )
     # grep 返回匹配行列表
     matches = [line.strip() for line in result.stdout.strip().splitlines() if line.strip()]
-    print(f"V-09 grep 命中：\n" + "\n".join(matches))
+    print("V-09 grep 命中：\n" + "\n".join(matches))
 
     # 必须有且仅有一处命中
     assert len(matches) == 1, (

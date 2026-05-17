@@ -13,7 +13,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _LIB_DIR = _REPO_ROOT / "scripts" / "lib"
@@ -21,7 +20,7 @@ if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
 import check_sourcing  # noqa: E402
-from common import Report, Severity  # noqa: E402
+from common import Report  # noqa: E402
 
 
 def _run_check(tmp_path: Path, content: str, name: str = "doc.md") -> Report:

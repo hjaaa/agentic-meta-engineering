@@ -16,11 +16,9 @@ F-004 §4.3 / TC-F4-5 验收测试覆盖：
 """
 from __future__ import annotations
 
-import json
 import subprocess
 import sys
-from collections import defaultdict
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -100,7 +98,6 @@ def test_normal_flush_writes_json_and_archives(isolated_dirs):
     assert log_line in content
 
     # .log 应被 mv 到 .queue.done
-    archived = queue_done_dir / "2026-05-04" / "2026-05-04.log"
     today_str = date.today().strftime("%Y-%m-%d")
     done_today = queue_done_dir / today_str / "2026-05-04.log"
     assert done_today.exists(), f"Expected log archived to .queue.done/{today_str}/"

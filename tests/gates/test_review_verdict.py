@@ -9,7 +9,6 @@
 """
 from __future__ import annotations
 
-import pytest
 
 from plugins.base import GateContext, Skip
 from plugins import review_verdict as plugin_mod

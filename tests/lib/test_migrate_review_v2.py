@@ -14,7 +14,6 @@ import json
 import sys
 from pathlib import Path
 
-import pytest
 
 _LIB_DIR = Path(__file__).resolve().parents[2] / "scripts" / "lib"
 if str(_LIB_DIR) not in sys.path:
@@ -105,7 +104,7 @@ def test_scan_item_has_correct_path_and_data(tmp_path):
 
 def test_render_dry_run_contains_path_conclusion_advice(tmp_path):
     """render_dry_run_report 每行包含 path :: conclusion :: 建议。"""
-    f = _write_verdict(tmp_path, "REQ-2026-001", "definition-001.json", "approved")
+    _write_verdict(tmp_path, "REQ-2026-001", "definition-001.json", "approved")
     items = mv.scan_old_verdicts(tmp_path / "requirements")
     report = mv.render_dry_run_report(items)
 

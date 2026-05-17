@@ -15,14 +15,13 @@ import json
 import sys
 from pathlib import Path
 
-import pytest
 
 _LIB_DIR = Path(__file__).resolve().parents[2] / "scripts" / "lib"
 if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
 from check_reviews import _r006_supersedes_chain  # noqa: E402
-from common import Report, Severity  # noqa: E402
+from common import Report  # noqa: E402
 
 _REQ = "REQ-2099-R006"
 

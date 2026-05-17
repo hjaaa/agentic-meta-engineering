@@ -12,7 +12,6 @@ import json
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-import pytest
 
 # tests/gates/conftest.py 已注入 scripts/gates 到 sys.path
 import audit
@@ -47,7 +46,7 @@ def test_write_audit_calls_subprocess_once():
     audit_dict = _make_audit_dict("ci")
     with patch("audit.subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0)
-        result = audit.write_audit(audit_dict)
+        audit.write_audit(audit_dict)
         assert mock_run.call_count == 1, (
             f"Expected subprocess.run called once, got {mock_run.call_count}"
         )

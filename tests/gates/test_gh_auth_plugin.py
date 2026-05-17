@@ -8,10 +8,8 @@ from __future__ import annotations
 import subprocess
 from types import SimpleNamespace
 
-import pytest
 
 from plugins.base import Decision, GateContext
-from plugins import gh_auth as plugin_mod
 from plugins.gh_auth import GhAuthGate, _check_gh_auth
 
 

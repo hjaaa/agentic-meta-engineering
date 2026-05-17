@@ -73,7 +73,7 @@ def test_run_py_no_bypass_normal(tmp_path):
     env = os.environ.copy()
     env.pop("CLAUDE_GATES_GLOBAL_BYPASS", None)
 
-    result = subprocess.run(
+    subprocess.run(
         [sys.executable, str(_GATES_DIR / "run.py"), "--trigger=ci"],
         cwd=str(tmp_path),
         env=env,
@@ -334,7 +334,7 @@ def test_run_py_bypass_whitespace_only_reason_rejected(tmp_path):
     env["CLAUDE_GATES_GLOBAL_BYPASS"] = "   "  # 纯空白，strip 后 < 8
     env["CLAUDE_GATES_AUDIT_ROOT"] = str(tmp_path)
 
-    result = subprocess.run(
+    subprocess.run(
         [sys.executable, str(_GATES_DIR / "run.py"), "--trigger=ci"],
         cwd=str(tmp_path),
         env=env,
@@ -358,7 +358,7 @@ def test_run_py_bypass_short_reason_rejected(tmp_path):
     env["CLAUDE_GATES_GLOBAL_BYPASS"] = "abc"  # 3 字符 < 8
     env["CLAUDE_GATES_AUDIT_ROOT"] = str(tmp_path)
 
-    result = subprocess.run(
+    subprocess.run(
         [sys.executable, str(_GATES_DIR / "run.py"), "--trigger=ci"],
         cwd=str(tmp_path),
         env=env,

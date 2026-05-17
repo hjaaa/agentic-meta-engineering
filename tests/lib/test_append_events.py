@@ -14,7 +14,6 @@ from __future__ import annotations
 import hashlib
 import json
 import multiprocessing
-import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -27,7 +26,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts" / "lib"))
 
 from append_events import (
     MAX_BATCH_PAYLOAD_BYTES,
-    MAX_INLINE_FIELD_BYTES,
     PayloadTooLargeError,
     append_events,
     append_events_with_manifest,
@@ -318,7 +316,7 @@ def test_ac6_concurrent_index_append(tmp_path: Path) -> None:
     # 验证每行的 sha256 与对应 manifest 文件一致
     for line in lines:
         parts = line.split()
-        event_id, field_dotted, sha256_hex, size_str = parts[0], parts[1], parts[2], parts[3]
+        event_id, _, sha256_hex, _ = parts[0], parts[1], parts[2], parts[3]
         manifest_file = run_dir / "manifest" / f"{event_id}.txt"
         assert manifest_file.exists(), f"manifest file missing: {manifest_file}"
         content = manifest_file.read_bytes()

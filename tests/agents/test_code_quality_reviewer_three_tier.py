@@ -69,8 +69,6 @@ def test_conclusion_examples_updated():
 
     # 统计 "conclusion": "looks_clean/needs_attention/blocked" 出现次数
     looks_clean_count = content.count('"conclusion": "looks_clean"')
-    needs_attention_count = content.count('"conclusion": "needs_attention"')
-    blocked_count = content.count('"conclusion": "blocked"')
 
     # 至少应该有示例
     assert looks_clean_count >= 1, "示例中缺少 conclusion=looks_clean"

@@ -12,7 +12,6 @@ from __future__ import annotations
 import subprocess
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from plugins.base import Decision, GateContext
 from plugins import ahead_of_origin as plugin_mod

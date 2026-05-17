@@ -282,7 +282,6 @@ class TestOSErrorWrappedAsWorkflowError:
         mock os.open 抛 OSError（模拟磁盘满 / 权限不足），断言 append_event
         抛出 WorkflowError 而非透出原始 OSError（P-2 H-7+H-14 修复验证）。
         """
-        import os
         from common import WorkflowError
         from run_state import append_event as _append_event
 

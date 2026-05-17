@@ -20,7 +20,6 @@ import json
 import sys
 from pathlib import Path
 
-import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "scripts" / "lib"))
@@ -28,7 +27,6 @@ sys.path.insert(0, str(REPO_ROOT / "scripts" / "lib"))
 import workflow_status  # noqa: E402
 from workflow_status import (  # noqa: E402
     _is_stale,
-    _classify_nodes,
     _infer_awaiting_kind,
     _blocked_reason,
     _render_status,
@@ -305,7 +303,7 @@ def test_no_verbose_output_matches_render_status(tmp_path, capsys):
     runs_dir = tmp_path / "runs"
     runs_dir.mkdir(exist_ok=True)
 
-    rc = main([run_id, "--verbose"], repo_root=tmp_path)
+    main([run_id, "--verbose"], repo_root=tmp_path)
     captured_verbose = capsys.readouterr().out
 
     rc2 = main([run_id], repo_root=tmp_path)

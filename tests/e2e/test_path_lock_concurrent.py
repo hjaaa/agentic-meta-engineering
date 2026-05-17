@@ -15,12 +15,10 @@ from __future__ import annotations
 
 import json
 import multiprocessing
-import os
 import sys
 import time
 from pathlib import Path
 
-import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -159,7 +157,6 @@ def test_path_lock_concurrent_second_process_fails(tmp_path: Path) -> None:
     assert ready_event.wait(timeout=2.0), "进程 A 未能在 2s 内取锁并发出 ready 信号"
 
     # B 在 A 持锁后 100ms 内启动
-    t_b_start = time.perf_counter()
     proc_b = ctx.Process(
         target=_run_process_b,
         args=(str(root), run_id, result_queue),
@@ -167,7 +164,6 @@ def test_path_lock_concurrent_second_process_fails(tmp_path: Path) -> None:
     )
     proc_b.start()
     proc_b.join(timeout=5.0)
-    elapsed_ms = (time.perf_counter() - t_b_start) * 1000
 
     assert not proc_b.is_alive(), "进程 B 应在 5s 内结束"
 

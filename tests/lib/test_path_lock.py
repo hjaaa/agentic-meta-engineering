@@ -29,7 +29,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "scripts" / "lib"))
 
 import path_lock
-from path_lock import LockBusyError, LockHandle, acquire, release, _is_stale_by_mtime
+from path_lock import LockBusyError, acquire, release, _is_stale_by_mtime
 
 
 # ---------------------------------------------------------------------------
@@ -363,8 +363,6 @@ def test_atexit_unregister_precision_cross_handle(tmp_path: Path) -> None:
     release(handle_a)
     assert handle_a._release_fn is None
     assert handle_b._release_fn is not None
-    # 反向查询 atexit 注册表（CPython 实现细节，但稳定）
-    registered = [cb for cb in getattr(__import__("atexit"), "_exithandlers", [])]
     # _exithandlers 在新版 CPython 已不导出；改用反向尝试 unregister 验证存在性
     import atexit as _atexit
     # 若 B 注册仍在，unregister 返回 None 且后续真正 release 走 idempotent 路径

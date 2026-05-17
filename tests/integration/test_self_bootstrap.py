@@ -231,7 +231,6 @@ def test_v07_historic_req_ci_schema_gates_skipped_when_no_changed_files(tmp_path
     assert proc.returncode != 2, f"runner 不应崩溃，实际 {proc.returncode}"
 
     audit = _read_audit_entry(audit_root)
-    skipped = _skipped_gate_ids(audit)
     passed = _passed_gate_ids(audit)
     failed = _failed_gate_ids(audit)
 

@@ -8,10 +8,8 @@ from __future__ import annotations
 import subprocess
 from types import SimpleNamespace
 
-import pytest
 
 from plugins.base import Decision, GateContext
-from plugins import base_reachable as plugin_mod
 from plugins.base_reachable import BaseReachableGate, _check_branch_reachable, _resolve_base_branch
 
 

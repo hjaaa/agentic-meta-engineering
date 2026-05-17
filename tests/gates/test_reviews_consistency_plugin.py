@@ -268,8 +268,6 @@ def test_run_returns_fail_when_get_staged_files_returns_none():
     ctx.changed_files 为空，迫使 run() 调用 _get_staged_files。
     """
     gate = plugin_mod.ReviewsConsistencyGate()
-    # 包含相关文件，让 precheck 不 skip；ctx.changed_files 用于 precheck，run 内用 _get_staged_files
-    ctx = _make_ctx(changed_files=["requirements/REQ-2026-002/meta.yaml"])
     # ctx.changed_files 非空时 run() 优先使用它，需清空以走 _get_staged_files 路径
     ctx_empty = _make_ctx(changed_files=[])
     with patch.object(plugin_mod, "_get_staged_files", return_value=None):
