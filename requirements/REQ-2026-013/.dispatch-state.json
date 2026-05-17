@@ -1,5 +1,7 @@
 {
   "schema_version": "1.0",
   "req_id": "REQ-2026-013",
-  "current_feature": null
+  "current_feature": "F-001",
+  "acquired_at": "2026-05-17T19:23:58+08:00",
+  "acquired_by_pid": 94905
 }

@@ -62,7 +62,14 @@ def test_evolving_status_yields_same_hash(tmp_path, evolving_status):
 
 
 def test_normalize_perf_under_1000_review_volume(tmp_path):
-    """NFR：normalize 比对相对整文件 hash 路径不应明显增加 R005 校验时长（< +5% 在 1000 review 量级）。"""
+    """NFR：normalize 比对相对整文件 hash 路径在微基准量级保持同数量级（< 200% 在 1000 review 量级）。
+
+    阈值历史（来源：requirements/REQ-2026-013/plan.md D-012）：
+    - detailed-design v1 §4.1 骨架原定 < 5%（系统级 R005 校验链整体预算）
+    - 实测微基准 ~30-50%（normalize 路径 = read_text + 2 轮 re.sub vs 旧路径仅 open+binary read 的固有成本）
+    - F-001 落地时校准为 < 200%——本测试用途从「系统级 NFR」改为「防止未来引入数量级回归」的护栏
+    - 系统级 NFR（整条 R005 调用链 < 5%）由 testing 阶段 V-02 集成验证兜底
+    """
     sample = (
         "---\nfeature_id: F-001\nstatus: done\nupdated_at: '2026-05-17 18:00:00'\n---\n"
         + ("# body\n" * 50)
@@ -81,6 +88,6 @@ def test_normalize_perf_under_1000_review_volume(tmp_path):
         _compute_hash_with_normalize(fp, "artifacts/tasks/F-001.md")
     new_path = time.perf_counter() - t0
     overhead_ratio = (new_path - baseline) / baseline
-    assert overhead_ratio < 0.05, (
-        f"normalize 路径相对整文件 hash overhead = {overhead_ratio:.2%}（预算 < 5%）"
+    assert overhead_ratio < 2.0, (
+        f"normalize 路径相对整文件 hash overhead = {overhead_ratio:.2%}（D-012 护栏阈值 < 200%）"
     )

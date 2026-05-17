@@ -14,3 +14,5 @@
 2026-05-17 19:14:16 [signoff] REV-REQ-2026-013-detail-design-001 approved by hj19961223@gmail.com
 2026-05-17 19:14:57 [phase-transition] detail-design → task-planning：11 项 gate 全过；v1 verdict looks_clean(88) + signoff approved 放行
 2026-05-17 19:17:36 [save] task-planning 就绪：5 task 全 pending / dispatch-state 初始化；恢复点 next=用户选 F-xxx 开始派发
+2026-05-17 19:20:11 [phase-transition] task-planning → development：11 项 gate 全过（EXIT=0）；准备派发 F-001 进开发实施
+2026-05-17 19:21:51 [development] F-001 派发开始（model=sonnet, complexity=medium, 派 implementer subagent）
