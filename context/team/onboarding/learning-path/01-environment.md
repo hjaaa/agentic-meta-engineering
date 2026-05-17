@@ -22,7 +22,12 @@
 骨架的 Hook / 门禁脚本依赖以下 Python 包：
 
 ```bash
-pip install pyyaml
+# Python 依赖（与 CI workflow 同源）
+pip install -r requirements/ci.txt
+
+# 系统级工具（CI 由 apt-get 安装，本地按 OS 选）：
+#   macOS:  brew install bats-core hyperfine
+#   Ubuntu: sudo apt-get install bats hyperfine
 ```
 
 无 pyyaml 时 meta.yaml 解析会失败，门禁脚本会报错。Homebrew 或系统 Python 都可安装。

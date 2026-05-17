@@ -158,6 +158,6 @@ def test_standard_8phase_loadable():
                 missing_prompt_files.append(pf_value)
 
     assert not missing_prompt_files, (
-        f"以下 prompt_file 路径不存在:\n"
+        "以下 prompt_file 路径不存在:\n"
         + "\n".join(f"  {p}" for p in missing_prompt_files)
     )

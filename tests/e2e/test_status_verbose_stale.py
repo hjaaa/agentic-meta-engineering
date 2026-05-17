@@ -196,10 +196,9 @@ def test_e2e_incomplete_dispatch_via_main(tmp_path, capsys, monkeypatch):
          "data": {"workflow_name": "standard-8phase"}},
         {"type": "node_started", "node_id": "N1", "ts": "2026-05-14T00:01:00Z"},
     ]
-    run_dir = _make_run_dir(tmp_path, run_id, events)
+    _make_run_dir(tmp_path, run_id, events)
     monkeypatch.setattr(workflow_status, "STALE_THRESHOLD_MINUTES", 30)
 
-    import run_state as rs_mod
     from run_state import RunState
 
     original_rebuild = RunState.rebuild

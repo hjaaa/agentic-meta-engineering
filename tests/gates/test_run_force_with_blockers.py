@@ -19,7 +19,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _GATES_DIR = _REPO_ROOT / "scripts" / "gates"
@@ -47,7 +46,7 @@ def test_force_with_blockers_valid_reason(monkeypatch, tmp_path, capsys):
     此处只验证 main() 不因 reason 格式校验 return 1；
     后续 gate 执行可能因没有真实 req 而 return 2，均可接受。
     """
-    result = _run_main(
+    _run_main(
         ["--trigger=submit", "--force-with-blockers=临时绕过：已有 Jira 跟进"],
         monkeypatch,
     )
@@ -84,7 +83,7 @@ def test_force_with_blockers_reason_too_long(monkeypatch, capsys):
 def test_force_with_blockers_reason_exactly_1024(monkeypatch, capsys):
     """reason 恰好 1024 字符 → 不因长度校验返回 1。"""
     reason_1024 = "B" * 1024
-    result = _run_main(
+    _run_main(
         ["--trigger=submit", f"--force-with-blockers={reason_1024}"],
         monkeypatch,
     )
@@ -119,7 +118,7 @@ def test_force_with_blockers_reason_control_char_bel(monkeypatch, capsys):
 def test_force_with_blockers_reason_tab_newline_allowed(monkeypatch, capsys):
     """reason 含 \\t 和 \\n（allow-list）→ 不因控制字符校验返回 1。"""
     reason_with_whitespace = "原因：\t多行\n说明"
-    result = _run_main(
+    _run_main(
         ["--trigger=submit", f"--force-with-blockers={reason_with_whitespace}"],
         monkeypatch,
     )

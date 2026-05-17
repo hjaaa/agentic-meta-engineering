@@ -208,7 +208,7 @@ class TestLoadWorkflowSchemaGate:
         captured = capsys.readouterr()
         # render() 至少含 "ERROR" 或 "W1" 字样（load_workflow 报告内容）
         assert captured.err.strip(), (
-            f"非法 yaml 时 stderr 应含校验报告，实际 stderr 为空"
+            "非法 yaml 时 stderr 应含校验报告，实际 stderr 为空"
         )
         # 检查报告中包含错误信息（W 开头错误码 或 "error" / "ERROR" 字样）
         stderr_lower = captured.err.lower()

@@ -18,7 +18,6 @@ import json
 import sys
 from pathlib import Path
 
-import pytest
 
 # 确保 scripts/gates 在 sys.path
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -202,7 +201,6 @@ def test_receipt_absent_skipped_not_failed(tmp_path):
     GATE-POST-DEV-RECEIPT 负责缺失报错；本 gate 仅跳过缺失 feature。
     """
     req_dir = tmp_path / "REQ-TEST"
-    tasks_dir = req_dir / "artifacts" / "tasks"
 
     _make_features_json(req_dir / "artifacts", ["F-001"])
     # 故意不写 F-001.receipt.json

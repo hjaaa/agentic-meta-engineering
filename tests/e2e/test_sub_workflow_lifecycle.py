@@ -479,7 +479,6 @@ def test_ac05_mock_dispatch_node_completed_output(
 
     # AC-05 核心断言：output 非空
     for ev in completed:
-        output = ev.get("data", {}).get("output")
         assert any(
             e["type"] == "node_completed" and len(json.dumps(e["data"]["output"])) > 0
             for e in completed

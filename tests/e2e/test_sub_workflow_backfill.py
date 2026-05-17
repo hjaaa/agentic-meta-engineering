@@ -14,7 +14,6 @@ import json
 import sys
 from pathlib import Path
 
-import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "scripts" / "lib"))
@@ -22,7 +21,6 @@ sys.path.insert(0, str(REPO_ROOT / "scripts" / "lib"))
 from run_state import RunState, append_event  # noqa: E402
 from workflow_continue import _main_loop  # noqa: E402
 from workflow_loader import load_workflow  # noqa: E402
-from workflow_scheduler import _select_next_dispatch_target  # noqa: E402
 
 
 PARENT_FIXTURE = REPO_ROOT / "tests" / "fixtures" / "workflow_parent_sub.yaml"

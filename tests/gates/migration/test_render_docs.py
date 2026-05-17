@@ -11,9 +11,7 @@
 from __future__ import annotations
 
 import sys
-import textwrap
 from pathlib import Path
-from unittest.mock import patch, mock_open
 
 import pytest
 import yaml

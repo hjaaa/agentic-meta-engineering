@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-002",
+  "status": "DONE",
+  "commit_sha": "d7624d2d5d15002a3ca5c17f20996d99375c0155",
+  "files_changed": [
+    ".claude/hooks/tests/test_protect-branch.sh",
+    ".claude/hooks/tests/test_protect-reviews.sh"
+  ],
+  "test_summary": "bats tests/hooks/test_pre_tool_use_guard.bats: 32/32 passed (V-01 develop/main/master block + V-03 reviews write-protect + 14 Bash redirect patterns)",
+  "touches_violations": [],
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-16T14:19:03Z"
+}

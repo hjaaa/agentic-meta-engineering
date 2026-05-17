@@ -16,13 +16,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "scripts" / "lib"))
 
 from workflow_loader import (  # noqa: E402
-    DiscoveredWorkflow,
     LoadResult,
     discover_workflows,
     load_workflow,
