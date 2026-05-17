@@ -599,6 +599,8 @@ def _render_summary(result: ArchiveResult) -> str:
         f"   local branch:  {icon['local_branch'].get(result.local_branch, '?')} {result.local_branch}",
         f"   remote branch: {icon['remote_branch'].get(result.remote_branch, '?')} {result.remote_branch}",
     ]
+    lines.append("")  # 空行分隔
+    lines.append("🟢 archive 前请确认 ci gate exit 0：python3 scripts/gates/run.py --trigger=ci --strict")
     if result.error_messages:
         lines.append("   errors:")
         for msg in result.error_messages:

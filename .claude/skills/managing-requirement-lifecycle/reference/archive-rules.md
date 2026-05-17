@@ -86,6 +86,37 @@ PR merged ──┐
 
 ---
 
+## archive 前 CI gate 预检（D-002 / D-008）
+
+5 项硬门禁过后、调 `archive_requirement` **之前**，主 Agent 必须先执行：
+
+```bash
+python3 scripts/gates/run.py --trigger=ci --strict
+```
+
+期望 `exit 0` 才继续 archive。**为什么需要这一步**：framework R-rule 全集（R001~R007）
+仅在 `--trigger=ci` 下完整跑（来源：scripts/gates/registry.yaml），phase-transition / submit
+触发的 R-rule 子集可能未覆盖所有 stale 场景；archive 推 chore PR 到 develop 后才在 CI 暴露
+就是 hotfix（详见 `context/team/experience/archive-completed-triggers-framework-rule-fullset.md`）。
+
+### refresh-only-current-req 处置原则（D-008）
+
+`--trigger=ci` 不支持 `--req` filter（来源：scripts/gates/plugins/review_verdict.py）；预检会扫
+**全仓所有需求**，可能暴露其它历史 REQ 的 R005 hash drift。处置：
+
+1. 列出所有 R005 finding 对应的 REQ（按 finding 信息中的 `requirement_id` / `meta_path` 字段分类）
+2. **当前正在归档的 REQ**：refresh hash（reviewer Agent 重审 + signoff），必须修
+3. **其它历史 REQ**：单独记 follow-up 不强行修；若所有 R005 finding 都属于其它 REQ → 手动 ack 后继续 archive
+4. 主 Agent 在 `notes.md` 追加一行记录手动 ack 的 REQ 列表 + 原因
+
+### 升级路径（B1 / B2）
+
+本步骤是 B3 路径——纯文档兜底 + 终端 reminder（D-002）。如果未来 archive 月频次显著上升导致
+人执行流程不可靠，可升级为 B1（archive_runner 临时 yaml override 跑 R-rule 全集）或 B2（写后
+rollback）路径。
+
+---
+
 ## 2. 5 步执行（预检通过后）
 
 ### 2.1 原子写 meta.yaml
