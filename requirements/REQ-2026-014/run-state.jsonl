@@ -1,0 +1,1 @@
+{"type": "workflow_started", "run_id": "REQ-2026-014", "data": {"workflow_name": "standard-8phase", "arguments": "worktree 隔离能力完整迁移", "template_path": ".claude/workflows/requirement/standard-8phase.yaml", "title": "worktree 隔离能力完整迁移"}, "ts": "2026-05-17T15:36:47Z"}
