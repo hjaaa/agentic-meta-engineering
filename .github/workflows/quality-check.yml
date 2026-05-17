@@ -31,7 +31,7 @@ jobs:
           git config --global user.name "CI Runner"
 
       - name: Install dependencies
-        run: pip install pyyaml ruamel.yaml "pathspec>=0.12,<1.0" ruff pytest
+        run: pip install -r requirements/ci.txt
 
       - name: Install bats-core
         run: |

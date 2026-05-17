@@ -1,0 +1,7 @@
+# REQ-2026-012 F-003：CI / 本地共享的 Python 依赖清单
+# 非 Python 工具 (bats / hyperfine) 由 workflow apt-get + onboarding 文档说明
+pyyaml
+ruamel.yaml
+pathspec>=0.12,<1.0
+ruff
+pytest
