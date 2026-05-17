@@ -47,6 +47,7 @@
 - [`hook-path-normalization-out-of-repo.md`](hook-path-normalization-out-of-repo.md) — touches_guard 等仓库内 hook 须 normalize 仓库外路径（/tmp / /var / ~/）→ 不记 violation，避免主 Agent dispatch lock 期写临时文件触发 GATE-TOUCHES-VIOLATION 假阳性
 - [`dual-side-contract-needs-round-trip-test.md`](dual-side-contract-needs-round-trip-test.md) — 跨模块算法对称契约（writer-reader / encode-decode / 双侧 hash 比对）必须有 round-trip 端到端测试；单侧自闭环测不能证对侧等价
 - [`detail-design-nfr-estimate-needs-testing-calibration-adr.md`](detail-design-nfr-estimate-needs-testing-calibration-adr.md) — detail-design NFR 阈值是骨架估算，testing 实测偏离 > 2x 时落 D-XXX 校准 ADR 为绝对值；features.json acceptance 字面不动避免 R005 连锁
+- [`dispatch-precheck-task-status-flip-after-agent-call.md`](dispatch-precheck-task-status-flip-after-agent-call.md) — 派 subagent 时 task.md.status 翻 in-progress 必须在调 Agent 工具之后；提前翻被 hook B-1 拦下 BLOCKED
 
 ## 什么值得沉淀
 

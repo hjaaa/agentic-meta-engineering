@@ -27,18 +27,25 @@
 
 > 来源：plan.md ADR D-015（task-planning 审阅 #3 派发顺序漂移闭环）
 
-## 派发前置校验
+## 派发流程（顺序硬约束）
 
-收到用户 "F-xxx 开始做" 或 "F-xxx 实现" 后：
+> ⚠️ **顺序红线**：调 Agent 工具时 `task.md.status` 必须仍为 `pending`——`dispatch_precheck.py` B-1
+> 在 PreToolUse 阶段把 task.md 作 source of truth；若主 Agent 在调 Agent 之前已翻 `in-progress`，
+> hook exit 2 + `BLOCKED: F-xxx 状态为 in-progress，期望 pending`，必须 `git checkout` 还原
+> task.md + 删 `.dispatch-state.json` 残留才能重派。**翻 status 是派发后动作，不是前置校验的一部分。**
+> 详见 `context/team/experience/dispatch-precheck-task-status-flip-after-agent-call.md`。
 
-1. **读 task 文件** `artifacts/tasks/F-xxx.md`
+收到用户 "F-xxx 开始做" 或 "F-xxx 实现" 后，**按顺序执行**：
+
+1. **读 task 文件**（**仅读不写**）`artifacts/tasks/F-xxx.md`
    - `status` 必须是 `pending`（若已 `in-progress` 且有进行中 subagent → 拒绝重派；若 `done` → 走 `/requirement:rollback`）
 2. **校验前置依赖**：遍历 task frontmatter 的 `depends_on` 数组
    - 每一条前置 `F-yyy.md` 的 `status` 必须是 `done`
    - 任一前置未 done → 停止派发，列出阻塞项让用户先做前置
 3. **构造上下文**：调 `task-context-builder` skill，传 `feature_id`
    - 产出含"基本信息 / 需求 / 接口 / 依赖 / 相关代码 / 注意事项"的精简上下文（< 3000 token）
-4. **状态流转**：更新 task 文件 `status: in-progress`，`updated_at`，写 `process.txt [development] F-xxx 开始（派 subagent: <model>）`
+4. **调 Agent 工具派 subagent**（task.md.status 仍 `pending` → hook B-1 通过 → hook 在 flock 内写 `.dispatch-state.json.current_feature=fid` 并放行）
+5. **派发返回后**才更新 task 文件 `status: in-progress`，`updated_at`，写 `process.txt [development] F-xxx 开始（派 subagent: <model>）`
 
 ## 模型档位选择
 
