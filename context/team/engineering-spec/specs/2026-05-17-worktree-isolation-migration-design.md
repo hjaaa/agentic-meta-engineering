@@ -3,18 +3,19 @@
 | 字段 | 值 |
 |---|---|
 | 状态 | DRAFT - 待审阅 |
-| 版本 | v0.1 |
+| 版本 | v0.2 |
 | 起草日期 | 2026-05-17 |
+| v0.2 修订日期 | 2026-05-17（需求目录命名从数字递增改为日期 + 简短 slug） |
 | 起草人 | huangjian + Codex |
 | 参考实现 | obra/superpowers `using-git-worktrees` / `finishing-a-development-branch` |
 | 关联文档 | `context/team/git-workflow.md` / `.claude/workflows/requirement/standard-8phase.yaml` / `scripts/lib/workflow_run.py` / `scripts/lib/workflow_bootstrap.py` |
-| 影响范围 | `/workflow:run` bootstrap / `/workflow:continue` cwd 语义 / `/requirement:submit` 与 `/workflow:submit` / archive cleanup / `.gitignore` / onboarding |
+| 影响范围 | requirement 目录命名 / `/workflow:run` bootstrap / `/workflow:continue` cwd 语义 / `/requirement:submit` 与 `/workflow:submit` / archive cleanup / `.gitignore` / onboarding |
 
 ---
 
 ## 0. 一句话目标
 
-把 Superpowers 的 worktree 隔离机制完整迁移到本项目的 workflow 体系：新需求默认在隔离 worktree 中推进，已有 worktree 自动复用，创建后跑 setup 与基线验证，submit 后保留 worktree，archive 或 discard 时按 provenance 安全清理。
+把 Superpowers 的 worktree 隔离机制完整迁移到本项目的 workflow 体系：新需求默认在隔离 worktree 中推进，需求目录改为日期 + 简短名称的可读命名，已有 worktree 自动复用，创建后跑 setup 与基线验证，submit 后保留 worktree，archive 或 discard 时按 provenance 安全清理。
 
 ---
 
@@ -25,7 +26,7 @@
 当前 requirement 类 workflow 的启动路径是：
 
 1. `/workflow:run standard-8phase "<title>"` 调 `scripts/lib/workflow_run.py`
-2. 生成 `REQ-YYYY-NNN`
+2. 生成数字递增 ID：`REQ-YYYY-NNN`
 3. 在主工作目录下创建 `requirements/<REQ-ID>/`
 4. 调 `git checkout -b feat/req-YYYY-NNN <base_branch>`
 5. 后续所有阶段都在同一个工作目录中继续
@@ -35,6 +36,8 @@
 | 场景 | 问题 |
 |---|---|
 | 多个 active requirements 并行推进 | 同一个工作目录只能 checkout 一个分支，切换分支会打断另一个 run |
+| 并行创建新需求 | 数字递增依赖扫描 `requirements/` 后取 max+1，容易产生全局竞争和重试 |
+| 目录可读性 | `REQ-YYYY-NNN` 无法从路径看出需求主题，多个 worktree 并存时定位成本高 |
 | 长需求跨会话恢复 | 当前目录状态可能已经被其他任务改变，`/workflow:continue` 容易续到错误分支 |
 | subagent / review-loop 修改同仓文件 | 多路 agent 共用一个 working tree，冲突由人肉识别 |
 | archive / cleanup | 只知道 branch，不知道这个 branch 是否绑定隔离目录，无法安全清理 |
@@ -57,12 +60,14 @@
 | baseline tests | 创建后跑测试，失败停住 | 跑 `make gates-validate` 起步；可配置扩展到 `make ci-local` |
 | finishing 选项 | merge / PR / keep / discard | submit 保留，archive/discard 才清理 |
 | provenance cleanup | 只清理自己创建的 worktree | meta 记录 `owner=workflow`，路径白名单双重保护 |
+| 并行友好命名 | 不涉及 | requirement 目录改为 `YYYYMMDD-<slug>`，冲突时追加数字后缀 |
 
 ### 1.3 目标
 
 | 目标 | 验证方式 |
 |---|---|
 | requirement workflow 默认隔离 | 新建需求后 `git worktree list` 出现对应 `feat/req-*` worktree |
+| requirement 目录可读且并行友好 | 新建需求目录为 `requirements/YYYYMMDD-<slug>`，同日同 slug 冲突时原子追加 `-02` |
 | 已在 worktree 中不再嵌套创建 | 在 linked worktree 内运行 `/workflow:run`，meta 记录 external/reused |
 | submit 后保留 worktree | `/workflow:submit` 完成后 worktree 仍存在，可继续处理 PR feedback |
 | archive/discard 安全清理 | 仅清理 `owner=workflow` 且路径在允许目录下的 worktree |
@@ -95,12 +100,99 @@
 | D-010 | 运行时 ignore 校验 fail-closed | 未 ignore 的项目内 worktree 会污染 git status，必须阻断 |
 | D-011 | baseline 先用轻量命令，完整 CI 作为可配置项 | `make ci-local` 依赖安装和 bats，启动需求时不宜默认跑完整套 |
 | D-012 | `--no-worktree` 只作为显式逃生阀 | 本项目默认隔离，但允许紧急修复本地兼容 |
+| D-013 | requirement key 从 `REQ-YYYY-NNN` 改为 `YYYYMMDD-<slug>` | 目录名自解释，减少并行创建时对全局递增序号的依赖 |
+| D-014 | `REQ-YYYY-NNN` 作为 legacy key 继续兼容 | 已有需求目录、分支、PR 不迁移，避免破坏历史追溯 |
+| D-015 | 分支保持 `feat/req-<requirement_key>` 前缀 | 复用现有 `feat/req-*` 推断逻辑和 Git 工作流语义 |
 
 ---
 
-## 3. 目标用户流程
+## 3. Requirement 命名模型
 
-### 3.1 新需求默认流程
+### 3.1 新目录格式
+
+新 requirement 目录格式：
+
+```text
+requirements/YYYYMMDD-<slug>/
+```
+
+示例：
+
+```text
+requirements/20260517-worktree-isolation/
+requirements/20260517-review-verdict-structuring/
+requirements/20260518-submit-archive-cleanup/
+```
+
+同一天同 slug 并行创建时，用原子 `mkdir(exist_ok=False)` 竞争，冲突后追加两位序号：
+
+```text
+requirements/20260517-worktree-isolation/
+requirements/20260517-worktree-isolation-02/
+requirements/20260517-worktree-isolation-03/
+```
+
+### 3.2 字段命名
+
+`meta.yaml` 中保留 `id` 字段，但含义从"数字递增 ID"调整为"requirement key"：
+
+```yaml
+id: 20260517-worktree-isolation
+title: Worktree 隔离能力完整迁移
+slug: worktree-isolation
+legacy_numeric_id: null
+```
+
+旧需求保持：
+
+```yaml
+id: REQ-2026-013
+legacy_numeric_id: REQ-2026-013
+```
+
+所有新代码应使用中性名称 `requirement_key` / `run_id`，避免把 `REQ-YYYY-NNN` 当作唯一格式。
+
+### 3.3 Slug 生成规则
+
+`slug` 必须是 ASCII lower-kebab-case：
+
+```text
+[a-z0-9]+(-[a-z0-9]+){0,5}
+```
+
+生成优先级：
+
+1. 用户显式传 `--slug <slug>`，脚本只校验不改写。
+2. 命令层或 workflow-launcher 已给出 `slug`，脚本校验后使用。
+3. 标题中存在 ASCII 单词时，本地函数规范化为 lower-kebab-case。
+4. 中文标题且没有显式 slug 时，命令层应先生成 2-5 个英文词的简短 slug；纯脚本入口无法生成时 fail-closed，并提示用户加 `--slug`。
+
+不引入 pinyin / slugify 依赖。原因：bootstrap 是最底层本地脚本，不能为了命名引入新重依赖；Agent 命令层可以承担语义压缩，脚本层负责确定性校验。
+
+### 3.4 分支与 worktree 路径
+
+新需求对应：
+
+```text
+requirement_key: 20260517-worktree-isolation
+directory:       requirements/20260517-worktree-isolation/
+branch:          feat/req-20260517-worktree-isolation
+worktree path:   .worktrees/feat-req-20260517-worktree-isolation
+```
+
+旧需求继续对应：
+
+```text
+requirement_key: REQ-2026-013
+directory:       requirements/REQ-2026-013/
+branch:          feat/req-2026-013
+```
+
+---
+
+## 4. 目标用户流程
+
+### 4.1 新需求默认流程
 
 ```text
 用户：/workflow:run standard-8phase "示例需求"
@@ -108,10 +200,10 @@
 检查当前是否 linked worktree
   ↓
 普通主仓 checkout：
-  1. 生成 REQ-ID
-  2. 写 requirements/<REQ-ID>/ 初始文件
-  3. 从 develop 创建 .worktrees/feat-req-YYYY-NNN
-  4. 在 worktree 中 checkout feat/req-YYYY-NNN
+  1. 生成 requirement_key：YYYYMMDD-<slug>
+  2. 写 requirements/<requirement_key>/ 初始文件
+  3. 从 develop 创建 .worktrees/feat-req-<requirement_key>
+  4. 在 worktree 中 checkout feat/req-<requirement_key>
   5. meta.yaml 写入 worktree provenance
   6. 跑 setup + baseline
   7. 提示用户 cd 到 worktree 或由命令输出下一步路径
@@ -121,14 +213,14 @@
 
 ```text
 workflow run 已启动（requirement, worktree）
-  req_id:   REQ-2026-014
-  branch:   feat/req-2026-014
-  worktree: .worktrees/feat-req-2026-014
+  req_id:   20260517-worktree-isolation
+  branch:   feat/req-20260517-worktree-isolation
+  worktree: .worktrees/feat-req-20260517-worktree-isolation
   baseline: make gates-validate PASS
-  下一步: cd .worktrees/feat-req-2026-014 && /workflow:continue REQ-2026-014
+  下一步: cd .worktrees/feat-req-20260517-worktree-isolation && /workflow:continue 20260517-worktree-isolation
 ```
 
-### 3.2 已在外部 worktree 中启动
+### 4.2 已在外部 worktree 中启动
 
 如果 `git rev-parse --git-dir` 与 `git rev-parse --git-common-dir` 不同，且不是 submodule：
 
@@ -137,7 +229,7 @@ workflow run 已启动（requirement, worktree）
 3. 若当前分支不是目标 `feat/req-*`，仍创建或切换分支，但不拥有目录清理权
 4. meta 写 `worktree.owner: external`
 
-### 3.3 submit 与 PR feedback
+### 4.3 submit 与 PR feedback
 
 `/workflow:submit` 或 `/requirement:submit` 成功后：
 
@@ -147,7 +239,7 @@ workflow run 已启动（requirement, worktree）
 - meta 可追加 `submitted_at` / `pr_url`
 - 不调用 `git worktree remove`
 
-### 3.4 archive / discard 收尾
+### 4.4 archive / discard 收尾
 
 archive 成功后：
 
@@ -162,9 +254,9 @@ archive 成功后：
 
 ---
 
-## 4. 架构设计
+## 5. 架构设计
 
-### 4.1 新增模块
+### 5.1 新增模块
 
 新增 `scripts/lib/worktree_manager.py`，集中封装 worktree 行为，避免逻辑散落在 run / submit / archive。
 
@@ -177,6 +269,17 @@ archive 成功后：
 | `run_worktree_setup(worktree_path, policy) -> SetupResult` | 自动 setup + baseline |
 | `resolve_main_repo_root(worktree_path) -> Path` | 从 worktree 找主仓根，供 cleanup 使用 |
 | `cleanup_worktree_if_owned(meta, repo_root) -> CleanupResult` | provenance + path 白名单后清理 |
+
+新增 `scripts/lib/requirement_naming.py`，隔离命名规则：
+
+| 函数 | 职责 |
+|---|---|
+| `normalize_slug(raw: str) -> str` | 校验和规范化 ASCII slug |
+| `derive_slug_from_title(title: str) -> str | None` | 仅从 ASCII 标题派生 slug；中文标题返回 `None` |
+| `generate_requirement_key(date, slug, requirements_root) -> str` | 生成 `YYYYMMDD-<slug>`，冲突时追加 `-02` |
+| `is_legacy_requirement_key(key: str) -> bool` | 识别 `REQ-YYYY-NNN` |
+| `branch_for_requirement_key(key: str) -> str` | 新旧 key 统一生成 `feat/req-*` 分支名 |
+| `directory_for_requirement_key(key: str) -> Path` | 新旧 key 统一解析 `requirements/<key>` |
 
 数据类：
 
@@ -201,17 +304,20 @@ class WorktreeInfo:
     created: bool
 ```
 
-### 4.2 `meta.yaml` 扩展
+### 5.2 `meta.yaml` 扩展
 
-在 `requirements/<REQ-ID>/meta.yaml` 增加 `worktree` 组。旧需求缺字段时视为 `enabled=false`，保持兼容。
+在 `requirements/<requirement_key>/meta.yaml` 增加 `worktree` 组。旧需求缺字段时视为 `enabled=false`，保持兼容。
 
 ```yaml
+id: 20260517-worktree-isolation
+slug: worktree-isolation
+legacy_numeric_id: null
 worktree:
   enabled: true
   owner: workflow              # workflow | external | none
-  path: .worktrees/feat-req-2026-014
-  absolute_path: /abs/path/.worktrees/feat-req-2026-014
-  branch: feat/req-2026-014
+  path: .worktrees/feat-req-20260517-worktree-isolation
+  absolute_path: /abs/path/.worktrees/feat-req-20260517-worktree-isolation
+  branch: feat/req-20260517-worktree-isolation
   base_branch: develop
   created_at: "2026-05-17 20:30:00"
   baseline:
@@ -223,27 +329,28 @@ worktree:
     removed_at: null
 ```
 
-### 4.3 `workflow_started` 事件扩展
+### 5.3 `workflow_started` 事件扩展
 
 `run-state.jsonl` 的 `workflow_started.data` 增加 worktree 摘要，便于 `/workflow:status` 不读完整 meta 也能展示。
 
 ```json
 {
   "type": "workflow_started",
-  "run_id": "REQ-2026-014",
+  "run_id": "20260517-worktree-isolation",
   "data": {
     "workflow_name": "standard-8phase",
     "title": "示例需求",
+    "slug": "worktree-isolation",
     "worktree": {
       "owner": "workflow",
-      "path": ".worktrees/feat-req-2026-014",
-      "branch": "feat/req-2026-014"
+      "path": ".worktrees/feat-req-20260517-worktree-isolation",
+      "branch": "feat/req-20260517-worktree-isolation"
     }
   }
 }
 ```
 
-### 4.4 配置入口
+### 5.4 配置入口
 
 MVP 先在 `standard-8phase.yaml` 顶层增加 worktree 配置；后续可推广到所有 workflow。
 
@@ -270,15 +377,16 @@ worktree:
 CLI 逃生参数：
 
 ```text
+/workflow:run standard-8phase "示例需求" --slug worktree-isolation
 /workflow:run standard-8phase "示例需求" --no-worktree
 /workflow:run standard-8phase "示例需求" --worktree-policy=current
 ```
 
 ---
 
-## 5. Bootstrap 详细流程
+## 6. Bootstrap 详细流程
 
-### 5.1 当前流程替换点
+### 6.1 当前流程替换点
 
 当前 `_bootstrap_requirement()` 中的第 5 步是：
 
@@ -301,22 +409,22 @@ detect_worktree_state(repo_root)
   run setup + baseline inside worktree
 ```
 
-注意：`requirements/<REQ-ID>/` 必须最终出现在 worktree 目录里，因为后续修改都发生在 worktree 内。主仓根中是否能看到该目录取决于分支 checkout，不作为运行入口。
+注意：`requirements/<requirement_key>/` 必须最终出现在 worktree 目录里，因为后续修改都发生在 worktree 内。主仓根中是否能看到该目录取决于分支 checkout，不作为运行入口。
 
-### 5.2 写文件顺序
+### 6.2 写文件顺序
 
 推荐顺序改为：
 
-1. 在主仓根生成 REQ-ID，但暂不把文件写到主仓工作区
+1. 解析 title 和 slug，生成 `requirement_key = YYYYMMDD-<slug>[-NN]`
 2. 选择并创建 worktree
-3. 在 worktree 路径下创建 `requirements/<REQ-ID>/`
+3. 在 worktree 路径下创建 `requirements/<requirement_key>/`
 4. 写 `meta.yaml` / `plan.md` / `process.txt`
 5. 写 `run-state.jsonl`
 6. baseline 通过后输出成功
 
 这样可以避免主仓工作区出现未提交的新需求目录。
 
-### 5.3 rollback 顺序
+### 6.3 rollback 顺序
 
 bootstrap 任一步失败时按以下顺序 best-effort 回滚：
 
@@ -325,14 +433,14 @@ bootstrap 任一步失败时按以下顺序 best-effort 回滚：
    - `git worktree remove <worktree_path>`
    - `git worktree prune`
 2. 删除新建分支 `git branch -D <branch>`，仅限 branch 已创建且未被 worktree 占用
-3. 删除 `requirements/<REQ-ID>/` 残留目录，分别检查主仓根与 worktree path
+3. 删除 `requirements/<requirement_key>/` 残留目录，分别检查主仓根与 worktree path
 4. 输出原始失败原因，不用 rollback 失败掩盖根因
 
 ---
 
-## 6. Setup 与 Baseline
+## 7. Setup 与 Baseline
 
-### 6.1 自动探测
+### 7.1 自动探测
 
 通用探测规则保留 Superpowers 风格：
 
@@ -345,7 +453,7 @@ bootstrap 任一步失败时按以下顺序 best-effort 回滚：
 | `go.mod` | `go mod download` |
 | `Makefile` | 不自动 install，只跑配置的 baseline |
 
-### 6.2 本项目默认 baseline
+### 7.2 本项目默认 baseline
 
 本项目默认：
 
@@ -366,7 +474,7 @@ make gates-validate
 make ci-local
 ```
 
-### 6.3 Baseline 失败处理
+### 7.3 Baseline 失败处理
 
 baseline 失败时：
 
@@ -380,9 +488,9 @@ baseline 失败时：
 
 ---
 
-## 7. Submit / Archive / Cleanup 语义
+## 8. Submit / Archive / Cleanup 语义
 
-### 7.1 Submit
+### 8.1 Submit
 
 submit 不改变 worktree 生命周期。
 
@@ -394,7 +502,7 @@ submit 不改变 worktree 生命周期。
 | Codex review-loop 未通过 | 保留，供修复 |
 | submit 门禁失败 | 保留 |
 
-### 7.2 Archive
+### 8.2 Archive
 
 archive 是唯一默认 cleanup 入口。
 
@@ -415,31 +523,32 @@ cleanup 前置条件：
 ~/.config/superpowers/worktrees/<project>/   # 只做 legacy 识别，不作为本项目默认创建位置
 ```
 
-### 7.3 Discard
+### 8.3 Discard
 
 新增或复用 discard 语义时必须二次确认，确认内容包含：
 
 - branch 名
 - worktree 路径
 - 将删除的本地提交范围
-- `requirements/<REQ-ID>/` 状态
+- `requirements/<requirement_key>/` 状态
 
 用户输入精确确认词后才执行。
 
 ---
 
-## 8. 文档与协作规范改动
+## 9. 文档与协作规范改动
 
-### 8.1 `context/team/git-workflow.md`
+### 9.1 `context/team/git-workflow.md`
 
 新增 "Worktree 隔离策略" 小节：
 
-- 新需求默认创建 `.worktrees/feat-req-*`
+- 新需求目录默认使用 `requirements/YYYYMMDD-<slug>/`
+- 新需求默认创建 `.worktrees/feat-req-YYYYMMDD-<slug>`
 - feature / docs / chore 直通路径也推荐 worktree，但不强制
 - 不要手动删除 `.worktrees/*`，使用 archive/discard
 - submit 后 worktree 保留直到 PR feedback 处理完成
 
-### 8.2 README / onboarding
+### 9.2 README / onboarding
 
 把当前：
 
@@ -455,7 +564,7 @@ git worktree add .worktrees/<branch> -b <branch> develop → 改 → /code-revie
 
 并说明完整需求直接用 `/workflow:run standard-8phase`，不需要用户手写 worktree 命令。
 
-### 8.3 common pitfalls
+### 9.3 common pitfalls
 
 新增坑位：
 
@@ -465,12 +574,13 @@ git worktree add .worktrees/<branch> -b <branch> develop → 改 → /code-revie
 | 手动 `rm -rf .worktrees/x` | 用 `git worktree remove` 或 archive |
 | submit 后找不到改动 | 确认当前在对应 worktree 和 branch |
 | external worktree archive 未清理 | 这是预期；外部工具拥有清理权 |
+| 中文标题纯脚本启动缺 slug | 增加 `--slug short-english-name` |
 
 ---
 
-## 9. 测试计划
+## 10. 测试计划
 
-### 9.1 单元测试
+### 10.1 单元测试
 
 新增 `tests/lib/test_worktree_manager.py`：
 
@@ -484,46 +594,51 @@ git worktree add .worktrees/<branch> -b <branch> develop → 改 → /code-revie
 | ignore 校验 | 未 ignore 返回 fail-closed |
 | path provenance | 非白名单路径 cleanup skipped |
 | cleanup owned worktree | 调用 `git worktree remove` 后列表消失 |
+| slug 生成 | ASCII title 自动 lower-kebab，中文无 slug 时 fail-closed |
+| key 冲突 | 同日同 slug 并行创建第二个目录追加 `-02` |
+| legacy key | `REQ-YYYY-NNN` 目录仍能被解析 |
 
-### 9.2 集成测试
+### 10.2 集成测试
 
 新增临时 git repo 集成测试：
 
 1. 初始化 repo，创建 `develop`
 2. 复制最小 `.claude/workflows` 与 `scripts/lib`
-3. 跑 `workflow_run.main(["standard-8phase", "测试需求"])`
+3. 跑 `workflow_run.main(["standard-8phase", "测试需求", "--slug", "worktree-smoke"])`
 4. 验证：
    - `.worktrees/feat-req-*` 存在
    - `git worktree list` 包含 branch
-   - `requirements/<REQ-ID>/meta.yaml` 有 worktree 字段
+   - `requirements/YYYYMMDD-<slug>/meta.yaml` 有 worktree 字段
    - `run-state.jsonl` 有 worktree 摘要
 5. 模拟 baseline 失败，验证 worktree 保留
 6. 模拟 archive cleanup，验证 owned worktree 被删除，external worktree 保留
 
-### 9.3 手工验证
+### 10.3 手工验证
 
 ```bash
 git status --short
-/workflow:run standard-8phase "worktree 迁移冒烟"
+/workflow:run standard-8phase "worktree 迁移冒烟" --slug worktree-migration-smoke
 git worktree list
-cd .worktrees/feat-req-YYYY-NNN
+cd .worktrees/feat-req-YYYYMMDD-worktree-migration-smoke
 /workflow:status
-/workflow:continue REQ-YYYY-NNN
+/workflow:continue YYYYMMDD-worktree-migration-smoke
 ```
 
 ---
 
-## 10. 迁移步骤
+## 11. 迁移步骤
 
-### Phase 1: 基础能力
+### Phase 1: 命名与基础能力
 
+- 新增 `requirement_naming.py`
 - 新增 `worktree_manager.py`
-- 加单元测试覆盖 detection / location / cleanup
+- 加单元测试覆盖 naming / detection / location / cleanup
 - `.gitignore` 增加 `.worktrees/`
 
 ### Phase 2: Bootstrap 接入
 
 - 改 `workflow_run.py` / `workflow_bootstrap.py`
+- `_generate_req_id` 替换为 `_generate_requirement_key`
 - requirement workflow 默认 `worktree.enabled=true`
 - meta.yaml 模板增加 worktree 空结构
 - bootstrap rollback 支持 worktree
@@ -532,7 +647,8 @@ cd .worktrees/feat-req-YYYY-NNN
 
 - submit 输出 worktree 保留提示
 - archive 调 cleanup
-- status/list 展示 worktree path
+- status/list 展示 requirement key 与 worktree path
+- `infer_run_id_from_branch` 兼容 `feat/req-YYYYMMDD-<slug>` 与旧 `feat/req-YYYY-NNN`
 
 ### Phase 4: 文档与自举验证
 
@@ -542,11 +658,14 @@ cd .worktrees/feat-req-YYYY-NNN
 
 ---
 
-## 11. 风险与缓解
+## 12. 风险与缓解
 
 | 风险 | 影响 | 缓解 |
 |---|---|---|
 | bootstrap 写文件根路径错乱 | 需求目录落在主仓而非 worktree | 所有路径参数显式传 `active_repo_root`，测试覆盖 |
+| 中文标题无法本地生成可读 slug | 纯脚本入口体验下降 | 命令层生成 slug；脚本层 fail-closed 并提示 `--slug` |
+| 旧代码硬编码 `REQ-YYYY-NNN` | status/list/submit 找不到新目录 | 抽 `requirement_naming.py`，新旧 key 同时测试 |
+| 同日同 slug 并行创建 | 目录冲突 | 原子 mkdir + `-02` 后缀重试 |
 | cleanup 误删外部 worktree | 丢用户工作 | `owner=workflow` + 路径白名单 + 非 discard 不强删 |
 | baseline 过重导致启动慢 | 新需求体验下降 | 默认 `make gates-validate`，完整 CI 延后 |
 | 旧需求缺 worktree 字段 | status/archive 报错 | 缺字段视为 legacy in-place |
@@ -555,20 +674,21 @@ cd .worktrees/feat-req-YYYY-NNN
 
 ---
 
-## 12. 验收标准
+## 13. 验收标准
 
-1. `/workflow:run standard-8phase "x"` 默认创建 `.worktrees/feat-req-*`。
+1. `/workflow:run standard-8phase "x"` 默认创建 `requirements/YYYYMMDD-<slug>/` 与 `.worktrees/feat-req-YYYYMMDD-<slug>`。
 2. 已在 linked worktree 中运行时不会创建 nested worktree。
 3. `meta.yaml` 能明确区分 `workflow` / `external` / `none` 三种 owner。
 4. bootstrap 失败不会残留半创建 worktree。
 5. submit 后 worktree 保留。
 6. archive 只清理 workflow-owned worktree。
-7. 旧需求在无 worktree 字段时仍能 status / continue / submit。
-8. 单元测试和集成测试覆盖 detection、creation、rollback、cleanup。
+7. 旧 `REQ-YYYY-NNN` 需求在无 worktree 字段时仍能 status / continue / submit。
+8. 同日同 slug 并行创建时，第二个目录稳定落到 `-02` 后缀。
+9. 单元测试和集成测试覆盖 naming、detection、creation、rollback、cleanup。
 
 ---
 
-## 13. 后续开放问题
+## 14. 后续开放问题
 
 | 问题 | 默认处理 |
 |---|---|
@@ -576,3 +696,4 @@ cd .worktrees/feat-req-YYYY-NNN
 | 是否 baseline 默认跑 `make ci-local` | 否，启动阶段只跑轻量门禁 |
 | 是否支持 global worktree 目录 | 仅 legacy 识别；默认项目内 `.worktrees/` |
 | 是否自动提交 bootstrap commit | 不在本次设计内；沿用当前 workflow 提交节奏 |
+| 是否迁移历史 `REQ-YYYY-NNN` 目录名 | 不迁移；历史路径是归档事实 |
