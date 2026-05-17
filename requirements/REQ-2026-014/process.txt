@@ -1,1 +1,2 @@
 2026-05-17 23:49:48 [phase-transition] bootstrap → definition：11 gate 全过；requirement.md 起草（4 场景 / D-001~D-015 / 9 验收 / 3 待澄清）
+2026-05-18 00:03:24 [save] definition reviewer feedback 4 条已闭环；3 commit；待澄清 5 条留 tech-research；jsonl save 受 infer_run_id_from_branch bug 影响走 process.txt 兜底（属验收 #7 / Phase 3 修复）
