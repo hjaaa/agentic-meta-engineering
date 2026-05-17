@@ -85,3 +85,6 @@ jobs:
       # 手工改 gate-checklist.md 后 PR 立即变红；需运行 make gates-render 重新生成。
       - name: Check gate-checklist.md is in sync with registry
         run: python3 scripts/gates/migration/render-docs.py --check
+
+      - name: Run routing e2e shell tests
+        run: bash tests/lib/test_routing_e2e.sh
