@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-006",
+  "status": "DONE",
+  "commit_sha": "e738789",
+  "files_changed": [".github/workflows/quality-check.yml"],
+  "test_summary": "ruff check scripts tests --select=F exit 0; git diff .github/workflows/quality-check.yml 仅 line 82 单行改动（scripts/ → scripts tests）",
+  "touches_violations": [],
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-17T16:10:00+08:00"
+}
