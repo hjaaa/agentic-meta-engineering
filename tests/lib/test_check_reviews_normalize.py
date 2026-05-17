@@ -22,7 +22,6 @@ if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
 from check_reviews import (  # noqa: E402
-    _NORMALIZE_TASK_FIELDS,
     _compute_hash_with_normalize,
     _compute_raw_hash,
     _r005_hash_drift,

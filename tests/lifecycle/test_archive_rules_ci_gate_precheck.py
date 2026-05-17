@@ -1,8 +1,6 @@
 """F-003 验证：archive-rules.md 节 + archive_runner._render_summary reminder 行。"""
 from pathlib import Path
 
-import pytest
-
 
 def test_archive_rules_md_has_ci_gate_precheck_section():
     """archive-rules.md 必须有 § archive 前 CI gate 预检 节。"""
