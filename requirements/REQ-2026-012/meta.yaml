@@ -45,7 +45,7 @@ tags:
 - local-ci-parity
 outcome: ''
 completed_at: ''
-lessons_extracted: false
+lessons_extracted: true
 reviews:
   definition:
     latest: REV-REQ-2026-012-definition-002

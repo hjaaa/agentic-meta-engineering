@@ -42,6 +42,9 @@
 - [`event-driven-completion-must-write-on-outcome.md`](event-driven-completion-must-write-on-outcome.md) — 工作流终结事件（workflow_completed 等）只能由 outcome 处理函数显式写入，不能凭"loop 退出后 current_node is None"投影推断——rebuild 出同样投影会让自然完成 / crash 两类场景被误并
 - [`dispatcher-outcome-routing-needs-e2e-real-run.md`](dispatcher-outcome-routing-needs-e2e-real-run.md) — dispatcher 返回的每个 outcome 在 router 端必须有对应分支；单测 mock 看不出"缺分支"，必须 E2E 真跑（agent/skill/prompt 等节点类型）+ 穷举枚举校验
 - [`test-assets-must-be-wired-into-ci.md`](test-assets-must-be-wired-into-ci.md) — 新增 shell/e2e/contract 测试默认进 CI；不进 CI 必须 PR 描述说明原因 + 手跑命令 + owner
+- [`python-cli-tools-via-module-invocation.md`](python-cli-tools-via-module-invocation.md) — Makefile / shell 调 Python CLI 用 `python3 -m <tool>` 而非裸 `pip`/`pytest`；后者依赖 console-script shim 在 Homebrew Python / PEP 668 / 缺 setup-python 的 base image 会 fail
+- [`reviewer-artifact-selection-excludes-evolving-frontmatter.md`](reviewer-artifact-selection-excludes-evolving-frontmatter.md) — detail-design reviewer 钉 task.md hash 是过度收敛；dev 期 status/updated_at 必然演进触发 R005，需 reviewer 排除 frontmatter 或 R005 仅比 body
+- [`hook-path-normalization-out-of-repo.md`](hook-path-normalization-out-of-repo.md) — touches_guard 等仓库内 hook 须 normalize 仓库外路径（/tmp / /var / ~/）→ 不记 violation，避免主 Agent dispatch lock 期写临时文件触发 GATE-TOUCHES-VIOLATION 假阳性
 
 ## 什么值得沉淀
 
