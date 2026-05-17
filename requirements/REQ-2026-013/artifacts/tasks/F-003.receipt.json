@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-003",
+  "status": "DONE",
+  "commit_sha": "d9ab6c7967eedba78a37602fcaddf15f87310525",
+  "files_changed": [
+    ".claude/skills/managing-requirement-lifecycle/reference/archive-rules.md",
+    "scripts/lib/archive_runner.py",
+    "tests/lifecycle/test_archive_rules_ci_gate_precheck.py"
+  ],
+  "test_summary": "pytest: 2 passed",
+  "touches_violations": [],
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-17T20:37:29+08:00"
+}

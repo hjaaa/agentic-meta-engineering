@@ -1,0 +1,126 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-013-detail-design-001",
+  "requirement_id": "REQ-2026-013",
+  "phase": "detail-design",
+  "reviewer": "detail-design-quality-reviewer",
+  "reviewed_at": "2026-05-17 19:08:22",
+  "reviewed_commit": "3e1393f",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/detailed-design.md",
+      "sha256": "cfc8d1202db73ee446cced3e38cb4263a3af3682eeb74fab1ec6c2ccea2538ce"
+    },
+    {
+      "path": "artifacts/features.json",
+      "sha256": "29b954e679de213fe21f770b247ba36e034b842b54de0e7d5ce3605b44096c55"
+    },
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "50d8c2e50478d487dad90b1ddac80a5cce77c202bff06c2f7eb510352c545d0c"
+    },
+    {
+      "path": "artifacts/tasks/F-001.md",
+      "sha256": "5f1545d2360ff77196b4c6a5a41ff42adf87a511cdfeba84d9609b3879c0a8ae"
+    },
+    {
+      "path": "artifacts/tasks/F-002.md",
+      "sha256": "3640c1c5c6c81ad8301a00f5a5610dd4cf2b9df13bfb3ed540f65ba3b473cf44"
+    },
+    {
+      "path": "artifacts/tasks/F-003.md",
+      "sha256": "3592fb47d75b6657dc6efe0e72a7a6133a9132cdd3858845bbeb8ee453ef0ca3"
+    },
+    {
+      "path": "artifacts/tasks/F-004.md",
+      "sha256": "7510463bac45f554237f5c45d873962274d779e33a32bdadd8952b7429eefd35"
+    },
+    {
+      "path": "artifacts/tasks/F-005.md",
+      "sha256": "013f755e1045b411f15f32248dcb28fcf8d71dd4858a410a85ebf839971a09d4"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 88,
+  "dimensions": {
+    "consistency_with_outline": {
+      "score": 95,
+      "issues": []
+    },
+    "interface_completeness": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "detailed-design.md §4.1 性能基准用例（line 416-436）函数体使用 hashlib.sha256 但 §4.1 顶部 import 区（line 378-379）未 import hashlib，仅 line 416 单独 import time；骨架直接 copy 到 pytest 文件会 NameError，建议在 detailed-design 用例骨架顶部补 import hashlib 让骨架可直接运行"
+        },
+        {
+          "severity": "minor",
+          "description": "detailed-design.md §4.1 line 443 test_normalize_whitelist_matches_schema_evolving_fields 函数命名含 evolving_fields 且注释提及 schema.enums.status，但断言实际是 _NORMALIZE_TASK_FIELDS.issubset(required) ——『白名单字段名 status』与『status 字段的枚举取值 pending/in-progress/done』是两件事，注释/命名与断言语义不齐，建议将注释改为『白名单字段名应是 schema.required_fields 子集』并相应改函数名 test_normalize_whitelist_subset_of_required_fields"
+        }
+      ]
+    },
+    "data_model_soundness": {
+      "score": 90,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "detailed-design.md §3.4.2 称『具体统计行由 testing 阶段 V-04 生成脚本一次性产出，detail-design 阶段仅给出文件骨架』，但 F-004 features.json acceptance 第 3 条要求『experience-baseline-cjk-stats.txt 存在且含 count: 38』+ F-004 task.md 步骤 2-3 又要求 dev 阶段写脚本统计后复制到文件——三处时序口径冲突。若 dev 阶段 F-004 commit 时 baseline 文件只是骨架占位，testing V-04 回填实数会触发 R005 hash drift（baseline 已纳入 F-004 touches）。建议明确『baseline 数字在 F-004 commit 时即完整落实』并删去 §3.4.2 中 V-04 字样"
+        }
+      ]
+    },
+    "sequence_correctness": {
+      "score": 90,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "detailed-design.md §4.2 F-002 性能基准用例最后 skip 'baseline 待 testing 阶段固化'，而 §4.1 F-001 性能预算用例（< 5%）是真实可执行断言——两 feature 性能预算回应粒度不齐。建议为 F-002 NFR 也给一个能实跑的近似断言（如 100 次 mean overhead < 50ms），或在 detailed-design 显式说明『F-002 NFR 测试设计期暂为 skip-骨架，testing 阶段固化阈值』，让 outline-design v1 minor #1 闭环更对称"
+        }
+      ]
+    },
+    "feature_granularity": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "F-004 task.md 实施步骤 4 / F-005 task.md 步骤 5 均写 `bash scripts/lib/check_sourcing.py --strict ...`，但该文件是 Python 入口（首行为 docstring，无 shebang，权限 0644），bash 直跑会 syntax error；应改为 `python3 scripts/lib/check_sourcing.py --strict ...`，与仓库其他文档一致"
+        },
+        {
+          "severity": "minor",
+          "description": "detailed-design.md §3.3.1 引用『现有 §「5 项预检」之后插入』；archive-rules.md 实际节标题是『## 1. 5 项预检（硬门禁）』，节号是 1 不是 5；建议在 §3.3.1 把『§「5 项预检」』改为『§1「5 项预检」』，定位更明确"
+        },
+        {
+          "severity": "minor",
+          "description": "detailed-design.md §3.1 _compute_hash_with_normalize docstring 仅说『path_str 以 artifacts/tasks/ 开头且 .md 结尾时走 normalize』，未显式说明其他 .md 文件（如 requirement.md / notes.md）仍走整文件 hash 路径，建议补一行『其他 .md / 任何非 task.md 仍走整文件 hash 路径，保兼容』，对未来维护者更友好"
+        }
+      ]
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "detailed-design.md §4.1 性能用例骨架补 import hashlib，让骨架可直接 pytest 运行",
+    "detailed-design.md §3.4.2 删去 V-04 字样，明确 baseline 数字在 F-004 commit 时即完整落实，避免 testing 期回填触发 R005",
+    "F-004 / F-005 task.md 实施步骤把 `bash scripts/lib/check_sourcing.py` 改为 `python3 scripts/lib/check_sourcing.py`",
+    "detailed-design.md §3.3.1 把『§「5 项预检」』改为『§1「5 项预检」』，节号定位更明确",
+    "detailed-design.md §4.1 schema-sync 用例的函数名 / 注释与断言语义对齐：建议改名 test_normalize_whitelist_subset_of_required_fields，注释改为『白名单字段名 ⊆ schema.required_fields』",
+    "F-002 §4.2 NFR 性能用例可补一个能实跑的近似断言（如 100 次 mean overhead < 50ms），与 F-001 §4.1 < 5% 断言粒度对齐",
+    "F-001 §3.1 _compute_hash_with_normalize docstring 补一行『其他 .md / 非 task.md 走整文件 hash』"
+  ],
+  "scope": null,
+  "supersedes": null,
+  "features_json_validation": {
+    "valid": true,
+    "issues": [],
+    "enhancement_suggestions": [
+      "F-001 建议补 interfaces_frozen: true（detailed-design §3.1 已完整冻结 _compute_hash_with_normalize / _strip_frontmatter_fields 两个函数签名 / 参数 / 返回类型，dev 期不应再变）",
+      "F-002 建议补 interfaces_frozen: true（detailed-design §3.2.2 已完整冻结 _get_worktree_toplevel / _is_out_of_repo 两个函数签名，含异常处理 / fail-open 语义）",
+      "F-003 / F-004 / F-005 多是文档改 + 0-1 行代码，complexity 已标 light / trivial 合适，无需补 interfaces_frozen"
+    ]
+  },
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-17T19:14:16.970636+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
+  }
+}

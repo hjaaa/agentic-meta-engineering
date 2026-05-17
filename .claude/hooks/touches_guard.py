@@ -12,6 +12,11 @@ fail-open 理由：
   如果 hook 本身出错导致 exit 非 0，会阻断所有 Edit/Write/MultiEdit 操作，
   造成开发链路死锁。因此顶层 try/except 兜底，始终 exit 0。
 
+两条仓库根判定路径（D-011，来源：requirements/REQ-2026-013/plan.md）：
+- `_REPO_ROOT`：file-driven，给 `_is_in_touches` 用（既有行为，不动）
+- `_get_worktree_toplevel()`：cwd-driven，给 `_is_out_of_repo` 用（D-006 worktree 语义）
+两源在主 repo cwd 下表现一致；仅 worktree edge case 不同。禁止互替。
+
 关键约束（detail-design §3.4 / plan.md ADR D-012）：
   - 仅使用 dispatch_state.read_state()（L2 单读）读取 current_feature
   - 禁止 write_state / flock_state_file with 块（TOCTOU 风险，§3.2）
@@ -191,6 +196,54 @@ def _write_receipt_to_fd(f: IO[str], data: dict) -> None:
 
 
 # ---------- 辅助函数 ----------
+
+
+def _get_worktree_toplevel() -> Optional[Path]:
+    """调 `git rev-parse --show-toplevel` 返回 cwd 所在仓库根；非 git 目录返回 None。
+
+    缓存策略：函数局部不缓存（单次 hook 调用内被 _is_out_of_repo 复用一次，无需 lru_cache）。
+    """
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+        if result.returncode != 0:
+            return None
+        return Path(result.stdout.strip()).resolve()
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+
+
+def _is_out_of_repo(file_path: str, toplevel: Optional[Path]) -> bool:
+    """判断 file_path 是否在 toplevel 子树之外。toplevel 为 None（非 git 目录）时返回 False（fail-open）。
+
+    Args:
+        file_path: 来自 tool_input 的原始 file_path（可能是绝对路径或相对路径）
+        toplevel: _get_worktree_toplevel() 返回值
+
+    Returns:
+        True 表示文件在仓库外，调用方应短路跳过 violation 记录；
+        False 表示文件在仓库内或 toplevel 不可用（fail-open）。
+    """
+    if toplevel is None:
+        return False  # fail-open：非 git 目录走原 in-touches 路径
+    try:
+        # codex round-1 C2：Path.resolve() 不展开 ~ → ~/.tmp.json 解析为 <cwd>/~/...
+        # 若 cwd 在 toplevel 子树内，relative_to 成功 → 错误判 in-repo → out-of-repo 短路失效。
+        # 先 expanduser 把 ~ 替换为 $HOME，再 resolve。
+        resolved = Path(file_path).expanduser().resolve()
+    except (OSError, ValueError):
+        return False  # fail-open：路径解析失败
+    try:
+        resolved.relative_to(toplevel)
+        return False  # 在 toplevel 子树内
+    except ValueError:
+        return True  # 在 toplevel 子树外 → out-of-repo
 
 
 def _locate_req_dir() -> Optional[Path]:
@@ -507,7 +560,10 @@ def _main_inner(stdin_data: str) -> None:
     #    进度 / artifacts/review-*.md 审查报告 / .dispatch-state.json lock 自身）
     #    被记为越界硬挡 GATE-TOUCHES-VIOLATION。详见 _is_process_artifact docstring。
     receipt_path = req_dir / "artifacts" / "tasks" / f"{feature_id}.receipt.json"
+    toplevel = _get_worktree_toplevel()  # 新增：单次 hook 调用内只取一次
     for fp in file_paths:
+        if _is_out_of_repo(fp, toplevel):
+            continue  # 新增：out-of-repo 短路（D-006 + D-011）
         if not _is_in_touches(fp, touches):
             if _is_process_artifact(fp, req_dir, feature_id):
                 continue

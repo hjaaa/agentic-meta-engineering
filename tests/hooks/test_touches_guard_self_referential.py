@@ -85,6 +85,11 @@ def _run_main_inner(tg, tmp_path: Path, feature_id: str, file_path: str) -> dict
 
     old_env = os.environ.get("CLAUDE_DISPATCH_TEST_REQ_DIR_OVERRIDE")
     os.environ["CLAUDE_DISPATCH_TEST_REQ_DIR_OVERRIDE"] = str(req_dir)
+    # F-002 兼容：把 _get_worktree_toplevel monkey 成 tmp_path，让 in-test fixture
+    # 路径被视为 in-repo 而非被 _is_out_of_repo 短路。详见 test_touches_guard_whitelist.py:_run。
+    original_toplevel_fn = tg._get_worktree_toplevel
+    test_toplevel = tmp_path.resolve()
+    tg._get_worktree_toplevel = lambda: test_toplevel
     try:
         tg._main_inner(payload)
     finally:
@@ -92,6 +97,7 @@ def _run_main_inner(tg, tmp_path: Path, feature_id: str, file_path: str) -> dict
             os.environ.pop("CLAUDE_DISPATCH_TEST_REQ_DIR_OVERRIDE", None)
         else:
             os.environ["CLAUDE_DISPATCH_TEST_REQ_DIR_OVERRIDE"] = old_env
+        tg._get_worktree_toplevel = original_toplevel_fn
 
     receipt_path = req_dir / "artifacts" / "tasks" / f"{feature_id}.receipt.json"
     if not receipt_path.exists():
@@ -129,9 +135,12 @@ def test_TL_SR_002_out_of_scope_file_still_recorded(tg, tmp_path: Path) -> None:
     """file_path == 范围外的其他文件 → touches_violations[] 包含该条目。
 
     确保自指白名单不过宽，不影响对真实越界文件的正常记录。
+
+    F-002 兼容：out_of_scope 必须在 monkey-patched toplevel (=tmp_path) 子树内，
+    否则被 _is_out_of_repo 短路。详见 test_touches_guard_whitelist.py:TL-WL-007。
     """
     feature_id = "F-SR2"
-    out_of_scope = "/tmp/unrelated_file.py"
+    out_of_scope = str(tmp_path / "unrelated_file.py")
 
     data = _run_main_inner(tg, tmp_path, feature_id, out_of_scope)
 

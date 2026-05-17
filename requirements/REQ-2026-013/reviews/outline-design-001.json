@@ -1,0 +1,74 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-013-outline-design-001",
+  "requirement_id": "REQ-2026-013",
+  "phase": "outline-design",
+  "reviewer": "outline-design-quality-reviewer",
+  "reviewed_at": "2026-05-17 18:53:38",
+  "reviewed_commit": "a8d8987",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "50d8c2e50478d487dad90b1ddac80a5cce77c202bff06c2f7eb510352c545d0c"
+    },
+    {
+      "path": "artifacts/requirement.md",
+      "sha256": "4e00cdc7c983606df282297156f11b384c9d2bfcea447f253c8963f82370e38c"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 87,
+  "dimensions": {
+    "alignment_with_requirement": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 18-23 行（§1 设计目标与约束回顾）：requirement.md §非功能需求段提到 F-A 性能预算「< +5% 在 1000 review 量级」、F-B 「< +1ms p99」，outline-design 未在模块设计或 §7 hand-off 中回呼如何验证；建议在 §7 detail-design 阶段后续动作里补一条「F-A / F-B NFR 性能预算验证用例骨架」"
+        }
+      ]
+    },
+    "module_decomposition": {
+      "score": 87,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 29-75 行（§2.1 模块视图 ASCII 框图）：R005 hash 校验层与 task-frontmatter-schema.yaml 的引用箭头标注「↑ 比对方 / schema 来源」位置在视觉上指向不明（schema 源位于框外底部，箭头朝上但未直接连到框内 normalize 字段块），首次阅读时需要回退确认关系；建议 detail-design 阶段把 schema 源用虚线箭头直连到 normalize 白名单块"
+        }
+      ]
+    },
+    "tech_choice_rationale": {
+      "score": 92,
+      "issues": []
+    },
+    "scalability": {
+      "score": 85,
+      "issues": []
+    },
+    "integration_with_existing": {
+      "score": 83,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 107-117 行（§3.2 PreToolUse hook 层契约段）：tech-feasibility.md F-B 段指出 touches_guard.py 当前已有模块级常量 `_REPO_ROOT` 配合 `_is_in_touches` 走 `relative_to(_REPO_ROOT)` ValueError 路径（来源：.claude/hooks/touches_guard.py），新增的 `_is_out_of_repo` 使用动态 `git rev-parse --show-toplevel`——outline 未说明二者关系（替代 / 并存 / 旁路）；这是模块边界级问题，建议 detail-design §3.2 明确「`_REPO_ROOT` 保留作为 fallback / 还是被 `git rev-parse` 路径完全替代」，避免实现阶段出现两条不一致的仓库根判定路径"
+        }
+      ]
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "（可选）§4 关键流程时序当前覆盖 F-A R005 normalize + F-C archive 前预检 2 条流程，但 F-B PreToolUse hook 没有独立时序图——5 个 feature 中 F-A / F-C 各有一图、F-D / F-E 是纯文档改造无需时序图、F-B 是逻辑改造但缺图。detail-design 阶段补一条 F-B 时序图（write 工具调用 → _main_inner → _is_out_of_repo 短路 / fallback _is_in_touches → violation 与否）与其他 feature 对等"
+  ],
+  "scope": null,
+  "supersedes": null,
+  "architectural_concerns": [
+    "F-A normalize 白名单 {status, updated_at} 的 schema-sync 防漂虽然有 pytest 兜底，但白名单常量物理上仍硬编码在 check_reviews.py——长期看若 task-frontmatter-schema.yaml 出现 owner / assignee / progress 等新的「dev 期演进」字段，schema-sync 用例 fail 后需要手动同步白名单。这不是本评审 blocker（D-007 已明确接受这个 trade-off），但建议未来若白名单字段超过 4-5 个时考虑直接从 schema 派生（YAML 内加 evolves_in_dev: true 标记）",
+    "F-C reminder 路径（B3）是 archive 频次低场景下的最小投入选择，长期若 archive 频次升高到周 5 次以上，主 Agent 忽略 reminder 概率会线性放大；§3.3 末段已预留 B1 / B2 升级路径，但未给量化触发条件——detail-design 阶段或下次清扫 REQ 可补一条「monthly archive 次数 > N 时升级」的观察指标"
+  ],
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-17T18:57:07.084948+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
+  }
+}

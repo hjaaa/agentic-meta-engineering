@@ -15,7 +15,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import re
 import subprocess
@@ -32,7 +31,7 @@ from common import REPO_ROOT, Report, Severity, paint, rel
 # is_signed_off 来自 check_reviews——必须在 check_reviews 完成 SIGNOFF_PASS / is_signed_off
 # 定义之后才能 import 本文件，否则循环导入会绑死 stub。check_reviews.py 已把这两个符号
 # 放在 `import save_review` 之前；如改动 check_reviews import 顺序，必须同步验证此处导入。
-from check_reviews import is_signed_off  # noqa: E402
+from check_reviews import is_signed_off, _compute_hash_with_normalize  # noqa: E402
 
 # 新三档 conclusion 枚举（v2.0 schema）
 CONCLUSION_NEW: set[str] = {"looks_clean", "needs_attention", "blocked"}
@@ -296,14 +295,18 @@ def _validate_inputs(
 
 
 def _compute_artifact_hashes(verdict: dict, req_dir: Any) -> int | None:
-    """重算 reviewed_artifacts[].sha256 + 文件存在性校验。返回 None 通过，int=退出码。"""
+    """重算 reviewed_artifacts[].sha256 + 文件存在性校验。返回 None 通过，int=退出码。
+
+    D-013 双侧对称：task.md 路径走 normalize（strip frontmatter status/updated_at）算 hash，
+    其它 artifact 维持整文件 sha256。与 check_reviews._r005_hash_drift 比对侧算法对齐，
+    杜绝 F-001 单侧实施带来的 R005 假阳性（详见 plan.md D-013）。
+    """
     for art in verdict.get("reviewed_artifacts", []):
         art_path = req_dir / art["path"]
         if not art_path.exists():
             print(paint(f"❌ artifact 文件不存在: {rel(art_path)}", "red"), file=sys.stderr)
             return 1
-        with art_path.open("rb") as f:
-            art["sha256"] = hashlib.sha256(f.read()).hexdigest()
+        art["sha256"] = _compute_hash_with_normalize(art_path, art["path"])
     return None
 
 

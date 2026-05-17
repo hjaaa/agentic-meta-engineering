@@ -45,6 +45,9 @@
 - [`python-cli-tools-via-module-invocation.md`](python-cli-tools-via-module-invocation.md) — Makefile / shell 调 Python CLI 用 `python3 -m <tool>` 而非裸 `pip`/`pytest`；后者依赖 console-script shim 在 Homebrew Python / PEP 668 / 缺 setup-python 的 base image 会 fail
 - [`reviewer-artifact-selection-excludes-evolving-frontmatter.md`](reviewer-artifact-selection-excludes-evolving-frontmatter.md) — detail-design reviewer 钉 task.md hash 是过度收敛；dev 期 status/updated_at 必然演进触发 R005，需 reviewer 排除 frontmatter 或 R005 仅比 body
 - [`hook-path-normalization-out-of-repo.md`](hook-path-normalization-out-of-repo.md) — touches_guard 等仓库内 hook 须 normalize 仓库外路径（/tmp / /var / ~/）→ 不记 violation，避免主 Agent dispatch lock 期写临时文件触发 GATE-TOUCHES-VIOLATION 假阳性
+- [`dual-side-contract-needs-round-trip-test.md`](dual-side-contract-needs-round-trip-test.md) — 跨模块算法对称契约（writer-reader / encode-decode / 双侧 hash 比对）必须有 round-trip 端到端测试；单侧自闭环测不能证对侧等价
+- [`detail-design-nfr-estimate-needs-testing-calibration-adr.md`](detail-design-nfr-estimate-needs-testing-calibration-adr.md) — detail-design NFR 阈值是骨架估算，testing 实测偏离 > 2x 时落 D-XXX 校准 ADR 为绝对值；features.json acceptance 字面不动避免 R005 连锁
+- [`dispatch-precheck-task-status-flip-after-agent-call.md`](dispatch-precheck-task-status-flip-after-agent-call.md) — 派 subagent 时 task.md.status 翻 in-progress 必须在调 Agent 工具之后；提前翻被 hook B-1 拦下 BLOCKED
 
 ## 什么值得沉淀
 
@@ -64,5 +67,10 @@
 
 每份文件：
 - 文件名 `kebab-case.md`，描述具体场景（如 `mysql-lock-wait-timeout-in-long-transaction.md`）
-- 正文不超过 200 字
-- 必须包含：问题、根因、解法、验证方法
+- 正文建议 600 字内，800 字是软上限；超出考虑拆分到独立 reference 文件
+- 五段结构（前 4 段必填，第 5 段可空）：
+  - `## 问题`：现象描述
+  - `## 根因`：定位到代码 / 流程 / 设计层面
+  - `## 解法`：可复用的规则或步骤
+  - `## 验证方法`：如何确认问题不再复现（命令 / 检查项 / 持续门禁）
+  - `## 关联`（可空）：相关需求 / PR / 其它经验文件链接
