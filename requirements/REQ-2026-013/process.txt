@@ -19,3 +19,4 @@
 2026-05-17 19:50:12 [review:needs_attention] REV-REQ-2026-013-code-F-001-001 score=82 / 1 major (F-2 schema-sync 相对路径) / 1 minor (F-1 errors=replace 护栏) / 5 drop
 2026-05-17 19:50:12 [development] F-001 rev2 派发：修 F-2 + F-1（同模式扫 0 遗漏）
 2026-05-17 19:50:12 [development] F-001 rev2 done：commit 7a39a4a + cd1666a；双 cwd 8/8 全过；receipt status=DONE
+2026-05-17 19:58:50 [review:approved] REV-REQ-2026-013-code-F-001-002 looks_clean score=90 / 0 must_fix / 3 candidates 全 drop（reviewer 自打脸 rev1 自荐的 errors=strict）；待人 sign-off 后转 done
