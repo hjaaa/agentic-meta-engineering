@@ -29,3 +29,4 @@
 2026-05-17 15:47:05 [signoff] REV-REQ-2026-012-code-F-004-001 approved by hj19961223@gmail.com
 2026-05-17 15:47:34 [development] F-004 done：code-review looks_clean(95) + tty signoff approved；2 候选 minor 经 critic 全 rejected；dispatch lock 已释放
 2026-05-17 15:47:34 [save] dev 进度 4/7（F-004 done score=95；tests/ 89 处 F 类清完；6 F821 留 F-005）；next F-005（F-D2 F821 6 处手工 + 启用 CI ruff scope）
+2026-05-17 15:49:13 [save] 会话休止存档：dev 进度 4/7（本会话连做 F-003 + F-004 → done score=95 + 95；D-011 touches_guard /tmp 误记本会话触发 2 次，已 notes follow-up）；恢复点 next=F-005（F-D2：6 条 F821 手工 + CI ruff scope 启用，detail-design §2.2-B）
