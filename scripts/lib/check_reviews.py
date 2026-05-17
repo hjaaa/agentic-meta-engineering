@@ -304,7 +304,7 @@ def _compute_hash_with_normalize(file_path: Path, path_str: str) -> str:
         with file_path.open("rb") as f:
             return hashlib.sha256(f.read()).hexdigest()
     # task.md → 文本读 + 首对 --- 之间 strip 白名单字段
-    content = file_path.read_text(encoding="utf-8", errors="replace")
+    content = file_path.read_text(encoding="utf-8", errors="strict")
     normalized = _strip_frontmatter_fields(content, _NORMALIZE_TASK_FIELDS)
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
