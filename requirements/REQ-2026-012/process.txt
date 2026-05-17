@@ -43,3 +43,4 @@
 2026-05-17 16:39:51 [development] F-007 done：code-review looks_clean(93) + tty signoff approved；2 minor critic 1 rejected 1 follow-up；dispatch lock 已释放
 2026-05-17 16:39:51 [save] dev 进度 7/7 全部 done（本会话 F-007 done score=93；AC-5 + AC-8 收口；2 follow-up：experience/INDEX.md:64-65 spec 漂移修订 + test-assets-must-be-wired-into-ci.md 补 ## 验证方法 节，留下一个清扫 REQ）；下一步 detail-design.stale 自检 + phase-transition development → testing
 2026-05-17 16:46:23 [phase-transition] development → testing：11 项 error gate 全过（含 GATE-REVIEW-VERDICT / GATE-POST-DEV-RECEIPT / GATE-TOUCHES-VIOLATION / GATE-FEATURES-SCHEMA / GATE-TASK-FRONTMATTER / GATE-TRACEABILITY 6 新 gate）；7/7 feature done + 6 task.md hash refresh 完成（D-010）；准备进入 testing 阶段
+2026-05-17 17:10:21 [testing] 跑全套 make ci-local（7/8 子 target PASS；ci-local-deps + ci-local-pytest 在 macOS dev box 因 pip/pytest 不在 /bin/sh PATH 触发 FAIL，旁路 python3 -m pytest 后 1524 passed / 8 skipped / 0 failed；CI 不复现）；8/8 AC 全过；test-report.md 落盘
