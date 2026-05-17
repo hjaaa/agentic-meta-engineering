@@ -15,6 +15,7 @@
 | [2026-04-30-code-review-human-checkpoints.md](2026-04-30-code-review-human-checkpoints.md) | 2026-04-30 | 代码审查人类必经卡点（双卡点机制） | 已落地 |
 | [2026-05-04-submit-codex-loop-and-archive-design.md](2026-05-04-submit-codex-loop-and-archive-design.md) | 2026-05-04 | submit 增强 Codex review-loop + 新增 archive 命令 | 设计中 |
 | [2026-05-08-workflow-unified-redesign.md](2026-05-08-workflow-unified-redesign.md) | 2026-05-08 | 工作流引擎统一改造（DAG yaml-driven + 8 节点类型 + sub_workflow） | APPROVED v2 |
+| [2026-05-17-worktree-isolation-migration-design.md](2026-05-17-worktree-isolation-migration-design.md) | 2026-05-17 | Worktree 隔离能力完整迁移 | DRAFT |
 
 ## 检索提示
 
