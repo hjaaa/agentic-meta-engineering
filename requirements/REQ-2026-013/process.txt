@@ -48,3 +48,6 @@
 2026-05-17 22:02:16 [save] 经验沉淀 2 条到 context/team/experience/ + lessons_extracted=true（a05b53d）
 2026-05-17 22:09:04 [save] 修 subagent-dispatch.md 顺序歧义 + 沉淀 dispatch B-1 翻 status 经验（1f89d3c）
 2026-05-17 22:09:53 [save] testing 全收口：V-01~V-06 pass + 3 经验沉淀 + dispatch SOP fix；恢复点 next=/requirement:submit
+2026-05-17 22:20:42 [submit] PR #77 → develop (https://github.com/hjaaa/agentic-meta-engineering/pull/77)
+2026-05-17 22:20:55 [codex-review-triggered] round=1 pr=#77
+2026-05-17 22:26:01 [codex-review-received] verdict=not_passed round=1

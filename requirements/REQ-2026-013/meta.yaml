@@ -29,8 +29,8 @@ gates_passed:
 - phase: testing
   at: '2026-05-17 21:50:00'
   via: managing-requirement-lifecycle
-pr_url: ''
-pr_number: 0
+pr_url: https://github.com/hjaaa/agentic-meta-engineering/pull/77
+pr_number: 77
 log_layout: split
 feature_area: engineering-spec
 change_type: refactor
