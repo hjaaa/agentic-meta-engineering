@@ -4,6 +4,9 @@
 - workflow_loader 能识别并透传顶层 worktree 字段
 - policy 枚举值（auto / never / require / current）全识别
 - 标准 8 阶段 workflow 的 worktree 配置块被正确加载
+
+测试运行：
+    python3 -m pytest tests/lib/test_workflow_loader_worktree.py -v
 """
 from __future__ import annotations
 
@@ -166,10 +169,11 @@ def test_worktree_location_is_string():
 
 
 def test_worktree_setup_baseline_command_is_string():
-    """setup.baseline.command 应为字符串。"""
+    """setup.baseline.command 应为字符串，且默认值符合 design §2.2 line 160 规定。"""
     result = load_workflow(STANDARD_8PHASE)
     cmd = result.workflow["worktree"]["setup"]["baseline"]["command"]
     assert isinstance(cmd, str), f"command 应为 str，实际 {type(cmd).__name__}"
+    assert cmd == "make gates-validate"
 
 
 def test_worktree_setup_baseline_required_is_boolean():
@@ -177,6 +181,25 @@ def test_worktree_setup_baseline_required_is_boolean():
     result = load_workflow(STANDARD_8PHASE)
     req = result.workflow["worktree"]["setup"]["baseline"]["required"]
     assert isinstance(req, bool), f"required 应为 bool，实际 {type(req).__name__}"
+
+
+def test_load_workflow_without_worktree_section_returns_none_default(tmp_path):
+    """detailed-design.md §3.6 line 863：无 worktree 段时 workflow.get('worktree') 应返回 None。"""
+    yaml_content = (
+        "name: minimal-no-worktree\n"
+        "version: 1\n"
+        "category: requirement\n"
+        "nodes:\n"
+        "  - id: only-node\n"
+        "    type: skill\n"
+        "    skill: noop\n"
+    )
+    yaml_file = tmp_path / "no_worktree.yaml"
+    yaml_file.write_text(yaml_content, encoding="utf-8")
+    result = load_workflow(yaml_file)
+    assert result.report.errors == 0, result.report.render()
+    assert result.workflow is not None
+    assert result.workflow.get("worktree") is None
 
 
 def test_existing_workflow_tests_still_pass():
