@@ -16,6 +16,17 @@ refs-requirement: true
 
 该模型满足单需求串行开发，但在以下 6 类场景暴露问题（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:34）：多 active requirements 并行被分支切换打断；数字递增 ID 依赖 max+1 扫描带来全局竞争；`REQ-YYYY-NNN` 无法从路径看出需求主题；长需求跨会话恢复容易续到错误分支；subagent / review-loop 共用同一 working tree；archive 不知道目录是否绑定隔离工作区。
 
+> **6 类问题 ↔ 用户场景 / 非功能需求 覆盖映射**——6 类问题清单来自 spec（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:34），由本文档场景章节归纳
+>
+> | 问题 | 落地位置 |
+> |---|---|
+> | 多 active requirements 并行被分支切换打断 | 场景 1（新建默认隔离）+ 场景 3（submit 后保留 worktree）|
+> | 数字递增 ID 全局竞争（max+1 扫描） | 场景 1（key=YYYYMMDD-\<slug\>，无全局自增）|
+> | 路径无法看出需求主题 | 场景 1（slug 可读命名）|
+> | 跨会话恢复续到错分支 | 非功能需求·兼容性（`infer_run_id_from_branch` 同时识别新旧 key）+ 场景 1 输出 cd 提示 |
+> | subagent / review-loop 共用 working tree | 场景 1（worktree 隔离）+ 场景 3（submit 不清理，PR feedback 同隔离区迭代）|
+> | archive 不知道是否绑定隔离工作区 | 场景 4（owner=workflow + 白名单校验 + 三重保护）|
+
 `context/team/engineering-spec/specs/2026-05-08-workflow-unified-redesign.md` 曾把 "git worktree 隔离" 列为未来扩展，触发条件为"多 active runs 文件冲突"（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:46）。本需求把该扩展提前转为一等能力，参考实现为 obra/superpowers 的 `using-git-worktrees` 与 `finishing-a-development-branch`（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:10）。
 
 ## 目标
@@ -86,6 +97,11 @@ refs-requirement: true
 - 性能：
   - bootstrap baseline 命令固定为 `make gates-validate`，要求不依赖网络、不依赖 bats / ruff / pytest 环境完整性（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:457）。
   - 完整验证 `make ci-local` 不在 bootstrap 默认范围内（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:467）。
+  - bootstrap 端到端 SLA（普通 repo、工作区 clean、无网络）：目标 ≤ 60s（含 `git worktree add` + setup + `make gates-validate`）；实际量化目标值留待技术预研阶段实测后回填 detail-design [待补充]
+    - 内容：在 macOS 主仓 develop 状态下跑 `/workflow:run standard-8phase "smoke"` 并以 `time` 包裹观察 wall-clock
+    - 依据：spec 未给量化数字（仅约束命令名）；本需求作为可测约束起草初值，避免 detail-design 缺基准
+    - 风险：60s 可能偏紧（取决于 worktree 初始化与 `make gates-validate` 实际耗时），实测后允许调整为 ≤ 90s
+    - 验证时机：tech-research 阶段实测 + plan.md 回写实际值
 
 - 兼容性（关键）：
   - 旧需求目录 `REQ-YYYY-NNN` 与 `feat/req-YYYY-NNN` 分支不迁移；新旧 key 在 status / list / submit / archive 同时可用（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:104）。
@@ -114,7 +130,7 @@ refs-requirement: true
 
 - 不包含：
   - 历史 `REQ-YYYY-NNN` 目录迁移；现有目录保持 legacy in-place（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:104）
-  - 新增 `/workflow:submit` / `/workflow:archive` slash command（spec line 13 列入影响范围但本需求不实现；当前仓库不存在该命令，本需求只改造 `/requirement:submit` / `/requirement:archive` 兼容入口；新建独立 slash command 留作后续需求，详见待确认 #5）
+  - 新增 `/workflow:submit` / `/workflow:archive` slash command（本需求只改造 `/requirement:submit` / `/requirement:archive` 兼容入口；新建权威 workflow:* 入口的取舍详见待澄清 #5）
   - 直通分支（feature / docs / chore）默认 worktree——仅文档推荐，不自动化（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:82）
   - daemon / DB / Web Dashboard（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:79）
   - feature 级隔离；粒度是 run / requirement（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:80）
@@ -154,13 +170,26 @@ refs-requirement: true
 6. archive 只清理 `worktree.owner=workflow` 且路径在白名单的 worktree；外部 worktree 不被删除（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:684）。
 7. 旧 `REQ-YYYY-NNN` 需求在 meta 无 worktree 字段时仍能 status / continue / submit（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:685）。
 8. 同日同 slug 并行创建时，第二个目录稳定落到 `-02` 后缀（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:686）。
+   - 补零规则（宽度、起始序号、第 100+ 次溢出策略、并发冲突探测口径）由 detail-design 阶段精确化 [待补充]
+     - 内容：两位定宽 `-NN`（起始 `-02`，上限 `-99` 后报错并提示改 slug）；探测口径=`os.path.exists(requirements/<key>-NN/)` + `git worktree list` 双重去重；验收 #8 落地后扩为「-02 / -03 顺序生成 + 溢出 fail-closed + 同进程并发探测」四个断言
+     - 依据：spec §13 验收条只给"稳定落 -02"单点断言（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:686），未规定位数 / 上限 / 探测口径；本需求作为可测约束补默认值
+     - 风险：99 上限可能不够极端场景；同进程并发探测可能漏检跨进程 race（需配合 file lock 或 git lock 验证）
+     - 验证时机：detail-design 阶段写 `requirement_naming.generate_key()` 单测覆盖
 9. 单元测试和集成测试覆盖 naming / detection / creation / rollback / cleanup（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:687）。
 
 ## 待澄清清单
 
 按确认点默认推进；当前所有"关键事实"都已绑定 spec 行号引用，本清单仅列执行级遗留项，留待技术预研 / 详细设计闭环：
 
-1. CI / hook 维护者角色是否在用户场景中显式建模——当前默认未单列 `protect-branch` hook 的兼容性测试为独立场景，仅作为非功能需求一部分，由技术预研阶段验证 `git worktree add` 是否触发 hook 拦截。[待用户确认]
+1. CI / hook 维护者角色是否在用户场景中显式建模 [待用户确认]
+   - 内容：当前默认未单列 `protect-branch` hook 的兼容性测试为独立用户场景，仅作为非功能需求一部分；本条澄清是否需要把"hook 维护者"升为独立场景（含验收）
+   - 默认选择：保持非功能需求附属，**不**新增独立场景；技术预研阶段以可测产出物形式落地兼容性验证
+   - 可测产出物（tech-research 阶段必须产出）：
+     - `tests/integration/test_worktree_protect_branch.sh`（或等价 bats）：在临时 git repo 中跑 `git worktree add .worktrees/feat-req-smoke develop`，断言 `bash .claude/hooks/pre-tool-use-guard.sh` 不拦截（rc=0 + stderr 空）
+     - plan.md 回写实测输出（rc + 关键 stderr 行 + 触发 hook 名）作为依据
+   - 依据：protect-branch hook 仅拦 main/master/develop 上的 Edit/Write/Bash 写操作；`git worktree add` 是 git 子命令，理论上不在拦截范围，但需实测
+   - 风险：若 hook 实际拦截，需要在 `pre-tool-use-guard.sh` 加白名单或调整 worktree 创建时机
+   - 验证时机：tech-research 阶段
 
 2. 完整 CI 触发时机——spec §7.2 提到 `make ci-local` 在 submit 前执行，但未明确"自动跑 / 手工触发"。默认假设：开发者手工跑；submit 门禁不强制阻塞，但 PR CI 会强制（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:471）。[待用户确认]
 
