@@ -283,9 +283,11 @@ class TestBootstrapRequirementMkdirFailure:
         monkeypatch.setattr(Path, "mkdir", original_mkdir)
 
         # 调 rollback：req_dir 应被删干净，分支应切回 develop
+        # F-004 rev2 F-4：_bootstrap_rollback 现为 keyword-only 签名
         wb._bootstrap_rollback(
             req_id, real_git_repo, previous_branch,
-            exc_info.value.artifacts_created, exc_info.value.branch_created,
+            artifacts_created=exc_info.value.artifacts_created,
+            branch_created=exc_info.value.branch_created,
         )
         assert not (real_git_repo / "requirements" / req_id).exists(), (
             f"rollback 后 requirements/{req_id}/ 不应残留"
@@ -336,9 +338,11 @@ class TestBootstrapRequirementCheckoutFailure:
         assert exc_info.value.reason == "path_or_branch_exists"
 
         # 调 rollback：因为 branch_created=False，rollback 不会去删 target_branch
+        # F-004 rev2 F-4：_bootstrap_rollback 现为 keyword-only 签名
         wb._bootstrap_rollback(
             req_id, real_git_repo, previous_branch,
-            exc_info.value.artifacts_created, exc_info.value.branch_created,
+            artifacts_created=exc_info.value.artifacts_created,
+            branch_created=exc_info.value.branch_created,
         )
 
         # 主仓根 requirements/<req_id>/ 在 worktree-first 流程中不应被创建
@@ -425,9 +429,16 @@ class TestBootstrapRollbackSilentOnIOError:
         req_id = wr._generate_req_id(real_git_repo)
         (real_git_repo / "requirements" / req_id / "artifacts").mkdir(parents=True)
 
-        wb._bootstrap_rollback(req_id, real_git_repo, "develop", True, False)
+        # F-004 rev2 F-4：_bootstrap_rollback 现为 keyword-only 签名
+        wb._bootstrap_rollback(
+            req_id, real_git_repo, "develop",
+            artifacts_created=True, branch_created=False,
+        )
         # 第二次调用：req_dir 已被删，应静默
-        wb._bootstrap_rollback(req_id, real_git_repo, "develop", True, False)
+        wb._bootstrap_rollback(
+            req_id, real_git_repo, "develop",
+            artifacts_created=True, branch_created=False,
+        )
 
 
 # ============================================================================

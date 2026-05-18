@@ -416,14 +416,28 @@ def _run_requirement(
                     )
                     tried_keys.add(req_id)
                     continue
+                # F-004 rev2 F-1：baseline_failed_required（或其它 retain_worktree=True
+                # 的失败）必须保留现场——不调 _bootstrap_rollback，让用户手工排查。
+                if getattr(exc, "retain_worktree", False):
+                    print(
+                        f"WARN: bootstrap baseline 失败保留现场（req_id={req_id}）；"
+                        f"worktree path / 分支 / requirements/<key> 全部保留供排查；"
+                        f"如需清理请手动 archive 或 discard。stderr={exc}",
+                        file=sys.stderr,
+                    )
+                    return 1
                 # 其它 reason：先 logging 再 rollback，原异常透传
                 logging.error(
                     "bootstrap req_id=%s 失败，已触发 rollback：%s",
                     req_id, exc,
                 )
+                # F-004 rev2 F-2 / F-4：传 worktree_info 让 rollback step 1 worktree
+                # remove 守卫可触发；keyword-only 签名（防 bool 位置参数混淆）。
                 _bootstrap_rollback(
                     req_id, root, previous_branch,
-                    exc.artifacts_created, exc.branch_created,
+                    artifacts_created=exc.artifacts_created,
+                    branch_created=exc.branch_created,
+                    worktree_info=getattr(exc, "worktree_info", None),
                 )
                 print(f"ERROR: bootstrap 失败：{exc}", file=sys.stderr)
                 return 1

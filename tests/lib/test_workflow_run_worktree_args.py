@@ -309,7 +309,10 @@ def test_run_requirement_bootstrap_other_reason_no_retry(
 
     rollback_called = [False]
 
-    def fake_rollback(req_id, root, prev_branch, artifacts_created, branch_created):
+    def fake_rollback(
+        req_id, root, prev_branch, *,
+        artifacts_created, branch_created, worktree_info=None,
+    ):
         rollback_called[0] = True
 
     with patch("workflow_run._bootstrap_requirement", side_effect=fake_bootstrap), \
@@ -345,3 +348,124 @@ def test_parse_args_worktree_policy_invalid_value_space_form_fail_closed() -> No
     """--worktree-policy bogus 空格形式应抛 WorkflowError（F-8 修复 + AC5）。"""
     with pytest.raises(WorkflowError, match="worktree-policy 非法值"):
         _parse_args(["tmpl", "Title", "--worktree-policy", "bogus"])
+
+
+# ============================================================================
+# TC-F03-15（F-004 rev2 F-1）：baseline_failed_required → 不进 rollback，保留现场
+# ============================================================================
+
+def test_run_requirement_when_baseline_failed_required_retains_worktree_no_rollback(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """BootstrapError(reason='baseline_failed_required', retain_worktree=True, worktree_info=mock_wi)：
+    - _bootstrap_rollback **未被调用**（rollback 跳过）
+    - stderr 含 "保留现场" 提示
+    - 返回 1
+    """
+    args = RunArgs(
+        template_id="standard-8phase",
+        template_args="",
+        title="Baseline Failed Required",
+        slug="baseline-fail",
+        no_worktree=False,
+        worktree_policy=None,
+    )
+
+    # 构造 worktree_info（不依赖真 WorktreeInfo dataclass 的 frozen 约束的复杂字段，
+    # 用 MagicMock 即可——_bootstrap_rollback 自身不会被调，路径只走 retain 分支）
+    mock_wi = MagicMock()
+    mock_wi.path = tmp_path / ".worktrees" / "feat-req-baseline-fail"
+    mock_wi.owner = "workflow"
+    mock_wi.created = True
+
+    def fake_bootstrap(req_id, title, template_id, template_path, template_args, root, **kwargs):
+        raise BootstrapError(
+            "baseline failed required=true",
+            reason="baseline_failed_required",
+            retain_worktree=True,
+            branch_created=True,
+            artifacts_created=True,
+            worktree_info=mock_wi,
+        )
+
+    rollback_calls = []
+
+    def spy_rollback(*pos_args, **kwargs):
+        rollback_calls.append((pos_args, kwargs))
+
+    with patch("workflow_run._bootstrap_requirement", side_effect=fake_bootstrap), \
+         patch("workflow_run._bootstrap_rollback", side_effect=spy_rollback), \
+         patch("workflow_run._current_branch", return_value="develop"), \
+         patch("workflow_run._scan_existing_requirement_keys", return_value=set()), \
+         patch("workflow_run.date") as mock_date:
+        mock_date.today.return_value = date(2026, 5, 18)
+        result = _run_requirement(args, Path("/fake/template.yaml"), tmp_path)
+
+    assert result == 1
+    assert len(rollback_calls) == 0, (
+        f"retain_worktree=True 时 _bootstrap_rollback 必须 **不** 被调用，"
+        f"实际调用 {len(rollback_calls)} 次"
+    )
+    captured = capsys.readouterr()
+    assert "保留现场" in captured.err, (
+        f"stderr 应含 '保留现场' 提示，实际：{captured.err!r}"
+    )
+
+
+# ============================================================================
+# TC-F03-16（F-004 rev2 F-2）：bootstrap 其它 reason → rollback 收到 worktree_info
+# ============================================================================
+
+def test_run_requirement_when_bootstrap_fails_passes_worktree_info_to_rollback(
+    tmp_path: Path,
+) -> None:
+    """BootstrapError(reason='other', worktree_info=mock_wi)：
+    - _bootstrap_rollback 被调用
+    - worktree_info kwarg 与 mock_wi 一致（避免孤儿 worktree）
+    """
+    args = RunArgs(
+        template_id="standard-8phase",
+        template_args="",
+        title="Other Failure With Worktree",
+        slug="other-with-wt",
+        no_worktree=False,
+        worktree_policy=None,
+    )
+
+    mock_wi = MagicMock()
+    mock_wi.path = tmp_path / ".worktrees" / "feat-req-other-with-wt"
+    mock_wi.owner = "workflow"
+    mock_wi.created = True
+
+    def fake_bootstrap(req_id, title, template_id, template_path, template_args, root, **kwargs):
+        raise BootstrapError(
+            "some unrecoverable error after worktree created",
+            reason="other",
+            artifacts_created=True,
+            branch_created=True,
+            worktree_info=mock_wi,
+        )
+
+    captured_kwargs = {}
+
+    def spy_rollback(req_id, root, prev_branch, *, artifacts_created, branch_created,
+                     worktree_info=None):
+        captured_kwargs["worktree_info"] = worktree_info
+        captured_kwargs["artifacts_created"] = artifacts_created
+        captured_kwargs["branch_created"] = branch_created
+
+    with patch("workflow_run._bootstrap_requirement", side_effect=fake_bootstrap), \
+         patch("workflow_run._bootstrap_rollback", side_effect=spy_rollback), \
+         patch("workflow_run._current_branch", return_value="develop"), \
+         patch("workflow_run._scan_existing_requirement_keys", return_value=set()), \
+         patch("workflow_run.date") as mock_date:
+        mock_date.today.return_value = date(2026, 5, 18)
+        result = _run_requirement(args, Path("/fake/template.yaml"), tmp_path)
+
+    assert result == 1
+    assert captured_kwargs.get("worktree_info") is mock_wi, (
+        f"_bootstrap_rollback 应收到 worktree_info=mock_wi，实际：{captured_kwargs}"
+    )
+    assert captured_kwargs.get("artifacts_created") is True
+    assert captured_kwargs.get("branch_created") is True

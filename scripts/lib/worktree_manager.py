@@ -65,7 +65,7 @@ class WorktreeBootstrapError(BootstrapError):
     扩展两个字段：
       - reason：分类标识，调用方按 reason 决定 retry / 终止 / 透传
         常用值：'path_or_branch_exists' / 'porcelain_malformed'
-                 / 'main_root_missing' / 'gitignore_missing' /
+                 / 'main_root_missing' / 'worktree_dir_not_ignored' /
                  'git_failure' / 'other'
       - retain_worktree：True 表示调用方应保留 worktree / 分支现场
         （baseline 失败保留排查现场，OD-2 落点）
@@ -82,26 +82,30 @@ class WorktreeBootstrapError(BootstrapError):
         branch_created: bool = False,
         artifacts_created: bool = False,
         retain_worktree: bool = False,
+        worktree_info: Optional["WorktreeInfo"] = None,
     ) -> None:
         """初始化 worktree-flavor BootstrapError。
 
         Args:
           message: 错误消息（含 branch / location / rc / stderr trim 等业务主键）
           reason: 失败原因枚举（常用：path_or_branch_exists / other /
-                  gitignore_missing / porcelain_malformed / main_root_missing /
-                  git_failure）
+                  worktree_dir_not_ignored / porcelain_malformed /
+                  main_root_missing / git_failure）
           branch_created / artifacts_created: 透传父类，由 _bootstrap_rollback
                   决定回滚动作
           retain_worktree: True 时调用层应保留 worktree / branch 现场
                   （OD-2 baseline_failed 落点）
+          worktree_info: F-004 rev2 加入；caller-side _bootstrap_rollback 需
+                  此字段触发 step 1 worktree remove 守卫，避免孤儿 worktree。
         """
         super().__init__(
             message,
             artifacts_created=artifacts_created,
             branch_created=branch_created,
+            reason=reason,
+            retain_worktree=retain_worktree,
+            worktree_info=worktree_info,
         )
-        self.reason = reason
-        self.retain_worktree = retain_worktree
 
 
 # ============================================================================
@@ -333,7 +337,7 @@ def ensure_worktree_dir_ignored(repo_root: Path, location: Path) -> None:
       - '.worktrees'
       - '/.worktrees/'
       - 等价于 location 容器相对路径的条目
-    未命中 → 抛 WorktreeBootstrapError(reason='gitignore_missing')
+    未命中 → 抛 WorktreeBootstrapError(reason='worktree_dir_not_ignored')
     （提示用户先 commit F-007 .gitignore 改动）。
 
     入参：
@@ -342,9 +346,13 @@ def ensure_worktree_dir_ignored(repo_root: Path, location: Path) -> None:
     返回：None
     异常：
       - .gitignore 不存在 / 未含 container 条目 →
-        WorktreeBootstrapError(reason='gitignore_missing')
+        WorktreeBootstrapError(reason='worktree_dir_not_ignored')
       - 读 .gitignore 抛 OSError →
         WorktreeBootstrapError(reason='other')
+
+    rev2 F-8：reason 名实统一——从 'gitignore_missing' 改为
+    'worktree_dir_not_ignored'，与 BootstrapError reason 枚举
+    （workflow_bootstrap.py:65 / detailed-design.md §5.1）保持一致。
     """
     # 推导 location 所在的容器相对路径（如 '.worktrees'）
     try:
@@ -358,7 +366,7 @@ def ensure_worktree_dir_ignored(repo_root: Path, location: Path) -> None:
         raise WorktreeBootstrapError(
             f"missing .gitignore at {gitignore_path}; "
             f"先 commit F-007 .gitignore 改动（{container}/ 必须 ignore）",
-            reason="gitignore_missing",
+            reason="worktree_dir_not_ignored",
             branch_created=False,
         )
 
@@ -390,7 +398,7 @@ def ensure_worktree_dir_ignored(repo_root: Path, location: Path) -> None:
     raise WorktreeBootstrapError(
         f".gitignore missing entry for '{container}/'; "
         f"先 commit F-007 .gitignore 改动后重试",
-        reason="gitignore_missing",
+        reason="worktree_dir_not_ignored",
         branch_created=False,
     )
 

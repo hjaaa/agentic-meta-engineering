@@ -190,23 +190,25 @@ def test_ensure_worktree_dir_ignored_present(tmp_path: Path) -> None:
 
 def test_ensure_worktree_dir_ignored_missing_raises(tmp_path: Path) -> None:
     """D-010 fail-closed：.gitignore 存在但未含容器条目 →
-    WorktreeBootstrapError(reason='gitignore_missing')。"""
+    WorktreeBootstrapError(reason='worktree_dir_not_ignored')。
+    rev2 F-8：reason 由 'gitignore_missing' 改为 'worktree_dir_not_ignored'。"""
     (tmp_path / ".gitignore").write_text("*.pyc\n", encoding="utf-8")
     loc = tmp_path / ".worktrees" / "feat-req-test"
     with pytest.raises(WorktreeBootstrapError) as ei:
         ensure_worktree_dir_ignored(tmp_path, loc)
-    assert ei.value.reason == "gitignore_missing"
+    assert ei.value.reason == "worktree_dir_not_ignored"
     # 父类兜底也应命中
     assert isinstance(ei.value, BootstrapError)
 
 
 def test_ensure_worktree_dir_ignored_no_gitignore_file_raises(tmp_path: Path) -> None:
     """D-010 fail-closed：.gitignore 文件不存在 →
-    WorktreeBootstrapError(reason='gitignore_missing')。"""
+    WorktreeBootstrapError(reason='worktree_dir_not_ignored')。
+    rev2 F-8：reason 由 'gitignore_missing' 改为 'worktree_dir_not_ignored'。"""
     loc = tmp_path / ".worktrees" / "feat-req-test"
     with pytest.raises(WorktreeBootstrapError) as ei:
         ensure_worktree_dir_ignored(tmp_path, loc)
-    assert ei.value.reason == "gitignore_missing"
+    assert ei.value.reason == "worktree_dir_not_ignored"
 
 
 # ============================================================================

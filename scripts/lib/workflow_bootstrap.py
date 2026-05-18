@@ -66,6 +66,9 @@ class BootstrapError(WorkflowError):
           porcelain_malformed / main_root_missing
       - retain_worktree（F-004 加入）：True 表示调用方应保留 worktree / 分支 /
         requirements/<key>/ 现场（baseline_failed_required 落点）。
+      - worktree_info（F-004 rev2 加入）：bootstrap 创建/绑定的 WorktreeInfo
+        透传给 caller-side _bootstrap_rollback，让 rollback 步骤 1
+        worktree remove 守卫可触发；rev1 漏传 → 孤儿 worktree。
 
     继承 WorkflowError 以便上层 except 链复用既有兜底。子类
     WorktreeBootstrapError 已默认带 reason / retain_worktree；F-004 把这两个字段
@@ -80,12 +83,14 @@ class BootstrapError(WorkflowError):
         branch_created: bool = False,
         reason: str = "other",
         retain_worktree: bool = False,
+        worktree_info: Optional["WorktreeInfo"] = None,
     ) -> None:
         super().__init__(message)
         self.artifacts_created = artifacts_created
         self.branch_created = branch_created
         self.reason = reason
         self.retain_worktree = retain_worktree
+        self.worktree_info = worktree_info
 
 
 # ============================================================================
@@ -156,7 +161,6 @@ def _render_meta_yaml(
     *,
     worktree_info: Optional["WorktreeInfo"] = None,
     baseline_result: Optional["SetupResult"] = None,
-    worktree_state: str = "active",
 ) -> str:
     """渲染 meta.yaml（流程组 + worktree 段）。
 
@@ -167,12 +171,11 @@ def _render_meta_yaml(
       req_id / title / branch / base_branch — 流程组 4 字段
       worktree_info — 由 _setup_worktree_or_branch 返回；None 表示未启用 worktree
       baseline_result — run_worktree_setup 返回；None 表示 baseline 未跑或被跳过
-      worktree_state — "active" / "baseline_failed"；落入 process.txt 而非 meta，
-        本函数仅承载 baseline.status 字段渲染（meta schema 不含 state 字段，
-        详细设计 §2.3 的 state 在 process.txt 中表达）
 
     base_branch 缺省走 "main" 兜底；worktree_info=None 时所有 worktree 字段走
     F-008 安全占位（enabled=false / owner=none / path="" / status=skipped）。
+    worktree.state 主状态机（active / baseline_failed）落入 process.txt
+    而非 meta；本函数仅承载 baseline.status 字段渲染（详细设计 §2.3）。
     """
     template_path = REPO_ROOT / _TEMPLATE_DIR_RELATIVE / "meta.yaml.tmpl"
     raw = template_path.read_text(encoding="utf-8")
@@ -192,7 +195,10 @@ def _render_meta_yaml(
     wt_baseline_completed = '""'
 
     # F-004：worktree 实际创建/绑定后回填
-    if worktree_info is not None:
+    # rev2 F-5：owner='none'（policy=never 兜底）时仍走占位路径——与 run-state.jsonl
+    # workflow_started 事件 (worktree_info.owner != 'none') 判定保持一致；否则
+    # meta.enabled=true 但 jsonl enabled=false，下游 dispatch / status 会困惑。
+    if worktree_info is not None and worktree_info.owner != "none":
         wt_enabled = "true"
         wt_owner = worktree_info.owner
         # path: worktree path 相对主仓根（容器硬编码 .worktrees/feat-req-<key>）
@@ -270,7 +276,12 @@ def _load_yaml_worktree_cfg(template_path: Optional[Path]) -> dict[str, Any]:
         logging.debug("_load_yaml_worktree_cfg: pyyaml 不可用，fallback 空 dict")
         return {}
     except Exception as exc:  # noqa: BLE001  yaml 解析异常（语法 / 非 dict 顶层）
-        logging.debug("_load_yaml_worktree_cfg: yaml 解析失败 %s", exc)
+        # F-004 rev2 F-13：升 warning 让用户感知 yaml 配置异常
+        logging.warning(
+            "_load_yaml_worktree_cfg: yaml worktree config parse failed; "
+            "falling back to defaults (path=%s): %s",
+            template_path, exc,
+        )
         return {}
     if not isinstance(data, dict):
         return {}
@@ -310,12 +321,17 @@ def _write_bootstrap_artifacts(
     active_repo_root: Optional[Path] = None,
     worktree_info: Optional["WorktreeInfo"] = None,
     baseline_result: Optional["SetupResult"] = None,
+    branch_created: bool = False,
 ) -> None:
     """渲染并写 meta.yaml / plan.md / process.txt 三个 bootstrap 产物。
 
     F-004：req_dir 必须位于 `active_repo_root / requirements / <req_id>` 下；
     active_repo_root 显式入参避免 R1 路径错乱（主仓 vs worktree path）。
     worktree_info / baseline_result 透传给 _render_meta_yaml 回填 worktree 段。
+
+    rev2 F-10：helper `_write_artifact_file` 自身不知 branch_created 的真实值
+    （只能默认 False），由本函数在 caller-side 捕获并重抛——附带本上下文真实
+    的 branch_created / worktree_info，避免 rollback 信号丢失。
     """
     # active_repo_root 仅做断言（防呼叫方传错），落点已由 req_dir 决定。
     if active_repo_root is not None:
@@ -334,10 +350,21 @@ def _write_bootstrap_artifacts(
         worktree_info=worktree_info,
         baseline_result=baseline_result,
     )
-    _write_artifact_file(req_dir / "meta.yaml", meta_content, req_id=req_id, step_name="meta.yaml")
-    plan_content = _render_plan_md(req_id, title)
-    _write_artifact_file(req_dir / "plan.md", plan_content, req_id=req_id, step_name="plan.md")
-    _write_artifact_file(req_dir / "process.txt", "", req_id=req_id, step_name="process.txt")
+    try:
+        _write_artifact_file(req_dir / "meta.yaml", meta_content, req_id=req_id, step_name="meta.yaml")
+        plan_content = _render_plan_md(req_id, title)
+        _write_artifact_file(req_dir / "plan.md", plan_content, req_id=req_id, step_name="plan.md")
+        _write_artifact_file(req_dir / "process.txt", "", req_id=req_id, step_name="process.txt")
+    except BootstrapError as exc:
+        # rev2 F-10：用本函数上下文的 branch_created + worktree_info 重抛，避免 helper
+        # 内硬编码 branch_created=False / worktree_info=None 导致 rollback 信号丢失。
+        raise BootstrapError(
+            str(exc),
+            artifacts_created=True,
+            branch_created=branch_created,
+            reason=getattr(exc, "reason", "other"),
+            worktree_info=worktree_info,
+        ) from exc
 
 
 def _checkout_feature_branch(req_id: str, repo_root: Path, base_branch: str = "") -> str:
@@ -452,7 +479,7 @@ def _setup_worktree_or_branch(
     location = worktree_manager.select_worktree_location(
         repo_root, branch, preference=preference,
     )
-    # ensure 容器目录已被 .gitignore 收录（fail-closed reason='gitignore_missing'）
+    # ensure 容器目录已被 .gitignore 收录（fail-closed reason='worktree_dir_not_ignored'）
     worktree_manager.ensure_worktree_dir_ignored(repo_root, location)
     info = worktree_manager.create_worktree(repo_root, branch, base_branch, location)
     logging.info(
@@ -543,6 +570,7 @@ def _bootstrap_requirement(
                 branch_created=branch_created,
                 reason="baseline_failed_required",
                 retain_worktree=True,
+                worktree_info=worktree_info,
             )
         else:
             logging.warning(
@@ -562,6 +590,7 @@ def _bootstrap_requirement(
             artifacts_created=True,
             branch_created=branch_created,
             reason="other",
+            worktree_info=worktree_info,
         ) from exc
     logging.info(
         "bootstrap req_id=%s step=mkdir_artifacts active_root=%s",
@@ -574,6 +603,7 @@ def _bootstrap_requirement(
         active_repo_root=active_repo_root,
         worktree_info=worktree_info,
         baseline_result=baseline_result,
+        branch_created=branch_created,
     )
 
     # 步骤 7：写 workflow_started jsonl 事件
@@ -605,6 +635,7 @@ def _bootstrap_requirement(
             artifacts_created=True,
             branch_created=branch_created,
             reason="other",
+            worktree_info=worktree_info,
         ) from exc
     logging.info("bootstrap req_id=%s step=workflow_started done", req_id)
 
@@ -653,7 +684,6 @@ def _persist_baseline_failed_state(
             base_branch,
             worktree_info=worktree_info,
             baseline_result=baseline_result,
-            worktree_state="baseline_failed",
         )
         (req_dir / "meta.yaml").write_text(meta_text, encoding="utf-8")
         # process.txt 写一行 blocker 提示
@@ -666,28 +696,171 @@ def _persist_baseline_failed_state(
         )
 
 
+def _rollback_remove_worktree(
+    req_id: str,
+    repo_root: Path,
+    worktree_info: Optional["WorktreeInfo"],
+) -> None:
+    """rollback step 1：worktree remove + prune。
+
+    只在 owner='workflow' + created=True 时操作；其它 owner 表示 worktree 由 harness
+    或用户创建，rollback 不该擅自删——把删除权交给上层 archive 流程。
+    """
+    if worktree_info is None or not worktree_info.created or worktree_info.owner != "workflow":
+        return
+    try:
+        remove_proc = subprocess.run(
+            ["git", "worktree", "remove", "--force", str(worktree_info.path)],
+            capture_output=True, text=True,
+            cwd=str(repo_root),
+            timeout=_GIT_TIMEOUT_SECONDS,
+            check=False,
+        )
+        if remove_proc.returncode != 0:
+            logging.error(
+                "rollback req_id=%s step=worktree_remove rc=%d stderr=%s",
+                req_id, remove_proc.returncode, remove_proc.stderr.strip(),
+            )
+    except (subprocess.SubprocessError, OSError) as exc:
+        logging.error(
+            "rollback req_id=%s git worktree remove %s 失败：%s",
+            req_id, worktree_info.path, exc,
+        )
+    try:
+        prune_proc = subprocess.run(
+            ["git", "worktree", "prune"],
+            capture_output=True, text=True,
+            cwd=str(repo_root),
+            timeout=_GIT_TIMEOUT_SECONDS,
+            check=False,
+        )
+        if prune_proc.returncode != 0:
+            logging.warning(
+                "rollback req_id=%s step=worktree_prune rc=%d stderr=%s",
+                req_id, prune_proc.returncode, prune_proc.stderr.strip(),
+            )
+    except (subprocess.SubprocessError, OSError) as exc:
+        logging.warning(
+            "rollback req_id=%s git worktree prune 失败：%s", req_id, exc,
+        )
+
+
+def _rollback_delete_branch(
+    req_id: str,
+    repo_root: Path,
+    previous_branch: str,
+    branch_created: bool,
+) -> None:
+    """rollback step 2：checkout previous_branch + branch -D feat/req-<key>。
+
+    与原 F-002 行为对齐：仅在 branch_created=True 时操作；previous_branch 为空时
+    记 error 不抛——HEAD 仍指向待删分支会导致 -D 失败，但仍 best-effort 尝试。
+    """
+    if not branch_created:
+        return
+    branch_name = f"feat/req-{_strip_req_prefix(req_id)}"
+    if previous_branch:
+        try:
+            checkout_result = subprocess.run(
+                ["git", "checkout", previous_branch],
+                capture_output=True,
+                text=True,
+                cwd=str(repo_root),
+                timeout=_GIT_TIMEOUT_SECONDS,
+                check=False,
+            )
+            if checkout_result.returncode != 0:
+                logging.error(
+                    "rollback req_id=%s step=git_checkout rc=%d stderr=%s",
+                    req_id, checkout_result.returncode,
+                    checkout_result.stderr.strip(),
+                )
+        except (subprocess.SubprocessError, OSError) as exc:
+            logging.error(
+                "rollback req_id=%s git checkout %s 失败：%s",
+                req_id, previous_branch, exc,
+            )
+    else:
+        logging.error(
+            "rollback req_id=%s previous_branch 为空，跳过 checkout（HEAD 可能仍在 %s）",
+            req_id, branch_name,
+        )
+
+    try:
+        branch_del_result = subprocess.run(
+            ["git", "branch", "-D", branch_name],
+            capture_output=True,
+            text=True,
+            cwd=str(repo_root),
+            timeout=_GIT_TIMEOUT_SECONDS,
+            check=False,
+        )
+        if branch_del_result.returncode != 0:
+            logging.error(
+                "rollback req_id=%s step=git_branch_delete rc=%d stderr=%s",
+                req_id, branch_del_result.returncode,
+                branch_del_result.stderr.strip(),
+            )
+    except (subprocess.SubprocessError, OSError) as exc:
+        logging.error(
+            "rollback req_id=%s git branch -D %s 失败：%s",
+            req_id, branch_name, exc,
+        )
+
+
+def _rollback_clean_artifacts(
+    req_id: str,
+    repo_root: Path,
+    worktree_info: Optional["WorktreeInfo"],
+    artifacts_created: bool,
+) -> None:
+    """rollback step 3：双扫 rmtree。
+
+    主仓根 + worktree path 两处 requirements/<req_id> 都尝试删——
+    路径错乱 / 中间态残留时一次性兜底。
+    """
+    if not artifacts_created:
+        return
+    candidates: list[Path] = [repo_root / "requirements" / req_id]
+    if worktree_info is not None and worktree_info.path != repo_root:
+        candidates.append(worktree_info.path / "requirements" / req_id)
+    for req_dir in candidates:
+        try:
+            shutil.rmtree(req_dir)
+        except FileNotFoundError:
+            logging.debug(
+                "rollback req_id=%s req_dir=%s 已不存在，跳过 rmtree",
+                req_id, req_dir,
+            )
+        except OSError as exc:
+            logging.error(
+                "rollback req_id=%s rmtree %s 失败：%s",
+                req_id, req_dir, exc,
+            )
+
+
 def _bootstrap_rollback(
     req_id: str,
     repo_root: Path,
     previous_branch: str,
+    *,
     artifacts_created: bool,
     branch_created: bool,
-    *,
     worktree_info: Optional["WorktreeInfo"] = None,
 ) -> None:
-    """bootstrap 失败反向撤销（F-004 改造版）。
+    """bootstrap 失败反向撤销（F-004 rev2 拆 3 子函数版）。
 
     顺序（来源：detailed-design.md §3.4 改造点 3）：
       0. cd 主仓根（cwd 可能在 worktree 内）
-      1. git worktree remove + prune（worktree_info.created && owner='workflow'）
-      2. git checkout previous_branch + git branch -D（branch_created）
-      3. rmtree 主仓根 requirements/<req_id> + worktree_info.path/requirements/<req_id> 双扫
+      1. _rollback_remove_worktree —— git worktree remove + prune
+      2. _rollback_delete_branch  —— git checkout previous + branch -D
+      3. _rollback_clean_artifacts —— rmtree 主仓根 + worktree path 双扫
 
+    keyword-only 签名（rev2 F-4）防误调（位置参数易混淆 bool 顺序）。
     幂等：所有 step best-effort 失败容忍。
-    baseline_failed_required 路径**不**调本函数（retain_worktree=True 时 caller skip）。
+    baseline_failed_required 路径**不**调本函数（caller 在 retain_worktree=True
+    时 skip）。
     """
-    branch_name = f"feat/req-{_strip_req_prefix(req_id)}"
-
     # 步骤 0：cd 主仓根
     try:
         os.chdir(repo_root)
@@ -696,109 +869,6 @@ def _bootstrap_rollback(
             "rollback req_id=%s step=chdir_main_root failed: %s", req_id, exc,
         )
 
-    # 步骤 1：worktree remove + prune（仅当 workflow owned + created=True）
-    if worktree_info is not None and worktree_info.created and worktree_info.owner == "workflow":
-        try:
-            remove_proc = subprocess.run(
-                ["git", "worktree", "remove", "--force", str(worktree_info.path)],
-                capture_output=True, text=True,
-                cwd=str(repo_root),
-                timeout=_GIT_TIMEOUT_SECONDS,
-                check=False,
-            )
-            if remove_proc.returncode != 0:
-                logging.error(
-                    "rollback req_id=%s step=worktree_remove rc=%d stderr=%s",
-                    req_id, remove_proc.returncode, remove_proc.stderr.strip(),
-                )
-        except (subprocess.SubprocessError, OSError) as exc:
-            logging.error(
-                "rollback req_id=%s git worktree remove %s 失败：%s",
-                req_id, worktree_info.path, exc,
-            )
-        try:
-            prune_proc = subprocess.run(
-                ["git", "worktree", "prune"],
-                capture_output=True, text=True,
-                cwd=str(repo_root),
-                timeout=_GIT_TIMEOUT_SECONDS,
-                check=False,
-            )
-            if prune_proc.returncode != 0:
-                logging.warning(
-                    "rollback req_id=%s step=worktree_prune rc=%d stderr=%s",
-                    req_id, prune_proc.returncode, prune_proc.stderr.strip(),
-                )
-        except (subprocess.SubprocessError, OSError) as exc:
-            logging.warning(
-                "rollback req_id=%s git worktree prune 失败：%s", req_id, exc,
-            )
-
-    # 步骤 2：删 feature 分支（与原 F-002 行为对齐：仅在 branch_created=True 时操作）
-    if branch_created:
-        if previous_branch:
-            try:
-                checkout_result = subprocess.run(
-                    ["git", "checkout", previous_branch],
-                    capture_output=True,
-                    text=True,
-                    cwd=str(repo_root),
-                    timeout=_GIT_TIMEOUT_SECONDS,
-                    check=False,
-                )
-                if checkout_result.returncode != 0:
-                    logging.error(
-                        "rollback req_id=%s step=git_checkout rc=%d stderr=%s",
-                        req_id, checkout_result.returncode,
-                        checkout_result.stderr.strip(),
-                    )
-            except (subprocess.SubprocessError, OSError) as exc:
-                logging.error(
-                    "rollback req_id=%s git checkout %s 失败：%s",
-                    req_id, previous_branch, exc,
-                )
-        else:
-            logging.error(
-                "rollback req_id=%s previous_branch 为空，跳过 checkout（HEAD 可能仍在 %s）",
-                req_id, branch_name,
-            )
-
-        try:
-            branch_del_result = subprocess.run(
-                ["git", "branch", "-D", branch_name],
-                capture_output=True,
-                text=True,
-                cwd=str(repo_root),
-                timeout=_GIT_TIMEOUT_SECONDS,
-                check=False,
-            )
-            if branch_del_result.returncode != 0:
-                logging.error(
-                    "rollback req_id=%s step=git_branch_delete rc=%d stderr=%s",
-                    req_id, branch_del_result.returncode,
-                    branch_del_result.stderr.strip(),
-                )
-        except (subprocess.SubprocessError, OSError) as exc:
-            logging.error(
-                "rollback req_id=%s git branch -D %s 失败：%s",
-                req_id, branch_name, exc,
-            )
-
-    # 步骤 3：rmtree 主仓根 + worktree path 双扫
-    if artifacts_created:
-        candidates: list[Path] = [repo_root / "requirements" / req_id]
-        if worktree_info is not None and worktree_info.path != repo_root:
-            candidates.append(worktree_info.path / "requirements" / req_id)
-        for req_dir in candidates:
-            try:
-                shutil.rmtree(req_dir)
-            except FileNotFoundError:
-                logging.debug(
-                    "rollback req_id=%s req_dir=%s 已不存在，跳过 rmtree",
-                    req_id, req_dir,
-                )
-            except OSError as exc:
-                logging.error(
-                    "rollback req_id=%s rmtree %s 失败：%s",
-                    req_id, req_dir, exc,
-                )
+    _rollback_remove_worktree(req_id, repo_root, worktree_info)
+    _rollback_delete_branch(req_id, repo_root, previous_branch, branch_created)
+    _rollback_clean_artifacts(req_id, repo_root, worktree_info, artifacts_created)
