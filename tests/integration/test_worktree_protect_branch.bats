@@ -35,11 +35,13 @@ setup() {
   git worktree add "$WORKTREE_PATH" -b feat/req-test -q
 
   # Edit 工具 PreToolUse 模拟载荷
+  # file_path 选 F-002 touches 内文件，避免真仓 touches_guard hook 误命中
+  # 留 violation receipt（hook 在临时仓 cwd 下命中本仓 dispatch-state）
   EDIT_PAYLOAD=$(cat <<'JSON'
 {
   "tool_name": "Edit",
   "tool_input": {
-    "file_path": "scripts/lib/foo.py",
+    "file_path": "scripts/lib/worktree_manager.py",
     "old_string": "a",
     "new_string": "b"
   }
