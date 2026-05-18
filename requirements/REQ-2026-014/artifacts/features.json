@@ -195,7 +195,7 @@
         "tests/lib/test_meta_yaml_worktree_template.py"
       ],
       "depends_on": [],
-      "depends_on_features": ["F-002", "F-004"],
+      "depends_on_features": ["F-002"],
       "complexity": "light",
       "acceptance": [
         "meta.yaml 模板含 worktree: 段，**12 字段全集**：enabled / owner / path / absolute_path / branch / base_branch / created_at / baseline (command + status + completed_at 三子字段) / cleanup (policy + removed_at 两子字段)，与 §2.1 字段表 + schema fragment 一一对应（P1-4 修复后）",

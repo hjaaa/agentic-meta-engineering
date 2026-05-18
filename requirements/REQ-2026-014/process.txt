@@ -43,3 +43,4 @@
 2026-05-18 15:22:15 [signoff] REV-REQ-2026-014-code-F-002-003 approved by hj19961223@gmail.com
 2026-05-18 15:23:00 [signoff] REV-REQ-2026-014-code-F-002-003 approved by hj19961223@gmail.com
 2026-05-18 15:23:00 [development] F-002 done：rev-003 looks_clean/90 signed → status=done / review_report 落入 frontmatter / dispatch lock 释放（current_feature=null）；下一步 DAG 剩两叶 F-007（trivial 甜点）或 F-003（light 接入）
+2026-05-18 15:28:01 [save] hotfix features.json + tasks/F-008.md depends_on_features 删 F-004（与 detail-design DAG 矛盾的循环依赖 F-004↔F-008）；F-008 现仅依赖 F-002（done）即可派；check_features/check_task_frontmatter 全过
