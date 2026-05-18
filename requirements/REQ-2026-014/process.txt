@@ -12,3 +12,6 @@
 2026-05-18 09:13:49 [review] REV-REQ-2026-014-outline-design-002 outline-design-quality-reviewer looks_clean/92 supersedes -001；5 条修复全 verified（R1 状态机回边 / R2 字段抽象化 / S1 筛选标准 / S2 OD-1~4 / AC-A1 提示）；维度评分 86→92 跨越门槛；下一步：人工 signoff -002 → phase-transition outline-design → detail-design
 2026-05-18 09:19:31 [signoff] REV-REQ-2026-014-outline-design-002 approved by hj19961223@gmail.com
 2026-05-18 09:27:15 [phase-transition] outline-design → detail-design：outline-design-002 looks_clean/92 signed + 11 gate 全过（META-SCHEMA / INDEX-INTEGRITY / SOURCING / PLAN-FRESHNESS / WORKSPACE-CLEAN / REVIEW-VERDICT / FEATURES-SCHEMA / TASK-FRONTMATTER / POST-DEV-RECEIPT / TRACEABILITY / TOUCHES-VIOLATION）
+2026-05-18 09:32:13 [save] outline-design 闭环（rev-002 looks_clean/92 signed）+ phase-transition → detail-design（11 gate 过 / 3 commit）
+2026-05-18 09:34:50 [save] detail-design 起草前 progressive-disclosure 5 点确认 + 章节骨架已出（OD-1~OD-4 默认决议 + features.json 10 feature 拆分）；待用户确认或调整后动笔 detail-design.md + features.json
+2026-05-18 09:55:37 [save] detail-design 起草完成：detailed-design.md（730 行 / 7 章）+ features.json 10 feature；check_sourcing strict 0 issue / 4 gate 过 / OD-1~OD-4 落地齐

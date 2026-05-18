@@ -1,0 +1,253 @@
+{
+  "schema_version": "1.0",
+  "requirement_id": "REQ-2026-014",
+  "features": [
+    {
+      "id": "F-001",
+      "title": "requirement_naming.py 新建（key / 分支 / 目录解析 + legacy 兼容）",
+      "description": "新建 scripts/lib/requirement_naming.py：6 个纯函数（标准库 only，无第三方依赖）。函数清单：normalize_slug(raw)→ASCII slug 规范化（lower / 连字符 / 字符集校验）；derive_slug_from_title(title)→仅 ASCII 标题派生，中文标题返回 None（fail-closed by --slug 逃生）；generate_requirement_key(date, slug, requirements_root)→新格式 YYYYMMDD-<slug>，同日同 slug 第二个落 -02 后缀（原子 mkdir(exist_ok=False) + 重试，与 _generate_req_id 一致语义）；is_legacy_requirement_key(key)→识别 ^REQ-\\d{4}-\\d{3}$ 旧格式（复用 _REQ_ID_PATTERN 正则）；branch_for_requirement_key(key)→统一 feat/req-<key>（新旧两种 key 都接受）；directory_for_requirement_key(key)→requirements/<key> 路径。落地 outline-design §模块划分 / spec §5.1 表。",
+      "modules": [
+        "scripts/lib/requirement_naming.py",
+        "tests/lib/test_requirement_naming.py"
+      ],
+      "touches": [
+        "scripts/lib/requirement_naming.py",
+        "tests/lib/test_requirement_naming.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": [],
+      "complexity": "medium",
+      "acceptance": [
+        "scripts/lib/requirement_naming.py 含 6 个公开函数：normalize_slug / derive_slug_from_title / generate_requirement_key / is_legacy_requirement_key / branch_for_requirement_key / directory_for_requirement_key",
+        "pytest tests/lib/test_requirement_naming.py 全过，覆盖：normalize_slug 大写转小写 + 非法字符 ValueError；derive_slug_from_title 中文返回 None + ASCII 标题派生；generate_requirement_key 同日同 slug 第二个落 -02；is_legacy_requirement_key 区分 REQ-2026-014 与 20260518-foo；branch_for_requirement_key 新旧 key 均生成 feat/req-* 前缀",
+        "requirement_naming.py 不引用项目内任何其他 lib（叶子节点；导入仅 re / datetime / pathlib / os）",
+        "tests/lib/test_requirement_naming.py 至少 11 用例（覆盖 spec §13 验收 #8 同日并行场景）"
+      ],
+      "estimate_days": 1.25,
+      "ac_refs": ["F-001-AC1", "F-001-AC2", "F-001-AC3"]
+    },
+    {
+      "id": "F-002",
+      "title": "worktree_manager.py 新建（detect / create / setup / cleanup + 三重保护）",
+      "description": "新建 scripts/lib/worktree_manager.py：7 个函数 + 2 个 dataclass（标准库 only，subprocess + pathlib）。dataclass：WorktreeState（is_git_repo / is_linked_worktree / is_submodule / is_detached / branch / worktree_path / git_dir / git_common_dir）；WorktreeInfo（path / branch / base_branch / owner∈{workflow, external, none} / created）。函数：detect_worktree_state(repo_root)→git rev-parse --git-dir 与 --git-common-dir 双源判定，path 不含 modules/ 判 linked worktree；select_worktree_location(repo_root, branch, preference)→按优先级选 .worktrees/feat-req-<key>；ensure_worktree_dir_ignored(repo_root, location)→.gitignore 校验 fail-closed（缺则 BootstrapError）；create_worktree(repo_root, branch, base_branch, location)→git worktree add，rc!=0 抛 BootstrapError；run_worktree_setup(worktree_path, policy)→subprocess 调 make gates-validate 解析 exit code，必要时透传 CLAUDE_GATES_AUDIT_ROOT；resolve_main_repo_root(worktree_path)→worktree 找主仓根；cleanup_worktree_if_owned(meta, repo_root)→三重保护（owner=workflow + 路径 startswith(.worktrees/feat-req-) 白名单 + cwd ≡ main_repo_root）；新增集成测试 tests/integration/test_worktree_protect_branch.bats 验证 worktree 内 hook 不误触发 protect-branch。落地 outline-design §流程二/三/四 + spec §5.1 + tech-feasibility §1.2 + §待澄清 #1。",
+      "modules": [
+        "scripts/lib/worktree_manager.py",
+        "tests/lib/test_worktree_manager.py",
+        "tests/integration/test_worktree_protect_branch.bats"
+      ],
+      "touches": [
+        "scripts/lib/worktree_manager.py",
+        "tests/lib/test_worktree_manager.py",
+        "tests/integration/test_worktree_protect_branch.bats"
+      ],
+      "depends_on": [],
+      "depends_on_features": [],
+      "complexity": "heavy",
+      "acceptance": [
+        "scripts/lib/worktree_manager.py 含 WorktreeState + WorktreeInfo 两个 dataclass + 7 个公开函数（detect_worktree_state / select_worktree_location / ensure_worktree_dir_ignored / create_worktree / run_worktree_setup / resolve_main_repo_root / cleanup_worktree_if_owned）",
+        "pytest tests/lib/test_worktree_manager.py 全过，覆盖：detect_worktree_state 区分 normal / linked / submodule / detached 四类；ensure_worktree_dir_ignored 缺 ignore 抛 BootstrapError；create_worktree git 子进程 rc!=0 抛 BootstrapError 且 stderr 透传；cleanup_worktree_if_owned owner=external 跳过且返回 skipped；owner=workflow + 路径白名单失败 → fail-closed；cwd != main_repo_root → fail-closed",
+        "worktree_manager.py 不引用 requirement_naming（解耦到底，OD-1 默认锁死）",
+        "bats tests/integration/test_worktree_protect_branch.bats 全过：临时仓建 worktree → 模拟 Edit 工具调用 → hook rc=0 + stderr 空",
+        "tests/lib/test_worktree_manager.py 至少 14 用例覆盖 spec §13 验收 #2 / #5 / #6 + R5 风险 + R8 风险"
+      ],
+      "estimate_days": 2.5,
+      "ac_refs": ["F-002-AC1", "F-002-AC2", "F-002-AC3", "F-002-AC4"]
+    },
+    {
+      "id": "F-003",
+      "title": "workflow_run.py 改造（_generate_req_id 替换 + 三个 worktree 参数解析）",
+      "description": "改 scripts/lib/workflow_run.py：(1) _generate_req_id 函数体替换为调用 requirement_naming.generate_requirement_key（保留函数名作为兼容入口）；(2) _parse_args 扩展三个新参数 --slug=<value> / --no-worktree / --worktree-policy=<auto|never|require|current>；(3) 中文标题 + 缺 --slug 时 fail-closed exit 1，stderr 提示 '中文标题需显式 --slug=<ascii-slug>' 与 D-013 链接；(4) legacy REQ-YYYY-NNN 路径在 --slug 缺失且 title 仅 ASCII 时通过 generate_requirement_key 与 _generate_req_id 共存（短期过渡）。落地 outline-design §模块划分既有改造点 + tech-feasibility §1.3 + spec §11 Phase 2。",
+      "modules": [
+        "scripts/lib/workflow_run.py",
+        "tests/lib/test_workflow_run_worktree_args.py"
+      ],
+      "touches": [
+        "scripts/lib/workflow_run.py",
+        "tests/lib/test_workflow_run_worktree_args.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": ["F-001"],
+      "complexity": "light",
+      "acceptance": [
+        "scripts/lib/workflow_run.py 的 _generate_req_id 函数体改为调用 requirement_naming.generate_requirement_key",
+        "_parse_args 解析 --slug=<value> / --no-worktree / --worktree-policy=<value> 三参数，返回结构含对应字段",
+        "中文标题 + 无 --slug 时 main() 退 exit=1，stderr 含 '中文标题需显式 --slug='",
+        "pytest tests/lib/test_workflow_run_worktree_args.py 全过：3 参数 happy / 中文 + 缺 slug fail-closed / ASCII 标题自动派生 / --worktree-policy 非法值 fail-closed",
+        "tests/lib/test_workflow_run.py 现有用例（_generate_req_id legacy 兼容、并发 mkdir 重试）回归全过"
+      ],
+      "estimate_days": 0.5,
+      "ac_refs": ["F-003-AC1", "F-003-AC2"]
+    },
+    {
+      "id": "F-004",
+      "title": "workflow_bootstrap.py 改造（worktree-first 写产物 + rollback 顺序）",
+      "description": "改 scripts/lib/workflow_bootstrap.py：(1) _checkout_feature_branch 拆为 _setup_worktree_or_branch：先 detect_worktree_state，若已在 linked worktree 内则 bind current（D-004 复用），否则 ensure_worktree_dir_ignored → create_worktree → run_worktree_setup；(2) _bootstrap_requirement 写文件顺序改为 worktree-first：步骤 1（解析 key / slug） → 步骤 2（建 worktree） → 步骤 3（worktree 路径下 mkdir artifacts/）→ 步骤 4-6（render meta.yaml / plan.md / process.txt 落 worktree）→ 步骤 7（写 run-state.jsonl）→ 步骤 8（baseline 通过输出成功）；(3) _bootstrap_rollback 顺序补 worktree remove 前置：步骤 0 cd main_repo_root → 步骤 1 git worktree remove <path> + git worktree prune → 步骤 2 git branch -D → 步骤 3 rmtree requirements/<key>（主仓根 + worktree path 双扫）；(4) 显式传 active_repo_root（worktree path）给 _write_bootstrap_artifacts，避免 R1 路径错乱。落地 outline-design §流程一 + spec §6 + tech-feasibility §1.3 + R1 缓解。",
+      "modules": [
+        "scripts/lib/workflow_bootstrap.py",
+        "tests/lib/test_workflow_bootstrap_worktree.py"
+      ],
+      "touches": [
+        "scripts/lib/workflow_bootstrap.py",
+        "tests/lib/test_workflow_bootstrap_worktree.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": ["F-001", "F-002", "F-007", "F-008"],
+      "complexity": "heavy",
+      "acceptance": [
+        "scripts/lib/workflow_bootstrap.py 的 _bootstrap_requirement 步骤 1-8 顺序与详细设计 §3.1 一致：worktree 优先于 artifacts，artifacts 落点为 worktree path",
+        "_bootstrap_rollback 步骤 1（worktree remove + prune）严格先于步骤 2（branch -D）",
+        "_write_bootstrap_artifacts 接受 active_repo_root 参数，落点显式为 worktree path（git diff 见显式传参）",
+        "pytest tests/lib/test_workflow_bootstrap_worktree.py 全过：成功路径落点正确 / create_worktree 失败 rollback 不残留 / artifacts 写一半失败 rollback / baseline 失败 rollback 顺序",
+        "已在 linked worktree 内运行时 detect_worktree_state 复用 + 不嵌套 worktree（spec §13 验收 #2）",
+        "现有 tests/lib/test_workflow_bootstrap.py 回归全过"
+      ],
+      "estimate_days": 1.25,
+      "ac_refs": ["F-004-AC1", "F-004-AC2", "F-004-AC3"]
+    },
+    {
+      "id": "F-005",
+      "title": "archive_runner.py 改造（注入 cleanup_worktree_if_owned + external skipped 日志）",
+      "description": "改 scripts/lib/archive_runner.py：(1) archive_requirement 函数 5 项预检通过后、_atomic_write_meta 之前注入 cleanup_worktree_if_owned(meta, REPO_ROOT) 调用；(2) owner=workflow 路径正常清理；(3) owner=external 输出 INFO 日志 'worktree cleanup skipped: external'，不调 git worktree remove；(4) meta.yaml 缺 worktree 字段时降级为 enabled=false 兼容 legacy（防御性 meta.get('worktree', {})）；(5) archive.md 接口契约 frozen，仅追加内部步骤不改 CLI 入参 / 退出码。落地 outline-design §流程四 archive cleanup 三重保护 + spec §11 Phase 3 + tech-feasibility §1.5 + R5/R7 缓解。",
+      "modules": [
+        "scripts/lib/archive_runner.py",
+        "tests/lib/test_archive_runner_worktree_cleanup.py"
+      ],
+      "touches": [
+        "scripts/lib/archive_runner.py",
+        "tests/lib/test_archive_runner_worktree_cleanup.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": ["F-002", "F-008"],
+      "complexity": "light",
+      "acceptance": [
+        "archive_runner.py archive_requirement 函数体含 cleanup_worktree_if_owned(meta, REPO_ROOT) 调用，位置在 5 项预检之后、_atomic_write_meta 之前",
+        "pytest tests/lib/test_archive_runner_worktree_cleanup.py 全过：owner=workflow 删 worktree / owner=external 跳过 + log 含 'cleanup skipped: external' / meta 缺 worktree 字段降级 enabled=false 不报错 / archive 接口入参出参未变",
+        "现有 tests/lifecycle/test_archive.py 回归全过（CLI 接口契约不破坏）",
+        "owner=external + dirty workspace fail-closed 路径覆盖（spec §13 验收 #6）"
+      ],
+      "estimate_days": 0.625,
+      "ac_refs": ["F-005-AC1", "F-005-AC2"]
+    },
+    {
+      "id": "F-006",
+      "title": "standard-8phase.yaml 顶层 worktree 配置组",
+      "description": "改 .claude/workflows/requirement/standard-8phase.yaml：顶层追加 worktree: 块，含 enabled: true / policy: auto / location: .worktrees / setup.baseline.command: make gates-validate / setup.baseline.required: true。tech-feasibility §1.6 已验证 workflow_loader._validate_schema_top 不拒绝额外顶层字段（来源：scripts/lib/workflow_loader.py:98）；result.workflow=raw 透传 dict（来源：scripts/lib/workflow_loader.py:188），workflow.get('worktree') 可直接读。新增 tests/lib/test_workflow_loader_worktree.py 校验 load 后 workflow['worktree'] 字段可达 + policy 枚举 4 类全识别。落地 outline-design §配置确认 + spec §5.4。",
+      "modules": [
+        ".claude/workflows/requirement/standard-8phase.yaml",
+        "tests/lib/test_workflow_loader_worktree.py"
+      ],
+      "touches": [
+        ".claude/workflows/requirement/standard-8phase.yaml",
+        "tests/lib/test_workflow_loader_worktree.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": ["F-004"],
+      "complexity": "trivial",
+      "acceptance": [
+        ".claude/workflows/requirement/standard-8phase.yaml 顶层含 worktree: 块，含 enabled / policy / location / setup.baseline.command / setup.baseline.required 五字段",
+        "pytest tests/lib/test_workflow_loader_worktree.py 全过：load_workflow() 后 result.workflow['worktree'] 字段非空 + policy 取 auto / never / require / current 四值均不触发 W100",
+        "现有 tests/lib/test_workflow_loader.py 回归全过（_validate_schema_top 不报错）"
+      ],
+      "estimate_days": 0.125,
+      "ac_refs": ["F-006-AC1"]
+    },
+    {
+      "id": "F-007",
+      "title": ".gitignore 追加 .worktrees/",
+      "description": "改 .gitignore：在已有 .claude/worktrees/ 行（来源：.gitignore:32）之后追加 .worktrees/ 一行。tech-feasibility §1.2 已确认本仓 .gitignore 已具备 .claude/worktrees/ 范式（来源：requirements/REQ-2026-014/artifacts/tech-feasibility.md:29），一次性追加即可。落地 outline-design §配置确认 + spec §11 Phase 1。",
+      "modules": [
+        ".gitignore"
+      ],
+      "touches": [
+        ".gitignore"
+      ],
+      "depends_on": [],
+      "depends_on_features": [],
+      "complexity": "trivial",
+      "acceptance": [
+        ".gitignore 含 .worktrees/ 字面量行",
+        "git status 在 .worktrees/ 目录下执行 git worktree add 后不再把 .worktrees/feat-req-* 视为 untracked"
+      ],
+      "estimate_days": 0.0625,
+      "ac_refs": ["F-007-AC1"]
+    },
+    {
+      "id": "F-008",
+      "title": "templates/meta.yaml.tmpl 加 worktree: 空结构占位",
+      "description": "改 .claude/skills/managing-requirement-lifecycle/templates/meta.yaml.tmpl（或 workflow_bootstrap.py 内联模板，按当前实际位置）：流程组之后追加 worktree: 段，含 owner / path / absolute_path / branch / base_branch / created_at / baseline (command/status/completed_at) / cleanup (policy/removed_at) 子字段。bootstrap 渲染时 worktree_manager 回填实际值。旧需求 meta.yaml 缺该段时 archive_runner 防御性 get（F-005 已覆盖）。落地 outline-design §配置确认 + spec §5.2。",
+      "modules": [
+        ".claude/skills/managing-requirement-lifecycle/templates/meta.yaml.tmpl",
+        "scripts/lib/workflow_bootstrap.py",
+        "tests/lib/test_meta_yaml_worktree_template.py"
+      ],
+      "touches": [
+        ".claude/skills/managing-requirement-lifecycle/templates/meta.yaml.tmpl",
+        "scripts/lib/workflow_bootstrap.py",
+        "tests/lib/test_meta_yaml_worktree_template.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": ["F-002"],
+      "complexity": "light",
+      "acceptance": [
+        "meta.yaml 模板含 worktree: 段，子字段含 owner / path / branch / base_branch / created_at / baseline (含 command + status + completed_at 三子字段) / cleanup (含 policy + removed_at 两子字段)",
+        "pytest tests/lib/test_meta_yaml_worktree_template.py 全过：渲染后 yaml.safe_load 成功 + worktree 段结构完整 + cleanup.policy 默认 owned-only",
+        "现有 tests/lib/test_workflow_bootstrap.py 渲染相关用例回归全过",
+        "OD-3 决议落地：cleanup.policy 字段在模板占位但 archive_runner 不消费（注释说明）"
+      ],
+      "estimate_days": 0.125,
+      "ac_refs": ["F-008-AC1"]
+    },
+    {
+      "id": "F-009",
+      "title": "submit.md + archive.md 文档同步（worktree 保留提示 + 三重保护语义）",
+      "description": "改 .claude/commands/requirement/submit.md：成功提示段末尾追加 'worktree retained at <path>; use /requirement:archive to clean up' 字面量，约 5 行。改 .claude/commands/requirement/archive.md：在三重保护语义段说明 owner=workflow + 路径白名单 + 主仓根 cwd 三条件均满足时才删；接口契约 frozen 不变。改 .claude/skills/managing-requirement-lifecycle/SKILL.md 对应说明段同步。新增 tests/lifecycle/test_submit_archive_worktree_docs.py 校验字面量存在。落地 outline-design §模块划分既有改造点 + spec §11 Phase 3 + tech-feasibility §1.4/§1.5。",
+      "modules": [
+        ".claude/commands/requirement/submit.md",
+        ".claude/commands/requirement/archive.md",
+        ".claude/skills/managing-requirement-lifecycle/SKILL.md",
+        "tests/lifecycle/test_submit_archive_worktree_docs.py"
+      ],
+      "touches": [
+        ".claude/commands/requirement/submit.md",
+        ".claude/commands/requirement/archive.md",
+        ".claude/skills/managing-requirement-lifecycle/SKILL.md",
+        "tests/lifecycle/test_submit_archive_worktree_docs.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": ["F-005"],
+      "complexity": "trivial",
+      "acceptance": [
+        ".claude/commands/requirement/submit.md 含 'worktree retained at' + 'use /requirement:archive to clean up' 字面量",
+        ".claude/commands/requirement/archive.md 含 'owner=workflow' + '路径白名单' + '主仓根' 三重保护字面量",
+        "pytest tests/lifecycle/test_submit_archive_worktree_docs.py 全过（grep 字面量存在）",
+        "archive.md 接口签名 / 入参 / 退出码段落未改（git diff 仅追加语义说明段）"
+      ],
+      "estimate_days": 0.25,
+      "ac_refs": ["F-009-AC1"]
+    },
+    {
+      "id": "F-010",
+      "title": "meta-schema.yaml 扩展 worktree 段（optional + 条件 enum）",
+      "description": "改 context/team/engineering-spec/meta-schema.yaml：在 fields: 段追加 worktree 一组定义。enabled (bool, optional)；owner (enum {workflow, external, none}, optional)；path (string, optional)；branch (string, optional)；baseline.status (enum {passed, failed, skipped}, optional)；cleanup.policy (enum {owned-only, never}, optional)。conditional_required 不强制 worktree 段必填（旧需求兼容，缺则默认 enabled=false）。新增 tests/lib/test_meta_schema_worktree.py 验证：含 worktree 段的 meta.yaml 校验通过；worktree.owner 取非法枚举值时校验失败；缺 worktree 段的 legacy meta.yaml 校验通过。落地 outline-design §OD-3 决议 + spec §5.2 + tech-feasibility §1.5 R7 缓解。",
+      "modules": [
+        "context/team/engineering-spec/meta-schema.yaml",
+        "tests/lib/test_meta_schema_worktree.py"
+      ],
+      "touches": [
+        "context/team/engineering-spec/meta-schema.yaml",
+        "tests/lib/test_meta_schema_worktree.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": ["F-008"],
+      "complexity": "light",
+      "acceptance": [
+        "context/team/engineering-spec/meta-schema.yaml 含 worktree 段定义：enabled / owner / path / branch / baseline.status / cleanup.policy 六字段，均 optional",
+        "pytest tests/lib/test_meta_schema_worktree.py 全过：含 worktree 段的合法 meta 通过 / owner 取非法值失败 / 缺段的 legacy meta 通过",
+        "现有 tests/lib/test_meta_schema.py 及 GATE-META-SCHEMA 在 13 个完成需求上回归全过",
+        "OD-3 决议落地：cleanup.policy 标 optional 不强制（archive_runner 不消费）"
+      ],
+      "estimate_days": 0.25,
+      "ac_refs": ["F-010-AC1"]
+    }
+  ]
+}
