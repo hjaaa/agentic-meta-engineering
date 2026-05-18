@@ -11,3 +11,4 @@
 2026-05-18 09:10:14 [save] outline-design-001 reviewer 全 5 条 issue 闭环；check_sourcing --strict 0 issue（修复中 2 次回归已二次修正：reviews/ 路径 → 弱化为"依据" + 筛选标准段去多余"默认"动词）；下一步：reviewer 复评 / signoff -001 / 直接切 detail-design 三选一
 2026-05-18 09:13:49 [review] REV-REQ-2026-014-outline-design-002 outline-design-quality-reviewer looks_clean/92 supersedes -001；5 条修复全 verified（R1 状态机回边 / R2 字段抽象化 / S1 筛选标准 / S2 OD-1~4 / AC-A1 提示）；维度评分 86→92 跨越门槛；下一步：人工 signoff -002 → phase-transition outline-design → detail-design
 2026-05-18 09:19:31 [signoff] REV-REQ-2026-014-outline-design-002 approved by hj19961223@gmail.com
+2026-05-18 09:27:15 [phase-transition] outline-design → detail-design：outline-design-002 looks_clean/92 signed + 11 gate 全过（META-SCHEMA / INDEX-INTEGRITY / SOURCING / PLAN-FRESHNESS / WORKSPACE-CLEAN / REVIEW-VERDICT / FEATURES-SCHEMA / TASK-FRONTMATTER / POST-DEV-RECEIPT / TRACEABILITY / TOUCHES-VIOLATION）
