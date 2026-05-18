@@ -50,5 +50,11 @@
   "supersedes": "REV-REQ-2026-014-definition-001",
   "project_specific_issues": [
     "项目索引（context/project/）未声明对本需求的特殊约束；本轮核对依据 spec v0.2 + definition-001 verdict 的 5 条 minor 是否闭环"
-  ]
+  ],
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-18T08:14:23.598916+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
+  }
 }
