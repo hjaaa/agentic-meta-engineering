@@ -127,16 +127,22 @@ worktree:
     removed_at: null                      # archive 删除时回填
 ```
 
-字段属性表：
+字段属性表（与上方 YAML 示例 12 字段一一对应，全集）：
 
 | 字段路径 | 类型 | required | enum / 约束 | 默认 | 落地 feature |
 |---|---|---|---|---|---|
 | `worktree.enabled` | bool | optional | — | false（缺字段） | F-008 |
 | `worktree.owner` | enum | optional | workflow / external / none | none | F-008 / F-010 |
 | `worktree.path` | string | optional | 主仓根相对 | "" | F-008 |
+| `worktree.absolute_path` | string | optional | 绝对路径；status / list 展示用 | "" | F-008 |
 | `worktree.branch` | string | optional | 含 feat/req- 前缀 | "" | F-008 |
+| `worktree.base_branch` | string | optional | git worktree add 起点；bootstrap 阶段写入 | "" | F-008 |
+| `worktree.created_at` | string | optional | YYYY-MM-DD HH:MM:SS Asia/Shanghai | "" | F-008 |
+| `worktree.baseline.command` | string | optional | 实际执行的 baseline 命令（默认 make gates-validate） | "" | F-008 |
 | `worktree.baseline.status` | enum | optional | passed / failed / skipped | skipped（owner=external 时） | F-008 / F-010 |
+| `worktree.baseline.completed_at` | string | optional | YYYY-MM-DD HH:MM:SS；baseline 退出时间 | "" | F-008 |
 | `worktree.cleanup.policy` | enum | optional | owned-only / never | owned-only | F-008 / F-010（OD-3 不消费） |
+| `worktree.cleanup.removed_at` | string \| null | optional | YYYY-MM-DD HH:MM:SS；archive cleanup 成功时回填 | null | F-005 / F-008 |
 
 **legacy 兼容（D-014）**：旧 REQ-YYYY-NNN 需求的 meta.yaml 缺 worktree 段时，所有读取点用 `meta.get("worktree", {})` 防御性取（来源：requirements/REQ-2026-014/artifacts/tech-feasibility.md:144），等价于 enabled=false。
 
@@ -423,7 +429,13 @@ def resolve_main_repo_root(worktree_path: Path) -> Path:
     """从 worktree 路径找主仓根。
 
     实现：在 worktree_path 下 git rev-parse --show-toplevel + --git-common-dir，
-    common-dir 的 parent 即主仓根。失败抛 BootstrapError。
+    common-dir 的 parent 即主仓根。
+
+    异常包装范畴（与 §5 异常表对齐）：
+      - subprocess.CalledProcessError / SubprocessError / OSError
+        / git rc != 0 / FileNotFoundError → 统一包装为 BootstrapError(branch_created=False)
+        + stderr trim 透传；本函数不抛裸 OSError / subprocess.* 异常
+      - 解析得到的 common-dir 不在文件系统上 → BootstrapError
     """
 
 
@@ -621,6 +633,26 @@ def _setup_worktree_or_branch(
     )
     worktree_manager.ensure_worktree_dir_ignored(repo_root, location.parent)
     return worktree_manager.create_worktree(repo_root, branch, base_branch, location)
+
+
+def _bind_current_worktree(
+    state: "worktree_manager.WorktreeState",
+    req_id: str,
+    base_branch: str,
+) -> "worktree_manager.WorktreeInfo":
+    """私有 helper，仅在 workflow_bootstrap.py 内定义（D-004 复用路径）。
+
+    入参 state 由 detect_worktree_state 已确认 is_linked_worktree=True；
+    出参 owner='external'（harness 创建的 worktree 不归 workflow 拥有），created=False。
+    archive 阶段 cleanup_worktree_if_owned 见到 owner='external' 自动跳过（OD-4 路径同步）。
+    """
+    return worktree_manager.WorktreeInfo(
+        path=state.worktree_path,
+        branch=state.branch,
+        base_branch=base_branch,
+        owner="external",
+        created=False,
+    )
 ```
 
 **改造点 2**：`_bootstrap_requirement`（来源：scripts/lib/workflow_bootstrap.py:276）写文件顺序改 worktree-first。新版步骤：
@@ -874,11 +906,14 @@ fields:
         properties:
           command:
             type: string
+            required: false
           status:
             type: enum
             enum: [passed, failed, skipped]
+            required: false
           completed_at:
             type: string
+            required: false
       cleanup:
         type: object
         required: false

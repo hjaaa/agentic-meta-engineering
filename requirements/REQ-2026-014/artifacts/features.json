@@ -24,6 +24,7 @@
         "tests/lib/test_requirement_naming.py 至少 11 用例（覆盖 spec §13 验收 #8 同日并行场景）"
       ],
       "estimate_days": 1.25,
+      "interfaces_frozen": true,
       "ac_refs": ["F-001-AC1", "F-001-AC2", "F-001-AC3"]
     },
     {
@@ -51,6 +52,7 @@
         "tests/lib/test_worktree_manager.py 至少 14 用例覆盖 spec §13 验收 #2 / #5 / #6 + R5 风险 + R8 风险"
       ],
       "estimate_days": 2.5,
+      "interfaces_frozen": true,
       "ac_refs": ["F-002-AC1", "F-002-AC2", "F-002-AC3", "F-002-AC4"]
     },
     {
@@ -121,6 +123,7 @@
       "complexity": "light",
       "acceptance": [
         "archive_runner.py archive_requirement 函数体含 cleanup_worktree_if_owned(meta, REPO_ROOT) 调用，位置在 5 项预检之后、_atomic_write_meta 之前",
+        "前置语义：F-008 meta.yaml.tmpl worktree 段模板必须先存在，archive_runner.cleanup_worktree_if_owned 才能从 meta 读到 worktree.owner / worktree.path 等保护字段；features.json depends_on_features 已锁 F-008",
         "pytest tests/lib/test_archive_runner_worktree_cleanup.py 全过：owner=workflow 删 worktree / owner=external 跳过 + log 含 'cleanup skipped: external' / meta 缺 worktree 字段降级 enabled=false 不报错 / archive 接口入参出参未变",
         "现有 tests/lifecycle/test_archive.py 回归全过（CLI 接口契约不破坏）",
         "owner=external + dirty workspace fail-closed 路径覆盖（spec §13 验收 #6）"
@@ -174,7 +177,7 @@
     {
       "id": "F-008",
       "title": "templates/meta.yaml.tmpl 加 worktree: 空结构占位",
-      "description": "改 .claude/skills/managing-requirement-lifecycle/templates/meta.yaml.tmpl（或 workflow_bootstrap.py 内联模板，按当前实际位置）：流程组之后追加 worktree: 段，含 owner / path / absolute_path / branch / base_branch / created_at / baseline (command/status/completed_at) / cleanup (policy/removed_at) 子字段。bootstrap 渲染时 worktree_manager 回填实际值。旧需求 meta.yaml 缺该段时 archive_runner 防御性 get（F-005 已覆盖）。落地 outline-design §配置确认 + spec §5.2。",
+      "description": "改 .claude/skills/managing-requirement-lifecycle/templates/meta.yaml.tmpl（或 workflow_bootstrap.py 内联模板，按当前实际位置）：流程组之后追加 worktree: 段，含 owner / path / absolute_path / branch / base_branch / created_at / baseline (command/status/completed_at) / cleanup (policy/removed_at) 子字段。bootstrap 渲染时 worktree_manager 回填实际值；workflow_bootstrap.py::_render_meta_yaml 扩展 9 个 worktree.* 占位符替换（详细设计 §3.8 改造点 2）。旧需求 meta.yaml 缺该段时 archive_runner 防御性 get（F-005 已覆盖）。落地 outline-design §配置确认 + spec §5.2。",
       "modules": [
         ".claude/skills/managing-requirement-lifecycle/templates/meta.yaml.tmpl",
         "scripts/lib/workflow_bootstrap.py",
@@ -186,7 +189,7 @@
         "tests/lib/test_meta_yaml_worktree_template.py"
       ],
       "depends_on": [],
-      "depends_on_features": ["F-002"],
+      "depends_on_features": ["F-002", "F-004"],
       "complexity": "light",
       "acceptance": [
         "meta.yaml 模板含 worktree: 段，子字段含 owner / path / branch / base_branch / created_at / baseline (含 command + status + completed_at 三子字段) / cleanup (含 policy + removed_at 两子字段)",
