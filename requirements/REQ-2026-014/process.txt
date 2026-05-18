@@ -33,3 +33,4 @@
 2026-05-18 12:12:31 [review:looks_clean] REV-REQ-2026-014-code-F-001-002 supersedes -001 score 87→93；rev1 9 minor 中 7 closed + 2 carry-over defer（F-002 call-site / F-010 detail-design）；trend-G-meta 3 候选全 rejected（0 新引入）
 2026-05-18 12:47:00 [signoff] REV-REQ-2026-014-code-F-001-002 approved by hj19961223@gmail.com
 2026-05-18 12:48:02 [development] F-001 done：rev-002 approved signed → status=done / review_report 落入 frontmatter / dispatch lock 释放（current_feature=null）；下一步 F-002 或 F-007 三叶可选
+2026-05-18 12:48:57 [save] F-001 全流程闭环（rev1+rev2 looks_clean / 9 修复 7 in-place + 2 carry-over defer F-002+F-010 / signoff approved / dispatch lock 释放）；下一步 F-002（heavy / 主线）或 F-007（trivial / 甜点）
