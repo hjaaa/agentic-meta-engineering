@@ -82,6 +82,7 @@ python3 scripts/gates/run.py \
 - [`reference/gate-checklist.md`](reference/gate-checklist.md) — 各阶段门禁具体检查项 + submit 前置门禁
 - [`reference/submit-rules.md`](reference/submit-rules.md) — `/requirement:submit` 的执行细节
 - [`reference/archive-rules.md`](reference/archive-rules.md) — `/requirement:archive` 的执行细则
+- [`archive.md`](../../commands/requirement/archive.md) — worktree cleanup 三重保护语义（D-008 / D-009）
 - [`templates/meta.yaml.tmpl`](templates/meta.yaml.tmpl) — 新建需求的 meta.yaml 模板
 - [`templates/plan.md.tmpl`](templates/plan.md.tmpl) — 新建需求的 plan.md 模板
 - [`templates/pr-body.md.tmpl`](templates/pr-body.md.tmpl) — `/requirement:submit` 的 PR 正文模板

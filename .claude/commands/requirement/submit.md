@@ -54,6 +54,12 @@ argument-hint: [--draft] [--target <branch>] [--skip-rebase] [--reviewer <user>]
 
 详细状态机与三常量定义见 `reference/submit-rules.md §7.5`。
 
+## PR 成功后的 worktree 保留
+
+PR 开启成功后，当前开发分支所关联的 worktree（若存在）将被保留在 `.worktrees/` 目录下。
+
+在 PR feedback 阶段，你仍可在该 worktree 内继续迭代代码。完成后用 `/requirement:archive` 触发自动清理（owner=workflow 的 worktree 才会被清理）；worktree retained at <meta.worktree.path>; use /requirement:archive to clean up.
+
 ## 委托
 
 调用 Skill `managing-requirement-lifecycle` 的 **submit** 流程，按 `reference/submit-rules.md` 执行：

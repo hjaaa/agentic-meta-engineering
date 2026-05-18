@@ -68,6 +68,16 @@ archive 流程的副作用动作分布：
 
 实现入口：`scripts/lib/archive_runner.py::archive_requirement`（接口契约见 `requirements/REQ-2026-007/artifacts/detailed-design.md` §3.1，已 frozen）。
 
+## worktree cleanup 三重保护（D-008 / D-009）
+
+archive 会在 5 项预检通过后、写 meta 之前自动尝试清理 worktree，但三个条件**同时满足**才会真删：
+
+1. `owner=workflow`（external worktree 跳过）
+2. `worktree.path` 命中路径白名单（`.worktrees/` 前缀）
+3. 当前 cwd ≡ 主仓根（防止 worktree 内 self-remove）
+
+任一条件失败 → cleanup 静默跳过 + log，不阻塞 archive。
+
 ## 三问串行（默认 N）
 
 预检通过后，按交互通道决议：
