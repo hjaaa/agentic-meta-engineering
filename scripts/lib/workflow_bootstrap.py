@@ -159,6 +159,17 @@ def _render_meta_yaml(
         "__BRANCH__": branch,
         "__BASE_BRANCH__": base_branch or "main",  # 极端兜底（仓库无任何主干）
         "__PROJECT__": "",
+        # F-008：worktree 占位结构（safe placeholder, F-004 接管后回填实际值）
+        "__WT_ENABLED__": "false",           # F-008 阶段未接 worktree_manager；F-004 启用时改 true
+        "__WT_OWNER__": "none",              # F-008 阶段无 owner；F-004 启用后填 workflow/external
+        "__WT_PATH__": '""',                 # 占位空串
+        "__WT_ABS_PATH__": '""',             # 占位空串
+        "__WT_BRANCH__": branch,             # 与流程组 branch 字段一致
+        "__WT_BASE_BRANCH__": base_branch or "main",  # 与流程组 base_branch 一致
+        "__WT_CREATED_AT__": '""',           # 占位空串；F-004 启用 worktree 时填 ts
+        "__WT_BASELINE_CMD__": "make gates-validate",  # OD-3 默认 baseline 命令
+        "__WT_BASELINE_STATUS__": "skipped", # F-008 阶段 baseline 未跑 → skipped
+        "__WT_BASELINE_COMPLETED_AT__": '""',  # 占位空串
     }
     rendered = raw
     for key, val in replacements.items():
