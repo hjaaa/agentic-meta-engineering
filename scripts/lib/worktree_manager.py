@@ -82,6 +82,18 @@ class WorktreeBootstrapError(BootstrapError):
         artifacts_created: bool = False,
         retain_worktree: bool = False,
     ) -> None:
+        """初始化 worktree-flavor BootstrapError。
+
+        Args:
+          message: 错误消息（含 branch / location / rc / stderr trim 等业务主键）
+          reason: 失败原因枚举（常用：path_or_branch_exists / other /
+                  gitignore_missing / porcelain_malformed / main_root_missing /
+                  git_failure）
+          branch_created / artifacts_created: 透传父类，由 _bootstrap_rollback
+                  决定回滚动作
+          retain_worktree: True 时调用层应保留 worktree / branch 现场
+                  （OD-2 baseline_failed 落点）
+        """
         super().__init__(
             message,
             artifacts_created=artifacts_created,
@@ -102,10 +114,10 @@ class WorktreeState:
     is_linked_worktree: bool
     is_submodule: bool
     is_detached: bool
-    branch: str                # 空串若 detached
+    branch: str                # 当前分支名；detached HEAD 时为空串
     worktree_path: Path
-    git_dir: Path              # git rev-parse --git-dir
-    git_common_dir: Path       # git rev-parse --git-common-dir
+    git_dir: Path              # 当前 worktree 的 git 目录（git rev-parse --git-dir 输出）
+    git_common_dir: Path       # 主 worktree 的 git 公共目录（git rev-parse --git-common-dir 输出）
 
 
 @dataclass(frozen=True)
@@ -131,8 +143,9 @@ class SetupResult:
 class CleanupResult:
     """archive 清理结果。"""
     action: Literal["removed", "skipped", "aborted", "failed"]
-    reason: str                # external / legacy_no_worktree_field / path_not_in_whitelist
-                               # / main_root_equals_worktree / git_failure / workflow_ok
+    reason: str                # 合法取值：external / legacy_no_worktree_field /
+                               # path_not_in_whitelist / main_root_equals_worktree /
+                               # git_failure / workflow_ok
     removed_path: Optional[Path]
 
 
@@ -186,7 +199,7 @@ def _run_git(
 
 
 # ============================================================================
-# detect_worktree_state
+# 探测 git 拓扑状态（detect_worktree_state）
 # ============================================================================
 
 def detect_worktree_state(repo_root: Path) -> WorktreeState:
@@ -201,8 +214,14 @@ def detect_worktree_state(repo_root: Path) -> WorktreeState:
 
     入参：repo_root — 候选 git 根（pathlib.Path）
     返回：WorktreeState
-    异常：所有 subprocess 失败包装为 WorktreeBootstrapError；非 git 仓库返回
-          is_git_repo=False 的 WorktreeState（不抛异常）。
+    异常：
+      - 非 git 仓库（`git rev-parse --git-dir` rc!=0）→ 返回
+        is_git_repo=False 的 WorktreeState（不抛异常）
+      - 已是 git 仓库但 `git rev-parse --git-common-dir` rc!=0（git 版本过旧 /
+        仓库损坏）→ WorktreeBootstrapError(reason='other')，避免静默 fallback
+        让 is_linked_worktree 永远 False 的拓扑误判
+      - _run_git 底层灾难级错误（git 二进制丢失 / OSError）→
+        WorktreeBootstrapError(reason='other')
     """
     git_dir_proc = _run_git(["rev-parse", "--git-dir"], cwd=repo_root)
     if git_dir_proc.returncode != 0:
@@ -226,7 +245,16 @@ def detect_worktree_state(repo_root: Path) -> WorktreeState:
     git_dir = (repo_root / git_dir_raw).resolve() if not Path(git_dir_raw).is_absolute() else Path(git_dir_raw)
 
     common_proc = _run_git(["rev-parse", "--git-common-dir"], cwd=repo_root)
-    common_raw = common_proc.stdout.strip() if common_proc.returncode == 0 else git_dir_raw
+    if common_proc.returncode != 0:
+        # fail-fast：静默 fallback 会让 git_dir==git_common_dir 恒成立，
+        # is_linked_worktree 永远 False（拓扑误判）。掩盖 git 版本过旧 /
+        # 仓库损坏属硬伤，必须抛出。
+        raise WorktreeBootstrapError(
+            f"detect_worktree_state: `git rev-parse --git-common-dir` 失败 "
+            f"rc={common_proc.returncode} stderr={_trim_stderr(common_proc.stderr)}",
+            reason="other",
+        )
+    common_raw = common_proc.stdout.strip()
     git_common_dir = (
         (repo_root / common_raw).resolve()
         if not Path(common_raw).is_absolute()
@@ -241,11 +269,19 @@ def detect_worktree_state(repo_root: Path) -> WorktreeState:
     branch = head_proc.stdout.strip() if not is_detached else ""
 
     worktree_proc = _run_git(["rev-parse", "--show-toplevel"], cwd=repo_root)
-    worktree_path = (
-        Path(worktree_proc.stdout.strip())
-        if worktree_proc.returncode == 0
-        else repo_root
-    )
+    if worktree_proc.returncode != 0:
+        # 已通过 --git-dir 校验仍 show-toplevel 失败属罕见状态（bare repo /
+        # 检测竞争）；不静默 fallback，记 warning 留可观测线索后回退 repo_root。
+        logging.warning(
+            "detect_worktree_state: --show-toplevel rc=%d stderr=%s; "
+            "fallback worktree_path=repo_root=%s",
+            worktree_proc.returncode,
+            _trim_stderr(worktree_proc.stderr),
+            repo_root,
+        )
+        worktree_path = repo_root
+    else:
+        worktree_path = Path(worktree_proc.stdout.strip())
 
     return WorktreeState(
         is_git_repo=True,
@@ -260,7 +296,7 @@ def detect_worktree_state(repo_root: Path) -> WorktreeState:
 
 
 # ============================================================================
-# select_worktree_location
+# 选择 worktree 目录（select_worktree_location）
 # ============================================================================
 
 def select_worktree_location(
@@ -282,7 +318,7 @@ def select_worktree_location(
 
 
 # ============================================================================
-# ensure_worktree_dir_ignored
+# 校验 .gitignore 收录 worktree 容器（ensure_worktree_dir_ignored）
 # ============================================================================
 
 def ensure_worktree_dir_ignored(repo_root: Path, location: Path) -> None:
@@ -300,7 +336,11 @@ def ensure_worktree_dir_ignored(repo_root: Path, location: Path) -> None:
       repo_root — 主仓根
       location  — select_worktree_location 返回的具体 worktree 目录
     返回：None
-    异常：WorktreeBootstrapError(reason='gitignore_missing')
+    异常：
+      - .gitignore 不存在 / 未含 container 条目 →
+        WorktreeBootstrapError(reason='gitignore_missing')
+      - 读 .gitignore 抛 OSError →
+        WorktreeBootstrapError(reason='other')
     """
     # 推导 location 所在的容器相对路径（如 '.worktrees'）
     try:
@@ -352,7 +392,7 @@ def ensure_worktree_dir_ignored(repo_root: Path, location: Path) -> None:
 
 
 # ============================================================================
-# create_worktree
+# 新建 worktree（create_worktree）
 # ============================================================================
 
 def create_worktree(
@@ -395,11 +435,12 @@ def create_worktree(
         )
 
     stderr_trim = _trim_stderr(proc.stderr)
-    # P1-2 信号识别：path / branch 已存在 → 上层据此 retry（如换分支名 / prune）
+    # P1-2 信号识别：仅精确匹配 git 'fatal:' 前缀两条字符串，避免无关 hook /
+    # 子命令 stderr（如 "pre-commit hook: file already exists"）误升 retry。
+    # 不同 git 版本若措辞变化由单测捕获。
     is_exists_collision = (
-        f"'{location}' already exists" in stderr_trim
-        or f"a branch named '{branch}' already exists" in stderr_trim
-        or "already exists" in stderr_trim  # 兜底匹配（不同 git 版本措辞略异）
+        f"fatal: '{location}' already exists" in stderr_trim
+        or f"fatal: a branch named '{branch}' already exists" in stderr_trim
     )
     reason = "path_or_branch_exists" if is_exists_collision else "other"
 
@@ -416,7 +457,7 @@ def create_worktree(
 
 
 # ============================================================================
-# run_worktree_setup
+# 执行 baseline 校验（run_worktree_setup）
 # ============================================================================
 
 def run_worktree_setup(
@@ -444,6 +485,8 @@ def run_worktree_setup(
       policy        — yaml worktree 段（含 required 字段；本函数不读 required）
       owner         — 'workflow' / 'external' / 'none'
     返回：SetupResult
+    异常：本函数不向外抛；所有 subprocess / 超时 / OSError 均转换为
+          SetupResult(status='failed', rc=<int>, log_tail=<stderr trim>)。
     """
     if owner == "external":
         logging.info(
@@ -512,7 +555,7 @@ def run_worktree_setup(
 
 
 # ============================================================================
-# resolve_main_repo_root（P1-3）
+# 解析主 worktree 根（resolve_main_repo_root · P1-3）
 # ============================================================================
 
 def resolve_main_repo_root(worktree_path: Path) -> Path:
@@ -569,7 +612,7 @@ def resolve_main_repo_root(worktree_path: Path) -> Path:
 
 
 # ============================================================================
-# cleanup_worktree_if_owned（D-008 / D-009 / P1-3 三重保护）
+# 三重保护清理 worktree（cleanup_worktree_if_owned · D-008 / D-009 / P1-3）
 # ============================================================================
 
 def cleanup_worktree_if_owned(meta: dict, main_repo_root: Path) -> CleanupResult:
@@ -580,7 +623,8 @@ def cleanup_worktree_if_owned(meta: dict, main_repo_root: Path) -> CleanupResult
       - meta 缺 worktree 字段 → CleanupResult(action='skipped',
         reason='legacy_no_worktree_field')
 
-    保护 2：meta.worktree.path 必须 startswith meta.worktree.location（默认 .worktrees/）
+    保护 2：meta.worktree.path 必须规范化后位于 meta.worktree.location（默认
+            .worktrees/）之下；规范化避免 '.worktrees/../etc/passwd' 反向遍历
       - 白名单失败 → CleanupResult(action='aborted', reason='path_not_in_whitelist')
 
     保护 3：main_repo_root != worktree_path（纯入参对比，**不读 cwd**）
@@ -595,6 +639,9 @@ def cleanup_worktree_if_owned(meta: dict, main_repo_root: Path) -> CleanupResult
       meta            — 从 meta.yaml 加载的字典（read-only）
       main_repo_root  — 调用方先用 resolve_main_repo_root 解出的主仓根
     返回：CleanupResult
+    异常：本函数不向外抛；底层 _run_git 抛 WorktreeBootstrapError（git 二进制
+          丢失 / OSError）会被捕获并转为 CleanupResult(action='failed',
+          reason='git_failure')，保证 archive 主流程不受影响。
     """
     # ---- 保护 1：legacy / external 短路 ----
     worktree_meta = meta.get("worktree") if isinstance(meta, dict) else None
@@ -625,10 +672,27 @@ def cleanup_worktree_if_owned(meta: dict, main_repo_root: Path) -> CleanupResult
             removed_path=None,
         )
 
-    # ---- 保护 2：路径白名单 ----
+    # ---- 保护 2：路径白名单（规范化对比抗反向遍历）----
     raw_path = worktree_meta.get("path", "")
     raw_location = worktree_meta.get("location", f"{_DEFAULT_WORKTREE_DIR}/")
-    if not raw_path or not str(raw_path).startswith(str(raw_location)):
+    if not raw_path:
+        logging.warning(
+            "cleanup_worktree_if_owned: aborted empty path raw_path=%r location=%r",
+            raw_path, raw_location,
+        )
+        return CleanupResult(
+            action="aborted",
+            reason="path_not_in_whitelist",
+            removed_path=None,
+        )
+
+    try:
+        resolved_path = (main_repo_root / Path(raw_path)).resolve()
+        resolved_location = (main_repo_root / Path(raw_location)).resolve()
+        is_in_whitelist = resolved_path.is_relative_to(resolved_location)
+    except (OSError, ValueError):
+        is_in_whitelist = False
+    if not is_in_whitelist:
         logging.warning(
             "cleanup_worktree_if_owned: aborted path=%r not under location=%r",
             raw_path, raw_location,
@@ -656,10 +720,25 @@ def cleanup_worktree_if_owned(meta: dict, main_repo_root: Path) -> CleanupResult
         )
 
     # ---- 三重保护全过 → 真正动手 ----
-    remove_proc = _run_git(
-        ["worktree", "remove", str(worktree_path)],
-        cwd=main_repo_root,
-    )
+    # 包裹 WorktreeBootstrapError：_run_git 在 git 二进制丢失 / OSError 灾难级
+    # 路径仍可抛；按 docstring 承诺"不抛异常，archive 主流程不受影响"统一吞下转
+    # CleanupResult(action='failed', reason='git_failure') + log ERROR。
+    try:
+        remove_proc = _run_git(
+            ["worktree", "remove", str(worktree_path)],
+            cwd=main_repo_root,
+        )
+    except WorktreeBootstrapError as exc:
+        logging.error(
+            "cleanup_worktree_if_owned: git worktree remove raised %s "
+            "(reason=%s); 转 CleanupResult(action='failed')",
+            exc, exc.reason,
+        )
+        return CleanupResult(
+            action="failed",
+            reason="git_failure",
+            removed_path=None,
+        )
     if remove_proc.returncode != 0:
         logging.error(
             "cleanup_worktree_if_owned: git worktree remove failed rc=%d stderr=%s",
@@ -671,17 +750,26 @@ def cleanup_worktree_if_owned(meta: dict, main_repo_root: Path) -> CleanupResult
             removed_path=None,
         )
 
-    prune_proc = _run_git(
-        ["worktree", "prune"],
-        cwd=main_repo_root,
-    )
-    if prune_proc.returncode != 0:
-        # prune 失败不致命（worktree 已 remove）；记 warning 但仍返回 removed
-        logging.warning(
-            "cleanup_worktree_if_owned: git worktree prune non-zero rc=%d stderr=%s "
-            "(worktree already removed)",
-            prune_proc.returncode, _trim_stderr(prune_proc.stderr),
+    try:
+        prune_proc = _run_git(
+            ["worktree", "prune"],
+            cwd=main_repo_root,
         )
+    except WorktreeBootstrapError as exc:
+        # prune 灾难级失败也不致命（worktree 已 remove）；记 ERROR 但返 removed
+        logging.error(
+            "cleanup_worktree_if_owned: git worktree prune raised %s "
+            "(reason=%s); worktree already removed",
+            exc, exc.reason,
+        )
+    else:
+        if prune_proc.returncode != 0:
+            # prune 失败不致命（worktree 已 remove）；记 warning 但仍返回 removed
+            logging.warning(
+                "cleanup_worktree_if_owned: git worktree prune non-zero rc=%d stderr=%s "
+                "(worktree already removed)",
+                prune_proc.returncode, _trim_stderr(prune_proc.stderr),
+            )
 
     logging.info(
         "cleanup_worktree_if_owned: removed worktree_path=%s", worktree_path,

@@ -15,7 +15,6 @@
 """
 from __future__ import annotations
 
-import json
 import subprocess
 import sys
 from pathlib import Path
@@ -30,11 +29,7 @@ if str(_LIB_DIR) not in sys.path:
     sys.path.insert(0, str(_LIB_DIR))
 
 from worktree_manager import (  # noqa: E402
-    CleanupResult,
-    SetupResult,
     WorktreeBootstrapError,
-    WorktreeInfo,
-    WorktreeState,
     cleanup_worktree_if_owned,
     create_worktree,
     detect_worktree_state,
@@ -243,6 +238,56 @@ def test_create_worktree_path_already_exists_signals_retry(
     assert ei.value.reason == "path_or_branch_exists"
 
 
+def test_create_worktree_other_exists_text_not_misclassified(
+    tmp_git_repo: Path,
+) -> None:
+    """F-1 rev2：stderr 含 'already exists' 但非 git 'fatal:' 前缀
+    （如 pre-commit hook 噪音）→ reason='other'，避免 retry 死循环。"""
+    location = tmp_git_repo / ".worktrees" / "feat-req-noisy"
+    fake_proc = subprocess.CompletedProcess(
+        args=["git", "worktree", "add", str(location), "-b", "feat/req-x", "main"],
+        returncode=1,
+        stdout="",
+        stderr="pre-commit hook: lockfile already exists; aborting\n",
+    )
+    with patch("worktree_manager._run_git", return_value=fake_proc):
+        with pytest.raises(WorktreeBootstrapError) as ei:
+            create_worktree(
+                tmp_git_repo, "feat/req-x", "main", location,
+            )
+    assert ei.value.reason == "other"
+
+
+# ============================================================================
+# detect_worktree_state · F-4 fail-fast（1 例）
+# ============================================================================
+
+
+def test_detect_worktree_state_common_dir_failure_raises(
+    tmp_git_repo: Path,
+) -> None:
+    """F-4 rev2：`git rev-parse --git-common-dir` rc!=0 不允许静默 fallback，
+    抛 WorktreeBootstrapError(reason='other') 避免 worktree 拓扑误判。"""
+
+    def fake_run_git(args, *, cwd, timeout=30):
+        if args == ["rev-parse", "--git-dir"]:
+            return subprocess.CompletedProcess(
+                args, 0, stdout=str(tmp_git_repo / ".git") + "\n", stderr="",
+            )
+        if args == ["rev-parse", "--git-common-dir"]:
+            return subprocess.CompletedProcess(
+                args, 1, stdout="",
+                stderr="fatal: corrupt repository / git version mismatch\n",
+            )
+        return subprocess.CompletedProcess(args, 1, stdout="", stderr="not stubbed")
+
+    with patch("worktree_manager._run_git", side_effect=fake_run_git):
+        with pytest.raises(WorktreeBootstrapError) as ei:
+            detect_worktree_state(tmp_git_repo)
+    assert ei.value.reason == "other"
+    assert "git-common-dir" in str(ei.value)
+
+
 # ============================================================================
 # run_worktree_setup（3 例）
 # ============================================================================
@@ -441,8 +486,8 @@ def test_cleanup_worktree_if_owned_git_remove_failure(
     meta = {
         "worktree": {
             "owner": "workflow",
-            "path": str(tmp_git_repo.parent / ".worktrees" / "feat-req-x"),
-            "location": str(tmp_git_repo.parent / ".worktrees") + "/",
+            "path": str(tmp_git_repo / ".worktrees" / "feat-req-x"),
+            "location": str(tmp_git_repo / ".worktrees") + "/",
         },
     }
     fake_remove = subprocess.CompletedProcess(
@@ -453,6 +498,50 @@ def test_cleanup_worktree_if_owned_git_remove_failure(
     )
     with patch("worktree_manager._run_git", return_value=fake_remove):
         result = cleanup_worktree_if_owned(meta, tmp_git_repo)
+    assert result.action == "failed"
+    assert result.reason == "git_failure"
+    assert result.removed_path is None
+
+
+def test_cleanup_worktree_if_owned_path_traversal_aborts(
+    tmp_git_repo: Path,
+) -> None:
+    """F-3 rev2：'.worktrees/../etc/passwd' 反向遍历 startswith 成立但实际
+    逃出容器；规范化对比 + is_relative_to 应识别为 aborted/path_not_in_whitelist。"""
+    meta = {
+        "worktree": {
+            "owner": "workflow",
+            "path": ".worktrees/../etc/passwd",
+            "location": ".worktrees/",
+        },
+    }
+    result = cleanup_worktree_if_owned(meta, tmp_git_repo)
+    assert result.action == "aborted"
+    assert result.reason == "path_not_in_whitelist"
+
+
+def test_cleanup_worktree_if_owned_git_binary_missing(
+    tmp_git_repo: Path,
+) -> None:
+    """F-2 rev2：_run_git 抛 WorktreeBootstrapError（git 二进制丢失）→
+    CleanupResult(action='failed', reason='git_failure')，不向上抛，
+    archive 主流程不受影响。"""
+    meta = {
+        "worktree": {
+            "owner": "workflow",
+            "path": str(tmp_git_repo / ".worktrees" / "feat-req-x"),
+            "location": str(tmp_git_repo / ".worktrees") + "/",
+        },
+    }
+
+    def fake_run_git(args, *, cwd, timeout=30):
+        raise WorktreeBootstrapError(
+            "git binary not found: simulated", reason="other",
+        )
+
+    with patch("worktree_manager._run_git", side_effect=fake_run_git):
+        result = cleanup_worktree_if_owned(meta, tmp_git_repo)
+
     assert result.action == "failed"
     assert result.reason == "git_failure"
     assert result.removed_path is None
