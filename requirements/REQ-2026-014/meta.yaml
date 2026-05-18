@@ -199,9 +199,10 @@ reviews:
       F-006:
         history:
           - REV-REQ-2026-014-code-F-006-001
-        latest: REV-REQ-2026-014-code-F-006-001
+          - REV-REQ-2026-014-code-F-006-002
+        latest: REV-REQ-2026-014-code-F-006-002
         conclusion: looks_clean
-        reviewed_commit: f6df47e
+        reviewed_commit: 9789e9f
         artifact_hashes:
           artifacts/features.json: 
             773915ee297b01a02882449cf892a40fa8faf7d8300abcb0ce5a8d227cdc11a5
