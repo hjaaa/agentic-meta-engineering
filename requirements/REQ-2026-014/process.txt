@@ -95,3 +95,5 @@
 2026-05-18 22:37:38 [development] F-009 done：rev-001 looks_clean/92 signed → status=done / review_report 落入 frontmatter / dispatch lock 释放（current_feature=null）；done 9/10；剩 1 feature（F-010 light 依赖 F-008 done 可派）
 2026-05-18 22:44:56 [development] F-010 派发完成（model=sonnet, complexity=light）→ DONE 回执：commit 5bf261c / 5 新单测全过 + 13 回归 / touches=2 文件 / 0 violations；下一步 post-dev + /code-review scope=F-010
 2026-05-18 22:55:22 [review:looks_clean] REV-REQ-2026-014-code-F-010-001 score=93；4 候选 → drop 1 (F-2 critic rejected 四处一致授权) + downgrade 3 (F-1/F-3/F-4 → suggestion) / 0 keep；trend-H-ac-implementation-gap 完整闭环 + trend-J-design-authorization-boundary 新候选；CR-1/3/4 全过满足 sign-off 卡点
+2026-05-18 22:57:11 [signoff] REV-REQ-2026-014-code-F-010-001 approved by hj19961223@gmail.com
+2026-05-18 22:58:10 [development] F-010 done：rev-001 looks_clean/93 signed → status=done / review_report 落入 frontmatter / dispatch lock 释放（current_feature=null）；**done 10/10 全收**；development 阶段实施完毕，下一步 → testing 阶段切换
