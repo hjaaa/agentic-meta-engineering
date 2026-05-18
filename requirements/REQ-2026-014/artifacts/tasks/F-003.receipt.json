@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-003",
+  "status": "DONE",
+  "commit_sha": "9c1b6b21daa3a112ffc233cab9a4eee8504b51e6",
+  "files_changed": [
+    "scripts/lib/workflow_run.py",
+    "tests/lib/test_workflow_run_worktree_args.py"
+  ],
+  "test_summary": "rev-002: 14 passed in workflow_run_worktree_args (12 旧 + 2 新 fail-closed TC); 14 passed regression (-k workflow_run); 24 passed (tests/lib/test_requirement_naming.py); 3 required_fixes 全闭环 + F-7 optional 顺手做",
+  "touches_violations": [],
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-18T16:09:05+08:00"
+}
