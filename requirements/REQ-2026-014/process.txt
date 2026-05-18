@@ -47,3 +47,6 @@
 2026-05-18 15:30:12 [development] F-007 派发完成（model=haiku）→ DONE 回执：62d13be / 1 用例回归 / .gitignore +.worktrees/ 行；下一步 /code-review trivial 路由
 2026-05-18T15:30:12+08:00 [code-review-skipped] 1 文件全在 trivial 白名单内（routing-auto）
 2026-05-18 15:31:43 [review:looks_clean] REV-REQ-2026-014-code-F-007-001 trivial-skipped/100；routing.py 判定 .gitignore + receipt + task.md 100% trivial 白名单 → 跳 8 checker；可走 --trivial 快速通道 sign-off
+2026-05-18 15:37:51 [signoff] REV-REQ-2026-014-code-F-007-001 approved by hj19961223@gmail.com
+2026-05-18 15:38:21 [signoff] REV-REQ-2026-014-code-F-007-001 approved by hj19961223@gmail.com
+2026-05-18 15:38:21 [development] F-007 done：trivial-skipped/100 signed → status=done / review_report 落入 frontmatter / dispatch lock 释放；剩余 7 feature（F-003 / F-008 即可派；F-004 解锁还差 F-008）
