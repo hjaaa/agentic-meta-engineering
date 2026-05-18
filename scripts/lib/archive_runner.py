@@ -628,15 +628,24 @@ def _cleanup_worktree_before_archive(meta: dict[str, Any], req_id: str) -> None:
     """
     try:
         main_repo_root = worktree_manager.resolve_main_repo_root(Path.cwd())
-    except Exception as exc:
-        # resolve 失败：无法确定主仓根，跳过 cleanup 但不阻塞 archive 主流程
+    except worktree_manager.WorktreeBootstrapError as exc:
+        # resolve 规约只抛 WorktreeBootstrapError；非此类型向上传播（fail loud > silent）
         logger.error(
-            "worktree cleanup skipped: resolve_main_repo_root failed req_id=%s: %s",
-            req_id, exc,
+            "worktree cleanup skipped: resolve_main_repo_root failed req_id=%s reason=%s",
+            req_id, getattr(exc, "reason", str(exc)),
         )
         return
 
-    os.chdir(main_repo_root)
+    # os.chdir 裸调在权限异常或 race 时会 crash archive 主流程，违反 D-009 fail-soft；
+    # 用 OSError 兜住，让 cleanup 跳过而非整体 abort。
+    try:
+        os.chdir(main_repo_root)
+    except OSError as exc:
+        logger.error(
+            "worktree cleanup skipped: chdir to %s failed req_id=%s: %s",
+            main_repo_root, req_id, exc,
+        )
+        return
 
     cleanup_result = worktree_manager.cleanup_worktree_if_owned(meta, main_repo_root)
 

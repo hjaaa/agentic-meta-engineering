@@ -1,6 +1,6 @@
 """archive_runner._cleanup_worktree_before_archive 单测（F-005）。
 
-覆盖（≥7 用例）：
+覆盖（9 用例）：
   TC-1: owner=workflow 走 removed 分支 + removed_at 回填
   TC-2: owner=external skipped 路径含字面量 'cleanup skipped: external'
   TC-3: legacy meta 缺 worktree 字段降级（不引入空 worktree 段）
@@ -8,6 +8,9 @@
   TC-5: removed_at 回填为合法 ts（YYYY-MM-DD HH:MM:SS 格式）
   TC-6: CLI 入参/退出码不变（archive.md frozen）
   TC-7（P1-3 关键回归）: 从 worktree 内调 archive 能解出主仓根并删除目标 worktree
+  TC-8（TC-2 变体）: owner=external + resolve 失败 → fail-closed，不 raise
+  TC-9（AC5 回归）: owner=external + dirty workspace → _precheck_dirty 早 fail-closed，
+                    cleanup_worktree_if_owned 不被调用（worktree 不被误删）
 
 外部 git 子进程全 mock（monkeypatch），避免依赖真实 git 拓扑。
 integration 路径 TC-7 用 tmp_git_repo fixture 创建真实 linked worktree。
@@ -18,8 +21,6 @@ import logging
 import sys
 import types
 from pathlib import Path
-from unittest.mock import patch
-
 import pytest
 import yaml
 
@@ -546,3 +547,61 @@ def test_archive_runner_resolve_fails_cleanup_skipped_does_not_block(
         yes_remote_branch=False,
     )
     assert result.archived_at, "archive should succeed even when resolve_main_repo_root fails"
+
+
+# ============================================================================
+# TC-9（AC5 回归）：owner=external + dirty workspace → _precheck_dirty 早 fail-closed，
+#                   cleanup_worktree_if_owned 不被调用（worktree 不被误删）
+# ============================================================================
+
+
+def test_archive_runner_external_dirty_workspace_fail_closed(
+    fake_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """spec §13 验收 #6 / AC5：owner=external + dirty workspace → _precheck_dirty 早 fail-closed，
+    cleanup_worktree_if_owned 不被调用（worktree 不被误删）。
+    """
+    req_id = "REQ-2099-909"
+    meta = _make_meta_dict(
+        req_id=req_id,
+        worktree={"owner": "external", "path": "/some/external/path"},
+    )
+    req_dir = fake_repo / req_id
+    _write_meta(req_dir, meta)
+
+    # 模拟 dirty workspace：git status --porcelain 返回非空输出
+    def _dirty_stub(cmd, *, cwd=None):
+        if tuple(cmd[:2]) == ("git", "status"):
+            return _ok(stdout="M somefile.py\n")
+        return _ok()
+
+    monkeypatch.setattr(archive_runner, "_run", _dirty_stub)
+    monkeypatch.setattr(
+        worktree_manager,
+        "resolve_main_repo_root",
+        lambda _cwd: tmp_path,
+    )
+
+    # spy：验证 cleanup_worktree_if_owned 在 _precheck_dirty fail-closed 之前不被调用
+    cleanup_called = False
+
+    def _spy_cleanup(m, root):
+        nonlocal cleanup_called
+        cleanup_called = True
+        return CleanupResult(action="skipped", reason="spy", removed_path=None)
+
+    monkeypatch.setattr(worktree_manager, "cleanup_worktree_if_owned", _spy_cleanup)
+
+    # _precheck_dirty 检测到 dirty workspace 应抛 SystemExit(1)
+    with pytest.raises(SystemExit) as exc_info:
+        archive_requirement(
+            req_id,
+            yes_experience=False,
+            no_experience=True,
+            yes_local_branch=False,
+            yes_remote_branch=False,
+        )
+    assert exc_info.value.code == 1, "_precheck_dirty 应导致 exit 1"
+    assert cleanup_called is False, "cleanup_worktree_if_owned 不应被调用（_precheck_dirty 先于 cleanup）"
