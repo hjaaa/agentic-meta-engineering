@@ -131,6 +131,64 @@ optional_fields:
   - archived_at   # 归档时间戳；仅 phase=completed 时允许写入；格式见 context/team/engineering-spec/time-format.md
   - legacy   # PR4 新增；boolean，true 表示豁免 reviewer-verdict 校验（仅 check_reviews 跳过）
 
+# ---------- fields 段（文档化 + 供 worktree-meta checker 消费） ----------
+# check_meta.py 当前只消费 required_fields / enums / format / conditional_required 四类规则；
+# fields: 段为文档化 schema，同时被 tests/lib/test_meta_schema_worktree.py 直接读取校验。
+# 修改规则：新增可选字段宽松合入；enum 变更需 PR review（影响历史需求）。
+fields:
+  worktree:
+    type: object
+    required: false
+    description: "worktree 隔离能力。旧需求缺该段视同 enabled=false（D-014）。"
+    properties:
+      enabled:
+        type: bool
+        required: false
+      owner:
+        type: enum
+        enum: [workflow, external, none]
+        required: false
+      path:
+        type: string
+        required: false
+      absolute_path:
+        type: string
+        required: false      # P1-4：status / list 展示用，与 §2.1 字段表 12 字段全集对齐
+      branch:
+        type: string
+        required: false
+      base_branch:
+        type: string
+        required: false
+      created_at:
+        type: string
+        required: false
+      baseline:
+        type: object
+        required: false
+        properties:
+          command:
+            type: string
+            required: false
+          status:
+            type: enum
+            enum: [passed, failed, skipped]
+            required: false
+          completed_at:
+            type: string
+            required: false
+      cleanup:
+        type: object
+        required: false
+        properties:
+          policy:
+            type: enum
+            enum: [owned-only, never]
+            required: false      # OD-3：本期 archive_runner 不消费
+          removed_at:
+            type: string
+            required: false      # archive 回填；canonical unset = 空串 ""（见 §2.1 schema 语义边界）
+
 # ---------- legacy 字段（v2 新增，PR4 引入） ----------
 # 用途：标记历史需求豁免 reviewer-verdict 体系的 review 校验
 #   - 仅影响 scripts/lib/check_reviews.py 的入口短路
