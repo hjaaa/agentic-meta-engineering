@@ -10,9 +10,9 @@ base_branch: develop   # feat/* 派生的基点分支：develop / main / master
 project: agentic-meta-engineering    # 关联 context/project/<project>/
 services: []                   # 涉及的服务仓库
 gates_passed:
-- phase: definition
-  at: '2026-05-17 23:49:48'
-  via: managing-requirement-lifecycle
+  - phase: definition
+    at: '2026-05-17 23:49:48'
+    via: managing-requirement-lifecycle
 pr_url: ""                     # /requirement:submit 成功后回写
 pr_number: 0                   # /requirement:submit 成功后回写
 log_layout: split              # split（默认，工具日志→process.tool.log / 语义事件→process.txt） | legacy（老格式，全写 process.txt）
@@ -39,3 +39,14 @@ tags:
 outcome: ""                    # shipped / abandoned / rolled-back
 completed_at: ""               # ISO8601，completed 时填
 lessons_extracted: false       # /knowledge:extract-experience 是否已跑
+reviews:
+  definition:
+    latest: REV-REQ-2026-014-definition-001
+    conclusion: looks_clean
+    reviewed_commit: 8db84f7
+    artifact_hashes:
+      artifacts/requirement.md: 
+        0f9469506f9e54c4346672d8c4af37c92edd695c417a4e5a1a697080b5b11b44
+    history:
+      - REV-REQ-2026-014-definition-001
+    stale: false
