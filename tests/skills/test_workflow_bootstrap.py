@@ -1,13 +1,20 @@
-"""F-002 · _bootstrap_requirement + _bootstrap_rollback + 拆出的 helper 测试。
+"""F-002 / F-004 · _bootstrap_requirement + _bootstrap_rollback + 拆出的 helper 测试。
 
 从 tests/skills/test_workflow_commands.py 拆出（rev2 闭合 F-1 file-length）。
 
-覆盖 features.json F-002 的 5 条 acceptance：
+覆盖 features.json F-002 的 5 条 acceptance（legacy main-repo 路径，
+no_worktree=True）：
   AC1 成功路径：4 文件/目录全存在
   AC2 成功后当前分支 = feat/req-<id>
   AC3 mkdir 失败时 req_dir 不残留
   AC4 git checkout 失败时分支与目录全回滚
   AC5 rollback 自身 IOError 不抛，仅 ERROR 日志
+
+F-004 regression 处理（task context "F-003 regression cleanup"）：
+  - _generate_req_id 不再创建顶层目录（F-001/F-003 P1-2）。本测试 setup 段
+    走 no_worktree=True 路径，让 _bootstrap_requirement 在主仓根下建 artifacts/，
+    不要求外部预 mkdir。
+  - _parse_args 已升级返回 RunArgs（F-003），原 3-tuple unpack 改读字段。
 
 外部依赖处理策略：
   - 不 mock 真 git：在 tmp_path 用 subprocess 起真 repo + 建 develop 分支，
@@ -103,8 +110,11 @@ class TestBootstrapRequirementHappyPath:
     def test_bootstrap_requirement_when_success_creates_all_artifacts(
         self, real_git_repo: Path,
     ):
-        """given_clean_repo_when_bootstrap_then_all_artifacts_created_and_branch_switched."""
-        req_id = wr._generate_req_id(real_git_repo)  # 顶层目录已建
+        """given_clean_repo_when_bootstrap_then_all_artifacts_created_and_branch_switched.
+
+        F-004 适配：传 no_worktree=True 走 legacy 主仓根路径，保留 AC1/AC2 语义。
+        """
+        req_id = wr._generate_req_id(real_git_repo)
         template_path = real_git_repo / ".claude" / "workflows" / "requirement" / "fake.yaml"
 
         # patch workflow_bootstrap.REPO_ROOT 让 _render_meta_yaml / _render_plan_md
@@ -117,6 +127,7 @@ class TestBootstrapRequirementHappyPath:
                 template_path=template_path,
                 arguments="",
                 repo_root=real_git_repo,
+                no_worktree=True,
             )
 
         # AC1：4 文件/目录全存在
@@ -147,8 +158,8 @@ class TestBootstrapRequirementHappyPath:
         types = [e["type"] for e in events]
         assert "workflow_started" in types, f"应写入 workflow_started 事件，实际：{types}"
 
-        # AC2：当前分支 = feat/req-<id>（小写、去 REQ- 前缀）
-        expected_branch = f"feat/req-{req_id[len('REQ-'):].lower()}"
+        # AC2：当前分支 = feat/req-<id>（_strip_req_prefix 兼容 legacy + 新格式）
+        expected_branch = f"feat/req-{wb._strip_req_prefix(req_id)}"
         result = _git(["git", "rev-parse", "--abbrev-ref", "HEAD"], real_git_repo)
         assert result.stdout.strip() == expected_branch, (
             f"分支应切到 {expected_branch}，实际：{result.stdout.strip()}"
@@ -184,7 +195,7 @@ class TestBootstrapBaseBranchAsCheckoutStartPoint:
         ).stdout.strip()
         assert other_head != develop_head, "前置：other 分支 HEAD 应已偏离 develop"
 
-        # 3. 在 other 分支上跑 bootstrap
+        # 3. 在 other 分支上跑 bootstrap（legacy 路径走 no_worktree=True）
         req_id = wr._generate_req_id(real_git_repo)
         with patch("workflow_bootstrap.REPO_ROOT", _REPO_ROOT):
             wb._bootstrap_requirement(
@@ -194,11 +205,12 @@ class TestBootstrapBaseBranchAsCheckoutStartPoint:
                 template_path=real_git_repo / "fake.yaml",
                 arguments="",
                 repo_root=real_git_repo,
+                no_worktree=True,
             )
 
         # 4. 新建的 feat/req-<id> 分支应从 develop fork（HEAD 上多了 bootstrap 自身写的
         #    workflow_started jsonl + 三件 artifacts，但起点是 develop_head 而非 other_head）
-        expected_branch = f"feat/req-{req_id[len('REQ-'):].lower()}"
+        expected_branch = f"feat/req-{wb._strip_req_prefix(req_id)}"
         result = _git(["git", "rev-parse", "--abbrev-ref", "HEAD"], real_git_repo)
         assert result.stdout.strip() == expected_branch
 
@@ -231,12 +243,16 @@ class TestBootstrapRequirementMkdirFailure:
     def test_bootstrap_requirement_when_mkdir_fails_then_rollback_leaves_no_residue(
         self, real_git_repo: Path, monkeypatch, caplog,
     ):
-        """given_mkdir_raises_when_bootstrap_then_rollback_removes_req_dir."""
+        """given_mkdir_raises_when_bootstrap_then_rollback_removes_req_dir.
+
+        F-004 适配：走 no_worktree=True 路径，先 _setup_worktree_or_branch 完成
+        分支切换（branch_created=True），然后 mkdir artifacts/ 失败 → rollback。
+        """
         req_id = wr._generate_req_id(real_git_repo)
         previous_branch = wb._current_branch(real_git_repo)
         assert previous_branch == "develop"
 
-        # 仅对 artifacts/ 子目录的 mkdir 抛错（_generate_req_id 已经 mkdir 完顶层目录）
+        # 仅对 artifacts/ 子目录的 mkdir 抛错（顶层 requirements/<req_id>/ 由 parents=True 建）
         target_artifacts = real_git_repo / "requirements" / req_id / "artifacts"
         original_mkdir = Path.mkdir
 
@@ -257,14 +273,16 @@ class TestBootstrapRequirementMkdirFailure:
                     template_path=real_git_repo / "fake.yaml",
                     arguments="",
                     repo_root=real_git_repo,
+                    no_worktree=True,
                 )
         assert exc_info.value.artifacts_created is True
-        assert exc_info.value.branch_created is False
+        # F-004：no_worktree=True 走 _checkout_feature_branch，mkdir 失败发生在分支切换之后
+        assert exc_info.value.branch_created is True
 
         # 还原 mkdir，否则 rollback 自己也 mkdir 会受影响
         monkeypatch.setattr(Path, "mkdir", original_mkdir)
 
-        # 调 rollback：req_dir 应被删干净
+        # 调 rollback：req_dir 应被删干净，分支应切回 develop
         wb._bootstrap_rollback(
             req_id, real_git_repo, previous_branch,
             exc_info.value.artifacts_created, exc_info.value.branch_created,
@@ -273,7 +291,7 @@ class TestBootstrapRequirementMkdirFailure:
             f"rollback 后 requirements/{req_id}/ 不应残留"
         )
 
-        # 分支应保持 develop（未切换过）
+        # 分支应切回 develop
         result = _git(["git", "rev-parse", "--abbrev-ref", "HEAD"], real_git_repo)
         assert result.stdout.strip() == "develop"
 
@@ -288,11 +306,16 @@ class TestBootstrapRequirementCheckoutFailure:
     def test_bootstrap_requirement_when_checkout_fails_then_full_rollback(
         self, real_git_repo: Path, monkeypatch,
     ):
-        """given_branch_already_exists_when_bootstrap_then_rollback_restores_state."""
+        """given_branch_already_exists_when_bootstrap_then_rollback_restores_state.
+
+        F-004 适配：走 no_worktree=True 路径，_checkout_feature_branch 因同名分支
+        existing 失败 → BootstrapError(reason='path_or_branch_exists'，
+        artifacts_created=False，branch_created=False)。
+        """
         req_id = wr._generate_req_id(real_git_repo)
         previous_branch = wb._current_branch(real_git_repo)
         # 故意预建同名分支 → git checkout -b 必然失败 rc≠0
-        target_branch = f"feat/req-{req_id[len('REQ-'):].lower()}"
+        target_branch = f"feat/req-{wb._strip_req_prefix(req_id)}"
         _git(["git", "branch", target_branch], real_git_repo)
 
         with patch("workflow_bootstrap.REPO_ROOT", _REPO_ROOT):
@@ -304,25 +327,24 @@ class TestBootstrapRequirementCheckoutFailure:
                     template_path=real_git_repo / "fake.yaml",
                     arguments="",
                     repo_root=real_git_repo,
+                    no_worktree=True,
                 )
-        # checkout 失败发生在 mkdir/write 之后，artifacts_created=True、branch_created=False
-        assert exc_info.value.artifacts_created is True
+        # F-004：_checkout_feature_branch 在 mkdir/write 之前抛
+        # （worktree-first 顺序：step 2 setup → step 4 mkdir）
         assert exc_info.value.branch_created is False
+        # reason 应为 path_or_branch_exists（F-003 retry 信号）
+        assert exc_info.value.reason == "path_or_branch_exists"
 
-        # 关键回归：rollback 前预建分支还在；rollback 后该分支应被 git branch -D 清掉
-        # 但因为 branch_created=False，rollback 不会去删 target_branch——它认为新分支没建成
-        # 所以预建分支保留是正确行为；我们关心的是 req_dir 应被清掉
+        # 调 rollback：因为 branch_created=False，rollback 不会去删 target_branch
         wb._bootstrap_rollback(
             req_id, real_git_repo, previous_branch,
             exc_info.value.artifacts_created, exc_info.value.branch_created,
         )
 
-        assert not (real_git_repo / "requirements" / req_id).exists(), (
-            "checkout 失败后 rollback 应清掉 req_dir"
-        )
+        # 主仓根 requirements/<req_id>/ 在 worktree-first 流程中不应被创建
+        assert not (real_git_repo / "requirements" / req_id).exists()
 
-        # 当前分支应仍是 develop（_bootstrap_requirement 的 _checkout_feature_branch 失败了，
-        # 不会切过去；rollback 也不需要切）
+        # 当前分支应仍是 develop（_checkout_feature_branch 失败，未切过去）
         result = _git(["git", "rev-parse", "--abbrev-ref", "HEAD"], real_git_repo)
         assert result.stdout.strip() == "develop"
 
@@ -331,16 +353,16 @@ class TestBootstrapRequirementCheckoutFailure:
     ):
         """given_branch_created_true_when_rollback_then_branch_deleted_and_previous_restored.
 
-        模拟 _bootstrap_requirement 已 checkout 到 feat/req-<id>，但后续写 jsonl
-        失败的场景——branch_created=True，rollback 应切回 develop + 删 feat 分支。
+        F-004 适配：req_dir 顶层目录现在由 _bootstrap_requirement 内部 parents=True 建，
+        测试 setup 段直接 mkdir(parents=True) 模拟"分支 + artifacts 已建"中间态。
         """
         req_id = wr._generate_req_id(real_git_repo)
         previous_branch = "develop"
         # 手动模拟"分支已切"的中间态
-        target_branch = f"feat/req-{req_id[len('REQ-'):].lower()}"
+        target_branch = f"feat/req-{wb._strip_req_prefix(req_id)}"
         _git(["git", "checkout", "-b", target_branch], real_git_repo)
-        # 模拟 artifacts 已建一些文件
-        (real_git_repo / "requirements" / req_id / "artifacts").mkdir()
+        # 模拟 artifacts 已建一些文件（_generate_req_id 不再预建顶层目录，自己建）
+        (real_git_repo / "requirements" / req_id / "artifacts").mkdir(parents=True)
         (real_git_repo / "requirements" / req_id / "meta.yaml").write_text("x", encoding="utf-8")
 
         wb._bootstrap_rollback(
@@ -351,8 +373,10 @@ class TestBootstrapRequirementCheckoutFailure:
         # 当前分支已切回 develop
         result = _git(["git", "rev-parse", "--abbrev-ref", "HEAD"], real_git_repo)
         assert result.stdout.strip() == "develop"
-        # 新分支已被删
-        branches = _git(["git", "branch", "--list", target_branch], real_git_repo).stdout
+        # 新分支已被删（git branch --list 在分支不存在时返回空）
+        branches = _git(
+            ["git", "branch", "--list", target_branch], real_git_repo, check=False,
+        ).stdout
         assert target_branch not in branches, f"feat 分支应被删除，实际：{branches!r}"
         # req_dir 已 rmtree
         assert not (real_git_repo / "requirements" / req_id).exists()
@@ -370,8 +394,8 @@ class TestBootstrapRollbackSilentOnIOError:
     ):
         """given_rmtree_raises_oserror_when_rollback_then_logged_not_raised."""
         req_id = wr._generate_req_id(real_git_repo)
-        # 准备 req_dir 让 rollback 真的尝试 rmtree
-        (real_git_repo / "requirements" / req_id / "artifacts").mkdir()
+        # 准备 req_dir 让 rollback 真的尝试 rmtree（_generate_req_id 不再预建顶层目录）
+        (real_git_repo / "requirements" / req_id / "artifacts").mkdir(parents=True)
 
         def fail_rmtree(path):
             raise OSError("E-TEST: 模拟 rmtree 失败（磁盘只读）")
@@ -399,7 +423,7 @@ class TestBootstrapRollbackSilentOnIOError:
         幂等验证：rollback 已成功清理后，再次调用不应抛 FileNotFoundError。
         """
         req_id = wr._generate_req_id(real_git_repo)
-        (real_git_repo / "requirements" / req_id / "artifacts").mkdir()
+        (real_git_repo / "requirements" / req_id / "artifacts").mkdir(parents=True)
 
         wb._bootstrap_rollback(req_id, real_git_repo, "develop", True, False)
         # 第二次调用：req_dir 已被删，应静默
@@ -480,18 +504,21 @@ class TestParseArgs:
     """_parse_args 的几个典型切分约定。"""
 
     def test_parse_args_when_title_provided_returns_correct_split(self):
-        """given_template_and_title_when_parse_args_then_title_equals_arg1."""
-        tid, args, title = wr._parse_args(["standard-8phase", "做个登录页"])
-        assert tid == "standard-8phase"
-        assert title == "做个登录页"
-        assert args == "做个登录页"
+        """given_template_and_title_when_parse_args_then_title_equals_arg1.
+
+        F-003 适配：_parse_args 返回 RunArgs dataclass（原 3-tuple unpack 改读字段）。
+        """
+        result = wr._parse_args(["standard-8phase", "做个登录页"])
+        assert result.template_id == "standard-8phase"
+        assert result.title == "做个登录页"
+        assert result.template_args == "做个登录页"
 
     def test_parse_args_when_no_title_then_falls_back_to_template_id(self):
         """given_only_template_when_parse_args_then_title_falls_back_to_template_id."""
-        tid, args, title = wr._parse_args(["standard-8phase"])
-        assert tid == "standard-8phase"
-        assert args == ""
-        assert title == "standard-8phase"  # fallback 避免 plan.md __TITLE__ 留空
+        result = wr._parse_args(["standard-8phase"])
+        assert result.template_id == "standard-8phase"
+        assert result.template_args == ""
+        assert result.title == "standard-8phase"  # fallback 避免 plan.md __TITLE__ 留空
 
     def test_parse_args_empty_raises_workflow_error(self):
         """given_empty_args_when_parse_args_then_raises_workflow_error."""

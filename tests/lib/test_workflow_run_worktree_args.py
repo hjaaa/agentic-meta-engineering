@@ -245,7 +245,7 @@ def test_run_requirement_bootstrap_retry_path_exists(
     call_count = [0]
     captured_req_ids = []
 
-    def fake_bootstrap(req_id, title, template_id, template_path, template_args, root):
+    def fake_bootstrap(req_id, title, template_id, template_path, template_args, root, **kwargs):
         captured_req_ids.append(req_id)
         call_count[0] += 1
         if call_count[0] == 1:
@@ -298,7 +298,7 @@ def test_run_requirement_bootstrap_other_reason_no_retry(
 
     call_count = [0]
 
-    def fake_bootstrap(req_id, title, template_id, template_path, template_args, root):
+    def fake_bootstrap(req_id, title, template_id, template_path, template_args, root, **kwargs):
         call_count[0] += 1
         # 无 reason 字段的 BootstrapError（基类）
         raise BootstrapError(
