@@ -1,0 +1,17 @@
+{
+  "feature_id": "F-004",
+  "schema_version": "1.0",
+  "status": "DONE",
+  "commit_sha": "7e3e9bc",
+  "files_changed": [
+    "scripts/lib/workflow_bootstrap.py",
+    "scripts/lib/workflow_run.py",
+    "tests/lib/test_workflow_run_worktree_args.py"
+  ],
+  "test_summary": "rev3 nit cleanup 5 minor 全闭环。M-1: yaml 顶层非 dict 补 warning；M-2+M-3: retain_worktree stderr 标签改 detail + 三条操作指引；M-4: _bind_current_worktree state: Any → WorktreeState 前向引用；M-5: 删 unused import call + SlugError。同模式扫描：stderr={ 仅 workflow_run.py:425 一处错配已修，worktree_manager.py 三处均为真 subprocess.stderr 正确；Any 注解 _bind_current_worktree 已改，其余 dict[str,Any] 合理保留；7 文件 unused import 仅测试文件两处已清。pytest 回归：test_workflow_bootstrap_worktree.py 10/10；test_workflow_run_worktree_args.py 16/16；test_workflow_bootstrap.py(skills) 12/12；test_worktree_manager.py 32/32；test_meta_yaml_worktree_template.py 6/6；全套 lib/+skills/ 825 passed，3 pre-existing reqgen 失败无关。",
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-18T22:30:00+08:00",
+  "touches_violations": []
+}
