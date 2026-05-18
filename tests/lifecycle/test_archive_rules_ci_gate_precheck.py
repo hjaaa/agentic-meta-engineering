@@ -1,12 +1,16 @@
-"""F-003 验证：archive-rules.md 节 + archive_runner._render_summary reminder 行。"""
+"""F-003 验证：archive-rules.md 节 + archive_runner._render_summary reminder 行。
+
+REQ-2026-014 testing 阶段 regression cleanup：路径锚定改为 REPO_ROOT，
+消除 cwd 依赖（全量 pytest 时 tests/lib/test_routing_e2e.sh 切 cwd 不复原触发 FileNotFoundError）。
+"""
 from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_archive_rules_md_has_ci_gate_precheck_section():
     """archive-rules.md 必须有 § archive 前 CI gate 预检 节。"""
-    md = Path(
-        ".claude/skills/managing-requirement-lifecycle/reference/archive-rules.md"
-    ).read_text(encoding="utf-8")
+    md = (REPO_ROOT / ".claude/skills/managing-requirement-lifecycle/reference/archive-rules.md").read_text(encoding="utf-8")
     assert "## archive 前 CI gate 预检" in md
     assert "refresh-only-current-req" in md
     assert "python3 scripts/gates/run.py --trigger=ci --strict" in md
