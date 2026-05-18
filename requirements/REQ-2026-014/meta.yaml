@@ -3,7 +3,7 @@
 # ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-014                 # 例：REQ-2026-001
 title: worktree 隔离能力完整迁移
-phase: task-planning
+phase: detail-design
 created_at: 2026-05-17 23:36:47     # 格式 YYYY-MM-DD HH:MM:SS（Asia/Shanghai），见 context/team/engineering-spec/time-format.md
 branch: feat/req-2026-014             # 例：feat/req-2026-001
 base_branch: develop   # feat/* 派生的基点分支：develop / main / master
@@ -24,6 +24,9 @@ gates_passed:
     via: managing-requirement-lifecycle
   - phase: task-planning
     at: '2026-05-18 10:10:54'
+    via: managing-requirement-lifecycle
+  - phase: development
+    at: '2026-05-18 10:21:25'
     via: managing-requirement-lifecycle
 pr_url: ""                     # /requirement:submit 成功后回写
 pr_number: 0                   # /requirement:submit 成功后回写
@@ -77,17 +80,20 @@ reviews:
       - REV-REQ-2026-014-outline-design-002
     stale: false
   detail-design:
-    latest: REV-REQ-2026-014-detail-design-002
+    latest: REV-REQ-2026-014-detail-design-005
     conclusion: looks_clean
-    reviewed_commit: 3339b7b
+    reviewed_commit: 8d7754d
     artifact_hashes:
       artifacts/detailed-design.md: 
-        09ddc8c551952befe0d88c295c68e53e6efabaab457b4ea8c10bb44c2102a463
+        3277c94619195e3edec4ec1b4e7969617dc74f9d6ccb36a46cd01fcad931faec
       artifacts/features.json: 
-        3253f10d9ae0abaeefc8db6fca0fcd4cc42ebf33b7edbad8fe54c696cf8e4f82
+        2045647fa0bde954c8ee5665ecc95ace2a768c9191de6d59e3880cf4f92d4b74
       artifacts/outline-design.md: 
         6ea59c7acb64c2660e02c0466eeb218e138bbb2ca25567685896783f71a54378
     history:
       - REV-REQ-2026-014-detail-design-001
       - REV-REQ-2026-014-detail-design-002
+      - REV-REQ-2026-014-detail-design-003
+      - REV-REQ-2026-014-detail-design-004
+      - REV-REQ-2026-014-detail-design-005
     stale: false

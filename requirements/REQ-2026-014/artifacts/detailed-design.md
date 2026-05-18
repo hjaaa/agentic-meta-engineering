@@ -124,7 +124,7 @@ worktree:
     completed_at: "2026-05-18 09:50:15"
   cleanup:
     policy: owned-only                    # enum: owned-only | never；OD-3 本期不消费
-    removed_at: null                      # archive 删除时回填
+    removed_at: ""                        # canonical unset = 空串；archive cleanup 成功时回填 ts（P1-4）
 ```
 
 字段属性表（与上方 YAML 示例 12 字段一一对应，全集）：
@@ -142,7 +142,7 @@ worktree:
 | `worktree.baseline.status` | enum | optional | passed / failed / skipped | skipped（owner=external 时） | F-008 / F-010 |
 | `worktree.baseline.completed_at` | string | optional | YYYY-MM-DD HH:MM:SS；baseline 退出时间 | "" | F-008 |
 | `worktree.cleanup.policy` | enum | optional | owned-only / never | owned-only | F-008 / F-010（OD-3 不消费） |
-| `worktree.cleanup.removed_at` | string \| null | optional | YYYY-MM-DD HH:MM:SS；archive cleanup 成功时回填 | null | F-005 / F-008 |
+| `worktree.cleanup.removed_at` | string | optional | YYYY-MM-DD HH:MM:SS；archive cleanup 成功时回填；**canonical unset = 空串 `""`**（legacy 缺段走 `meta.get("worktree", {})` 防御；不依赖 null 语义） | "" | F-005 / F-008 |
 
 **legacy 兼容（D-014）**：旧 REQ-YYYY-NNN 需求的 meta.yaml 缺 worktree 段时，所有读取点用 `meta.get("worktree", {})` 防御性取（来源：requirements/REQ-2026-014/artifacts/tech-feasibility.md:144），等价于 enabled=false。
 
@@ -181,7 +181,7 @@ policy 枚举行为表（来源：context/team/engineering-spec/specs/2026-05-17
 | `pending` | worktree 路径已选未创建 | F-004 步骤 1 完成 key 解析 | — |
 | `creating` | git worktree add 进行中 | F-004 调 create_worktree 之前 | rollback 路径 |
 | `active` | worktree 已创建，baseline 通过或跳过 | F-004 步骤 8 成功 | F-005 cleanup 入口 |
-| `baseline_failed` | baseline 强制失败（yaml.required=true） | F-002 run_worktree_setup 解析 rc!=0 + required=true | F-004 rollback 入口 |
+| `baseline_failed` | baseline 强制失败（yaml.required=true）；terminal-with-diagnostic，保留现场 | F-002 run_worktree_setup 解析 rc!=0 + required=true | F-004 写 meta + exit 非零；**不进 rollback** |
 | `cleanup_pending` | archive 入口已读 meta，cleanup 未发生 | F-005 archive_requirement 5 项预检后 | — |
 | `cleaned` | git worktree remove 成功 + meta.cleanup.removed_at 回填 | F-005 cleanup 成功 | — |
 
@@ -196,11 +196,11 @@ policy 枚举行为表（来源：context/team/engineering-spec/specs/2026-05-17
                   ▼              │
             [baseline_failed] ◀──┘ retry
                   │
-                  ▼ (rollback)
-            ⊥ (rolled back, no state recorded)
+                  └─ terminal-with-diagnostic
+                     （worktree / branch / meta 全部保留供排查；exit 非零；无 ⊥ 边）
 ```
 
-OD-2 落点：`yaml.worktree.setup.baseline.required=true` ⇒ baseline 失败时落 `baseline_failed`（exit 1，rollback 触发）；`required=false` ⇒ baseline 失败时落 `active` + `meta.worktree.baseline.status=failed`（exit 0，warning 但不终止）。
+OD-2 落点（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:479）：`yaml.worktree.setup.baseline.required=true` ⇒ baseline 失败时落 `baseline_failed`（exit 非零）+ 保留 worktree / branch + 写 `meta.worktree.baseline.status=failed`，**不触发 rollback**，失败现场对排查有价值；`required=false` ⇒ baseline 失败时落 `active` + `meta.worktree.baseline.status=failed`（exit 0，warning 但不终止）。
 
 ### 2.4 状态机：bootstrap policy 决策子状态机
 
@@ -277,13 +277,29 @@ def derive_slug_from_title(title: str) -> str | None:
 def generate_requirement_key(
     date_obj: date,
     slug: str,
-    requirements_root: Path,
+    *,
+    existing_keys: "Iterable[str]" = (),
 ) -> str:
-    """生成 YYYYMMDD-<slug>；同日同 slug 第二个落 -02 后缀。
+    """生成 YYYYMMDD-<slug>；纯字符串函数，不读 / 不写文件系统。
 
-    并发安全：与 _generate_req_id 一致（来源：scripts/lib/workflow_run.py:132），
-    用原子 mkdir(exist_ok=False) 探测 + 递增重试。
-    超出 -99 后缀抛 SlugError。
+    冲突回避（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:416
+    "1) 解析 key（不落盘） 2) 选择并创建 worktree 3) 在 worktree 路径下 mkdir requirements/<key>"）：
+    候选 key 在 existing_keys 中存在时尝试 -02 / -03 / ... 后缀，第一个未占用的即返回；
+    超 -99 后缀抛 SlugError。本函数不调 mkdir / 不读 requirements/ 目录，
+    避免在主仓工作区出现未提交占位目录。
+
+    并发兜底由调用方（F-004 workflow_bootstrap.py）负责：
+    git worktree add 是原子操作，失败若 stderr 命中
+      "fatal: '<path>' already exists"  或
+      "fatal: a branch named '<branch>' already exists"
+    （来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:432）
+    则调用层 bump existing_keys 集合 + 重新调本函数；其它 git 失败原因不重试，
+    直接抛 BootstrapError（避免把任意 git 错误当作冲突误重试）。
+
+    入参：
+      existing_keys: 调用方收集到的占用集合（典型来源：os.listdir(requirements/)
+        + os.listdir(.worktrees/) + worktree add 重试时累加的已失败 key）；
+        默认空集——此时函数仅返回首选 candidate key 不做去重。
     """
 
 
@@ -303,7 +319,7 @@ def directory_for_requirement_key(key: str) -> Path:
 **关键实现要点**：
 - `normalize_slug`：lower → `re.sub(r"[\s_]+", "-", s)` → 字符集校验；空 / 全连字符 / 长度 > 64 抛 SlugError
 - `derive_slug_from_title`：title 含非 ASCII 字符即返回 None，不走 pinyin / slugify 第三方库（来源：requirements/REQ-2026-014/artifacts/tech-feasibility.md:18）
-- `generate_requirement_key`：候选 key = `f"{date_obj.strftime('%Y%m%d')}-{slug}"`；EEXIST 时递增到 `-02`、`-03`...；超 `-99` 后缀抛
+- `generate_requirement_key`：候选 key = `f"{date_obj.strftime('%Y%m%d')}-{slug}"`；候选在 `existing_keys` 集合中存在时递增到 `-02` / `-03` / ...；超 `-99` 后缀抛 SlugError；**不调任何 IO / mkdir / listdir**
 - `is_legacy_requirement_key`：`bool(_LEGACY_REQUIREMENT_KEY_RE.match(key))`
 - `branch_for_requirement_key`：legacy → `feat/req-{year}-{nnn}` 小写；新 key → `feat/req-{key}` 直接拼
 
@@ -315,9 +331,10 @@ def test_normalize_slug_rejects_non_ascii(): ...
 def test_normalize_slug_rejects_empty(): ...
 def test_derive_slug_from_title_chinese_returns_none(): ...
 def test_derive_slug_from_title_ascii_lowercased(): ...
-def test_generate_requirement_key_basic(tmp_path): ...
-def test_generate_requirement_key_collision_appends_02(tmp_path): ...
-def test_generate_requirement_key_overflow_after_99(tmp_path): ...
+def test_generate_requirement_key_basic_no_io(): ...                          # 不调 mkdir / listdir
+def test_generate_requirement_key_collision_via_existing_keys_appends_02(): ...  # existing_keys 注入
+def test_generate_requirement_key_overflow_after_99_raises(): ...
+def test_generate_requirement_key_no_collision_returns_primary(): ...           # 空 existing_keys 兜底
 def test_is_legacy_requirement_key_recognizes_req_2026_014(): ...
 def test_branch_for_requirement_key_legacy_and_new(): ...
 def test_directory_for_requirement_key_returns_path_under_requirements(): ...
@@ -417,7 +434,9 @@ def run_worktree_setup(
     OD-2 落点：
       owner='workflow' + rc==0 → SetupResult(status='passed')
       owner='workflow' + rc!=0 + policy.required=true → SetupResult(status='failed')，
-        调用方（F-004）据此落 worktree.state=baseline_failed + abort
+        调用方（F-004）据此落 worktree.state=baseline_failed + 保留 worktree/branch
+        + 写 meta.worktree.baseline.status=failed + exit 非零（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:479
+        "不自动删除失败 worktree，失败现场对排查有价值"）；本函数不调用任何 rollback 入口
       owner='workflow' + rc!=0 + policy.required=false → SetupResult(status='failed') + warning，
         调用方落 active + baseline.status=failed + 继续
 
@@ -426,28 +445,42 @@ def run_worktree_setup(
 
 
 def resolve_main_repo_root(worktree_path: Path) -> Path:
-    """从 worktree 路径找主仓根。
+    """从任意 worktree（含 main worktree）解析主 worktree 根（P1-3 修复）。
 
-    实现：在 worktree_path 下 git rev-parse --show-toplevel + --git-common-dir，
-    common-dir 的 parent 即主仓根。
+    实现：在 worktree_path 下执行 `git worktree list --porcelain`，按规范第一段即
+    主 worktree（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:225
+    "git_dir != git_common_dir 且 git_dir 不含 '/modules/' → linked worktree"；
+    git porcelain 文档：主 worktree 总是输出列表第一段）。解析第一段 `worktree <path>` 行
+    取 path 即主仓根。
+
+    **不**用 `git rev-parse --git-common-dir + dirname` 推主仓根：common-dir 形态是
+    git 内部实现细节（linked worktree 下返回 `<main>/.git/worktrees/<name>` 之类），
+    按层级 dirname 推容易受 git 版本 / 路径布局 / 子模块嵌套影响；porcelain
+    第一段语义直接，多解析几行换稳定性。
 
     异常包装范畴（与 §5 异常表对齐）：
       - subprocess.CalledProcessError / SubprocessError / OSError
         / git rc != 0 / FileNotFoundError → 统一包装为 BootstrapError(branch_created=False)
         + stderr trim 透传；本函数不抛裸 OSError / subprocess.* 异常
-      - 解析得到的 common-dir 不在文件系统上 → BootstrapError
+      - porcelain 输出首段不含 `worktree ` 行 → BootstrapError(reason='porcelain_malformed')
+      - 解析得到的 path 不在文件系统上 → BootstrapError(reason='main_root_missing')
     """
 
 
-def cleanup_worktree_if_owned(meta: dict, repo_root: Path) -> "CleanupResult":
-    """三重保护清理 worktree（D-008 / D-009）。
+def cleanup_worktree_if_owned(meta: dict, main_repo_root: Path) -> "CleanupResult":
+    """三重保护清理 worktree（D-008 / D-009 / P1-3 修复）。
 
     保护 1：meta.worktree.owner == 'workflow'（owner=external 返回 CleanupResult(action='skipped', reason='external')）
     保护 2：meta.worktree.path 必须 startswith 'worktree.location'（默认 .worktrees/）
-    保护 3：cwd 必须 == repo_root（主仓根；防止 worktree 内 self-remove）
+    保护 3：`main_repo_root != worktree_path`（防 self-remove；纯入参对比，**不读 cwd**）
+
+    **调用契约**：调用方（F-005 archive_runner）必须先调 `resolve_main_repo_root` 解析
+    主仓根、再 `os.chdir(main_repo_root)`、最后调本函数；本函数体内不再用
+    `os.getcwd() == main_repo_root` 这类隐式判定（之前实现会在 archive 命令从 worktree 内
+    运行时把 worktree 根误判为主仓根，导致 git worktree remove 自己）。
 
     任一保护失败 → CleanupResult(action='skipped' | 'aborted'); 不抛异常；
-    成功 → 调 git worktree remove <path> + git worktree prune；
+    成功 → 在 main_repo_root cwd 下调 git worktree remove <worktree_path> + git worktree prune；
     git 失败 → CleanupResult(action='failed') + log ERROR；不影响 archive 主流程。
 
     meta 缺 worktree 字段 → CleanupResult(action='skipped', reason='legacy_no_worktree_field')。
@@ -468,7 +501,7 @@ class SetupResult:
 @dataclass(frozen=True)
 class CleanupResult:
     action: Literal["removed", "skipped", "aborted", "failed"]
-    reason: str                 # external / legacy_no_worktree_field / path_not_in_whitelist / cwd_mismatch / git_failure
+    reason: str                 # external / legacy_no_worktree_field / path_not_in_whitelist / main_root_equals_worktree / git_failure
     removed_path: Path | None   # action='removed' 时回填
 ```
 
@@ -490,9 +523,13 @@ def test_run_worktree_setup_owner_external_short_circuits(): ...        # OD-4
 def test_run_worktree_setup_baseline_required_true_failure(): ...       # OD-2
 def test_run_worktree_setup_baseline_required_false_warning(): ...      # OD-2
 
+def test_resolve_main_repo_root_from_main_worktree_returns_self(): ...   # P1-3
+def test_resolve_main_repo_root_from_linked_worktree_returns_main(): ... # P1-3
+def test_resolve_main_repo_root_porcelain_malformed_raises(): ...        # P1-3
+
 def test_cleanup_worktree_if_owned_workflow_removes(): ...
 def test_cleanup_worktree_if_owned_external_skips(): ...                # R5
-def test_cleanup_worktree_if_owned_cwd_mismatch_aborts(): ...           # D-009
+def test_cleanup_worktree_if_owned_main_root_equals_worktree_aborts(): ...  # P1-3 self-remove guard
 def test_cleanup_worktree_if_owned_path_not_whitelisted_aborts(): ...
 def test_cleanup_worktree_if_owned_legacy_meta_skips(): ...             # R7
 ```
@@ -520,10 +557,25 @@ def _generate_req_id(repo_root: Path, *, slug: str, today: date | None = None) -
 
     保留函数名 _generate_req_id 作为兼容入口，内部转调
     requirement_naming.generate_requirement_key（OD-1 汇合点）。
+
+    实现变更（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:416）：
+    不再用 mkdir-as-lock 占名主仓 requirements/<key>/；仅扫已有目录构造
+    existing_keys 集合传给 generate_requirement_key（纯字符串）。并发兜底
+    交给 F-004 `_setup_worktree_or_branch` 的 git worktree add retry 循环
+    （仅对 path/branch already exists 重试，见 §3.4 改造点 2 / §4.1）。
     """
     from scripts.lib.requirement_naming import generate_requirement_key
     today = today or date.today()
-    return generate_requirement_key(today, slug, repo_root / "requirements")
+    existing = _scan_existing_requirement_keys(repo_root)
+    return generate_requirement_key(today, slug, existing_keys=existing)
+
+
+def _scan_existing_requirement_keys(repo_root: Path) -> set[str]:
+    """收集主仓根 requirements/ 与 .worktrees/ 下的占用 key。
+
+    requirements/<key>/ 直接取目录名；.worktrees/feat-req-<key>/ 去前缀 'feat-req-'。
+    缺目录视同空集；不抛异常（来源：requirements/REQ-2026-014/artifacts/tech-feasibility.md:29）。
+    """
 ```
 
 **改造点 2**：`_parse_args`（来源：scripts/lib/workflow_run.py:162）扩展三参数。新签名：
@@ -534,16 +586,20 @@ class RunArgs:
     template_id: str
     template_args: str
     title: str
-    slug: str | None                  # --slug=<value>，None 时尝试 derive
+    slug: str | None                  # --slug <value> 或 --slug=<value>，None 时尝试 derive
     no_worktree: bool                 # --no-worktree
-    worktree_policy: str | None       # --worktree-policy=<auto|never|require|current>
+    worktree_policy: str | None       # --worktree-policy <v> 或 --worktree-policy=<v>
 
 
 def _parse_args(args: list[str]) -> RunArgs:
     """切分 /workflow:run 位置参数 + 三新 long-option。
 
-    long-option 用 --key=value 形式解析；--no-worktree 单独 flag；
-    未知 option 直接 fail-closed exit 1（提示已知集合）。
+    long-option 接受两种形式（P2 修复，对齐 spec L380 示例）：
+      - 空格分隔：`--slug worktree-isolation`、`--worktree-policy auto`
+      - 等号分隔：`--slug=worktree-isolation`、`--worktree-policy=auto`
+    `--no-worktree` 单独 flag（不取值）；
+    未知 option 直接 fail-closed exit 1（提示已知集合）；
+    空格形式遇到下一个 `--` 开头 token 视作缺值 fail-closed。
     """
 ```
 
@@ -563,23 +619,35 @@ def _run_requirement(args: RunArgs, template_path: Path, root: Path) -> int:
         )
         return 1
 
-    # 步骤 2：生成 key（落顶层目录占位）
-    req_id = _generate_req_id(root, slug=slug)
-
-    # 步骤 3：调 bootstrap（worktree 决策在 F-004 内部）
-    return _bootstrap_or_rollback(
-        req_id, args, template_path, root,
-        worktree_policy=args.worktree_policy,    # None 时 F-004 读 yaml 默认
-        no_worktree=args.no_worktree,
-    )
+    # 步骤 2：生成 key（纯字符串，不落盘；F-001 P1-2 修复）+ bootstrap retry
+    # 仅对"worktree 路径/分支已存在"重试，其它失败直接传播
+    # 来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:425
+    tried_keys: set[str] = _scan_existing_requirement_keys(root)
+    for attempt in range(1, 100):  # 与 generate_requirement_key 内部上限 -99 对齐
+        req_id = _generate_req_id_with_existing(root, slug=slug, existing_keys=tried_keys)
+        try:
+            return _bootstrap_or_rollback(
+                req_id, args, template_path, root,
+                worktree_policy=args.worktree_policy,    # None 时 F-004 读 yaml 默认
+                no_worktree=args.no_worktree,
+            )
+        except BootstrapError as e:
+            if e.reason != "path_or_branch_exists":
+                raise        # 其它失败原因不重试，直接 abort
+            tried_keys.add(req_id)
+            continue
+    raise SlugError(f"requirement key {slug} 重试 -99 后仍冲突；请换 slug")
 ```
 
 **测试骨架**（`tests/lib/test_workflow_run_worktree_args.py` ≈ 7 用例）：
 
 ```python
-def test_parse_args_slug_long_option(): ...
+def test_parse_args_slug_space_form(): ...                # --slug worktree-isolation (P2)
+def test_parse_args_slug_equal_form(): ...                # --slug=worktree-isolation (P2)
+def test_parse_args_worktree_policy_space_form(): ...     # --worktree-policy auto (P2)
+def test_parse_args_worktree_policy_equal_form(): ...     # --worktree-policy=auto (P2)
 def test_parse_args_no_worktree_flag(): ...
-def test_parse_args_worktree_policy_value(): ...
+def test_parse_args_slug_space_missing_value_fail_closed(): ...   # --slug 后接 --next-opt
 def test_parse_args_unknown_option_fail_closed(): ...
 
 def test_run_requirement_chinese_title_without_slug_fails(): ...
@@ -660,8 +728,8 @@ def _bind_current_worktree(
 | 步骤 | 动作 | 落点 | 失败处置 |
 |---|---|---|---|
 | 1 | 解析 req_id / slug / yaml.worktree | — | exit 1 |
-| 2 | `_setup_worktree_or_branch` → WorktreeInfo | 主仓根 / worktree path | BootstrapError(branch_created=False) |
-| 3 | `worktree_manager.run_worktree_setup` baseline | worktree path | BootstrapError + state=baseline_failed（required=true 时） |
+| 2 | `_setup_worktree_or_branch` → WorktreeInfo | 主仓根 / worktree path | path/branch already exists → 调用层（F-003 `_run_requirement`）bump existing_keys 后 retry，上限 `-99` 后抛 SlugError；**仅** stderr 命中 `fatal: '<path>' already exists` / `fatal: a branch named '<branch>' already exists` 触发 retry（git worktree add 原子语义，来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:425），其它 git 失败直接 BootstrapError(branch_created=False) 不重试 |
+| 3 | `worktree_manager.run_worktree_setup` baseline | worktree path | required=true + rc!=0 → 写 meta.worktree.{state=baseline_failed, baseline.status=failed} + 抛 `BootstrapError(retain_worktree=True)`（**不进 rollback**；保留 worktree/branch/requirements 全部现场，见 §4.2）；required=false + rc!=0 → warning + 继续 |
 | 4 | `mkdir requirements/<req_id>/artifacts/` | worktree path（active_repo_root=info.path） | BootstrapError(artifacts_created=True) |
 | 5 | render + write meta.yaml（含 worktree provenance 段）| worktree path | BootstrapError |
 | 6 | render + write plan.md / process.txt / run-state.jsonl | worktree path | BootstrapError |
@@ -713,7 +781,7 @@ def test_setup_worktree_or_branch_current_in_normal_repo_aborts(): ...  # 见 §
 def test_setup_worktree_or_branch_never_falls_back_to_checkout(): ...
 
 def test_bootstrap_requirement_artifacts_land_in_worktree(tmp_git_repo): ...  # R1
-def test_bootstrap_requirement_baseline_required_failure_rolls_back(): ...    # OD-2
+def test_bootstrap_requirement_baseline_required_failure_retains_worktree(): ...  # OD-2 / spec L479
 def test_bootstrap_requirement_baseline_required_false_warns_continues(): ... # OD-2
 
 def test_bootstrap_rollback_worktree_remove_before_branch_delete(): ...
@@ -723,7 +791,11 @@ def test_bootstrap_rollback_idempotent_on_partial_state(): ...
 
 ### 3.5 F-005 · archive_runner.py 改造
 
-**改造点**：`archive_requirement` 函数（来源：scripts/lib/archive_runner.py:614）5 项预检通过后、`_atomic_write_meta`（来源：scripts/lib/archive_runner.py:255）之前注入 cleanup：
+**改造点**：`archive_requirement` 函数（来源：scripts/lib/archive_runner.py:614）5 项预检通过后、`_atomic_write_meta`（来源：scripts/lib/archive_runner.py:255）之前注入 cleanup。**入口三步**（P1-3 修复）：
+
+1. `main_repo_root = worktree_manager.resolve_main_repo_root(Path.cwd())` — 显式解析主仓根
+2. `os.chdir(main_repo_root)` — 显式切到主仓根（不依赖 cleanup 函数体内的 cwd 判断）
+3. `worktree_manager.cleanup_worktree_if_owned(meta, main_repo_root)` — 调用层将 main_repo_root 作为入参传入
 
 ```python
 def archive_requirement(req_id: str, ..., yes: bool = False, ...) -> ArchiveResult:
@@ -732,8 +804,13 @@ def archive_requirement(req_id: str, ..., yes: bool = False, ...) -> ArchiveResu
 
     meta = _load_meta(req_id)
 
-    # 新增：worktree cleanup（D-008 / D-009）
-    cleanup_result = worktree_manager.cleanup_worktree_if_owned(meta, REPO_ROOT)
+    # 新增：worktree cleanup（D-008 / D-009 / P1-3）
+    # 步骤 1：解析主仓根（archive 命令可能从 worktree 内运行；不能用 REPO_ROOT 推断）
+    main_repo_root = worktree_manager.resolve_main_repo_root(Path.cwd())
+    # 步骤 2：显式切到主仓根；cleanup 内部不再 inspect cwd
+    os.chdir(main_repo_root)
+    # 步骤 3：调用层把 main_repo_root 作入参（语义透明，且供 cleanup 做 self-remove 防护）
+    cleanup_result = worktree_manager.cleanup_worktree_if_owned(meta, main_repo_root)
     if cleanup_result.action == "removed":
         logging.info("worktree removed: %s", cleanup_result.removed_path)
         # 回填 meta.worktree.cleanup.removed_at
@@ -818,7 +895,7 @@ worktree:
     completed_at: __WT_BASELINE_COMPLETED_AT__
   cleanup:
     policy: owned-only            # OD-3：本期固定 owned-only，archive_runner 不消费
-    removed_at: null              # archive 回填
+    removed_at: ""                # canonical unset = 空串；archive cleanup 成功时回填 ts（P1-4）
 ```
 
 **改造点 2**：`scripts/lib/workflow_bootstrap.py::_render_meta_yaml`（来源：scripts/lib/workflow_bootstrap.py:140）扩展占位符替换，新增 9 个 worktree.* 占位符填充。
@@ -891,6 +968,9 @@ fields:
       path:
         type: string
         required: false
+      absolute_path:
+        type: string
+        required: false      # P1-4：status / list 展示用，与 §2.1 字段表 12 字段全集对齐
       branch:
         type: string
         required: false
@@ -924,10 +1004,19 @@ fields:
             required: false      # OD-3：本期 archive_runner 不消费
           removed_at:
             type: string
-            required: false      # archive 回填
+            required: false      # archive 回填；canonical unset = 空串 ""（见 §2.1 schema 语义边界）
 ```
 
 **conditional_required**：worktree 段全 optional；旧 REQ-YYYY-NNN（来源：requirements/REQ-2026-014/artifacts/tech-feasibility.md:144）meta.yaml 缺该段时校验通过（D-014 / R7 缓解）。
+
+**schema 语义边界（P1-4 修复说明）**：现有 `context/team/engineering-spec/meta-schema.yaml` + `scripts/lib/check_meta.py` 只消费 `required_fields` / `enums` / `format` / `conditional_required` 四类规则；**不支持** `nullable: true` / `type: [string, "null"]` 这类 schema 构造。故本 schema fragment 采用**最小改动方案**（grep 既有 schema 无 nullable 先例 → 不臆造）：
+
+- `removed_at: type: string, required: false` — 校验侧形态保持；
+- **canonical unset = 空串 `""`**（archive cleanup 未发生时 F-008 模板初值；cleanup 成功后 F-005 archive_runner 回填为 timestamp string）；
+- legacy meta 缺整个 worktree 段时，调用方走 `meta.get("worktree", {})` 防御性短路（D-014 / R7），**不依赖 null 语义**；代码里不需要处理 `removed_at is None` 分支；
+- 若未来要强校验"格式合法 timestamp string OR 空串"二者择一，在 F-010 worktree-meta checker 单测内补一组测试，**不**扩展 meta-schema.yaml 语法。
+
+字段属性表（§2.1 上方 L130-145，12 字段全集）必须与本 schema fragment 一一对应；任何字段增删需双向同步——`absolute_path` 此前缺漏已在本次 patch 修复（P1-4）。
 
 **测试骨架**（`tests/lib/test_meta_schema_worktree.py` ≈ 5 用例）：
 
@@ -960,20 +1049,34 @@ sequenceDiagram
     else ASCII 标题
         Naming-->>CLI: slug
     end
-    CLI->>Naming: generate_requirement_key(date, slug, root/requirements)
-    Naming->>FS: mkdir(requirements/<key>, exist_ok=False)
-    FS-->>Naming: ok
-    Naming-->>CLI: req_id
-
-    CLI->>Bootstrap: _bootstrap_requirement(req_id, args)
-    Bootstrap->>WT: detect_worktree_state(root)
-    WT-->>Bootstrap: WorktreeState(is_linked=False)
-    Bootstrap->>WT: ensure_worktree_dir_ignored(root, .worktrees/)
-    WT-->>Bootstrap: ok
-    Bootstrap->>WT: create_worktree(root, branch, base, .worktrees/feat-req-<key>)
-    WT->>FS: git worktree add ...
-    FS-->>WT: ok
-    WT-->>Bootstrap: WorktreeInfo(owner=workflow, created=True)
+    CLI->>FS: existing = _scan_existing_requirement_keys(root)
+    Note over CLI: retry 循环 owner=CLI（_run_requirement）；与 §3.3 实现位置对齐
+    loop git worktree add 冲突重试（仅 reason=path_or_branch_exists；上限 -99）
+        CLI->>Naming: generate_requirement_key(date, slug, existing_keys=existing)
+        Naming-->>CLI: req_id (纯字符串，无 IO；主仓工作区零污染)
+        CLI->>Bootstrap: _bootstrap_requirement(req_id, args)
+        Bootstrap->>WT: detect_worktree_state(root)
+        WT-->>Bootstrap: WorktreeState(is_linked=False)
+        Bootstrap->>WT: ensure_worktree_dir_ignored(root, .worktrees/)
+        WT-->>Bootstrap: ok
+        Bootstrap->>WT: create_worktree(root, branch, base, .worktrees/feat-req-<key>)
+        WT->>FS: git worktree add ...
+        alt success
+            FS-->>WT: ok
+            WT-->>Bootstrap: WorktreeInfo
+            Bootstrap-->>CLI: success → break loop
+        else stderr "already exists"（path 或 branch）
+            FS-->>WT: rc=128
+            WT-->>Bootstrap: BootstrapError(reason=path_or_branch_exists)
+            Bootstrap-->>CLI: BootstrapError(reason=path_or_branch_exists)
+            CLI->>CLI: existing.add(req_id) → continue loop
+        else 其它 git 错误
+            FS-->>WT: rc!=0
+            WT-->>Bootstrap: BootstrapError(reason=other)
+            Bootstrap-->>CLI: BootstrapError(reason=other)
+            CLI->>CLI: propagate → exit 1（不重试）
+        end
+    end
 
     Bootstrap->>WT: run_worktree_setup(path, policy={required:true}, owner=workflow)
     WT->>FS: make gates-validate
@@ -987,7 +1090,9 @@ sequenceDiagram
     CLI-->>CLI: print 提示 + worktree path
 ```
 
-### 4.2 bootstrap 失败 rollback（baseline 失败 + required=true）
+### 4.2 bootstrap baseline 失败保留现场（required=true）
+
+来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:477
 
 ```mermaid
 sequenceDiagram
@@ -1000,25 +1105,25 @@ sequenceDiagram
     Bootstrap->>WT: run_worktree_setup(..., policy.required=true)
     WT->>FS: make gates-validate
     FS-->>WT: rc=1 (lint failed)
-    WT-->>Bootstrap: SetupResult(status=failed)
+    WT-->>Bootstrap: SetupResult(status=failed, log_tail=...)
 
-    Note over Bootstrap: state=baseline_failed → 进 rollback
-    Bootstrap->>Bootstrap: _bootstrap_rollback(worktree_info=info, ...)
-    Bootstrap->>FS: chdir(repo_root)
-    Bootstrap->>FS: git worktree remove --force <path>
-    Bootstrap->>FS: git worktree prune
-    Bootstrap->>FS: git branch -D feat/req-<key>
-    Bootstrap->>FS: rmtree main_root/requirements/<key>
-    Bootstrap->>FS: rmtree worktree_path/requirements/<key> (best-effort)
-    Bootstrap-->>Bootstrap: 抛 BootstrapError 原始失败原因
+    Note over Bootstrap: state=baseline_failed → 保留 worktree / branch / requirements/<key>
+    Bootstrap->>FS: write meta.yaml<br/>worktree.baseline.status=failed<br/>worktree.baseline.completed_at=now()<br/>worktree.state=baseline_failed
+    Bootstrap->>FS: write process.txt "[blocker] baseline failed: <log_tail trim>"
+    Bootstrap-->>Bootstrap: 抛 BootstrapError(retain_worktree=True)<br/>exit 非零，提示用户 cd <path> 排查或 archive/discard 手动清理
 ```
 
-### 4.3 archive cleanup 三重保护
+**与 rollback 路径的边界**：本时序不调用 `_bootstrap_rollback`。rollback 仅在 `create_worktree` / `ensure_worktree_dir_ignored` / `_write_bootstrap_artifacts` 失败（即 worktree 尚未达到 `active` 之前的步骤）触发；baseline 失败时 worktree 已 active，删除会丢现场。spec 在 §7.3 步骤 5 给出修复建议"进入 worktree 路径后排查，或 archive/discard 清理"（来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:485）。
+
+### 4.3 archive cleanup 三重保护（含 main_root 显式解析）
+
+来源：context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md:225（主 worktree 在 porcelain 第一段）+ P1-3 修复
 
 ```mermaid
 sequenceDiagram
     participant CLI as archive_runner.main
     participant AR as archive_requirement
+    participant Resolver as worktree_manager.resolve_main_repo_root
     participant WT as worktree_manager.cleanup_worktree_if_owned
     participant FS as filesystem
 
@@ -1026,13 +1131,21 @@ sequenceDiagram
     AR->>AR: 5 项预检 (phase/dirty/pr_number/pr_merged/lessons)
     AR->>FS: load meta.yaml
     FS-->>AR: meta dict
-    AR->>WT: cleanup_worktree_if_owned(meta, REPO_ROOT)
+
+    Note over AR: P1-3：调 cleanup 前显式解析主仓根 + chdir
+    AR->>Resolver: resolve_main_repo_root(Path.cwd())
+    Resolver->>FS: git worktree list --porcelain
+    FS-->>Resolver: 多段输出（第一段为主 worktree）
+    Resolver-->>AR: main_repo_root
+    AR->>FS: os.chdir(main_repo_root)
+
+    AR->>WT: cleanup_worktree_if_owned(meta, main_repo_root)
 
     alt 三重保护通过
         WT->>WT: owner=workflow ✓
         WT->>WT: path startswith .worktrees/ ✓
-        WT->>WT: cwd == REPO_ROOT ✓
-        WT->>FS: git worktree remove + prune
+        WT->>WT: main_repo_root != worktree_path ✓（防 self-remove）
+        WT->>FS: git worktree remove + prune（cwd 已切到 main_repo_root）
         WT-->>AR: CleanupResult(action=removed)
         AR->>AR: meta.worktree.cleanup.removed_at = now()
     else owner=external
@@ -1041,9 +1154,9 @@ sequenceDiagram
     else path 不在白名单
         WT-->>AR: CleanupResult(action=aborted, reason=path_not_in_whitelist)
         AR->>AR: log ERROR
-    else cwd 不在主仓根
-        WT-->>AR: CleanupResult(action=aborted, reason=cwd_mismatch)
-        AR->>AR: log ERROR
+    else main_repo_root == worktree_path
+        WT-->>AR: CleanupResult(action=aborted, reason=main_root_equals_worktree)
+        AR->>AR: log ERROR "self-remove blocked"
     end
 
     AR->>FS: _atomic_write_meta (含 cleanup.removed_at 回填)
@@ -1055,22 +1168,50 @@ sequenceDiagram
 
 ## 5. 异常处理与错误码
 
-| 异常类型 | 触发场景 | 错误码（对外） | feature | 日志级别 | 用户提示 |
-|---|---|---|---|---|---|
-| `SlugError` | normalize_slug / generate_requirement_key 非法输入 | exit 1 | F-001 / F-003 | ERROR | "slug 含非法字符 / 长度超限；详见 D-013 决策表" |
-| `BootstrapError(branch_created=False)` | create_worktree git rc!=0 | exit 1 | F-002 / F-004 | ERROR | "git worktree add 失败：<stderr>" |
-| `BootstrapError("worktree policy=current ...")` | policy=current + 非 linked worktree | exit 1 | F-002 / F-004 | ERROR | §2.2 文案 |
-| `BootstrapError("...未 ignore...")` | ensure_worktree_dir_ignored fail-closed | exit 1 | F-002 | ERROR | "请先 commit F-007（.worktrees/ 入 .gitignore）后重试" |
-| `BootstrapError("baseline failed required=true")` | run_worktree_setup rc!=0 + required=true | exit 1 | F-002 / F-004 | ERROR | "baseline 失败；查看 worktree 内输出 / 调整 yaml.worktree.setup.baseline.required" |
-| `WorkflowError("external dirty workspace")` | dirty fail-closed | exit 1 | F-004 | ERROR | "外部 worktree 存在未提交改动；commit / stash / discard 后重试，或 --no-worktree 逃生" |
-| `CleanupResult(action=aborted)` | archive 三重保护任一失败 | exit 0（不阻塞 archive） | F-005 | ERROR | "worktree cleanup 跳过：<reason>" |
+| 异常类型 | reason 枚举（见下方 §5.1） | 触发场景 | 错误码（对外） | feature | 日志级别 | 用户提示 |
+|---|---|---|---|---|---|---|
+| `SlugError` | — | normalize_slug / generate_requirement_key 非法输入 / retry 上限 -99 | exit 1 | F-001 / F-003 | ERROR | "slug 含非法字符 / 长度超限 / 同日并行用尽 -99 后缀；详见 D-013 决策表" |
+| `BootstrapError` | `path_or_branch_exists` | create_worktree git stderr 命中 `fatal: '<path>' already exists` / `fatal: a branch named '<branch>' already exists` | exit 1（CLI retry 不消费时 propagate） | F-002 / F-004 | ERROR | "git worktree add 路径或分支占用；CLI 已自动 bump -02 后缀重试，重试用尽方 propagate" |
+| `BootstrapError` | `other` | create_worktree git rc!=0 其它原因 | exit 1 | F-002 / F-004 | ERROR | "git worktree add 失败：<stderr>" |
+| `BootstrapError` | `policy_current_in_normal_repo` | policy=current + 非 linked worktree | exit 1 | F-002 / F-004 | ERROR | §2.2 文案 |
+| `BootstrapError` | `worktree_dir_not_ignored` | ensure_worktree_dir_ignored fail-closed | exit 1 | F-002 | ERROR | "请先 commit F-007（.worktrees/ 入 .gitignore）后重试" |
+| `BootstrapError` | `baseline_failed_required` | run_worktree_setup rc!=0 + required=true | exit 1（**保留现场，不进 rollback**；P1-1） | F-002 / F-004 | ERROR | "baseline 失败；保留 worktree/branch；查看 worktree 内输出 / 调整 yaml.worktree.setup.baseline.required；或 archive/discard 清理" |
+| `BootstrapError` | `porcelain_malformed` / `main_root_missing` | resolve_main_repo_root git worktree list 输出畸形 / 解析路径不存在 | exit 1 | F-002 / F-005 | ERROR | "无法解析主仓根；可能在非 git 仓 / git 版本异常；archive 步骤已 fail-closed 不会误删" |
+| `WorkflowError` | `external_dirty_workspace` | dirty fail-closed | exit 1 | F-004 | ERROR | "外部 worktree 存在未提交改动；commit / stash / discard 后重试，或 --no-worktree 逃生" |
+| `CleanupResult(action=aborted)` | `external` / `legacy_no_worktree_field` / `path_not_in_whitelist` / `main_root_equals_worktree` / `git_failure` | archive 三重保护任一失败 | exit 0（不阻塞 archive） | F-005 | ERROR | "worktree cleanup 跳过：<reason>" |
+
+### 5.1 reason 枚举单点汇总
+
+下表为上表 reason 列的事实源，避免散落在 §3.2 dataclass / §3.4 改造点 2 / §3.5 archive 调用 / features.json acceptance 多处对照。
+
+`BootstrapError.reason` 枚举（F-002 抛 / F-004 包装 / F-003 _run_requirement 区分是否 retry）：
+
+| reason | 触发点 | CLI 处置 |
+|---|---|---|
+| `path_or_branch_exists` | F-002 create_worktree stderr "already exists"（P1-2） | F-003 _run_requirement bump existing_keys retry，上限 -99 后抛 SlugError |
+| `other` | F-002 create_worktree git rc!=0 其它原因 | propagate exit 1 |
+| `policy_current_in_normal_repo` | F-002 detect_worktree_state + policy=current 矛盾 | propagate exit 1 |
+| `worktree_dir_not_ignored` | F-002 ensure_worktree_dir_ignored fail-closed（D-010） | propagate exit 1 |
+| `baseline_failed_required` | F-002 run_worktree_setup rc!=0 + yaml.required=true（OD-2 / P1-1） | F-004 写 meta + exit 1，**不**进 rollback |
+| `porcelain_malformed` | F-002 resolve_main_repo_root porcelain 首段缺 `worktree ` 行 | propagate exit 1 |
+| `main_root_missing` | F-002 resolve_main_repo_root 解析出的路径不在文件系统 | propagate exit 1 |
+
+`CleanupResult.reason` 枚举（F-002 cleanup_worktree_if_owned 写入，F-005 archive_runner 读取后 log）：
+
+| reason | 触发点 | action | archive 主流程影响 |
+|---|---|---|---|
+| `external` | meta.worktree.owner=external | skipped | 不阻塞 |
+| `legacy_no_worktree_field` | meta 缺 worktree 段（D-014 / R7） | skipped | 不阻塞 |
+| `path_not_in_whitelist` | meta.worktree.path 不在 .worktrees/ 白名单 | aborted | 不阻塞（log ERROR） |
+| `main_root_equals_worktree` | 入参 main_repo_root == meta.worktree.path（P1-3 self-remove guard） | aborted | 不阻塞（log ERROR） |
+| `git_failure` | git worktree remove / prune rc!=0 | failed | 不阻塞（log ERROR） |
 
 幂等性：
 - `cleanup_worktree_if_owned` 幂等（已删的 worktree 二次调用 git worktree remove rc!=0 → CleanupResult(action=failed) + log，不抛异常）
 - `_bootstrap_rollback` 幂等（所有 step best-effort，可重复调用；来源：scripts/lib/workflow_bootstrap.py:363）
 
 并发性：
-- `generate_requirement_key` 原子 mkdir + 递增重试，与 _generate_req_id 一致（来源：scripts/lib/workflow_run.py:132）
+- `generate_requirement_key` 纯字符串生成不涉并发（P1-2 修复：移除原 mkdir-as-lock；并发兜底由 F-003 `_run_requirement` 的 git worktree add retry 循环承担，参 §3.3 / §4.1）
 - `archive_requirement` 内的 `_append_process_event` 已用 fcntl.LOCK_EX 排他锁（来源：scripts/lib/archive_runner.py:296），新增 cleanup 步骤不引入新并发点
 
 ---

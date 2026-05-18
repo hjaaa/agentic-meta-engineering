@@ -1,0 +1,77 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-014-detail-design-003",
+  "requirement_id": "REQ-2026-014",
+  "phase": "detail-design",
+  "reviewer": "detail-design-quality-reviewer",
+  "reviewed_at": "2026-05-18 10:50:26",
+  "reviewed_commit": "8d7754d",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/detailed-design.md",
+      "sha256": "770659356ebb221c886d67c7f644dc9be336ac9f8e84d256e0eace57e1c6ba41"
+    },
+    {
+      "path": "artifacts/features.json",
+      "sha256": "d3d941c8d1b9454bf805971a05da1b939f243e85867c80bbd379b4e4f036671d"
+    },
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "6ea59c7acb64c2660e02c0466eeb218e138bbb2ca25567685896783f71a54378"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 90,
+  "dimensions": {
+    "consistency_with_outline": {
+      "score": 92,
+      "issues": []
+    },
+    "interface_completeness": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 1170 行 §5 异常表 BootstrapError 行未列出 reason 枚举维度（patch 后已新增 reason='path_or_branch_exists' / 'other' / 'porcelain_malformed' / 'main_root_missing' / 'main_root_equals_worktree' 等），与 §3.2/§3.4/§3.5 中分散定义的 reason 字符串集不构成单点汇总；建议在 §5 表内补一列 reason 或加注脚指向 §3.2 dataclass + §3.4 改造点 2"
+        },
+        {
+          "severity": "minor",
+          "description": "第 1175 行 §5 异常表 CleanupResult(action=aborted) 行未细分 reason 枚举，而第 504 行 CleanupResult.reason 已列举 5 种（external / legacy_no_worktree_field / path_not_in_whitelist / main_root_equals_worktree / git_failure）；建议异常表行内补 reason 枚举或注脚以避免 reviewer / impl-engineer 二处对照负担"
+        }
+      ]
+    },
+    "data_model_soundness": {
+      "score": 95,
+      "issues": []
+    },
+    "sequence_correctness": {
+      "score": 86,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 1059-1073 行 §4.1 时序图 retry 循环 participant 层级与 §3.3 _run_requirement 第 626 行描述不完全对齐：§3.3 把 for-attempt 循环放在 workflow_run._run_requirement（CLI 层）catch BootstrapError(reason='path_or_branch_exists') 后再调 generate_requirement_key bump existing_keys；§4.1 mermaid 把 loop 画在 Bootstrap participant 维度内（Bootstrap→WT 调 create，失败 Bootstrap→Naming bump）。语义上 CLI 才是循环 owner，建议把 loop 的外框移到 CLI participant 维度（或在循环上方加一行 Note over CLI 说明 retry 由 CLI 持有），让 mermaid 与 §3.3 实现位置一一对应"
+        }
+      ]
+    },
+    "feature_granularity": {
+      "score": 90,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "建议下一轮（或开发期）补 BootstrapError reason 枚举单点定义（推荐在 §3.2 或 §5 集中列举所有 reason 字面量 + 触发条件 + 调用层处置），目前 reason 散落在 §3.2 resolve_main_repo_root / cleanup_worktree_if_owned / §3.4 改造点 2 / F-002 acceptance 多处，impl-engineer 拼凑成本略高",
+    "§4.1 mermaid 时序图 retry 循环 owner 层级建议明确为 CLI（workflow_run._run_requirement），与 §3.3 实现描述对齐；这能让阶段 7 task subagent 直接按图实现"
+  ],
+  "scope": null,
+  "supersedes": "REV-REQ-2026-014-detail-design-002",
+  "features_json_validation": {
+    "valid": true,
+    "issues": [],
+    "enhancement_suggestions": [
+      "P1-1 / P1-2 / P1-3 / P1-4 / P2 五个 patch 在 features.json 对应 acceptance（F-001 / F-002 / F-003 / F-004 / F-005 / F-008 / F-010）已逐条落地：F-001 acceptance generate_requirement_key 纯字符串 + 函数体不出现 IO；F-002 acceptance resolve_main_repo_root porcelain + cleanup 不读 cwd + create_worktree reason='path_or_branch_exists' / 'other' + main_root_equals_worktree 阻断；F-003 acceptance --slug value 与 --slug=value 双形式 + path_or_branch_exists retry 其它 reason 不重试；F-004 acceptance 主仓根 requirements/<key>/ 在 bootstrap 全程不创建 + baseline 失败保留现场不触发 rollback；F-005 acceptance 不再以 REPO_ROOT 作 cleanup 第二参数；F-008 acceptance 12 字段全集 + removed_at prose 三态 unset；F-010 acceptance 12 字段全集 + removed_at type:string + 不写 nullable",
+      "F-003 depends_on_features 当前只有 [F-001]，但 _run_requirement retry 循环调用的 _bootstrap_requirement 由 F-004 提供，建议下一轮把 F-004 加入 F-003 depends_on_features（或反向把 F-003 加入 F-004 depends_on_features，端看实现顺序）——本轮按用户约束不动 depends_on，记为 enhancement",
+      "F-001 / F-002 / F-004 已有 interfaces_frozen=true；F-003 / F-005 等接入类 feature 可考虑补 interfaces_frozen=true，目前签名已在详细设计冻结到位"
+    ]
+  }
+}
