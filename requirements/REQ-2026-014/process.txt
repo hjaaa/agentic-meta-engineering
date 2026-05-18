@@ -6,3 +6,8 @@
 2026-05-18 08:16:19 [phase-transition] definition → tech-research：5 条 minor 全闭环 + definition-002 score=96 looks_clean + 11 gate 全过
 2026-05-18 08:35:18 [phase-transition] tech-research → outline-design：tech-feasibility GO/high 67.5h；gate 11 全过；无 reviewer 阶段直签
 2026-05-18 08:38:22 [save] tech-research → outline-design 完成；definition-002 signed score 96；tech-feasibility GO/high 67.5h 8 风险；11 gate 全过；jsonl 走 process.txt 兜底（stub awaiting_claude_action）
+2026-05-18 09:03:04 [save] outline-design 起草完成 artifacts/outline-design.md：4 层架构 + 8 模块 + 7 选型 + 4 流程 + 2 状态机 + 3 AC + 4 开放项；check_sourcing --strict 0 issue（首版 2 W002 已修）；下一步建议：跑 outline-design reviewer 或直签切 detail-design
+2026-05-18 09:05:47 [review] REV-REQ-2026-014-outline-design-001 outline-design-quality-reviewer needs_attention/86：2 required（baseline_failed 回边 / D-006 字段范围 9→6 类）+ 2 suggestion（筛选标准 / OD-1~4 重编号）+ 1 architectural_concern（AC-A1 schema 注释提示）
+2026-05-18 09:10:14 [save] outline-design-001 reviewer 全 5 条 issue 闭环；check_sourcing --strict 0 issue（修复中 2 次回归已二次修正：reviews/ 路径 → 弱化为"依据" + 筛选标准段去多余"默认"动词）；下一步：reviewer 复评 / signoff -001 / 直接切 detail-design 三选一
+2026-05-18 09:13:49 [review] REV-REQ-2026-014-outline-design-002 outline-design-quality-reviewer looks_clean/92 supersedes -001；5 条修复全 verified（R1 状态机回边 / R2 字段抽象化 / S1 筛选标准 / S2 OD-1~4 / AC-A1 提示）；维度评分 86→92 跨越门槛；下一步：人工 signoff -002 → phase-transition outline-design → detail-design
+2026-05-18 09:19:31 [signoff] REV-REQ-2026-014-outline-design-002 approved by hj19961223@gmail.com
