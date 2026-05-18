@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-005",
+  "status": "DONE",
+  "commit_sha": "b20a04c",
+  "files_changed": [
+    "scripts/lib/archive_runner.py",
+    "tests/lib/test_archive_runner_worktree_cleanup.py"
+  ],
+  "test_summary": "8 passed in 0.18s (pytest tests/lib/test_archive_runner_worktree_cleanup.py -v)；现有 tests/lifecycle/test_archive.py 回归 29 passed",
+  "touches_violations": [],
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-18T20:47:00+08:00"
+}

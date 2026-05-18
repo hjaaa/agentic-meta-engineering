@@ -61,3 +61,16 @@
 2026-05-18 18:38:06 [review:looks_clean] REV-REQ-2026-014-code-F-008-001 score=92；6 候选 → drop 6（4 rejected + 2 not_proven）/ 0 keep / 3 follow-up to F-004（F-2 yaml 注入 + F-4 read_text 未 catch + F-003 regression）；trend-G-meta + trend-H-ac-implementation-gap 均未复现；满足 CR-1/3/4 sign-off 卡点
 2026-05-18 18:39:30 [signoff] REV-REQ-2026-014-code-F-008-001 approved by hj19961223@gmail.com
 2026-05-18 18:40:26 [development] F-008 done：rev-001 looks_clean/92 signed → status=done / review_report 落入 frontmatter / dispatch lock 释放（current_feature=null）；done 5/10；F-008 解锁 F-004/F-005/F-010 三 feature；F-003 regression 走 (a) F-004 一并修 已记 notes.md
+2026-05-18 18:43:11 [save] F-003+F-008 双签闭环 (90/92)；done 5/10；解锁 F-004/F-005/F-010；F-003 regression 走 (a) F-004 一并修 (见 notes.md)
+2026-05-18 18:48:14 [development] F-004 派发开始（model=opus, complexity=heavy）；带 F-003 regression cleanup 扩 touches tests/skills/test_workflow_bootstrap.py
+2026-05-18 19:05:58 [development] F-004 subagent DONE 回执：commit 07b544b/7953abd / 32 新+回归 PASSED / touches 扩 5 文件已落 frontmatter + features.json + receipt violations 清零（caller-side adjust+F-003 regression cleanup 范围内）/ post-dev gates 5 pass
+2026-05-18 19:24:17 [review:blocked] REV-REQ-2026-014-code-F-004-001 score=72；20 候选 → keep 10 (2 critical/5 major/3 minor) / downgrade 1 / follow-up 2 / drop 7；required_fixes F-1+F-2 (workflow_run.py 漏检 retain_worktree + 未透传 worktree_info)；rev2 顺手 F-3/F-4/F-5/F-8/F-10/F-11/F-12/F-13/F-17
+2026-05-18 19:25:30 [development] F-004 rev2 派发开始（model=opus, complexity=heavy）；touches 扩 worktree_manager.py（F-8 reason 枚举对齐）
+2026-05-18 19:45:59 [development] F-004 rev2 subagent DONE 回执：commit bfb3bb4 / 76 测试全过（含 2 新 TC-F03-15/16）；扩 touches test_worktree_manager.py（F-8 reason 改字符串断言同步）；receipt violations 2 条已清（事后扩 touches 合法化）；post-dev gates 5 pass
+2026-05-18 20:11:30 [review:looks_clean] REV-REQ-2026-014-code-F-004-002 supersedes -001 score 72→89；10 keep findings 全闭环（2 critical/5 major/3 minor）；rev2 候选 13 → drop 7 (rejected 2 + not_proven 5) / keep 6 suggestion；各维度≥85 综合89 → 满足 CR-1/3/4 sign-off 卡点
+2026-05-18 20:12:47 [development] F-004 rev3 派发开始（model=sonnet, complexity=light，仅 5 nit cleanup）
+2026-05-18 20:31:30 [review:looks_clean] REV-REQ-2026-014-code-F-004-003 supersedes -002 score 89→91；rev2 6 keep findings 全闭环；rev3 候选 6 → drop 5 (rejected 4 + not_proven 1) / keep 1 suggestion (F-202 _run_requirement 109/6 由 F-106 修法引入)；各维度≥85 综合91 → 满足 CR-1/3/4 sign-off 卡点
+2026-05-18 20:32:54 [signoff] REV-REQ-2026-014-code-F-004-003 approved by hj19961223@gmail.com
+2026-05-18 20:33:10 [signoff] REV-REQ-2026-014-code-F-004-003 approved by hj19961223@gmail.com
+2026-05-18 20:33:15 [development] F-004 done：rev-003 looks_clean/91 signed → status=done / review_report 落入 frontmatter / dispatch lock 释放（current_feature=null）；done 6/10；F-004 解锁 F-005 / F-006 / F-010；下一步 DAG 三选一
+2026-05-18 20:36:11 [save] F-004 全流程闭环（rev1 72 → rev2 89 → rev3 91 signed，trend-G-meta 防御链）；done 6/10；解锁 F-005/F-006/F-010；下一步 F-005

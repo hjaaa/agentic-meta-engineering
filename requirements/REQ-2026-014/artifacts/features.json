@@ -26,7 +26,11 @@
       ],
       "estimate_days": 1.25,
       "interfaces_frozen": true,
-      "ac_refs": ["F-001-AC1", "F-001-AC2", "F-001-AC3"]
+      "ac_refs": [
+        "F-001-AC1",
+        "F-001-AC2",
+        "F-001-AC3"
+      ]
     },
     {
       "id": "F-002",
@@ -57,7 +61,12 @@
       ],
       "estimate_days": 2.5,
       "interfaces_frozen": true,
-      "ac_refs": ["F-002-AC1", "F-002-AC2", "F-002-AC3", "F-002-AC4"]
+      "ac_refs": [
+        "F-002-AC1",
+        "F-002-AC2",
+        "F-002-AC3",
+        "F-002-AC4"
+      ]
     },
     {
       "id": "F-003",
@@ -72,7 +81,9 @@
         "tests/lib/test_workflow_run_worktree_args.py"
       ],
       "depends_on": [],
-      "depends_on_features": ["F-001"],
+      "depends_on_features": [
+        "F-001"
+      ],
       "complexity": "light",
       "acceptance": [
         "scripts/lib/workflow_run.py 的 _generate_req_id 函数体改为调用 requirement_naming.generate_requirement_key + _scan_existing_requirement_keys 注入；函数体不出现 mkdir / open(W) 等占名 IO（P1-2）",
@@ -83,7 +94,10 @@
         "tests/lib/test_workflow_run.py 现有用例回归全过（_generate_req_id legacy 兼容仍存；mkdir-as-lock 相关用例若有需调整为 existing_keys 注入验证）"
       ],
       "estimate_days": 0.5,
-      "ac_refs": ["F-003-AC1", "F-003-AC2"]
+      "ac_refs": [
+        "F-003-AC1",
+        "F-003-AC2"
+      ]
     },
     {
       "id": "F-004",
@@ -91,14 +105,28 @@
       "description": "改 scripts/lib/workflow_bootstrap.py：(1) _checkout_feature_branch 拆为 _setup_worktree_or_branch：先 detect_worktree_state，若已在 linked worktree 内则 bind current（D-004 复用），否则 ensure_worktree_dir_ignored → create_worktree → run_worktree_setup；(2) _bootstrap_requirement 写文件顺序改为 worktree-first：步骤 1（解析 key / slug） → 步骤 2（建 worktree） → 步骤 3（worktree 路径下 mkdir artifacts/）→ 步骤 4-6（render meta.yaml / plan.md / process.txt 落 worktree）→ 步骤 7（写 run-state.jsonl）→ 步骤 8（baseline 通过输出成功）；(3) _bootstrap_rollback 顺序补 worktree remove 前置：步骤 0 cd main_repo_root → 步骤 1 git worktree remove <path> + git worktree prune → 步骤 2 git branch -D → 步骤 3 rmtree requirements/<key>（主仓根 + worktree path 双扫）；(4) 显式传 active_repo_root（worktree path）给 _write_bootstrap_artifacts，避免 R1 路径错乱。落地 outline-design §流程一 + spec §6 + tech-feasibility §1.3 + R1 缓解。",
       "modules": [
         "scripts/lib/workflow_bootstrap.py",
-        "tests/lib/test_workflow_bootstrap_worktree.py"
+        "scripts/lib/workflow_run.py",
+        "scripts/lib/worktree_manager.py",
+        "tests/lib/test_workflow_bootstrap_worktree.py",
+        "tests/lib/test_workflow_run_worktree_args.py",
+        "tests/skills/test_workflow_bootstrap.py"
       ],
       "touches": [
         "scripts/lib/workflow_bootstrap.py",
-        "tests/lib/test_workflow_bootstrap_worktree.py"
+        "scripts/lib/workflow_run.py",
+        "scripts/lib/worktree_manager.py",
+        "tests/lib/test_workflow_bootstrap_worktree.py",
+        "tests/lib/test_workflow_run_worktree_args.py",
+        "tests/lib/test_worktree_manager.py",
+        "tests/skills/test_workflow_bootstrap.py"
       ],
       "depends_on": [],
-      "depends_on_features": ["F-001", "F-002", "F-007", "F-008"],
+      "depends_on_features": [
+        "F-001",
+        "F-002",
+        "F-007",
+        "F-008"
+      ],
       "complexity": "heavy",
       "acceptance": [
         "scripts/lib/workflow_bootstrap.py 的 _bootstrap_requirement 步骤 1-8 顺序与详细设计 §3.4 一致：worktree 优先于 artifacts，artifacts 落点为 worktree path；主仓根 requirements/<key>/ 在 bootstrap 全程**不创建**（P1-2 修复：spec §6.1 L412 'requirements/<key>/ 必须最终出现在 worktree 目录里'）",
@@ -110,7 +138,11 @@
         "现有 tests/lib/test_workflow_bootstrap.py 回归全过"
       ],
       "estimate_days": 1.25,
-      "ac_refs": ["F-004-AC1", "F-004-AC2", "F-004-AC3"]
+      "ac_refs": [
+        "F-004-AC1",
+        "F-004-AC2",
+        "F-004-AC3"
+      ]
     },
     {
       "id": "F-005",
@@ -125,7 +157,10 @@
         "tests/lib/test_archive_runner_worktree_cleanup.py"
       ],
       "depends_on": [],
-      "depends_on_features": ["F-002", "F-008"],
+      "depends_on_features": [
+        "F-002",
+        "F-008"
+      ],
       "complexity": "light",
       "acceptance": [
         "archive_runner.py archive_requirement 函数体含 cleanup 三步：(1) main_repo_root = worktree_manager.resolve_main_repo_root(Path.cwd()) → (2) os.chdir(main_repo_root) → (3) cleanup_worktree_if_owned(meta, main_repo_root)；位置在 5 项预检之后、_atomic_write_meta 之前；**不再以 REPO_ROOT 作 cleanup 第二参数**（P1-3 修复）",
@@ -135,7 +170,10 @@
         "owner=external + dirty workspace fail-closed 路径覆盖（spec §13 验收 #6）"
       ],
       "estimate_days": 0.625,
-      "ac_refs": ["F-005-AC1", "F-005-AC2"]
+      "ac_refs": [
+        "F-005-AC1",
+        "F-005-AC2"
+      ]
     },
     {
       "id": "F-006",
@@ -150,7 +188,9 @@
         "tests/lib/test_workflow_loader_worktree.py"
       ],
       "depends_on": [],
-      "depends_on_features": ["F-004"],
+      "depends_on_features": [
+        "F-004"
+      ],
       "complexity": "trivial",
       "acceptance": [
         ".claude/workflows/requirement/standard-8phase.yaml 顶层含 worktree: 块，含 enabled / policy / location / setup.baseline.command / setup.baseline.required 五字段",
@@ -158,7 +198,9 @@
         "现有 tests/lib/test_workflow_loader.py 回归全过（_validate_schema_top 不报错）"
       ],
       "estimate_days": 0.125,
-      "ac_refs": ["F-006-AC1"]
+      "ac_refs": [
+        "F-006-AC1"
+      ]
     },
     {
       "id": "F-007",
@@ -178,7 +220,9 @@
         "git status 在 .worktrees/ 目录下执行 git worktree add 后不再把 .worktrees/feat-req-* 视为 untracked"
       ],
       "estimate_days": 0.0625,
-      "ac_refs": ["F-007-AC1"]
+      "ac_refs": [
+        "F-007-AC1"
+      ]
     },
     {
       "id": "F-008",
@@ -195,7 +239,9 @@
         "tests/lib/test_meta_yaml_worktree_template.py"
       ],
       "depends_on": [],
-      "depends_on_features": ["F-002"],
+      "depends_on_features": [
+        "F-002"
+      ],
       "complexity": "light",
       "acceptance": [
         "meta.yaml 模板含 worktree: 段，**12 字段全集**：enabled / owner / path / absolute_path / branch / base_branch / created_at / baseline (command + status + completed_at 三子字段) / cleanup (policy + removed_at 两子字段)，与 §2.1 字段表 + schema fragment 一一对应（P1-4 修复后）",
@@ -205,7 +251,9 @@
         "OD-3 决议落地：cleanup.policy 字段在模板占位但 archive_runner 不消费（注释说明）"
       ],
       "estimate_days": 0.125,
-      "ac_refs": ["F-008-AC1"]
+      "ac_refs": [
+        "F-008-AC1"
+      ]
     },
     {
       "id": "F-009",
@@ -224,7 +272,9 @@
         "tests/lifecycle/test_submit_archive_worktree_docs.py"
       ],
       "depends_on": [],
-      "depends_on_features": ["F-005"],
+      "depends_on_features": [
+        "F-005"
+      ],
       "complexity": "trivial",
       "acceptance": [
         ".claude/commands/requirement/submit.md 含 'worktree retained at' + 'use /requirement:archive to clean up' 字面量",
@@ -233,7 +283,9 @@
         "archive.md 接口签名 / 入参 / 退出码段落未改（git diff 仅追加语义说明段）"
       ],
       "estimate_days": 0.25,
-      "ac_refs": ["F-009-AC1"]
+      "ac_refs": [
+        "F-009-AC1"
+      ]
     },
     {
       "id": "F-010",
@@ -248,7 +300,9 @@
         "tests/lib/test_meta_schema_worktree.py"
       ],
       "depends_on": [],
-      "depends_on_features": ["F-008"],
+      "depends_on_features": [
+        "F-008"
+      ],
       "complexity": "light",
       "acceptance": [
         "context/team/engineering-spec/meta-schema.yaml 含 worktree 段定义：**12 字段全集**（enabled / owner / path / absolute_path / branch / base_branch / created_at / baseline.{command,status,completed_at} / cleanup.{policy,removed_at}），均 optional；与 detailed-design §2.1 字段表 + schema fragment 一一对应（P1-4 修复）",
@@ -258,7 +312,9 @@
         "OD-3 决议落地：cleanup.policy 标 optional 不强制（archive_runner 不消费）"
       ],
       "estimate_days": 0.25,
-      "ac_refs": ["F-010-AC1"]
+      "ac_refs": [
+        "F-010-AC1"
+      ]
     }
   ]
 }
