@@ -65,7 +65,8 @@ class WorktreeBootstrapError(BootstrapError):
     扩展两个字段：
       - reason：分类标识，调用方按 reason 决定 retry / 终止 / 透传
         常用值：'path_or_branch_exists' / 'porcelain_malformed'
-                 / 'main_root_missing' / 'gitignore_missing' / 'other'
+                 / 'main_root_missing' / 'gitignore_missing' /
+                 'git_failure' / 'other'
       - retain_worktree：True 表示调用方应保留 worktree / 分支现场
         （baseline 失败保留排查现场，OD-2 落点）
 
@@ -220,6 +221,10 @@ def detect_worktree_state(repo_root: Path) -> WorktreeState:
       - 已是 git 仓库但 `git rev-parse --git-common-dir` rc!=0（git 版本过旧 /
         仓库损坏）→ WorktreeBootstrapError(reason='other')，避免静默 fallback
         让 is_linked_worktree 永远 False 的拓扑误判
+      - 已是 git 仓库但 `git rev-parse --show-toplevel` rc!=0（bare repo /
+        检测竞争）→ WorktreeBootstrapError(reason='other')；与
+        --git-common-dir 同策略，符合 detailed-design.md:386 "所有 subprocess
+        失败统一包装 BootstrapError"
       - _run_git 底层灾难级错误（git 二进制丢失 / OSError）→
         WorktreeBootstrapError(reason='other')
     """
@@ -270,18 +275,17 @@ def detect_worktree_state(repo_root: Path) -> WorktreeState:
 
     worktree_proc = _run_git(["rev-parse", "--show-toplevel"], cwd=repo_root)
     if worktree_proc.returncode != 0:
-        # 已通过 --git-dir 校验仍 show-toplevel 失败属罕见状态（bare repo /
-        # 检测竞争）；不静默 fallback，记 warning 留可观测线索后回退 repo_root。
-        logging.warning(
-            "detect_worktree_state: --show-toplevel rc=%d stderr=%s; "
-            "fallback worktree_path=repo_root=%s",
-            worktree_proc.returncode,
-            _trim_stderr(worktree_proc.stderr),
-            repo_root,
+        # 与 --git-common-dir 同策略 fail-fast：静默 fallback 会让
+        # worktree_path 永远等于 repo_root，下游 is_linked_worktree
+        # / cleanup 判定都会受错误锚点影响。已通过 --git-dir 仍 show-toplevel
+        # 失败属硬伤（bare repo / 检测竞争 / git 版本异常）必须抛出。
+        raise WorktreeBootstrapError(
+            f"detect_worktree_state: `git rev-parse --show-toplevel` 失败 "
+            f"rc={worktree_proc.returncode} "
+            f"stderr={_trim_stderr(worktree_proc.stderr)}",
+            reason="other",
         )
-        worktree_path = repo_root
-    else:
-        worktree_path = Path(worktree_proc.stdout.strip())
+    worktree_path = Path(worktree_proc.stdout.strip())
 
     return WorktreeState(
         is_git_repo=True,
@@ -615,38 +619,20 @@ def resolve_main_repo_root(worktree_path: Path) -> Path:
 # 三重保护清理 worktree（cleanup_worktree_if_owned · D-008 / D-009 / P1-3）
 # ============================================================================
 
-def cleanup_worktree_if_owned(meta: dict, main_repo_root: Path) -> CleanupResult:
-    """三重保护清理 worktree。
+def _check_owner_guard(worktree_meta: Optional[dict]) -> Optional[CleanupResult]:
+    """cleanup 保护 1：检查 meta.worktree.owner（来源：detailed-design.md:473）。
 
-    保护 1：meta.worktree.owner == 'workflow'
-      - owner='external' → CleanupResult(action='skipped', reason='external')
-      - meta 缺 worktree 字段 → CleanupResult(action='skipped',
-        reason='legacy_no_worktree_field')
-
-    保护 2：meta.worktree.path 必须规范化后位于 meta.worktree.location（默认
-            .worktrees/）之下；规范化避免 '.worktrees/../etc/passwd' 反向遍历
-      - 白名单失败 → CleanupResult(action='aborted', reason='path_not_in_whitelist')
-
-    保护 3：main_repo_root != worktree_path（纯入参对比，**不读 cwd**）
-      - 相等 → CleanupResult(action='aborted', reason='main_root_equals_worktree')
-
-    全部通过 → 在 main_repo_root cwd 下调 git worktree remove <path> + git worktree prune
-      - rc==0 → CleanupResult(action='removed', reason='workflow_ok', removed_path=<path>)
-      - rc!=0 → CleanupResult(action='failed', reason='git_failure') + log ERROR
-              （不抛异常，archive 主流程不受影响）
-
-    入参：
-      meta            — 从 meta.yaml 加载的字典（read-only）
-      main_repo_root  — 调用方先用 resolve_main_repo_root 解出的主仓根
-    返回：CleanupResult
-    异常：本函数不向外抛；底层 _run_git 抛 WorktreeBootstrapError（git 二进制
-          丢失 / OSError）会被捕获并转为 CleanupResult(action='failed',
-          reason='git_failure')，保证 archive 主流程不受影响。
+    短路场景（返 CleanupResult）：
+      - meta 缺 worktree 字段（旧需求迁移前）→ skipped/legacy_no_worktree_field
+      - owner='external'（用户挂的 worktree）→ skipped/external
+      - owner ∉ {'workflow'}（owner='none' 或未知值）→ skipped/external
+        （安全保留，视同 external 处理）
+    返回 None 表示通过，进入保护 2/3。
     """
-    # ---- 保护 1：legacy / external 短路 ----
-    worktree_meta = meta.get("worktree") if isinstance(meta, dict) else None
     if not isinstance(worktree_meta, dict):
-        logging.info("cleanup_worktree_if_owned: legacy meta has no 'worktree' field")
+        logging.info(
+            "cleanup_worktree_if_owned: legacy meta has no 'worktree' field",
+        )
         return CleanupResult(
             action="skipped",
             reason="legacy_no_worktree_field",
@@ -664,23 +650,44 @@ def cleanup_worktree_if_owned(meta: dict, main_repo_root: Path) -> CleanupResult
     if owner != "workflow":
         # owner=none / 未知值 → 视同 external 安全保留
         logging.info(
-            "cleanup_worktree_if_owned: skipped owner=%s (non-workflow)", owner,
+            "cleanup_worktree_if_owned: skipped owner=%s (non-workflow)",
+            owner,
         )
         return CleanupResult(
             action="skipped",
             reason="external",
             removed_path=None,
         )
+    return None
 
-    # ---- 保护 2：路径白名单（规范化对比抗反向遍历）----
+
+def _check_path_whitelist(
+    main_repo_root: Path,
+    worktree_meta: dict,
+) -> tuple[Optional[Path], Optional[CleanupResult]]:
+    """cleanup 保护 2：路径白名单（规范化 + 容器硬编码）。
+
+    白名单基准 location **硬编码**为 `main_repo_root / _DEFAULT_WORKTREE_DIR`，
+    **不读** meta.yaml.worktree.location 字段——避免 attacker 通过同时设置
+    meta.worktree.{path: '/etc/passwd', location: '/'} 让
+    `is_relative_to(/)` 恒真绕过白名单（G-2 rev3 修复）。
+
+    raw_path 仍来自 meta 但规范化后必须 is_relative_to 主仓
+    `_DEFAULT_WORKTREE_DIR/`，对应同时挡住 '../' 反向遍历。
+
+    入参：
+      main_repo_root — 主仓根
+      worktree_meta  — meta.yaml.worktree 段（dict）
+    返回：
+      (resolved_path, None) — 通过，下游可直接使用绝对规范化路径
+      (None, CleanupResult) — aborted，调用方直接返回
+    """
     raw_path = worktree_meta.get("path", "")
-    raw_location = worktree_meta.get("location", f"{_DEFAULT_WORKTREE_DIR}/")
     if not raw_path:
         logging.warning(
-            "cleanup_worktree_if_owned: aborted empty path raw_path=%r location=%r",
-            raw_path, raw_location,
+            "cleanup_worktree_if_owned: aborted empty raw_path",
         )
-        return CleanupResult(
+        return None, CleanupResult(
             action="aborted",
             reason="path_not_in_whitelist",
             removed_path=None,
@@ -688,41 +695,45 @@ def cleanup_worktree_if_owned(meta: dict, main_repo_root: Path) -> CleanupResult
 
     try:
         resolved_path = (main_repo_root / Path(raw_path)).resolve()
-        resolved_location = (main_repo_root / Path(raw_location)).resolve()
+        resolved_location = (main_repo_root / _DEFAULT_WORKTREE_DIR).resolve()
         is_in_whitelist = resolved_path.is_relative_to(resolved_location)
     except (OSError, ValueError):
         is_in_whitelist = False
     if not is_in_whitelist:
         logging.warning(
-            "cleanup_worktree_if_owned: aborted path=%r not under location=%r",
-            raw_path, raw_location,
+            "cleanup_worktree_if_owned: aborted path=%r not under %s/",
+            raw_path,
+            _DEFAULT_WORKTREE_DIR,
         )
-        return CleanupResult(
+        return None, CleanupResult(
             action="aborted",
             reason="path_not_in_whitelist",
             removed_path=None,
         )
+    return resolved_path, None
 
-    worktree_path = Path(raw_path)
-    if not worktree_path.is_absolute():
-        worktree_path = main_repo_root / worktree_path
 
-    # ---- 保护 3：self-remove guard（入参对比，不读 cwd）----
-    if main_repo_root.resolve() == worktree_path.resolve():
-        logging.error(
-            "cleanup_worktree_if_owned: aborted main_repo_root == worktree_path (%s)",
-            main_repo_root,
-        )
-        return CleanupResult(
-            action="aborted",
-            reason="main_root_equals_worktree",
-            removed_path=None,
-        )
+def _execute_remove_prune(
+    main_repo_root: Path,
+    worktree_path: Path,
+) -> CleanupResult:
+    """三重保护全过后真正动手：git worktree remove + prune（来源：detailed-design.md:483）。
 
-    # ---- 三重保护全过 → 真正动手 ----
-    # 包裹 WorktreeBootstrapError：_run_git 在 git 二进制丢失 / OSError 灾难级
-    # 路径仍可抛；按 docstring 承诺"不抛异常，archive 主流程不受影响"统一吞下转
-    # CleanupResult(action='failed', reason='git_failure') + log ERROR。
+    remove 与 prune **非原子**：remove 后 prune 前若并发 create_worktree
+    用同名分支，调用方需处理 path_or_branch_exists 重试（G-6 follow-up）。
+
+    异常 / rc 处理（G-9 区分 remove vs prune）：
+      - remove rc!=0 / WorktreeBootstrapError →
+        CleanupResult(action='failed', reason='git_failure') + log ERROR
+      - prune rc!=0 / WorktreeBootstrapError →
+        仅 log（warning / error）；worktree 已成功 remove，prune 失败不回滚，
+        仍返 CleanupResult(action='removed')
+
+    入参：
+      main_repo_root — 主仓根（cwd）
+      worktree_path  — 已通过保护 2/3 的规范化绝对路径
+    返回：CleanupResult
+    """
     try:
         remove_proc = _run_git(
             ["worktree", "remove", str(worktree_path)],
@@ -766,8 +777,8 @@ def cleanup_worktree_if_owned(meta: dict, main_repo_root: Path) -> CleanupResult
         if prune_proc.returncode != 0:
             # prune 失败不致命（worktree 已 remove）；记 warning 但仍返回 removed
             logging.warning(
-                "cleanup_worktree_if_owned: git worktree prune non-zero rc=%d stderr=%s "
-                "(worktree already removed)",
+                "cleanup_worktree_if_owned: git worktree prune non-zero rc=%d "
+                "stderr=%s (worktree already removed)",
                 prune_proc.returncode, _trim_stderr(prune_proc.stderr),
             )
 
@@ -779,3 +790,64 @@ def cleanup_worktree_if_owned(meta: dict, main_repo_root: Path) -> CleanupResult
         reason="workflow_ok",
         removed_path=worktree_path,
     )
+
+
+def cleanup_worktree_if_owned(meta: dict, main_repo_root: Path) -> CleanupResult:
+    """三重保护清理 worktree（来源：detailed-design.md:470-487 / D-008 / D-009 / P1-3）。
+
+    保护 1（_check_owner_guard）：meta.worktree.owner == 'workflow'
+      - owner='external' → CleanupResult(action='skipped', reason='external')
+      - meta 缺 worktree 字段 → CleanupResult(action='skipped',
+        reason='legacy_no_worktree_field')
+
+    保护 2（_check_path_whitelist）：meta.worktree.path 规范化后必须位于
+            主仓 `_DEFAULT_WORKTREE_DIR/`（**容器硬编码**，不读 meta.location）
+      - 白名单失败 → CleanupResult(action='aborted', reason='path_not_in_whitelist')
+
+    保护 3：main_repo_root != worktree_path（纯入参对比，**不读 cwd**）
+      - 相等 → CleanupResult(action='aborted', reason='main_root_equals_worktree')
+
+    全部通过 → 在 main_repo_root cwd 下调 git worktree remove <path> + git worktree prune
+      - 详细 rc 处理见 _execute_remove_prune
+
+    入参：
+      meta            — 从 meta.yaml 加载的字典（read-only）
+      main_repo_root  — 调用方先用 resolve_main_repo_root 解出的主仓根
+    返回：CleanupResult
+    异常：本函数不向外抛；
+      - remove rc!=0 / WorktreeBootstrapError → CleanupResult(action='failed',
+        reason='git_failure')
+      - prune rc!=0 / WorktreeBootstrapError → 仅 log.error，仍返
+        CleanupResult(action='removed')（worktree 已成功 remove，prune 失败不回滚）
+    """
+    worktree_meta = meta.get("worktree") if isinstance(meta, dict) else None
+
+    # 保护 1：owner guard
+    early = _check_owner_guard(worktree_meta)
+    if early is not None:
+        return early
+
+    # 类型缩窄：保护 1 通过后 worktree_meta 必是 dict
+    assert isinstance(worktree_meta, dict)
+
+    # 保护 2：路径白名单（容器硬编码 + 规范化反向遍历防护）
+    resolved_path, abort = _check_path_whitelist(main_repo_root, worktree_meta)
+    if abort is not None:
+        return abort
+    assert resolved_path is not None
+
+    # 保护 3：self-remove guard（复用 resolved_main，避免重复 resolve）
+    resolved_main = main_repo_root.resolve()
+    if resolved_main == resolved_path:
+        logging.error(
+            "cleanup_worktree_if_owned: aborted main_repo_root == worktree_path (%s)",
+            main_repo_root,
+        )
+        return CleanupResult(
+            action="aborted",
+            reason="main_root_equals_worktree",
+            removed_path=None,
+        )
+
+    # 三重保护全过 → 真正动手
+    return _execute_remove_prune(main_repo_root, resolved_path)

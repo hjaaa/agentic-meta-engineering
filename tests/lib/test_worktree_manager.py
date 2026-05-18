@@ -91,6 +91,8 @@ def tmp_git_repo_with_worktree(tmp_git_repo: Path) -> tuple[Path, Path]:
 # ============================================================================
 
 def test_detect_worktree_state_normal_repo(tmp_git_repo: Path) -> None:
+    """normal repo（非 linked / 非 submodule / 非 detached）：
+    git_dir == git_common_dir，is_linked_worktree=False。"""
     state = detect_worktree_state(tmp_git_repo)
     assert state.is_git_repo is True
     assert state.is_linked_worktree is False
@@ -104,6 +106,7 @@ def test_detect_worktree_state_normal_repo(tmp_git_repo: Path) -> None:
 def test_detect_worktree_state_linked_worktree(
     tmp_git_repo_with_worktree: tuple[Path, Path],
 ) -> None:
+    """linked worktree：git_dir != git_common_dir 且 git_dir 不含 '/modules/'。"""
     _, worktree_path = tmp_git_repo_with_worktree
     state = detect_worktree_state(worktree_path)
     assert state.is_git_repo is True
@@ -153,6 +156,7 @@ def test_detect_worktree_state_submodule(tmp_git_repo: Path) -> None:
 
 
 def test_detect_worktree_state_detached_head(tmp_git_repo: Path) -> None:
+    """detached HEAD：symbolic-ref 失败 → is_detached=True，branch 为空串。"""
     # 切到 HEAD~0 让分支 detached
     head_sha = _git(["rev-parse", "HEAD"], cwd=tmp_git_repo).stdout.strip()
     _git(["checkout", "--detach", head_sha], cwd=tmp_git_repo)
@@ -166,6 +170,8 @@ def test_detect_worktree_state_detached_head(tmp_git_repo: Path) -> None:
 # ============================================================================
 
 def test_select_worktree_location_replaces_slash(tmp_path: Path) -> None:
+    """select_worktree_location：分支名中 '/' 替换为 '-'，挂在
+    preference（默认 .worktrees）容器下。"""
     loc = select_worktree_location(tmp_path, "feat/req-20260518-foo")
     assert loc == tmp_path / ".worktrees" / "feat-req-20260518-foo"
 
@@ -175,6 +181,7 @@ def test_select_worktree_location_replaces_slash(tmp_path: Path) -> None:
 # ============================================================================
 
 def test_ensure_worktree_dir_ignored_present(tmp_path: Path) -> None:
+    """D-010：.gitignore 含 '.worktrees/' 条目 → 不抛异常，校验通过。"""
     (tmp_path / ".gitignore").write_text(".worktrees/\n*.pyc\n", encoding="utf-8")
     loc = tmp_path / ".worktrees" / "feat-req-test"
     # 不抛即视为通过
@@ -182,6 +189,8 @@ def test_ensure_worktree_dir_ignored_present(tmp_path: Path) -> None:
 
 
 def test_ensure_worktree_dir_ignored_missing_raises(tmp_path: Path) -> None:
+    """D-010 fail-closed：.gitignore 存在但未含容器条目 →
+    WorktreeBootstrapError(reason='gitignore_missing')。"""
     (tmp_path / ".gitignore").write_text("*.pyc\n", encoding="utf-8")
     loc = tmp_path / ".worktrees" / "feat-req-test"
     with pytest.raises(WorktreeBootstrapError) as ei:
@@ -192,6 +201,8 @@ def test_ensure_worktree_dir_ignored_missing_raises(tmp_path: Path) -> None:
 
 
 def test_ensure_worktree_dir_ignored_no_gitignore_file_raises(tmp_path: Path) -> None:
+    """D-010 fail-closed：.gitignore 文件不存在 →
+    WorktreeBootstrapError(reason='gitignore_missing')。"""
     loc = tmp_path / ".worktrees" / "feat-req-test"
     with pytest.raises(WorktreeBootstrapError) as ei:
         ensure_worktree_dir_ignored(tmp_path, loc)
@@ -203,6 +214,8 @@ def test_ensure_worktree_dir_ignored_no_gitignore_file_raises(tmp_path: Path) ->
 # ============================================================================
 
 def test_create_worktree_happy(tmp_git_repo: Path) -> None:
+    """happy path：git worktree add 成功 → WorktreeInfo(owner='workflow',
+    created=True)，目录实际落盘。"""
     location = tmp_git_repo / ".worktrees" / "feat-req-happy"
     info = create_worktree(tmp_git_repo, "feat/req-happy", "main", location)
     assert info.path == location
@@ -214,6 +227,7 @@ def test_create_worktree_happy(tmp_git_repo: Path) -> None:
 
 
 def test_create_worktree_failure_wraps_bootstrap_error(tmp_git_repo: Path) -> None:
+    """git rc!=0（base 不存在）→ WorktreeBootstrapError + 父类 isinstance 兜底。"""
     # 用一个不存在的 base_branch 触发 git rc!=0
     location = tmp_git_repo / ".worktrees" / "feat-req-fail"
     with pytest.raises(WorktreeBootstrapError) as ei:
@@ -259,9 +273,8 @@ def test_create_worktree_other_exists_text_not_misclassified(
 
 
 # ============================================================================
-# detect_worktree_state · F-4 fail-fast（1 例）
+# detect_worktree_state · F-4 / G-3 fail-fast（2 例）
 # ============================================================================
-
 
 def test_detect_worktree_state_common_dir_failure_raises(
     tmp_git_repo: Path,
@@ -286,6 +299,38 @@ def test_detect_worktree_state_common_dir_failure_raises(
             detect_worktree_state(tmp_git_repo)
     assert ei.value.reason == "other"
     assert "git-common-dir" in str(ei.value)
+
+
+def test_detect_worktree_state_show_toplevel_failure_raises(
+    tmp_git_repo: Path,
+) -> None:
+    """G-3 rev3：`git rev-parse --show-toplevel` rc!=0 与 --git-common-dir
+    同策略 fail-fast；静默 fallback 会让下游 worktree_path 永远等于 repo_root，
+    is_linked_worktree 拓扑判定及 cleanup 调用方都受错误锚点影响。"""
+
+    def fake_run_git(args, *, cwd, timeout=30):
+        if args == ["rev-parse", "--git-dir"]:
+            return subprocess.CompletedProcess(
+                args, 0, stdout=str(tmp_git_repo / ".git") + "\n", stderr="",
+            )
+        if args == ["rev-parse", "--git-common-dir"]:
+            return subprocess.CompletedProcess(
+                args, 0, stdout=str(tmp_git_repo / ".git") + "\n", stderr="",
+            )
+        if args == ["symbolic-ref", "--short", "HEAD"]:
+            return subprocess.CompletedProcess(args, 0, stdout="main\n", stderr="")
+        if args == ["rev-parse", "--show-toplevel"]:
+            return subprocess.CompletedProcess(
+                args, 1, stdout="",
+                stderr="fatal: this operation must be run in a work tree\n",
+            )
+        return subprocess.CompletedProcess(args, 1, stdout="", stderr="not stubbed")
+
+    with patch("worktree_manager._run_git", side_effect=fake_run_git):
+        with pytest.raises(WorktreeBootstrapError) as ei:
+            detect_worktree_state(tmp_git_repo)
+    assert ei.value.reason == "other"
+    assert "show-toplevel" in str(ei.value)
 
 
 # ============================================================================
@@ -346,6 +391,7 @@ def test_run_worktree_setup_owner_workflow_required_false_warning(
 
 
 def test_run_worktree_setup_owner_workflow_rc0_passed(tmp_path: Path) -> None:
+    """OD-2：owner='workflow' + rc=0 → status='passed'。"""
     fake_proc = subprocess.CompletedProcess(
         args=["make", "gates-validate"], returncode=0, stdout="", stderr="",
     )
@@ -362,6 +408,7 @@ def test_run_worktree_setup_owner_workflow_rc0_passed(tmp_path: Path) -> None:
 def test_resolve_main_repo_root_from_main_worktree_returns_self(
     tmp_git_repo: Path,
 ) -> None:
+    """P1-3：在主 worktree 内调 resolve_main_repo_root 应返回自身（round-trip）。"""
     main_root = resolve_main_repo_root(tmp_git_repo)
     assert main_root.resolve() == tmp_git_repo.resolve()
 
@@ -369,12 +416,16 @@ def test_resolve_main_repo_root_from_main_worktree_returns_self(
 def test_resolve_main_repo_root_from_linked_worktree_returns_main(
     tmp_git_repo_with_worktree: tuple[Path, Path],
 ) -> None:
+    """P1-3：在 linked worktree 内调 resolve_main_repo_root 应返回主仓根
+    （porcelain 首段语义 round-trip）。"""
     main_root, worktree_path = tmp_git_repo_with_worktree
     resolved = resolve_main_repo_root(worktree_path)
     assert resolved.resolve() == main_root.resolve()
 
 
 def test_resolve_main_repo_root_porcelain_malformed_raises(tmp_path: Path) -> None:
+    """P1-3：porcelain 输出首段不含 'worktree ' 行 →
+    WorktreeBootstrapError(reason='porcelain_malformed')。"""
     fake_proc = subprocess.CompletedProcess(
         args=["git", "worktree", "list", "--porcelain"],
         returncode=0,
@@ -388,6 +439,8 @@ def test_resolve_main_repo_root_porcelain_malformed_raises(tmp_path: Path) -> No
 
 
 def test_resolve_main_repo_root_main_root_missing(tmp_path: Path) -> None:
+    """P1-3：porcelain 解出的 main path 不在 FS →
+    WorktreeBootstrapError(reason='main_root_missing')。"""
     fake_proc = subprocess.CompletedProcess(
         args=["git", "worktree", "list", "--porcelain"],
         returncode=0,
@@ -401,12 +454,14 @@ def test_resolve_main_repo_root_main_root_missing(tmp_path: Path) -> None:
 
 
 # ============================================================================
-# cleanup_worktree_if_owned（5 例 / D-008 / D-009 / P1-3）
+# cleanup_worktree_if_owned（9 例 / D-008 / D-009 / P1-3 / G-2 rev3）
 # ============================================================================
 
 def test_cleanup_worktree_if_owned_workflow_removes(
     tmp_git_repo_with_worktree: tuple[Path, Path],
 ) -> None:
+    """workflow-owned + 三重保护通过 → action='removed', reason='workflow_ok'，
+    worktree 目录从文件系统消失。"""
     main_root, worktree_path = tmp_git_repo_with_worktree
     # path / location 用绝对路径 prefix 比对，保护 2 命中
     meta = {
@@ -424,6 +479,8 @@ def test_cleanup_worktree_if_owned_workflow_removes(
 
 
 def test_cleanup_worktree_if_owned_external_skips(tmp_git_repo: Path) -> None:
+    """R5 / D-009：owner='external' 用户自挂 worktree，cleanup 必须短路保护 1
+    返 skipped/external，不动用户现场。"""
     meta = {
         "worktree": {
             "owner": "external",
@@ -440,16 +497,30 @@ def test_cleanup_worktree_if_owned_external_skips(tmp_git_repo: Path) -> None:
 def test_cleanup_worktree_if_owned_main_root_equals_worktree_aborts(
     tmp_git_repo: Path,
 ) -> None:
-    """P1-3 self-remove guard：main_root == worktree path → aborted。"""
-    meta = {
-        "worktree": {
-            "owner": "workflow",
-            "path": str(tmp_git_repo),
-            # location 设成 path 自身 prefix 让保护 2 过；专测保护 3
-            "location": str(tmp_git_repo),
-        },
-    }
-    result = cleanup_worktree_if_owned(meta, tmp_git_repo)
+    """P1-3 self-remove guard：main_root == worktree path → aborted。
+
+    G-2 rev3：保护 2 改容器硬编码后，正常拓扑下 path 不可能既位于
+    main_repo_root/.worktrees/ 下、又规范化等于 main_repo_root 自身——保护 3
+    成为"纵深防御"兜底层。本用例 mock `_check_path_whitelist` 直接放过，
+    把入参 path 与 main_repo_root 都设为同一规范化路径，专测保护 3 分支。
+    """
+    fake_path = tmp_git_repo.resolve()
+
+    def _bypass_whitelist(main_root: Path, _meta: dict):
+        return fake_path, None
+
+    with patch(
+        "worktree_manager._check_path_whitelist",
+        side_effect=_bypass_whitelist,
+    ):
+        meta = {
+            "worktree": {
+                "owner": "workflow",
+                "path": str(fake_path),
+                "location": str(tmp_git_repo / ".worktrees") + "/",
+            },
+        }
+        result = cleanup_worktree_if_owned(meta, tmp_git_repo)
     assert result.action == "aborted"
     assert result.reason == "main_root_equals_worktree"
 
@@ -457,11 +528,12 @@ def test_cleanup_worktree_if_owned_main_root_equals_worktree_aborts(
 def test_cleanup_worktree_if_owned_path_not_whitelisted_aborts(
     tmp_git_repo: Path,
 ) -> None:
+    """保护 2：path 不在主仓 .worktrees/ 容器下 → aborted/path_not_in_whitelist。"""
     meta = {
         "worktree": {
             "owner": "workflow",
-            "path": "/tmp/random/wt",       # 不在 location 之下
-            "location": ".worktrees/",
+            "path": "/tmp/random/wt",       # 不在 .worktrees/ 容器之下
+            "location": ".worktrees/",       # G-2 rev3：location 字段被忽略
         },
     }
     result = cleanup_worktree_if_owned(meta, tmp_git_repo)
@@ -545,6 +617,27 @@ def test_cleanup_worktree_if_owned_git_binary_missing(
     assert result.action == "failed"
     assert result.reason == "git_failure"
     assert result.removed_path is None
+
+
+def test_cleanup_worktree_if_owned_meta_location_injection_ignored(
+    tmp_git_repo: Path,
+) -> None:
+    """G-2 rev3：meta.worktree.location 字段注入攻击不应绕过白名单。
+
+    rev2 实现把 location 当 base 比对，attacker 同时设置
+    `path=/etc/passwd` + `location=/` 时 `is_relative_to(/)` 恒真。
+    rev3 容器硬编码到 _DEFAULT_WORKTREE_DIR 后，无论 meta.location 怎么写，
+    白名单基准都是主仓 `.worktrees/`，路径 `/etc/passwd` 必被拒。"""
+    meta = {
+        "worktree": {
+            "owner": "workflow",
+            "path": "/etc/passwd",
+            "location": "/",  # attacker 注入根目录，期望被忽略
+        },
+    }
+    result = cleanup_worktree_if_owned(meta, tmp_git_repo)
+    assert result.action == "aborted"
+    assert result.reason == "path_not_in_whitelist"
 
 
 # ============================================================================
