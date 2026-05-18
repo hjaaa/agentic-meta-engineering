@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "feature_id": "F-006",
   "status": "DONE",
-  "commit_sha": "TBD",
+  "commit_sha": "66b60d6",
   "files_changed": [
     "tests/lib/test_workflow_loader_worktree.py"
   ],
