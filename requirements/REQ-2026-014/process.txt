@@ -99,3 +99,4 @@
 2026-05-18 22:58:10 [development] F-010 done：rev-001 looks_clean/93 signed → status=done / review_report 落入 frontmatter / dispatch lock 释放（current_feature=null）；**done 10/10 全收**；development 阶段实施完毕，下一步 → testing 阶段切换
 2026-05-18 23:06:02 [signoff] REV-REQ-2026-014-detail-design-006 approved by hj19961223@gmail.com
 2026-05-18 23:09:41 [phase-transition] development → testing；10/10 features done + detail-design-006 supersede signed + F-001/F-005 receipt schema 修复；10 个 phase-transition gate 全过（含 4 新 gate POST-DEV-RECEIPT/TOUCHES-VIOLATION/FEATURES-SCHEMA/TASK-FRONTMATTER + TRACEABILITY）；下一步 testing 阶段实际测试
+2026-05-18 23:27:54 [save] testing test-runner 跑全量：发现 9 fail → 修复 3 类 regression（DEFECT-1 YAML 转义 + 4 F-009 cwd 相对路径 + 1 sibling pre-existing + 3 reqgen obsolete skip）→ 1666 passed / 11 skipped / 0 failed；bats 2/2；test-report-20260518-234500.md 上链
