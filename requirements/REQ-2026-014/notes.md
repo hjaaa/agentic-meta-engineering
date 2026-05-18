@@ -10,6 +10,24 @@
 
 _本轮无新经验_
 
+## F-004 派发前必读 · F-003 regression 修复挂载（2026-05-18）
+
+F-008 review 时发现 F-003 改造的副作用 regression（决议：F-004 一并修）：
+
+**Symptom**：`tests/skills/test_workflow_bootstrap.py` 7 用例失败
+- 5 处 `FileNotFoundError` on `mkdir(...)` — 因 F-003 `_generate_req_id` 取消 mkdir-as-lock，测试假设 `requirements/<key>/artifacts/` 自动建目录已不成立
+- 2 处 `TypeError: cannot unpack non-iterable RunArgs object` — 因 F-003 `_parse_args` 返 RunArgs dataclass 替代 3-tuple
+
+**Root cause**：F-003 改造时 `tests/lib/test_workflow_run_worktree_args.py`（F-003 touches）作了适配，但 `tests/skills/test_workflow_bootstrap.py`（不在任一 feature touches）的 API 漂移未同步；F-003 review scope 是 touches 限定，所以也没看到这些失败。
+
+**F-004 派发时必做**（在 F-004 task.md / dispatch 上下文中显式说明）：
+1. 测试文件 `tests/skills/test_workflow_bootstrap.py` 需补到 F-004 临时 touches（理由：F-004 重写 `_setup_worktree_or_branch` + `_bootstrap_requirement` 必然要更新这批 caller-side 测试）
+2. 5 处 `mkdir` 失败：测试 setup 段补 `(requirements/<key>/artifacts/).mkdir(parents=True, exist_ok=True)` 或调用 `_run_requirement` 走完整路径
+3. 2 处 `RunArgs unpack`：改 `RunArgs(template_id, template_args, title, slug=None, no_worktree=False, worktree_policy=None)` 构造而非 tuple unpack
+4. 跑 `pytest tests/skills/test_workflow_bootstrap.py -v` 确认 12/12 全过
+
+**不在 F-004 主线（仅扩 touches）**：上述 7 用例的失败属 F-003 regression cleanup，与 F-004 自身改造解耦记录在 commit message。
+
 ## workflow run 与 lifecycle 路径并存说明（2026-05-18）
 
 本需求 `run-state.jsonl` 在 bootstrap 阶段写入 8 行事件后停在 `awaiting_claude_action`（末位 `node_ready` for skill `requirement-input-normalizer`）。后续 phase 推进（definition / tech-research / outline-design 共 3 次门禁）全部走 `managing-requirement-lifecycle` Skill 的 legacy 路径，未接 `save_node_result.py` handoff，jsonl 自此与 `meta.yaml.phase` 脱钩。
