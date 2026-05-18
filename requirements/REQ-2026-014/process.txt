@@ -76,3 +76,4 @@
 2026-05-18 20:36:11 [save] F-004 全流程闭环（rev1 72 → rev2 89 → rev3 91 signed，trend-G-meta 防御链）；done 6/10；解锁 F-005/F-006/F-010；下一步 F-005
 2026-05-18 20:52:45 [development] F-005 派发完成（model=sonnet, complexity=light）→ DONE 回执：commit b20a04c / 8 用例全过 + tests/lifecycle/test_archive.py 回归 29 passed / receipt status=DONE / touches_violations=[]；post-dev gates 5 pass；下一步 /code-review scope=F-005
 2026-05-18 21:09:41 [review:needs_attention] REV-REQ-2026-014-code-F-005-001 score=86；28 候选 → critic 21 收纳（16 rejected/5 not_proven）→ judge 1 required (F-24 unused import patch) + 4 suggestions (F-13 except 过宽 / F-14 chdir 裸调 / F-17 AC5 dirty+external TC 缺口 / F-27 docstring TC-8 滞后)；F-19 误报 (REPO_ROOT import 时 __file__ 解析非运行时 cwd)
+2026-05-18 21:15:51 [development] F-005 rev2 派发完成（model=sonnet）→ DONE 回执：commit 8ddfcc9 / 9 用例全过（含 TC-9 dirty+external）/ tests/lifecycle/test_archive.py 回归 29 passed / ruff 0 issue；D-014 同模式扫描清洁；5 keep 全闭环 (F-24/F-13/F-14/F-17/F-27)
