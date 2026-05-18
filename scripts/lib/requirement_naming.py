@@ -17,6 +17,8 @@ _LEGACY_REQUIREMENT_KEY_RE = re.compile(r"^REQ-(\d{4})-(\d{3})$")
 _NEW_REQUIREMENT_KEY_RE = re.compile(r"^(\d{8})-([a-z0-9]+(?:-[a-z0-9]+)*)(?:-(\d{2}))?$")
 _SLUG_CHARSET_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _SLUG_DERIVE_FROM_TITLE_RE = re.compile(r"^[\x20-\x7e]+$")  # 仅 ASCII 标题派生
+_WHITESPACE_OR_UNDERSCORE_RE = re.compile(r"[\s_]+")  # normalize_slug 替换用
+_NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")  # derive_slug_from_title 替换用
 
 
 class SlugError(ValueError):
@@ -32,11 +34,11 @@ def normalize_slug(raw: str) -> str:
     """
     try:
         raw.encode("ascii")
-    except UnicodeEncodeError:
-        raise SlugError(f"slug 含非 ASCII 字符：{raw!r}")
+    except UnicodeEncodeError as e:
+        raise SlugError(f"slug 含非 ASCII 字符：{raw!r}") from e
 
     s = raw.lower()
-    s = re.sub(r"[\s_]+", "-", s)
+    s = _WHITESPACE_OR_UNDERSCORE_RE.sub("-", s)
 
     if not s or s.strip("-") == "":
         raise SlugError(f"slug 规范化后为空或全连字符：{raw!r}")
@@ -51,8 +53,13 @@ def normalize_slug(raw: str) -> str:
 
 
 def derive_slug_from_title(title: str) -> str | None:
-    """从 ASCII 标题派生 slug；中文 / 非 ASCII 标题返回 None。
+    """从 ASCII 标题派生 slug；以下三种情况返回 None：
+    (1) 标题含非 ASCII 字符（regex 不匹配）；
+    (2) 替换非字母数字后 strip 结果为空；
+    (3) 截断到 64 字符后字符集校验不通过。
 
+    入参：任意字符串标题
+    返回：合法 slug 字符串，或 None（三种情况见上）
     None 语义：CLI 层 fail-closed（来源：requirements/REQ-2026-014/artifacts/tech-feasibility.md:139 R2），
     要求用户显式 --slug。
     """
@@ -61,7 +68,7 @@ def derive_slug_from_title(title: str) -> str | None:
 
     s = title.lower()
     # 非字母数字的字符替换为连字符
-    s = re.sub(r"[^a-z0-9]+", "-", s)
+    s = _NON_ALNUM_RE.sub("-", s)
     s = s.strip("-")
 
     if not s:
@@ -101,7 +108,7 @@ def generate_requirement_key(
         if suffixed not in occupied:
             return suffixed
 
-    raise SlugError(f"同日 slug={slug!r} 后缀 -02~-99 均已占用，无法生成新 key")
+    raise SlugError(f"同日 date={date_str!r} slug={slug!r} 后缀 -02~-99 均已占用，无法生成新 key")
 
 
 def is_legacy_requirement_key(key: str) -> bool:
@@ -110,8 +117,12 @@ def is_legacy_requirement_key(key: str) -> bool:
 
 
 def branch_for_requirement_key(key: str) -> str:
-    """两种 key 统一生成 feat/req-<key>（去掉 REQ- 前缀对齐 _strip_req_prefix
-    （来源：scripts/lib/workflow_bootstrap.py:77））。"""
+    """两种 key 统一生成 feat/req-<key> 分支名。
+
+    入参：requirement key 字符串（legacy REQ-YYYY-NNN 或新格式 YYYYMMDD-<slug>）
+    返回：feat/req-<key>（legacy 格式去掉 REQ- 前缀，与 _strip_req_prefix 对齐）
+    来源：scripts/lib/workflow_bootstrap.py:77
+    """
     m = _LEGACY_REQUIREMENT_KEY_RE.match(key)
     if m:
         year = m.group(1)
@@ -121,5 +132,9 @@ def branch_for_requirement_key(key: str) -> str:
 
 
 def directory_for_requirement_key(key: str) -> Path:
-    """两种 key 统一映射 requirements/<key>（同 key 字符串）。"""
+    """两种 key 统一映射到需求目录路径（不执行 mkdir）。
+
+    入参：requirement key 字符串（legacy REQ-YYYY-NNN 或新格式 YYYYMMDD-<slug>）
+    返回：`Path('requirements/<key>')`（相对路径，与 key 字符串同构）
+    """
     return Path("requirements") / key

@@ -36,22 +36,22 @@ def test_normalize_slug_mixed_whitespace_and_underscore():
 
 
 def test_normalize_slug_rejects_non_ascii():
-    with pytest.raises(SlugError):
+    with pytest.raises(SlugError, match=r"非 ASCII"):
         normalize_slug("中文slug")
 
 
 def test_normalize_slug_rejects_empty():
-    with pytest.raises(SlugError):
+    with pytest.raises(SlugError, match=r"空或全连字符"):
         normalize_slug("")
 
 
 def test_normalize_slug_rejects_all_hyphens():
-    with pytest.raises(SlugError):
+    with pytest.raises(SlugError, match=r"空或全连字符"):
         normalize_slug("---")
 
 
 def test_normalize_slug_rejects_length_over_64():
-    with pytest.raises(SlugError):
+    with pytest.raises(SlugError, match=r"长度超限"):
         normalize_slug("a" * 65)
 
 
@@ -119,7 +119,7 @@ def test_generate_requirement_key_overflow_after_99_raises():
     """02~99 全部占用 → 抛 SlugError。"""
     d = date(2026, 5, 18)
     existing = {"20260518-x"} | {f"20260518-x-{i:02d}" for i in range(2, 100)}
-    with pytest.raises(SlugError):
+    with pytest.raises(SlugError, match=r"后缀 -02~-99 均已占用"):
         generate_requirement_key(d, "x", existing_keys=existing)
 
 
@@ -156,7 +156,7 @@ def test_branch_for_requirement_key_legacy_lowercase():
 # ─────────────────────── directory_for_requirement_key ───────────────────────
 
 
-def test_directory_for_requirement_key_returns_path():
+def test_directory_for_requirement_key_returns_path_under_requirements():
     p = directory_for_requirement_key("20260518-my-feature")
     assert p == Path("requirements/20260518-my-feature")
 
