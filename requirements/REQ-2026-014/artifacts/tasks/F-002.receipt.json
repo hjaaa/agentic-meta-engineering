@@ -2,22 +2,16 @@
   "schema_version": "1.0",
   "feature_id": "F-002",
   "status": "DONE",
-  "commit_sha": "be155f8babbebbfe33ac76698c03c3a5fe003b95",
+  "commit_sha": "5db3fa4f26237ce999ab66bc96f6595e0e91e118",
   "files_changed": [
     "scripts/lib/worktree_manager.py",
     "tests/lib/test_worktree_manager.py",
     "tests/integration/test_worktree_protect_branch.bats"
   ],
-  "test_summary": "26 passed in 1.95s (pytest tests/lib/test_worktree_manager.py); 573 passed in 17.48s (pytest tests/lib/ regression); 2 ok (bats tests/integration/test_worktree_protect_branch.bats)",
-  "touches_violations": [
-    {
-      "path": "scripts/lib/foo.py",
-      "ts": "2026-05-18T05:47:54+00:00",
-      "tool": "Edit"
-    }
-  ],
+  "test_summary": "30 passed in 2.42s (pytest tests/lib/test_worktree_manager.py rev2 新增 4 用例); 577 passed in 17.27s (pytest tests/lib/ regression no degrade); 2 ok (bats tests/integration/test_worktree_protect_branch.bats)",
+  "touches_violations": [],
   "concerns": [],
   "missing_context": "",
   "block_reason": "",
-  "timestamp": "2026-05-18T16:30:00+08:00"
+  "timestamp": "2026-05-18T14:35:00+08:00"
 }
