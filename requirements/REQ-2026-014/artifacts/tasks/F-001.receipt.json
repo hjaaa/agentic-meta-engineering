@@ -1,0 +1,16 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-001",
+  "status": "DONE",
+  "commit_sha": "87985c38cce7b42048a332d6da1f7c8f0871bf84",
+  "files_changed": [
+    "scripts/lib/requirement_naming.py",
+    "tests/lib/test_requirement_naming.py"
+  ],
+  "test_summary": "24 passed in 0.04s (pytest tests/lib/test_requirement_naming.py -v)",
+  "touches_violations": [],
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-18T11:45:00+08:00"
+}
