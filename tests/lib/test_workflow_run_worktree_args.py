@@ -22,7 +22,7 @@ from __future__ import annotations
 import sys
 from datetime import date
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -37,7 +37,7 @@ from workflow_run import (  # noqa: E402
 from workflow_bootstrap import BootstrapError  # noqa: E402
 from worktree_manager import WorktreeBootstrapError  # noqa: E402
 from workflow_run import WorkflowError  # noqa: E402
-from requirement_naming import SlugError  # noqa: E402
+
 
 
 # ============================================================================

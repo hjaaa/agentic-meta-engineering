@@ -419,10 +419,15 @@ def _run_requirement(
                 # F-004 rev2 F-1：baseline_failed_required（或其它 retain_worktree=True
                 # 的失败）必须保留现场——不调 _bootstrap_rollback，让用户手工排查。
                 if getattr(exc, "retain_worktree", False):
+                    worktree_path_hint = getattr(
+                        getattr(exc, "worktree_info", None), "path", "<worktree path>"
+                    )
                     print(
                         f"WARN: bootstrap baseline 失败保留现场（req_id={req_id}）；"
-                        f"worktree path / 分支 / requirements/<key> 全部保留供排查；"
-                        f"如需清理请手动 archive 或 discard。stderr={exc}",
+                        f"worktree path / 分支 / requirements/<key> 全部保留供排查。"
+                        f" 下一步：cd {worktree_path_hint} 查看 baseline 输出；"
+                        f"或将 yaml.worktree.setup.baseline.required 改为 false 跳过 baseline；"
+                        f"或手动 archive / discard 清理。detail={exc}",
                         file=sys.stderr,
                     )
                     return 1

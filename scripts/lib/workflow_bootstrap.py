@@ -284,6 +284,10 @@ def _load_yaml_worktree_cfg(template_path: Optional[Path]) -> dict[str, Any]:
         )
         return {}
     if not isinstance(data, dict):
+        logging.warning(
+            "_load_yaml_worktree_cfg: top-level not dict; falling back to defaults (path=%s)",
+            template_path,
+        )
         return {}
     wt = data.get("worktree")
     return wt if isinstance(wt, dict) else {}
@@ -402,7 +406,7 @@ def _checkout_feature_branch(req_id: str, repo_root: Path, base_branch: str = ""
 
 
 def _bind_current_worktree(
-    state: Any,
+    state: "worktree_manager.WorktreeState",
     req_id: str,
     base_branch: str,
 ) -> "WorktreeInfo":
