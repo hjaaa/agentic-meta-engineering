@@ -73,3 +73,18 @@ reviews:
       - REV-REQ-2026-014-outline-design-001
       - REV-REQ-2026-014-outline-design-002
     stale: false
+  detail-design:
+    latest: REV-REQ-2026-014-detail-design-002
+    conclusion: looks_clean
+    reviewed_commit: 3339b7b
+    artifact_hashes:
+      artifacts/detailed-design.md: 
+        09ddc8c551952befe0d88c295c68e53e6efabaab457b4ea8c10bb44c2102a463
+      artifacts/features.json: 
+        3253f10d9ae0abaeefc8db6fca0fcd4cc42ebf33b7edbad8fe54c696cf8e4f82
+      artifacts/outline-design.md: 
+        6ea59c7acb64c2660e02c0466eeb218e138bbb2ca25567685896783f71a54378
+    history:
+      - REV-REQ-2026-014-detail-design-001
+      - REV-REQ-2026-014-detail-design-002
+    stale: false
