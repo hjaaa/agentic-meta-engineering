@@ -403,6 +403,8 @@ def _run_requirement(
             try:
                 req_dir = _bootstrap_requirement(
                     req_id, title, template_id, template_path, template_args, root,
+                    worktree_policy=args.worktree_policy,
+                    no_worktree=args.no_worktree,
                 )
             except BootstrapError as exc:
                 reason = getattr(exc, "reason", None)

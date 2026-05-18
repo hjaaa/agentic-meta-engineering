@@ -1,25 +1,31 @@
-"""F-002 · requirement bootstrap helpers（从 workflow_run.py 拆出）。
+"""F-002 / F-004 · requirement bootstrap helpers（worktree-first 改造版）。
 
 包含：
-  - 异常类：BootstrapError
+  - 异常类：BootstrapError（F-004 起携带 reason / retain_worktree 字段）
   - 渲染/工具函数：_render_meta_yaml / _render_plan_md / _strip_req_prefix / _now_shanghai_str
-  - bootstrap 步骤：_write_artifact_file / _checkout_feature_branch / _resolve_base_branch
+  - bootstrap 步骤：
+      _write_artifact_file / _write_bootstrap_artifacts
+      _checkout_feature_branch（policy=never 老路径）
+      _setup_worktree_or_branch / _bind_current_worktree（F-004 新增）
+      _load_yaml_worktree_cfg（F-004 新增）
+      _resolve_base_branch
   - 主入口：_bootstrap_requirement / _bootstrap_rollback
 
-拆分动机：F-002 rev1 把 9 个 helper 全部堆在 workflow_run.py，导致主文件
-从 213 行涨到 679 行（涨幅 218%）。本模块按"职责单一"原则把 requirement
-bootstrap 链路独立成文件，让 workflow_run.py 回到"命令入口分流"的薄壳定位。
-
-详细设计参考 detailed-design.md §1.2 / §1.3 / §1.4。
+F-004 改造要点（来源：detailed-design.md §3.4）：
+  - 写产物落点改为 worktree path（active_repo_root），主仓根 requirements/<key>/ 不创建
+  - rollback 顺序：worktree remove + prune → branch -D → rmtree 主仓根 + worktree path 双扫
+  - baseline 失败（required=true）保留现场，不进 rollback
 """
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING, Any, Optional
 
 _LIB_DIR = Path(__file__).resolve().parent
 if str(_LIB_DIR) not in sys.path:
@@ -27,6 +33,9 @@ if str(_LIB_DIR) not in sys.path:
 
 from common import REPO_ROOT, WorkflowError  # noqa: E402
 from run_state import append_event  # noqa: E402
+
+if TYPE_CHECKING:  # pragma: no cover  避免运行时循环 import
+    from worktree_manager import SetupResult, WorktreeInfo
 
 # requirement 类 base_branch 选择优先级（develop 优先，兜底 main/master）
 _BASE_BRANCH_PRIORITY: tuple[str, ...] = ("develop", "main", "master")
@@ -42,15 +51,25 @@ _TEMPLATE_DIR_RELATIVE = Path(".claude/skills/managing-requirement-lifecycle/tem
 
 
 # ============================================================================
-# F-002 异常体系
+# F-002 / F-004 异常体系
 # ============================================================================
 
 class BootstrapError(WorkflowError):
     """bootstrap 过程任一步失败时抛出。
 
-    携带已完成步骤标志（artifacts_created / branch_created），供 main 调用
-    _bootstrap_rollback 精确反向撤销——避免"什么都没建却试图删"或"建了一半
-    没清理"的两种边界。继承 WorkflowError 以便上层 except 链复用既有兜底。
+    携带：
+      - artifacts_created / branch_created：rollback 精确反向撤销标志
+      - reason（F-004 加入）：失败原因枚举字符串，调用方（F-003 _run_requirement）
+        据此决定是否 retry。常用值见 detailed-design.md §5.1：
+          path_or_branch_exists / other / policy_current_in_normal_repo /
+          worktree_dir_not_ignored / baseline_failed_required /
+          porcelain_malformed / main_root_missing
+      - retain_worktree（F-004 加入）：True 表示调用方应保留 worktree / 分支 /
+        requirements/<key>/ 现场（baseline_failed_required 落点）。
+
+    继承 WorkflowError 以便上层 except 链复用既有兜底。子类
+    WorktreeBootstrapError 已默认带 reason / retain_worktree；F-004 把这两个字段
+    并入父类后，子类签名保持兼容（is-a 关系不破）。
     """
 
     def __init__(
@@ -59,15 +78,14 @@ class BootstrapError(WorkflowError):
         *,
         artifacts_created: bool = False,
         branch_created: bool = False,
+        reason: str = "other",
+        retain_worktree: bool = False,
     ) -> None:
-        """记录 bootstrap 完成到第几步，供 _bootstrap_rollback 精确反向撤销。
-
-        artifacts_created=True 表示需 rmtree req_dir；branch_created=True 表示需切回
-        previous_branch + 删 feat 分支。两者独立，可任意组合。
-        """
         super().__init__(message)
         self.artifacts_created = artifacts_created
         self.branch_created = branch_created
+        self.reason = reason
+        self.retain_worktree = retain_worktree
 
 
 # ============================================================================
@@ -75,18 +93,17 @@ class BootstrapError(WorkflowError):
 # ============================================================================
 
 def _strip_req_prefix(req_id: str) -> str:
-    """REQ-2026-010 → 2026-010（小写），feat/req-<这部分> 用。"""
+    """REQ-2026-010 → 2026-010（小写），feat/req-<这部分> 用。
+
+    新格式 YYYYMMDD-<slug> 直接小写返回（不去前缀）。
+    """
     if req_id.startswith("REQ-"):
         return req_id[len("REQ-"):].lower()
     return req_id.lower()
 
 
 def _current_branch(repo_root: Path) -> str:
-    """git rev-parse --abbrev-ref HEAD；失败返回空串。
-
-    bootstrap 失败回滚时需要"切回去"的目标分支；获取不到（detached HEAD /
-    非 git repo）时返回空串，调用方据此选择跳过 checkout。
-    """
+    """git rev-parse --abbrev-ref HEAD；失败返回空串。"""
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
@@ -100,18 +117,12 @@ def _current_branch(repo_root: Path) -> str:
             return ""
         return result.stdout.strip()
     except (subprocess.SubprocessError, OSError) as exc:
-        # best-effort：非 git repo / git 未安装时返回空串，不阻断 bootstrap
         logging.debug("_current_branch 失败：%s", exc)
         return ""
 
 
 def _resolve_base_branch(repo_root: Path) -> str:
-    """按 develop > main > master 优先级返回第一个可用的本地分支名。
-
-    仅检查本地存在性（git rev-parse --verify）；远程同步 / pull --ff-only 不在
-    本函数职责内——bootstrap 阶段尽量减少网络依赖，避免离线开发被卡。
-    全部不可用时返回空串（极端场景，调用方应当容错）。
-    """
+    """按 develop > main > master 优先级返回第一个可用的本地分支名。"""
     for branch in _BASE_BRANCH_PRIORITY:
         try:
             result = subprocess.run(
@@ -142,34 +153,85 @@ def _render_meta_yaml(
     title: str,
     branch: str,
     base_branch: str,
+    *,
+    worktree_info: Optional["WorktreeInfo"] = None,
+    baseline_result: Optional["SetupResult"] = None,
+    worktree_state: str = "active",
 ) -> str:
-    """基于 meta.yaml.tmpl 渲染流程组字段（语义组/结果组保持模板默认空值）。
+    """渲染 meta.yaml（流程组 + worktree 段）。
 
-    模板源 `.claude/skills/managing-requirement-lifecycle/templates/meta.yaml.tmpl`
-    用 `__PLACEHOLDER__` 风格占位符；本函数做最小字符串替换，不引入 jinja。
-    PROJECT 留空（"" 字面量），与 requirement-bootstrapper.md 约定一致——bootstrap
-    阶段不强制 project 归类，由后续 definition 阶段补齐。
+    F-008 阶段只填占位符；F-004 起当 worktree_info 非空时**回填**真实 worktree 元信息
+    （enabled/owner/path/absolute_path/created_at + baseline.status 等）。
+
+    Args:
+      req_id / title / branch / base_branch — 流程组 4 字段
+      worktree_info — 由 _setup_worktree_or_branch 返回；None 表示未启用 worktree
+      baseline_result — run_worktree_setup 返回；None 表示 baseline 未跑或被跳过
+      worktree_state — "active" / "baseline_failed"；落入 process.txt 而非 meta，
+        本函数仅承载 baseline.status 字段渲染（meta schema 不含 state 字段，
+        详细设计 §2.3 的 state 在 process.txt 中表达）
+
+    base_branch 缺省走 "main" 兜底；worktree_info=None 时所有 worktree 字段走
+    F-008 安全占位（enabled=false / owner=none / path="" / status=skipped）。
     """
     template_path = REPO_ROOT / _TEMPLATE_DIR_RELATIVE / "meta.yaml.tmpl"
     raw = template_path.read_text(encoding="utf-8")
+
+    base_branch_resolved = base_branch or "main"
+
+    # 默认占位（F-008 安全态：未启用 worktree）
+    wt_enabled = "false"
+    wt_owner = "none"
+    wt_path = '""'
+    wt_abs_path = '""'
+    wt_branch = branch
+    wt_base_branch = base_branch_resolved
+    wt_created_at = '""'
+    wt_baseline_cmd = "make gates-validate"
+    wt_baseline_status = "skipped"
+    wt_baseline_completed = '""'
+
+    # F-004：worktree 实际创建/绑定后回填
+    if worktree_info is not None:
+        wt_enabled = "true"
+        wt_owner = worktree_info.owner
+        # path: worktree path 相对主仓根（容器硬编码 .worktrees/feat-req-<key>）
+        try:
+            rel_path = worktree_info.path.relative_to(REPO_ROOT)
+            wt_path = f'"{rel_path}"'
+        except ValueError:
+            # 不在主仓根下（current 路径绑定 + main worktree）→ 留空串
+            wt_path = '""'
+        wt_abs_path = f'"{worktree_info.path}"'
+        wt_branch = worktree_info.branch
+        wt_base_branch = worktree_info.base_branch or base_branch_resolved
+        if worktree_info.created:
+            wt_created_at = f'"{_now_shanghai_str()}"'
+        else:
+            wt_created_at = '""'
+
+    if baseline_result is not None:
+        wt_baseline_status = baseline_result.status
+        if baseline_result.status != "skipped":
+            wt_baseline_completed = f'"{_now_shanghai_str()}"'
+
     replacements = {
         "__REQ_ID__": req_id,
         "__TITLE__": title,
         "__CREATED_AT__": _now_shanghai_str(),
         "__BRANCH__": branch,
-        "__BASE_BRANCH__": base_branch or "main",  # 极端兜底（仓库无任何主干）
+        "__BASE_BRANCH__": base_branch_resolved,
         "__PROJECT__": "",
-        # F-008：worktree 占位结构（safe placeholder, F-004 接管后回填实际值）
-        "__WT_ENABLED__": "false",           # F-008 阶段未接 worktree_manager；F-004 启用时改 true
-        "__WT_OWNER__": "none",              # F-008 阶段无 owner；F-004 启用后填 workflow/external
-        "__WT_PATH__": '""',                 # 占位空串
-        "__WT_ABS_PATH__": '""',             # 占位空串
-        "__WT_BRANCH__": branch,             # 与流程组 branch 字段一致
-        "__WT_BASE_BRANCH__": base_branch or "main",  # 与流程组 base_branch 一致
-        "__WT_CREATED_AT__": '""',           # 占位空串；F-004 启用 worktree 时填 ts
-        "__WT_BASELINE_CMD__": "make gates-validate",  # OD-3 默认 baseline 命令
-        "__WT_BASELINE_STATUS__": "skipped", # F-008 阶段 baseline 未跑 → skipped
-        "__WT_BASELINE_COMPLETED_AT__": '""',  # 占位空串
+        "__WT_ENABLED__": wt_enabled,
+        "__WT_OWNER__": wt_owner,
+        "__WT_PATH__": wt_path,
+        "__WT_ABS_PATH__": wt_abs_path,
+        "__WT_BRANCH__": wt_branch,
+        "__WT_BASE_BRANCH__": wt_base_branch,
+        "__WT_CREATED_AT__": wt_created_at,
+        "__WT_BASELINE_CMD__": wt_baseline_cmd,
+        "__WT_BASELINE_STATUS__": wt_baseline_status,
+        "__WT_BASELINE_COMPLETED_AT__": wt_baseline_completed,
     }
     rendered = raw
     for key, val in replacements.items():
@@ -185,7 +247,39 @@ def _render_plan_md(req_id: str, title: str) -> str:
 
 
 # ============================================================================
-# bootstrap 步骤：单文件写 / 切分支
+# F-004 yaml.worktree 段读取（fail-soft，缺 yaml 解析能力时 fallback 空 dict）
+# ============================================================================
+
+def _load_yaml_worktree_cfg(template_path: Optional[Path]) -> dict[str, Any]:
+    """从 workflow yaml 模板顶层读 worktree: 段；任何失败 fallback {}.
+
+    使用 PyYAML 时尝试 safe_load；模块不可用或解析异常时不阻断 bootstrap，
+    返回空 dict 让上层走默认 policy=auto + required=false 路径。
+    """
+    if not template_path:
+        return {}
+    try:
+        text = Path(template_path).read_text(encoding="utf-8")
+    except (OSError, ValueError) as exc:
+        logging.debug("_load_yaml_worktree_cfg 读 %s 失败：%s", template_path, exc)
+        return {}
+    try:
+        import yaml  # type: ignore
+        data = yaml.safe_load(text)
+    except ImportError:
+        logging.debug("_load_yaml_worktree_cfg: pyyaml 不可用，fallback 空 dict")
+        return {}
+    except Exception as exc:  # noqa: BLE001  yaml 解析异常（语法 / 非 dict 顶层）
+        logging.debug("_load_yaml_worktree_cfg: yaml 解析失败 %s", exc)
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    wt = data.get("worktree")
+    return wt if isinstance(wt, dict) else {}
+
+
+# ============================================================================
+# bootstrap 步骤：单文件写 / 切分支 / worktree 编排
 # ============================================================================
 
 def _write_artifact_file(
@@ -195,25 +289,10 @@ def _write_artifact_file(
     req_id: str,
     step_name: str,
 ) -> None:
-    """写单个 bootstrap 产物文件（meta.yaml / plan.md / process.txt）。
-
-    抽离 F-002 rev1 中 _bootstrap_requirement 内 3 步重复的 try-except-write 模板：
-    包装 OSError → BootstrapError(artifacts_created=True, branch_created=False)，
-    并在成功时打 step done 日志。
-
-    step_name 仅用于错误信息和日志（如 "meta.yaml"），便于排查具体失败步骤。
-
-    参数：
-        path        — 目标文件路径
-        content     — 写入内容（字符串，UTF-8 编码）
-        req_id      — 需求 ID（错误信息和日志用）
-        step_name   — 步骤名（错误信息和日志用）
-    """
+    """写单个 bootstrap 产物文件；失败时抛 BootstrapError(artifacts_created=True)。"""
     try:
         path.write_text(content, encoding="utf-8")
     except OSError as exc:
-        # 进入此分支时：artifacts/ 已建成功 → artifacts_created=True；
-        # 切分支尚未发生 → branch_created=False。rollback rmtree 整树清理半写文件。
         raise BootstrapError(
             f"bootstrap req_id={req_id} step={step_name} 写文件失败：{exc}",
             artifacts_created=True,
@@ -227,15 +306,34 @@ def _write_bootstrap_artifacts(
     req_id: str,
     title: str,
     base_branch: str,
+    *,
+    active_repo_root: Optional[Path] = None,
+    worktree_info: Optional["WorktreeInfo"] = None,
+    baseline_result: Optional["SetupResult"] = None,
 ) -> None:
     """渲染并写 meta.yaml / plan.md / process.txt 三个 bootstrap 产物。
 
-    任一文件写失败时 _write_artifact_file 已抛 BootstrapError(artifacts_created=True,
-    branch_created=False)，本 helper 不再额外包装——保留原始 step_name 上下文。
-    process.txt 留空，由 Hook 首次触发时填充。
+    F-004：req_dir 必须位于 `active_repo_root / requirements / <req_id>` 下；
+    active_repo_root 显式入参避免 R1 路径错乱（主仓 vs worktree path）。
+    worktree_info / baseline_result 透传给 _render_meta_yaml 回填 worktree 段。
     """
+    # active_repo_root 仅做断言（防呼叫方传错），落点已由 req_dir 决定。
+    if active_repo_root is not None:
+        try:
+            req_dir.relative_to(active_repo_root)
+        except ValueError:
+            logging.warning(
+                "bootstrap req_id=%s req_dir=%s 不在 active_repo_root=%s 下，"
+                "请检查调用方参数",
+                req_id, req_dir, active_repo_root,
+            )
+
     branch_name = f"feat/req-{_strip_req_prefix(req_id)}"
-    meta_content = _render_meta_yaml(req_id, title, branch_name, base_branch)
+    meta_content = _render_meta_yaml(
+        req_id, title, branch_name, base_branch,
+        worktree_info=worktree_info,
+        baseline_result=baseline_result,
+    )
     _write_artifact_file(req_dir / "meta.yaml", meta_content, req_id=req_id, step_name="meta.yaml")
     plan_content = _render_plan_md(req_id, title)
     _write_artifact_file(req_dir / "plan.md", plan_content, req_id=req_id, step_name="plan.md")
@@ -243,16 +341,7 @@ def _write_bootstrap_artifacts(
 
 
 def _checkout_feature_branch(req_id: str, repo_root: Path, base_branch: str = "") -> str:
-    """git checkout -b feat/req-<id> [<base_branch>]（id 已去前缀小写）。
-
-    base_branch 非空时显式作为新分支起点（`git checkout -b <new> <start>`），
-    避免在其他 feature/hotfix 分支上跑 /workflow:run 时把不相关 commit 拉进新需求分支
-    （codex review 2026-05-12 P1-1）。base_branch 空字符串时退化为旧行为
-    （从当前 HEAD fork），保留对 _resolve_base_branch 返回空串这一极端场景的兼容。
-
-    返回新分支名；失败抛 BootstrapError(branch_created=False)，由调用方决定是否
-    回滚。本函数不负责 fetch / pull——base_branch 选择已发生在调用前。
-    """
+    """git checkout -b feat/req-<id> [<base_branch>]（policy=never 的兜底路径）。"""
     branch = f"feat/req-{_strip_req_prefix(req_id)}"
     cmd = ["git", "checkout", "-b", branch]
     if base_branch:
@@ -270,18 +359,111 @@ def _checkout_feature_branch(req_id: str, repo_root: Path, base_branch: str = ""
             f"git checkout -b {branch} 失败（子进程错误）：{exc}",
             artifacts_created=True,
             branch_created=False,
+            reason="other",
         ) from exc
     if result.returncode != 0:
+        # 与 worktree path/branch already exists 同语义：触发 F-003 retry
+        stderr = result.stderr.strip()
+        is_collision = "already exists" in stderr
         raise BootstrapError(
-            f"git checkout -b {branch} 失败 rc={result.returncode}: {result.stderr.strip()}",
+            f"git checkout -b {branch} 失败 rc={result.returncode}: {stderr}",
             artifacts_created=True,
             branch_created=False,
+            reason="path_or_branch_exists" if is_collision else "other",
         )
     return branch
 
 
+def _bind_current_worktree(
+    state: Any,
+    req_id: str,
+    base_branch: str,
+) -> "WorktreeInfo":
+    """D-004 复用路径：已在 linked worktree 内 → 直接绑定。
+
+    owner='external' 表示 harness 创建的 worktree 不归 workflow 拥有，
+    archive 阶段 cleanup_worktree_if_owned 见到 external 会自动跳过。
+    """
+    from worktree_manager import WorktreeInfo  # 局部导入避免顶层循环依赖
+    branch = state.branch if state.branch else f"feat/req-{_strip_req_prefix(req_id)}"
+    logging.info(
+        "bootstrap req_id=%s step=bind_current_worktree path=%s branch=%s",
+        req_id, state.worktree_path, branch,
+    )
+    return WorktreeInfo(
+        path=state.worktree_path,
+        branch=branch,
+        base_branch=base_branch,
+        owner="external",
+        created=False,
+    )
+
+
+def _setup_worktree_or_branch(
+    req_id: str,
+    repo_root: Path,
+    base_branch: str,
+    *,
+    worktree_policy: str,
+    yaml_worktree_cfg: dict[str, Any],
+) -> "WorktreeInfo":
+    """根据 policy 决策 create / bind / fallback 到旧分支路径。
+
+    输入 policy ∈ {auto, never, require, current}，决策矩阵见
+    detailed-design.md §2.4 子状态机。
+
+    异常：
+      - policy=current + 非 linked worktree → BootstrapError(reason='policy_current_in_normal_repo')
+      - create_worktree 抛 WorktreeBootstrapError → 透传（is-a BootstrapError）
+    """
+    import worktree_manager  # 局部导入避免顶层循环依赖
+    import requirement_naming  # 同上
+
+    state = worktree_manager.detect_worktree_state(repo_root)
+
+    # policy=current：必须已在 linked worktree（fail-closed）
+    if worktree_policy == "current" and not state.is_linked_worktree:
+        raise BootstrapError(
+            "worktree policy=current 要求在 linked worktree 中运行，"
+            "当前在 normal repo；请先 cd 到 .worktrees/feat-req-<key> 目录后重试",
+            artifacts_created=False,
+            branch_created=False,
+            reason="policy_current_in_normal_repo",
+        )
+
+    # 已在 linked worktree → bind（D-004）；policy=never 也走 bind（沿用当前）
+    if state.is_linked_worktree:
+        return _bind_current_worktree(state, req_id, base_branch)
+
+    # policy=never → 老路径 _checkout_feature_branch
+    if worktree_policy == "never":
+        branch = _checkout_feature_branch(req_id, repo_root, base_branch=base_branch)
+        return worktree_manager.WorktreeInfo(
+            path=repo_root,
+            branch=branch,
+            base_branch=base_branch,
+            owner="none",
+            created=False,
+        )
+
+    # auto / require：创建新 worktree
+    branch = requirement_naming.branch_for_requirement_key(req_id)
+    preference = yaml_worktree_cfg.get("location", ".worktrees") or ".worktrees"
+    location = worktree_manager.select_worktree_location(
+        repo_root, branch, preference=preference,
+    )
+    # ensure 容器目录已被 .gitignore 收录（fail-closed reason='gitignore_missing'）
+    worktree_manager.ensure_worktree_dir_ignored(repo_root, location)
+    info = worktree_manager.create_worktree(repo_root, branch, base_branch, location)
+    logging.info(
+        "bootstrap req_id=%s step=create_worktree path=%s branch=%s base=%s",
+        req_id, info.path, info.branch, info.base_branch,
+    )
+    return info
+
+
 # ============================================================================
-# F-002 主入口：_bootstrap_requirement / _bootstrap_rollback
+# F-004 主入口：_bootstrap_requirement / _bootstrap_rollback
 # ============================================================================
 
 def _bootstrap_requirement(
@@ -291,69 +473,197 @@ def _bootstrap_requirement(
     template_path: Path,
     arguments: str,
     repo_root: Path,
+    *,
+    worktree_policy: Optional[str] = None,
+    no_worktree: bool = False,
 ) -> Path:
-    """需求类 bootstrap 副作用三步：建目录文件 + 切分支 + 写 jsonl。
+    """需求类 bootstrap 主入口（worktree-first 流程）。
 
-    详细设计 §1.2。任一步失败抛 BootstrapError，由 main 调
-    `_bootstrap_rollback` 反向撤销。本函数自身**不**调用 rollback——分层
-    清晰：bootstrap 负责"建"，rollback 负责"删"，main 负责"编排"。
+    详细设计 §3.4 改造点 2 步骤 1-8：
+      1. 读 yaml.worktree 段 + 决定 policy
+      2. _setup_worktree_or_branch → WorktreeInfo（建/复用 worktree）
+      3. run_worktree_setup baseline；required=true + rc!=0 → 写 meta + 抛 retain_worktree=True
+      4. mkdir <active_repo_root>/requirements/<req_id>/artifacts/
+      5-6. 渲染并写 meta.yaml / plan.md / process.txt（落 worktree path）
+      7. 写 workflow_started run-state.jsonl
+      8. 输出成功 banner（由调用方 _run_requirement 负责）
 
-    返回：requirements/<req_id>/ 路径。
+    返回：active_repo_root/requirements/<req_id>/ 路径（worktree path 下，
+          policy=never 时退化为主仓根下）。
     """
-    req_dir = repo_root / "requirements" / req_id
-    artifacts_created = False
-    branch_created = False
+    import worktree_manager  # 局部导入
+
+    # 步骤 1：解析 yaml.worktree 段 + policy
+    yaml_worktree_cfg = _load_yaml_worktree_cfg(template_path)
+    effective_policy = _resolve_worktree_policy(
+        no_worktree=no_worktree,
+        cli_policy=worktree_policy,
+        yaml_cfg=yaml_worktree_cfg,
+    )
     base_branch = _resolve_base_branch(repo_root)
 
-    # 步骤 1：建 artifacts/（req_id 顶层目录已由 _generate_req_id 创建）
+    # 步骤 2：建/绑定 worktree（抛 WorktreeBootstrapError 透传给 caller）
+    worktree_info = _setup_worktree_or_branch(
+        req_id, repo_root, base_branch,
+        worktree_policy=effective_policy,
+        yaml_worktree_cfg=yaml_worktree_cfg,
+    )
+    branch_created = worktree_info.created or (worktree_info.owner == "none")
+    active_repo_root = worktree_info.path
+
+    # 步骤 3：baseline 校验（baseline 失败 + required=true → 保留现场）
+    # owner='none'（policy=never 兜底 / 无 worktree）→ 跳过 baseline，与 'external' 同语义
+    baseline_required = bool(
+        yaml_worktree_cfg.get("setup", {})
+                          .get("baseline", {})
+                          .get("required", False)
+    )
+    if worktree_info.owner == "none":
+        baseline_result = worktree_manager.SetupResult(
+            status="skipped", rc=0, duration_ms=0, log_tail="",
+        )
+    else:
+        baseline_result = worktree_manager.run_worktree_setup(
+            active_repo_root,
+            yaml_worktree_cfg,
+            owner=worktree_info.owner,
+        )
+    if baseline_result.status == "failed":
+        if baseline_required:
+            # 保留现场：写 meta.yaml + 抛 retain_worktree=True，不触发 rollback
+            _persist_baseline_failed_state(
+                req_id, title, base_branch, active_repo_root,
+                worktree_info, baseline_result,
+            )
+            raise BootstrapError(
+                f"baseline 失败（required=true）req_id={req_id} rc={baseline_result.rc} "
+                f"log_tail={baseline_result.log_tail[:200]!r}；"
+                f"worktree 已保留供排查：{active_repo_root}",
+                artifacts_created=True,
+                branch_created=branch_created,
+                reason="baseline_failed_required",
+                retain_worktree=True,
+            )
+        else:
+            logging.warning(
+                "bootstrap req_id=%s baseline failed but required=false，继续写产物（log_tail=%s）",
+                req_id, baseline_result.log_tail[:200],
+            )
+
+    # 步骤 4：mkdir <active_repo_root>/requirements/<req_id>/artifacts/
+    req_dir = active_repo_root / "requirements" / req_id
     try:
-        (req_dir / "artifacts").mkdir(parents=False, exist_ok=False)
+        (req_dir / "artifacts").mkdir(parents=True, exist_ok=False)
     except OSError as exc:
-        # mkdir 失败：顶层目录已存在（_generate_req_id 副作用），rollback 需删它；
-        # 但 artifacts 子目录本身未必建成功——标 artifacts_created=True 让 rollback
-        # rmtree 整个 req_dir，覆盖"建了一半"的边界
+        # 主仓根 requirements/<key>/ 未创建过（worktree-first 流程不预建），失败标记
+        # artifacts_created=True 让 rollback 双扫 rmtree 兜底（worktree path 也清理）
         raise BootstrapError(
             f"创建 {req_dir}/artifacts/ 失败：{exc}",
             artifacts_created=True,
-            branch_created=False,
+            branch_created=branch_created,
+            reason="other",
         ) from exc
-    artifacts_created = True
-    logging.info("bootstrap req_id=%s step=mkdir_artifacts done", req_id)
+    logging.info(
+        "bootstrap req_id=%s step=mkdir_artifacts active_root=%s",
+        req_id, active_repo_root,
+    )
 
-    # 步骤 2/3/4：渲染并写 meta.yaml / plan.md / process.txt
-    # 失败语义统一通过 _write_artifact_file 包装为 BootstrapError(artifacts_created=True)
-    _write_bootstrap_artifacts(req_dir, req_id, title, base_branch)
+    # 步骤 5-6：渲染并写 meta.yaml / plan.md / process.txt（worktree-first 落点）
+    _write_bootstrap_artifacts(
+        req_dir, req_id, title, base_branch,
+        active_repo_root=active_repo_root,
+        worktree_info=worktree_info,
+        baseline_result=baseline_result,
+    )
 
-    # 步骤 5：切 feature 分支（注意：本步骤先于 jsonl，是因为 jsonl 写失败比
-    # 分支切换失败更罕见；分支切失败比写文件更可能（已有同名分支 / detached HEAD），
-    # 让"高风险动作"靠后能减少回滚频度）
-    _checkout_feature_branch(req_id, repo_root, base_branch=base_branch)
-    branch_created = True
-    logging.info("bootstrap req_id=%s step=checkout_branch done base=%s",
-                 req_id, base_branch or "<current-HEAD>")
-
-    # 步骤 6：写 workflow_started jsonl 事件（顶层 run-state.jsonl）
+    # 步骤 7：写 workflow_started jsonl 事件
     jsonl_path = req_dir / "run-state.jsonl"
     try:
+        try:
+            template_rel = str(template_path.relative_to(repo_root)) if template_path else ""
+        except ValueError:
+            template_rel = str(template_path) if template_path else ""
         append_event(jsonl_path, {
             "type": "workflow_started",
             "run_id": req_id,
             "data": {
                 "workflow_name": template_id,
                 "arguments": arguments,
-                "template_path": str(template_path.relative_to(repo_root)) if template_path else "",
+                "template_path": template_rel,
                 "title": title,
+                "worktree": {
+                    "enabled": worktree_info.owner != "none",
+                    "owner": worktree_info.owner,
+                    "path": str(worktree_info.path),
+                    "branch": worktree_info.branch,
+                },
             },
         })
     except WorkflowError as exc:
         raise BootstrapError(
             f"写 workflow_started 事件失败：{exc}",
-            artifacts_created=artifacts_created,
+            artifacts_created=True,
             branch_created=branch_created,
+            reason="other",
         ) from exc
     logging.info("bootstrap req_id=%s step=workflow_started done", req_id)
 
+    # 步骤 8：成功 banner 由调用方 _run_requirement 输出。把 WorktreeInfo 通过
+    # req_dir 隐式传递（_run_requirement 暂不消费 WorktreeInfo；F-003 调用层
+    # 仅依赖 req_dir 路径），保持向后兼容。
     return req_dir
+
+
+def _resolve_worktree_policy(
+    *,
+    no_worktree: bool,
+    cli_policy: Optional[str],
+    yaml_cfg: dict[str, Any],
+) -> str:
+    """policy 决策优先级（来源：F-003 task context "yaml worktree 配置读取"）：
+      --no-worktree=True > CLI --worktree-policy > yaml.worktree.policy > "auto"
+    """
+    if no_worktree:
+        return "never"
+    if cli_policy:
+        return cli_policy
+    yaml_policy = yaml_cfg.get("policy")
+    if isinstance(yaml_policy, str) and yaml_policy:
+        return yaml_policy
+    return "auto"
+
+
+def _persist_baseline_failed_state(
+    req_id: str,
+    title: str,
+    base_branch: str,
+    active_repo_root: Path,
+    worktree_info: "WorktreeInfo",
+    baseline_result: "SetupResult",
+) -> None:
+    """baseline 失败 (required=true) 时尽力把 meta.yaml + process.txt 写到 worktree
+    供排查。best-effort：写入失败 logging.error 但不抛——根因 BootstrapError 优先透传。
+    """
+    req_dir = active_repo_root / "requirements" / req_id
+    try:
+        (req_dir / "artifacts").mkdir(parents=True, exist_ok=True)
+        meta_text = _render_meta_yaml(
+            req_id, title,
+            f"feat/req-{_strip_req_prefix(req_id)}",
+            base_branch,
+            worktree_info=worktree_info,
+            baseline_result=baseline_result,
+            worktree_state="baseline_failed",
+        )
+        (req_dir / "meta.yaml").write_text(meta_text, encoding="utf-8")
+        # process.txt 写一行 blocker 提示
+        diag = f"[blocker] baseline failed (rc={baseline_result.rc}): {baseline_result.log_tail[:300]}\n"
+        (req_dir / "process.txt").write_text(diag, encoding="utf-8")
+    except OSError as exc:
+        logging.error(
+            "_persist_baseline_failed_state req_id=%s 写诊断失败：%s",
+            req_id, exc,
+        )
 
 
 def _bootstrap_rollback(
@@ -362,20 +672,69 @@ def _bootstrap_rollback(
     previous_branch: str,
     artifacts_created: bool,
     branch_created: bool,
+    *,
+    worktree_info: Optional["WorktreeInfo"] = None,
 ) -> None:
-    """bootstrap 失败反向撤销。
+    """bootstrap 失败反向撤销（F-004 改造版）。
 
-    顺序：先 git 后文件——若先 rmtree 再切分支，HEAD 仍指向已被删的目录里
-    的内容时 git checkout 会失败；而 `git checkout <prev>` 不依赖 req_dir 存在，
-    切回去再删才是安全顺序。
+    顺序（来源：detailed-design.md §3.4 改造点 3）：
+      0. cd 主仓根（cwd 可能在 worktree 内）
+      1. git worktree remove + prune（worktree_info.created && owner='workflow'）
+      2. git checkout previous_branch + git branch -D（branch_created）
+      3. rmtree 主仓根 requirements/<req_id> + worktree_info.path/requirements/<req_id> 双扫
 
-    所有 IOError / 子进程异常被吞并 logging.error——本函数自身在 try/finally
-    /兜底链上调用，再抛会掩盖**原始** BootstrapError（即 bootstrap 失败的根因）。
-    幂等：所有 step 用 best-effort 失败容忍，可重复调用。
+    幂等：所有 step best-effort 失败容忍。
+    baseline_failed_required 路径**不**调本函数（retain_worktree=True 时 caller skip）。
     """
     branch_name = f"feat/req-{_strip_req_prefix(req_id)}"
 
-    # 步骤 1：先切回旧分支（若 bootstrap 已成功切到新分支）
+    # 步骤 0：cd 主仓根
+    try:
+        os.chdir(repo_root)
+    except OSError as exc:
+        logging.error(
+            "rollback req_id=%s step=chdir_main_root failed: %s", req_id, exc,
+        )
+
+    # 步骤 1：worktree remove + prune（仅当 workflow owned + created=True）
+    if worktree_info is not None and worktree_info.created and worktree_info.owner == "workflow":
+        try:
+            remove_proc = subprocess.run(
+                ["git", "worktree", "remove", "--force", str(worktree_info.path)],
+                capture_output=True, text=True,
+                cwd=str(repo_root),
+                timeout=_GIT_TIMEOUT_SECONDS,
+                check=False,
+            )
+            if remove_proc.returncode != 0:
+                logging.error(
+                    "rollback req_id=%s step=worktree_remove rc=%d stderr=%s",
+                    req_id, remove_proc.returncode, remove_proc.stderr.strip(),
+                )
+        except (subprocess.SubprocessError, OSError) as exc:
+            logging.error(
+                "rollback req_id=%s git worktree remove %s 失败：%s",
+                req_id, worktree_info.path, exc,
+            )
+        try:
+            prune_proc = subprocess.run(
+                ["git", "worktree", "prune"],
+                capture_output=True, text=True,
+                cwd=str(repo_root),
+                timeout=_GIT_TIMEOUT_SECONDS,
+                check=False,
+            )
+            if prune_proc.returncode != 0:
+                logging.warning(
+                    "rollback req_id=%s step=worktree_prune rc=%d stderr=%s",
+                    req_id, prune_proc.returncode, prune_proc.stderr.strip(),
+                )
+        except (subprocess.SubprocessError, OSError) as exc:
+            logging.warning(
+                "rollback req_id=%s git worktree prune 失败：%s", req_id, exc,
+            )
+
+    # 步骤 2：删 feature 分支（与原 F-002 行为对齐：仅在 branch_created=True 时操作）
     if branch_created:
         if previous_branch:
             try:
@@ -388,7 +747,6 @@ def _bootstrap_rollback(
                     check=False,
                 )
                 if checkout_result.returncode != 0:
-                    # check=False 不 raise；rc!=0 需显式 ERROR 日志，否则用户不可观察
                     logging.error(
                         "rollback req_id=%s step=git_checkout rc=%d stderr=%s",
                         req_id, checkout_result.returncode,
@@ -405,7 +763,6 @@ def _bootstrap_rollback(
                 req_id, branch_name,
             )
 
-        # 步骤 2：删除新建的 feature 分支（-D 强制删，因为可能还有未提交内容）
         try:
             branch_del_result = subprocess.run(
                 ["git", "branch", "-D", branch_name],
@@ -427,16 +784,21 @@ def _bootstrap_rollback(
                 req_id, branch_name, exc,
             )
 
-    # 步骤 3：删除 requirements/<req_id>/ 整树（含 _generate_req_id 创建的顶层目录）
+    # 步骤 3：rmtree 主仓根 + worktree path 双扫
     if artifacts_created:
-        req_dir = repo_root / "requirements" / req_id
-        try:
-            shutil.rmtree(req_dir)
-        except FileNotFoundError:
-            # 已被外部清理 → 等价于已回滚成功
-            logging.debug("rollback req_id=%s req_dir 已不存在，跳过 rmtree", req_id)
-        except OSError as exc:
-            logging.error(
-                "rollback req_id=%s rmtree %s 失败：%s",
-                req_id, req_dir, exc,
-            )
+        candidates: list[Path] = [repo_root / "requirements" / req_id]
+        if worktree_info is not None and worktree_info.path != repo_root:
+            candidates.append(worktree_info.path / "requirements" / req_id)
+        for req_dir in candidates:
+            try:
+                shutil.rmtree(req_dir)
+            except FileNotFoundError:
+                logging.debug(
+                    "rollback req_id=%s req_dir=%s 已不存在，跳过 rmtree",
+                    req_id, req_dir,
+                )
+            except OSError as exc:
+                logging.error(
+                    "rollback req_id=%s rmtree %s 失败：%s",
+                    req_id, req_dir, exc,
+                )
