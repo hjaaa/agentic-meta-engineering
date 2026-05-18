@@ -3,7 +3,7 @@
 # ============ 流程组（bootstrap 时填） ============
 id: REQ-2026-014                 # 例：REQ-2026-001
 title: worktree 隔离能力完整迁移
-phase: detail-design
+phase: task-planning
 created_at: 2026-05-17 23:36:47     # 格式 YYYY-MM-DD HH:MM:SS（Asia/Shanghai），见 context/team/engineering-spec/time-format.md
 branch: feat/req-2026-014             # 例：feat/req-2026-001
 base_branch: develop   # feat/* 派生的基点分支：develop / main / master
@@ -21,6 +21,9 @@ gates_passed:
     via: managing-requirement-lifecycle
   - phase: detail-design
     at: '2026-05-18 09:27:15'
+    via: managing-requirement-lifecycle
+  - phase: task-planning
+    at: '2026-05-18 10:10:54'
     via: managing-requirement-lifecycle
 pr_url: ""                     # /requirement:submit 成功后回写
 pr_number: 0                   # /requirement:submit 成功后回写
