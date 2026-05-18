@@ -117,7 +117,7 @@ def _scan_existing_requirement_keys(repo_root: Path) -> set[str]:
                     if entry.is_dir():
                         occupied.add(entry.name)
         except OSError as exc:
-            logging.debug("_scan_existing_requirement_keys requirements/ 扫描失败：%s", exc)
+            logging.warning("_scan_existing_requirement_keys requirements/ 扫描失败：%s", exc)
 
     # 扫 .worktrees/feat-req-<key>/（去前缀还原 key）
     worktrees_base = repo_root / ".worktrees"
@@ -130,7 +130,7 @@ def _scan_existing_requirement_keys(repo_root: Path) -> set[str]:
                         if key:
                             occupied.add(key)
         except OSError as exc:
-            logging.debug("_scan_existing_requirement_keys .worktrees/ 扫描失败：%s", exc)
+            logging.warning("_scan_existing_requirement_keys .worktrees/ 扫描失败：%s", exc)
 
     return occupied
 
@@ -185,6 +185,10 @@ def _generate_req_id_with_existing(
 # ============================================================================
 
 
+# --worktree-policy 合法枚举值（来源：requirements/REQ-2026-014/artifacts/detailed-design.md:862）
+_VALID_WORKTREE_POLICIES: frozenset[str] = frozenset({"auto", "never", "require", "current"})
+
+
 @dataclass(frozen=True)
 class RunArgs:
     """_parse_args 返回类型（F-003 扩展）。"""
@@ -235,6 +239,11 @@ def _parse_args(args: list[str]) -> RunArgs:
                 if key == "slug":
                     slug = value
                 elif key == "worktree-policy":
+                    if value not in _VALID_WORKTREE_POLICIES:
+                        raise WorkflowError(
+                            f"--worktree-policy 非法值 {value!r}，"
+                            f"合法值：{', '.join(sorted(_VALID_WORKTREE_POLICIES))}"
+                        )
                     worktree_policy = value
                 elif key == "no-worktree":
                     no_worktree = True
@@ -259,6 +268,11 @@ def _parse_args(args: list[str]) -> RunArgs:
                     if key == "slug":
                         slug = value
                     elif key == "worktree-policy":
+                        if value not in _VALID_WORKTREE_POLICIES:
+                            raise WorkflowError(
+                                f"--worktree-policy 非法值 {value!r}，"
+                                f"合法值：{', '.join(sorted(_VALID_WORKTREE_POLICIES))}"
+                            )
                         worktree_policy = value
                     i += 2
         else:
@@ -377,53 +391,57 @@ def _run_requirement(
     # tried_keys 在每次 retry 前累积已尝试过的 key，避免重复生成同一 key
     tried_keys: set[str] = set()
 
-    for attempt in range(1, 100):
-        # 每轮重新生成 req_id（注入 tried_keys 使其跳过已尝试的 key）
-        try:
-            req_id = _generate_req_id_with_existing(root, slug=slug, existing_keys=tried_keys)
-        except SlugError as exc:
-            print(f"ERROR: 无法生成 requirement key：{exc}", file=sys.stderr)
-            return 1
+    try:
+        for attempt in range(1, 100):
+            # 每轮重新生成 req_id（注入 tried_keys 使其跳过已尝试的 key）
+            try:
+                req_id = _generate_req_id_with_existing(root, slug=slug, existing_keys=tried_keys)
+            except SlugError as exc:
+                print(f"ERROR: 无法生成 requirement key：{exc}", file=sys.stderr)
+                return 1
 
-        try:
-            req_dir = _bootstrap_requirement(
-                req_id, title, template_id, template_path, template_args, root,
-            )
-        except BootstrapError as exc:
-            reason = getattr(exc, "reason", None)
-            if reason == "path_or_branch_exists":
-                # 路径/分支占用：bump tried_keys 重试（F-003 retry 语义）
-                logging.warning(
-                    "bootstrap req_id=%s reason=path_or_branch_exists，尝试下一个 key（attempt=%d）",
-                    req_id, attempt,
+            try:
+                req_dir = _bootstrap_requirement(
+                    req_id, title, template_id, template_path, template_args, root,
                 )
-                tried_keys.add(req_id)
-                continue
-            # 其它 reason：先 logging 再 rollback，原异常透传
-            logging.error(
-                "bootstrap req_id=%s 失败，已触发 rollback：%s",
-                req_id, exc,
-            )
-            _bootstrap_rollback(
-                req_id, root, previous_branch,
-                exc.artifacts_created, exc.branch_created,
-            )
-            print(f"ERROR: bootstrap 失败：{exc}", file=sys.stderr)
-            return 1
-        else:
-            # bootstrap 成功
-            print("workflow run 已启动（requirement）")
-            print(f"  req_id:   {req_id}")
-            print(f"  template: {template_id}")
-            print(f"  req_dir:  {req_dir.relative_to(root)}")
-            print(f"  branch:   feat/req-{_strip_req_prefix(req_id)}")
-            print(f"  下一步: /requirement:continue 或 /workflow:continue {req_id}")
-            return 0
+            except BootstrapError as exc:
+                reason = getattr(exc, "reason", None)
+                if reason == "path_or_branch_exists":
+                    # 路径/分支占用：bump tried_keys 重试（F-003 retry 语义）
+                    logging.warning(
+                        "bootstrap req_id=%s reason=path_or_branch_exists，尝试下一个 key（attempt=%d）",
+                        req_id, attempt,
+                    )
+                    tried_keys.add(req_id)
+                    continue
+                # 其它 reason：先 logging 再 rollback，原异常透传
+                logging.error(
+                    "bootstrap req_id=%s 失败，已触发 rollback：%s",
+                    req_id, exc,
+                )
+                _bootstrap_rollback(
+                    req_id, root, previous_branch,
+                    exc.artifacts_created, exc.branch_created,
+                )
+                print(f"ERROR: bootstrap 失败：{exc}", file=sys.stderr)
+                return 1
+            else:
+                # bootstrap 成功
+                print("workflow run 已启动（requirement）")
+                print(f"  req_id:   {req_id}")
+                print(f"  template: {template_id}")
+                print(f"  req_dir:  {req_dir.relative_to(root)}")
+                print(f"  branch:   feat/req-{_strip_req_prefix(req_id)}")
+                print(f"  下一步: /requirement:continue 或 /workflow:continue {req_id}")
+                return 0
 
-    # 超过 99 次重试上限（与 generate_requirement_key 内部上限对齐）
-    raise SlugError(
-        f"bootstrap retry 超过 99 次上限（slug={slug!r}），无法生成可用 requirement key"
-    )
+        # 超过 99 次重试上限（与 generate_requirement_key 内部上限对齐）
+        raise SlugError(
+            f"bootstrap retry 超过 99 次上限（slug={slug!r}），无法生成可用 requirement key"
+        )
+    except SlugError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
 
 
 def _run_generic(

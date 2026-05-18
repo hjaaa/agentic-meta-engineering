@@ -86,8 +86,8 @@ def test_parse_args_worktree_policy_space_form() -> None:
 
 def test_parse_args_worktree_policy_equal_form() -> None:
     """--worktree-policy=value（等号形式）正确解析到 RunArgs.worktree_policy。"""
-    result = _parse_args(["tmpl", "Title", "--worktree-policy=skip"])
-    assert result.worktree_policy == "skip"
+    result = _parse_args(["tmpl", "Title", "--worktree-policy=current"])
+    assert result.worktree_policy == "current"
     assert result.template_id == "tmpl"
 
 
@@ -325,3 +325,23 @@ def test_run_requirement_bootstrap_other_reason_no_retry(
     assert rollback_called[0], "rollback 应被触发"
     captured = capsys.readouterr()
     assert "bootstrap 失败" in captured.err
+
+
+# ============================================================================
+# TC-F03-13：--worktree-policy=bogus 等号形式应抛 WorkflowError（F-8 修复 + AC5）
+# ============================================================================
+
+def test_parse_args_worktree_policy_invalid_value_equal_form_fail_closed() -> None:
+    """--worktree-policy=bogus 等号形式应抛 WorkflowError（F-8 修复 + AC5）。"""
+    with pytest.raises(WorkflowError, match="worktree-policy 非法值"):
+        _parse_args(["tmpl", "Title", "--worktree-policy=bogus"])
+
+
+# ============================================================================
+# TC-F03-14：--worktree-policy bogus 空格形式应抛 WorkflowError（F-8 修复 + AC5）
+# ============================================================================
+
+def test_parse_args_worktree_policy_invalid_value_space_form_fail_closed() -> None:
+    """--worktree-policy bogus 空格形式应抛 WorkflowError（F-8 修复 + AC5）。"""
+    with pytest.raises(WorkflowError, match="worktree-policy 非法值"):
+        _parse_args(["tmpl", "Title", "--worktree-policy", "bogus"])
