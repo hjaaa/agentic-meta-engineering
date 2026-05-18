@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "feature_id": "F-001",
-  "status": "DONE",
+  "status": "DONE_WITH_CONCERNS",
   "commit_sha": "7e5f1868f6b77aad2dc6359bc675cfb660ba0aca",
   "files_changed": [
     "scripts/lib/requirement_naming.py",
