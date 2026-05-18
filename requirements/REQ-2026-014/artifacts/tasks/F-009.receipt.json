@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "feature_id": "F-009",
   "status": "DONE",
-  "commit_sha": "afa8096",
+  "commit_sha": "bc6f7c4",
   "files_changed": [
     ".claude/commands/requirement/submit.md",
     ".claude/commands/requirement/archive.md",
@@ -14,5 +14,5 @@
   "concerns": [],
   "missing_context": "",
   "block_reason": "",
-  "timestamp": "2026-05-18 22:19:48 CST"
+  "timestamp": "2026-05-18T22:19:48+08:00"
 }

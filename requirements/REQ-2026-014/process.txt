@@ -89,3 +89,4 @@
 2026-05-18 22:12:49 [signoff] REV-REQ-2026-014-code-F-006-002 approved by hj19961223@gmail.com
 2026-05-18 22:13:52 [development] F-006 done：rev-002 looks_clean/94 signed → status=done / review_report 落入 frontmatter / dispatch lock 释放（current_feature=null）；done 8/10；剩 2 feature（F-009 trivial 依赖 F-005 done 可派 / F-010 light 依赖 F-008 done 可派）
 2026-05-18 22:14:55 [save] F-006 全流程闭环（rev1 91 → rev2 94 signed，3 keep minor 全闭环，trend-G-meta 终结 + trend-H 完整闭环）；done 8/10；剩 F-009 trivial + F-010 light；下一步 F-009 甜点
+2026-05-18 22:21:40 [development] F-009 派发完成（model=haiku, complexity=trivial）→ DONE 回执：commit bc6f7c4 / 4 新单测全过 + tests/lifecycle/ 78 回归 / touches=4 文件 / 0 violations / check_sourcing 干净；下一步 post-dev-verify + /code-review scope=F-009
