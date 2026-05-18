@@ -54,5 +54,11 @@
     "valid": true,
     "issues": [],
     "enhancement_suggestions": []
+  },
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-18T23:06:02.018924+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
   }
 }
