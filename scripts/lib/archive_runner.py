@@ -36,6 +36,7 @@ archive 命令始终 exit 0（除非 5 项预检挂）。
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -49,6 +50,7 @@ import yaml
 # 复用 common 提供的仓库根定位（与 check_meta / list_requirements 同模块风格）
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import REPO_ROOT  # noqa: E402
+import worktree_manager  # noqa: E402
 
 REQUIREMENTS_DIR = REPO_ROOT / "requirements"
 
@@ -61,6 +63,8 @@ _SUBPROC_TIMEOUT_SEC = 30
 # 受保护的长寿命分支白名单（本地+远程对称）——任何情况下都不允许 archive 删除
 # 即便 meta.base_branch 为空 / 漂移，命中本集合也直接 fail-closed（codex round-5 P1 F-10）
 _PROTECTED_BRANCHES = frozenset({"main", "master", "develop"})
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -608,6 +612,47 @@ def _render_summary(result: ArchiveResult) -> str:
     return "\n".join(lines)
 
 
+# ---------- worktree cleanup（F-005）----------
+
+
+def _cleanup_worktree_before_archive(meta: dict[str, Any], req_id: str) -> None:
+    """预检全部通过后，atomic_write_meta 之前注入 worktree 清理（F-005 / P1-3 修复）。
+
+    三步顺序硬约束（详见 detailed-design §3.5 / P1-3）：
+      1. resolve_main_repo_root：从当前 cwd（可能是 worktree 内）解出主仓根
+      2. os.chdir(main_repo_root)：保证后续 git 操作（含 archive 自身）在主仓根下
+      3. cleanup_worktree_if_owned：owner=workflow → remove；其他 → skipped/aborted/failed
+
+    OD-3 落点：不读 meta.worktree.cleanup.policy（占位字段，本期不消费）。
+    设计来源：detailed-design.md:792-826（§3.5）。
+    """
+    try:
+        main_repo_root = worktree_manager.resolve_main_repo_root(Path.cwd())
+    except Exception as exc:
+        # resolve 失败：无法确定主仓根，跳过 cleanup 但不阻塞 archive 主流程
+        logger.error(
+            "worktree cleanup skipped: resolve_main_repo_root failed req_id=%s: %s",
+            req_id, exc,
+        )
+        return
+
+    os.chdir(main_repo_root)
+
+    cleanup_result = worktree_manager.cleanup_worktree_if_owned(meta, main_repo_root)
+
+    if cleanup_result.action == "removed":
+        logger.info("worktree removed: %s", cleanup_result.removed_path)
+        # 仅 removed 分支才 mutate meta，避免给 legacy meta 引入空 worktree 段
+        meta.setdefault("worktree", {}).setdefault("cleanup", {})["removed_at"] = _now_cst_str()
+    elif cleanup_result.action == "skipped":
+        logger.info("worktree cleanup skipped: %s", cleanup_result.reason)
+    else:
+        # aborted / failed：记 error 但不阻塞 archive 主流程（D-009）
+        logger.error(
+            "worktree cleanup %s: %s", cleanup_result.action, cleanup_result.reason
+        )
+
+
 # ---------- 主入口 ----------
 
 
@@ -646,6 +691,11 @@ def archive_requirement(
     pr_number = _precheck_pr_number(meta, req_id)
     _precheck_pr_merged(pr_number, req_id, force=force)
     _precheck_lessons_extracted(meta, req_id)
+
+    # —— worktree cleanup（P1-3 修复：不用 REPO_ROOT，archive 可能从 worktree 内运行）——
+    # REPO_ROOT 在 import 时以 cwd 为基准定位，从 worktree 内调时 REPO_ROOT = worktree 根，
+    # 直接用会触发 self-remove；必须先 resolve_main_repo_root 再 chdir。
+    _cleanup_worktree_before_archive(meta, req_id)
 
     # —— 5 步执行 ——
     result = ArchiveResult(req_id=req_id)
