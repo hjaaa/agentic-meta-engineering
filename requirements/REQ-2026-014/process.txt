@@ -28,3 +28,5 @@
 2026-05-18 11:23:46 [phase-transition] task-planning → development（rev-005 signed 后重做）：11 gate 全过；7 commit 上链（30497c1 rev-003~005 闭环 + c3bc086 phase-transition detail-design→task-planning + 本条收尾）；下一步：F-001/F-002/F-007 三叶可并行起点，建议从 F-001 起开发
 2026-05-18 11:28:03 [save] rev-005 signed approved + 3 commit 闭环（rev-003~005 + 双 phase-transition）；phase=development；F-001 起点
 2026-05-18 11:35:51 [development] F-001 派发完成（model=sonnet）→ DONE 回执：24 用例全过 / commit 87985c3 / receipt status=DONE / 仅 stdlib 无 IO 验证通过
+2026-05-18 11:52:18 [review:looks_clean] REV-REQ-2026-014-code-F-001-001 code-quality-reviewer score=87；21 候选 → 6 reject / 2 not_proven / 13 not_rebutted → 9 keep + 2 follow-up + 10 drop（0 critical / 0 major）
+2026-05-18 12:00:10 [development] F-001 rev2 修复完成（model=sonnet, DONE_WITH_CONCERNS）：9 minor 闭环 / commit 7e5f186 / 24 用例全过；concerns 1 条 = F-010 设计文档 follow-up（不在 touches）
