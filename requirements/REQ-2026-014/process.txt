@@ -30,3 +30,4 @@
 2026-05-18 11:35:51 [development] F-001 派发完成（model=sonnet）→ DONE 回执：24 用例全过 / commit 87985c3 / receipt status=DONE / 仅 stdlib 无 IO 验证通过
 2026-05-18 11:52:18 [review:looks_clean] REV-REQ-2026-014-code-F-001-001 code-quality-reviewer score=87；21 候选 → 6 reject / 2 not_proven / 13 not_rebutted → 9 keep + 2 follow-up + 10 drop（0 critical / 0 major）
 2026-05-18 12:00:10 [development] F-001 rev2 修复完成（model=sonnet, DONE_WITH_CONCERNS）：9 minor 闭环 / commit 7e5f186 / 24 用例全过；concerns 1 条 = F-010 设计文档 follow-up（不在 touches）
+2026-05-18 12:12:31 [review:looks_clean] REV-REQ-2026-014-code-F-001-002 supersedes -001 score 87→93；rev1 9 minor 中 7 closed + 2 carry-over defer（F-002 call-site / F-010 detail-design）；trend-G-meta 3 候选全 rejected（0 新引入）
