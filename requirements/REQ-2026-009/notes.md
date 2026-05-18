@@ -43,3 +43,9 @@ fallback 到 /requirement:* 命令视为自举失败 → 阻塞 Plan 7 删 PHASE
 ### F-011 rev2 R005 boundary 文案修订（D-014 候选）
 
 review F-8（rev1 design-consistency major）：R005 boundary fixture 实测 hash drift 语义，与原 §8.3 文案"黑名单兜底"语义不符。决策：改 design §8.3 文案对齐 fixture（hash drift），不补真黑名单测试——黑名单兜底已由 save_review.py:_check_artifact_blacklist 写入侧 + tests/lib/ 中专项测试覆盖。
+
+## run-state.jsonl 异常说明（2026-05-18 考古）
+
+本需求 `run-state.jsonl` 仅含 1 行 `run_resumed` 事件（无前置 `workflow_started`），系早期 workflow 引擎冒烟测试残留。需求 phase 已 `completed` 并归档，jsonl 异常无业务影响，不做修复。
+
+类似 case 全量扫描结果（2026-05-18，13 个需求）：仅 REQ-2026-009 / REQ-2026-014 两条 jsonl 与 meta.yaml.phase 脱钩，前者已归档无影响，后者旁路标记已记入对应 notes.md。

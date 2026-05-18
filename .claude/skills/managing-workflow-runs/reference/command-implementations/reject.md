@@ -23,7 +23,7 @@
 6. **状态矩阵校验**：state ≠ approval_pending → exit 1
 7. 获取 `pending_approval` 节点 id
 8. 调 `append_event(jsonl_path, {"type": "approval_rejected", "node_id": node_id, "run_id": run_id, "data": {"reason": reason}})`
-9. 状态机：approval_pending → on_reject 节点路径（yaml 声明；F-005 只写事件，路径跳转由 F-006 main loop 处理）
+9. 状态机：approval_pending → on_reject 节点路径（yaml 声明；本命令只写 `approval_rejected` 事件，attempt<max 同步写 `approval_repair_started`，路径跳转由 `workflow_outcome_router._route_outcome` 在下次 `/workflow:continue` 时处理；F-006 approval 闭环已落地，含 attempts 计数 + yaml override + manifest 外置）
 10. 输出：`Rejected <node_id> at <ts>: <reason>` + on_reject 节点信息
 
 ## 失败模式
