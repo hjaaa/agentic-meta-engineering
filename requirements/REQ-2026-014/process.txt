@@ -34,3 +34,5 @@
 2026-05-18 12:47:00 [signoff] REV-REQ-2026-014-code-F-001-002 approved by hj19961223@gmail.com
 2026-05-18 12:48:02 [development] F-001 done：rev-002 approved signed → status=done / review_report 落入 frontmatter / dispatch lock 释放（current_feature=null）；下一步 F-002 或 F-007 三叶可选
 2026-05-18 12:48:57 [save] F-001 全流程闭环（rev1+rev2 looks_clean / 9 修复 7 in-place + 2 carry-over defer F-002+F-010 / signoff approved / dispatch lock 释放）；下一步 F-002（heavy / 主线）或 F-007（trivial / 甜点）
+2026-05-18 13:52:32 [development] F-002 派发完成（model=opus）→ DONE 回执：be155f8 / 26 unit + 573 lib + 2 ok bats / receipt.touches_violations[1]=bats EDIT_PAYLOAD 模拟载荷 scripts/lib/foo.py（hook 跨临时仓命中真仓 dispatch-state；待 /code-review 处置）
+2026-05-18 14:15:59 [review:needs_attention] REV-REQ-2026-014-code-F-002-001 score=77；27 候选 → drop 5 / follow-up 8 / keep 11（4 major + 7 minor）；required_fixes F-1~F-4（exists 兜底/契约偏离/路径白名单/common-dir 静默 fallback）；suggestions 7 minor 注释清理批

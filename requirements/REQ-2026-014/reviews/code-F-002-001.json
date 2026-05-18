@@ -1,0 +1,134 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-014-code-F-002-001",
+  "requirement_id": "REQ-2026-014",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-18 14:05:00",
+  "reviewed_commit": "daf500c",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "2045647fa0bde954c8ee5665ecc95ace2a768c9191de6d59e3880cf4f92d4b74"
+    },
+    {
+      "path": "artifacts/tasks/F-002.md",
+      "sha256": "373a65cc12c9b4bd8398ee8f9adab6ff3b2a58dc3f4fd481ae1ca392adf3850b"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 77,
+  "dimensions": {
+    "design_consistency": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/worktree_manager.py:189/263/285/355/419/515 section 标题用英文函数名作 anchor，与项目中文风格偏离（参 workflow_bootstrap.py）；建议补中文副标题"
+        },
+        {
+          "severity": "minor",
+          "description": "tests/lib/test_worktree_manager.py:267/287/427 测试函数名（test_run_worktree_setup_owner_workflow_*/test_cleanup_worktree_if_owned_legacy_no_worktree_field）偏离设计骨架（baseline_*/legacy_meta_skips）；语义等价，建议命名靠近骨架以利溯源（follow-up）"
+        }
+      ]
+    },
+    "security": {
+      "score": 72,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/worktree_manager.py:631 cleanup 保护2 用 str.startswith 做白名单，对反向路径遍历 '.worktrees/../etc/passwd' 无防护；建议改 Path.resolve() + is_relative_to"
+        }
+      ]
+    },
+    "concurrency": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/worktree_manager.py:399-404 create_worktree exists 兜底匹配第三条 'already exists' in stderr 过宽，可命中无关 git hook / 子命令输出，把 reason='other' 错升为 'path_or_branch_exists' 导致上层 retry 死循环；同时缺设计要求的 'fatal:' 前缀"
+        }
+      ]
+    },
+    "complexity": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "tests/lib/test_worktree_manager.py:18 import json 全文未使用，dead import"
+        },
+        {
+          "severity": "minor",
+          "description": "tests/lib/test_worktree_manager.py:33-37 CleanupResult/SetupResult/WorktreeInfo/WorktreeState 4 个 dataclass 类导入但测试体内未作类型注解/isinstance；需逐项核对清理"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 70,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/worktree_manager.py:659/674 cleanup_worktree_if_owned docstring 承诺'不抛异常，archive 主流程不受影响'，但两处 _run_git 未包 try/except，在 FileNotFoundError/OSError/SubprocessError 路径仍可抛 WorktreeBootstrapError；契约偏离需修文档或加 try/except"
+        },
+        {
+          "severity": "major",
+          "description": "scripts/lib/worktree_manager.py:228-233 detect_worktree_state 中 git rev-parse --git-common-dir rc!=0 静默 fallback 到 git_dir_raw，导致 git_dir==git_common_dir 恒成立 is_linked_worktree 误判 worktree 拓扑；应抛 WorktreeBootstrapError(reason='other') 或至少 logging.debug 记录"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 78,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/worktree_manager.py:76 WorktreeBootstrapError.__init__ 缺 docstring 说明扩展字段 reason/retain_worktree 语义及常用取值清单"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/worktree_manager.py:422 run_worktree_setup docstring 缺独立异常段（应声明'本函数不向外抛；所有 subprocess/超时错误转 SetupResult(status=failed)'），对齐其他公开函数风格"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/worktree_manager.py:107-108 WorktreeState git_dir/git_common_dir 字段 inline 注释纯英文，与 CLAUDE.md 第 0 节'代码注释中文'偏离"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/worktree_manager.py:134-135 CleanupResult.reason 注释仅列英文枚举值，缺中文前缀"
+        }
+      ]
+    },
+    "performance": {
+      "score": 85,
+      "issues": []
+    },
+    "history_context": {
+      "score": 88,
+      "issues": []
+    }
+  },
+  "required_fixes": [
+    "F-1 收紧 create_worktree exists 兜底（worktree_manager.py:399-404）：删去第三条 '\"already exists\" in stderr_trim' 泛化兜底；两条精确匹配补 'fatal:' 前缀（features.json AC[3]/spec L425 要求）；只匹配 \"fatal: '<path>' already exists\" 与 \"fatal: a branch named '<branch>' already exists\" 两个明确字符串；不同 git 版本若措辞变化由单测捕获",
+    "F-2 修复 cleanup_worktree_if_owned 异常承诺契约（worktree_manager.py:659/674）：在两次 _run_git 外包 try/except WorktreeBootstrapError → 捕获即 return CleanupResult(action='failed', reason='git_failure', removed_path=None) + log ERROR；或退而修改 docstring 改为'仅 git rc!=0 路径不抛，二进制丢失/OS 错误仍抛'。推荐前者，与设计意图'archive 主流程不受影响'对齐",
+    "F-3 升级 cleanup 路径白名单校验（worktree_manager.py:631）：将 str(raw_path).startswith(str(raw_location)) 改为 (main_repo_root/raw_path).resolve().is_relative_to((main_repo_root/raw_location).resolve())；同时考虑把 location 硬编码为 _DEFAULT_WORKTREE_DIR 常量，不从 meta.yaml 信任读取，防止 meta 注入双字段绕过",
+    "F-4 detect_worktree_state --git-common-dir 失败不能静默吞（worktree_manager.py:228-233）：rc!=0 时抛 WorktreeBootstrapError(reason='other') 或至少 logging.debug 记录 fallback + 把 is_linked_worktree 强制返回 False 同时标记 detection_partial，避免 worktree 拓扑误判"
+  ],
+  "suggestions": [
+    "F-5 create_worktree 失败日志分级（worktree_manager.py:406-409）：reason='path_or_branch_exists' 用 logging.warning（业务预期可重试），reason='other' 用 logging.error（未预期）",
+    "F-7 detect_worktree_state 4 次 subprocess 合并（worktree_manager.py:207-248）：用 `git rev-parse --git-dir --git-common-dir --show-toplevel` 一次取 3 字段，symbolic-ref 单独保留",
+    "F-9 cleanup remove+prune 边界（worktree_manager.py:659-685）：在 prune 前加注释明确语义边界'非原子操作，并发重建场景由调用方协调'",
+    "F-10 删 tests/lib/test_worktree_manager.py:18 `import json` 死 import",
+    "F-11 cleanup_worktree_if_owned 圈复杂度优化（worktree_manager.py:575）：拆出 _check_owner_guard + _check_path_and_self_guard 私有函数，主函数降为顺序串联",
+    "F-13 bats shell 引号 future-proof（test_worktree_protect_branch.bats:66）：改 `run bash -c 'printf \"%s\" \"$1\" | \"$2\"' -- \"$EDIT_PAYLOAD\" \"$HOOK\"` 防 JSON 含撇号导致注入",
+    "F-15/F-16 测试 parametrize 优化（test_worktree_manager.py:189/199 + :267/287）：可选合并 missing 用例 + setup workflow required 用例",
+    "F-17 删 tests/lib/test_worktree_manager.py:33-37 未使用的 CleanupResult/SetupResult/WorktreeInfo/WorktreeState dataclass import",
+    "F-19/F-20 字段 inline 注释中文化（worktree_manager.py:107-108/134-135）",
+    "F-21 section 分割条标题中文化（worktree_manager.py:189/263/285/355/419/515），保留英文函数名作 anchor 同时补中文功能描述",
+    "F-22 run_worktree_setup docstring 补独立异常段（worktree_manager.py:422）",
+    "F-25 WorktreeBootstrapError.__init__ 补 docstring（worktree_manager.py:76）说明 reason/retain_worktree 字段 + 常用 reason 取值（path_or_branch_exists/other/gitignore_missing/porcelain_malformed/main_root_missing/git_failure）",
+    "F-27 测试函数命名靠近设计骨架（test_worktree_manager.py:267/287/427）：可选 future rename 以利溯源；语义等价不强求"
+  ],
+  "scope": {
+    "feature_id": "F-002"
+  },
+  "supersedes": null
+}
