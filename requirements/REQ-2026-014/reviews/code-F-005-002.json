@@ -1,0 +1,97 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-014-code-F-005-002",
+  "requirement_id": "REQ-2026-014",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-18 21:26:03",
+  "reviewed_commit": "a47a482",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "773915ee297b01a02882449cf892a40fa8faf7d8300abcb0ce5a8d227cdc11a5"
+    },
+    {
+      "path": "artifacts/tasks/F-005.md",
+      "sha256": "c5524c43aa31cfbe41e4c591c62d263d0793faacc4a9aadd4816fd4e879400cd"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 92,
+  "dimensions": {
+    "design_consistency": {
+      "score": 94,
+      "issues": []
+    },
+    "security": {
+      "score": 92,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 92,
+      "issues": []
+    },
+    "complexity": {
+      "score": 90,
+      "issues": []
+    },
+    "error_handling": {
+      "score": 94,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/archive_runner.py:635 getattr(exc, 'reason', str(exc)) 中 str(exc) fallback 为死代码——WorktreeBootstrapError 构造器（来源：scripts/lib/worktree_manager.py:81）reason 字段有默认值 'other'，必然存在；建议改为直接访问 exc.reason 消除歧义"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/archive_runner.py:644-646 chdir 失败 log 模板用冒号分隔 exc，与 line 633-636 resolve 失败的 key=value 全字段对齐风格不一致；建议改为 'chdir to %s failed req_id=%s reason=%s' 提升日志聚合可解析性"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 92,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "requirements/REQ-2026-014/artifacts/detailed-design.md:792 §3.5 伪代码段未同步 rev2 代码加固——文档仍展示裸 chdir + 裸 cleanup 调用，缺 WorktreeBootstrapError try/except + OSError try/except；不阻塞 sign-off 但建议下一轮文档修订追平实现"
+        }
+      ]
+    },
+    "performance": {
+      "score": 92,
+      "issues": []
+    },
+    "history_context": {
+      "score": 92,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "tests/lib/test_archive_runner_worktree_cleanup.py:18-25 import 分组 stdlib (logging/sys/types/pathlib) 与 3rd-party (pytest/yaml) 间缺空行（PEP 8 / isort 风格）；本仓库 pyproject.toml ruff select=['F'] 不启 I001 故不拦 CI，但风格漂移建议补一行空行（trend-G-meta：rev1 删 unused patch 时连带删空行）"
+        },
+        {
+          "severity": "minor",
+          "description": "tests/lib/test_archive_runner_worktree_cleanup.py:606-607 TC-9 两条 assert 消息用中文（'_precheck_dirty 应导致 exit 1' / 'cleanup_worktree_if_owned 不应被调用'），既有 TC-1..TC-8 共 13 条 assert 全英文（line 283 / 328 / 387 / 419 等），风格漂移；建议改英文统一（trend-G-meta：新加 TC 风格未对齐既有 TC）"
+        }
+      ]
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "rev1 5 keep 全闭环 PASS：unused patch 删（line 21 无残留）+ except 改窄为 WorktreeBootstrapError（line 631）+ chdir 包 try/except OSError（line 641-648）+ TC-9 dirty+external fail-closed 新增（line 558）+ docstring 升级 9 用例并列 TC-1..TC-9（line 3-13）；9 个 TC pytest 实跑 PASS / ruff 实跑 PASS",
+    "trend-G-meta 终结判定：rev1 5 keep 全闭环 + critic 收敛 15 候选→7 rejected/3 not_proven/5 not_rebutted (全 minor) + rev2 新引入仅 nit 级（import 空行 + assert 中文 + 文档伪代码滞后）→ 良性收敛信号；建议 F-005 trend-G-meta 监控终结",
+    "F-103/F-201 合并：archive_runner.py:635 getattr fallback str(exc) 死代码——WorktreeBootstrapError.reason 有默认值 'other'（worktree_manager.py:81），直接 exc.reason 消除歧义",
+    "F-202：archive_runner.py:644-646 chdir log 模板对齐 resolve log 的 key=value 风格 'reason=%s'，便于日志聚合",
+    "F-401：tests/...:18-25 import stdlib 与 3rd-party 间补一行空行（PEP 8）——非 CI 拦截但风格漂移",
+    "F-403：tests/...:606-607 TC-9 两条 assert 消息改英文，与既有 13 条英文 assert 对齐"
+  ],
+  "scope": {
+    "feature_id": "F-005"
+  },
+  "supersedes": "REV-REQ-2026-014-code-F-005-001",
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-18T21:30:03.260759+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
+  }
+}
