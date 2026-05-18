@@ -24,3 +24,4 @@
 2026-05-18 10:22:00 [phase-transition] task-planning → development：11 gate 全过（META-SCHEMA / INDEX-INTEGRITY / SOURCING / PLAN-FRESHNESS / WORKSPACE-CLEAN / REVIEW-VERDICT 6 过 + FEATURES-SCHEMA / TASK-FRONTMATTER / POST-DEV-RECEIPT / TRACEABILITY / TOUCHES-VIOLATION 5 自然 skip）；10 task md F-001~F-010 全 pending；DAG 三叶 F-001/F-002/F-007 可并行起点
 2026-05-18 10:26:50 [phase-transition] rollback development → detail-design：spec ↔ detailed-design 5 处冲突 verified（P1×4 baseline 失败保留 / 主仓 mkdir 污染 / archive cwd self-remove / schema 12 字段漂移 + P2×1 CLI --slug 双格式）；gates_passed task-planning/development 历史条目保留（audit trail）；10 task md 暂留待 detail-design rev-003 后再判去留
 2026-05-18 11:16:18 [signoff] REV-REQ-2026-014-detail-design-005 approved by hj19961223@gmail.com
+2026-05-18 11:22:10 [phase-transition] detail-design → task-planning（rev-005 signed 后重做）：11 gate 全过；顺手修 F-001.md L26 sourcing 短形式；rev-002 → rev-005 5 patch + 5 minor/required 闭环
