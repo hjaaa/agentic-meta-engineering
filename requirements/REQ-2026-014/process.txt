@@ -44,3 +44,6 @@
 2026-05-18 15:23:00 [signoff] REV-REQ-2026-014-code-F-002-003 approved by hj19961223@gmail.com
 2026-05-18 15:23:00 [development] F-002 done：rev-003 looks_clean/90 signed → status=done / review_report 落入 frontmatter / dispatch lock 释放（current_feature=null）；下一步 DAG 剩两叶 F-007（trivial 甜点）或 F-003（light 接入）
 2026-05-18 15:28:01 [save] hotfix features.json + tasks/F-008.md depends_on_features 删 F-004（与 detail-design DAG 矛盾的循环依赖 F-004↔F-008）；F-008 现仅依赖 F-002（done）即可派；check_features/check_task_frontmatter 全过
+2026-05-18 15:30:12 [development] F-007 派发完成（model=haiku）→ DONE 回执：62d13be / 1 用例回归 / .gitignore +.worktrees/ 行；下一步 /code-review trivial 路由
+2026-05-18T15:30:12+08:00 [code-review-skipped] 1 文件全在 trivial 白名单内（routing-auto）
+2026-05-18 15:31:43 [review:looks_clean] REV-REQ-2026-014-code-F-007-001 trivial-skipped/100；routing.py 判定 .gitignore + receipt + task.md 100% trivial 白名单 → 跳 8 checker；可走 --trivial 快速通道 sign-off
