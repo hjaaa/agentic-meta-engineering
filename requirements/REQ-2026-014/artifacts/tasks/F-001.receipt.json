@@ -2,15 +2,17 @@
   "schema_version": "1.0",
   "feature_id": "F-001",
   "status": "DONE",
-  "commit_sha": "87985c38cce7b42048a332d6da1f7c8f0871bf84",
+  "commit_sha": "7e5f1868f6b77aad2dc6359bc675cfb660ba0aca",
   "files_changed": [
     "scripts/lib/requirement_naming.py",
     "tests/lib/test_requirement_naming.py"
   ],
   "test_summary": "24 passed in 0.04s (pytest tests/lib/test_requirement_naming.py -v)",
   "touches_violations": [],
-  "concerns": [],
+  "concerns": [
+    "F-010 [design-doc follow-up]: detailed-design.md:245 §3.1 有多余 `from dataclasses import dataclass`，不在 F-001 touches 范围内（touches 仅含 scripts/lib/requirement_naming.py 与 tests/lib/test_requirement_naming.py）。建议下次 detailed-design rev-006 清理。"
+  ],
   "missing_context": "",
   "block_reason": "",
-  "timestamp": "2026-05-18T11:45:00+08:00"
+  "timestamp": "2026-05-18T14:30:00+08:00"
 }
