@@ -1,3 +1,6 @@
 2026-05-19 11:26:35 [definition] 起草 artifacts/requirement.md：4 场景 + 9 验收 + 4 待澄清 + spec 单源压缩 D-000；check_sourcing --strict 0 issue
 2026-05-19 11:27:45 [blocker] scripts/gates/run.py:127 _REQ_ID_PATTERN 硬编码 ^REQ-\d{4}-\d{3}$，REQ-2026-014 命名迁移漏改；当前 phase-transition gate 对新 key 20260519-remove-human-signoff 直接 reject。本期 development 阶段需修：扩 _REQ_ID_PATTERN 同时接受新格式（复用 requirement_naming 正则）；本次 definition→tech-research 切换走 process.txt [phase-transition] 兜底，不在 definition 提前 patch（同 REQ-2026-014 infer_run_id_from_branch 兜底先例）
 2026-05-19 11:29:06 [phase-transition] bootstrap → definition：gate runner 漏改新格式兜底走 process.txt（详 D-001）；requirement.md 已起草且 check_sourcing 0 issue；scope 扩到 ID 校验回归点
+2026-05-19 11:31:50 [phase-transition] definition → tech-research：tech-feasibility GO/high 36h；6 风险全有缓解；4 待澄清不阻塞；gate runner 兜底（D-001）
+2026-05-19 11:33:39 [phase-transition] tech-research → outline-design：outline-design.md 完成（4 类制品退化拓扑 + 10 features + 4 选型 + 3 流程 + 2 AC）；check_sourcing 0 issue
+2026-05-19 11:38:26 [phase-transition] outline-design → detail-design：detailed-design.md + features.json (10 features) 完成；features-schema.yaml requirement_id regex 扩接受新旧两种格式（D-001 数据结构变更部分）；check_features 通过

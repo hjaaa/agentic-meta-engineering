@@ -38,7 +38,10 @@ format:
   # major.minor 形式；不接受 '1' / '1.0.0' / '1.0-beta'
   # 禁止用 enum 锁定具体值——靠 format regex + check_features.py SUPPORTED_VERSIONS 双层校验
   schema_version: '^\d+\.\d+$'
-  requirement_id: '^REQ-\d{4}-\d{3}$'
+  # requirement_id 同时接受两种格式（D-001 / 20260519-remove-human-signoff）：
+  #   - legacy REQ-YYYY-NNN（REQ-2026-014 D-014 历史兼容）
+  #   - 新格式 YYYYMMDD-<slug>[-NN]（REQ-2026-014 D-013 起的默认）
+  requirement_id: '^(REQ-\d{4}-\d{3}|\d{8}-[a-z0-9]+(?:-[a-z0-9]+)*(?:-\d{2})?)$'
 
 # ---------- features[] 每条 feature 必填字段 ----------
 feature_required_fields:
