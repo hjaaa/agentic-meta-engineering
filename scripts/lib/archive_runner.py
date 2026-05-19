@@ -615,6 +615,39 @@ def _render_summary(result: ArchiveResult) -> str:
 # ---------- worktree cleanup（F-005）----------
 
 
+def _rebind_to_main_repo(req_id: str) -> None:
+    """archive 入口最早调用：把 module-level REPO_ROOT / REQUIREMENTS_DIR 锁定到主仓。
+
+    问题（codex P1 F-1 / F-3）：archive 可能从 linked worktree 内被 invoke，此时
+    Python 通过 cwd-relative sys.path 找到 worktree 副本里的 scripts/lib/，
+    `__file__` → REPO_ROOT 都指向 worktree。后续 `_cleanup_worktree_before_archive`
+    虽然 os.chdir 到主仓并删 worktree，但 module-level REPO_ROOT 不变 →
+    `_meta_path` / `_process_path` 仍解析到已删的 worktree 副本 → 写盘失败 / 写入
+    无人能读到的孤儿路径。
+
+    本函数在所有 path-dependent 操作之前调用，把全局常量重绑到主仓。失败时不抛
+    异常（caller 已显式 chdir cleanup 兜底），但保留 stderr warning 让问题可观察。
+    """
+    global REPO_ROOT, REQUIREMENTS_DIR
+    try:
+        main = worktree_manager.resolve_main_repo_root(Path.cwd())
+    except worktree_manager.WorktreeBootstrapError as exc:
+        logger.info(
+            "rebind_to_main_repo: skipped req_id=%s reason=%s "
+            "(可能 cwd 已在主仓或非 git 上下文)",
+            req_id, getattr(exc, "reason", str(exc)),
+        )
+        return
+    if main == REPO_ROOT:
+        return
+    REPO_ROOT = main
+    REQUIREMENTS_DIR = main / "requirements"
+    logger.info(
+        "rebind_to_main_repo: REPO_ROOT %s → %s req_id=%s",
+        REPO_ROOT, main, req_id,
+    )
+
+
 def _cleanup_worktree_before_archive(meta: dict[str, Any], req_id: str) -> None:
     """预检全部通过后，atomic_write_meta 之前注入 worktree 清理（F-005 / P1-3 修复）。
 
@@ -692,6 +725,11 @@ def archive_requirement(
             req_id,
         )
 
+    # —— codex P1 F-1 / F-3 修复：rebind module-level REPO_ROOT / REQUIREMENTS_DIR
+    # 到主仓后再读 meta；否则从 linked worktree 内调 archive 时 path helper 会指向
+    # 即将被 cleanup 删除的 worktree 副本，导致 bookkeeping 写入失败 ——
+    _rebind_to_main_repo(req_id)
+
     meta = _load_meta(req_id)
 
     # —— 1 ~ 5 项预检（任一失败 → SystemExit(1)） ——
@@ -701,9 +739,8 @@ def archive_requirement(
     _precheck_pr_merged(pr_number, req_id, force=force)
     _precheck_lessons_extracted(meta, req_id)
 
-    # —— worktree cleanup（P1-3 修复：不用 REPO_ROOT，archive 可能从 worktree 内运行）——
-    # REPO_ROOT 在 import 时以 cwd 为基准定位，从 worktree 内调时 REPO_ROOT = worktree 根，
-    # 直接用会触发 self-remove；必须先 resolve_main_repo_root 再 chdir。
+    # —— worktree cleanup（rebind 后 REPO_ROOT 已锁到主仓；cleanup 删 worktree 不影响
+    # 后续 _atomic_write_meta / _append_process_event 对主仓的写入）——
     _cleanup_worktree_before_archive(meta, req_id)
 
     # —— 5 步执行 ——
