@@ -276,29 +276,43 @@ def _current_head_sha() -> Optional[str]:
     return sha or None
 
 
-def _read_round_triggered_commit(req_id: str, round_n: int) -> Optional[str]:
-    """从 round-N.md frontmatter 读 triggered_commit；缺失/格式错误时返 None。"""
-    path = _codex_reviews_dir(req_id) / f"round-{round_n}.md"
-    if not path.exists():
-        return None
+def _latest_codex_reviewed_commit(pr_number: int) -> Optional[str]:
+    """从 PR reviews 拉 codex bot 最近一次 review 的 commit_id 短 sha。
+
+    2026-05 改造背景：round-N.md 不再本地落盘后，「上轮 review 触发时的 HEAD sha」
+    没有本地锚点；改从 GitHub PR reviews API 的 `commit_id` 字段反查。优势：
+      - 单一事实源（codex review 留痕本来就在 PR 上）
+      - 多设备 / 多用户协作时 review 历史一致
+      - 无需在本地维护任何状态
+
+    过滤规则与 _poll_codex 一致：`user.type == 'Bot'` 且 login 匹配 /codex/i。
+    取 submitted_at 最大者；没命中或 API 失败时返 None（caller 兜底 plain 评论）。
+    """
     try:
-        text = path.read_text(encoding="utf-8")
-    except OSError:
+        reviews = _gh_pr_reviews(pr_number)
+    except (GhApi5xx, GhApi429):
         return None
-    if not text.startswith("---"):
+    # 过滤 codex bot reviews
+    codex_reviews: list[tuple[str, str]] = []  # (submitted_at, commit_id)
+    for r in reviews:
+        user = r.get("user") or {}
+        if user.get("type") != "Bot":
+            continue
+        login = (user.get("login") or "").lower()
+        if "codex" not in login:
+            continue
+        commit_id = r.get("commit_id")
+        submitted_at = r.get("submitted_at")
+        if not commit_id or not submitted_at:
+            continue
+        codex_reviews.append((submitted_at, str(commit_id)))
+    if not codex_reviews:
         return None
-    # 拆 frontmatter（首段 --- 之间）
-    parts = text.split("---", 2)
-    if len(parts) < 3:
-        return None
-    try:
-        meta = yaml.safe_load(parts[1]) or {}
-    except yaml.YAMLError:
-        return None
-    if not isinstance(meta, dict):
-        return None
-    val = meta.get("triggered_commit")
-    return str(val).strip() if val else None
+    # ISO8601 wall clock 时间戳字典序 = 时序，取最大者
+    codex_reviews.sort(key=lambda x: x[0])
+    full_sha = codex_reviews[-1][1]
+    # 截短 sha 与本地 _current_head_sha 输出对齐（git diff --short 默认 7 字符够）
+    return full_sha[:10] if full_sha else None
 
 
 def _git_log_diff_since(prev_sha: str) -> Optional[tuple[str, str]]:
@@ -332,20 +346,20 @@ def _git_log_diff_since(prev_sha: str) -> Optional[tuple[str, str]]:
     return log_out, diff_out
 
 
-def _build_codex_comment_body(req_id: str, round_n: int) -> str:
+def _build_codex_comment_body(pr_number: int) -> str:
     """组装 @codex review 评论正文。
 
-    - round 1：plain `@codex review`
-    - round N≥2：尝试读 round-(N-1).md.frontmatter.triggered_commit，
-      命中则附「Changes since round N-1（log + diff stat）」段；
-      上轮文件缺失 / 解析失败 / git 命令失败 → 静默退化为 plain（不阻断流程）。
+    策略（2026-05 改造）：
+    - 上轮锚点不再读本地 round-N.md（已废）；改通过 `_latest_codex_reviewed_commit`
+      拉 PR 上 codex bot 最近一次 review 的 commit_id 作为 diff 起点
+    - 命中起点 → 附「Changes since last codex review（log + diff stat）」段
+      用户能看到「本次 push 改了哪些文件 + 提交说明了什么」，codex 能针对性复评
+    - 未命中（首次 review / 拉 API 失败）→ plain `@codex review` 兜底
 
     评论体超过 _COMMENT_BODY_BUDGET 时截断 diff stat，保留 log 完整。
     """
     plain = "@codex review"
-    if round_n <= 1:
-        return plain
-    prev_sha = _read_round_triggered_commit(req_id, round_n - 1)
+    prev_sha = _latest_codex_reviewed_commit(pr_number)
     if not prev_sha:
         return plain
     pair = _git_log_diff_since(prev_sha)
@@ -354,21 +368,33 @@ def _build_codex_comment_body(req_id: str, round_n: int) -> str:
     log_out, diff_out = pair
 
     head_short = _current_head_sha() or "HEAD"
-    header = f"## Changes since round {round_n - 1} (`{prev_sha}` → `{head_short}`)"
+    header = (
+        f"## Changes since last codex review (`{prev_sha}` → `{head_short}`)"
+    )
+    intro = (
+        "_本次 push 自上轮 codex review 以来的改动摘要——请重点核对：(1) 上轮 finding "
+        "是否已修复且无回归；(2) 新增 / 改动的代码是否引入新问题。_"
+    )
     log_section = f"### Commits\n```\n{log_out or '(no new commits)'}\n```"
-    diff_section = f"### Diff stat\n```\n{diff_out or '(no diff)'}\n```"
+    diff_section = f"### Files changed (diff stat)\n```\n{diff_out or '(no diff)'}\n```"
 
-    body = f"{plain}\n\n{header}\n\n{log_section}\n\n{diff_section}"
+    body = f"{plain}\n\n{header}\n\n{intro}\n\n{log_section}\n\n{diff_section}"
     if len(body) <= _COMMENT_BODY_BUDGET:
         return body
-    # 超额：截 diff stat，给 log 让位（commits 一行能读出意图，diff stat 可以短）
-    available = _COMMENT_BODY_BUDGET - len(plain) - len(header) - len(log_section) - 80
+    # 超额：截 diff stat，给 log 让位（commits 一行能读出意图）
+    available = (
+        _COMMENT_BODY_BUDGET
+        - len(plain) - len(header) - len(intro) - len(log_section) - 100
+    )
     if available > 200:
         truncated = diff_out[:available] + "\n... (truncated, see PR Files Changed tab)"
-        diff_section = f"### Diff stat\n```\n{truncated}\n```"
-        return f"{plain}\n\n{header}\n\n{log_section}\n\n{diff_section}"
-    # 极端情况（log 也很大）：只发 plain + header，给 codex 一个起点
-    return f"{plain}\n\n{header}\n\n_(变更过大无法内嵌 stat，请直接看 PR Files Changed)_"
+        diff_section = f"### Files changed (diff stat)\n```\n{truncated}\n```"
+        return f"{plain}\n\n{header}\n\n{intro}\n\n{log_section}\n\n{diff_section}"
+    # 极端情况（log 也很大）：只发 plain + header + intro，给 codex 一个起点
+    return (
+        f"{plain}\n\n{header}\n\n{intro}\n\n"
+        "_(变更过大无法内嵌 stat，请直接看 PR Files Changed)_"
+    )
 
 
 def _gh_pr_reviews(pr_number: int) -> list[dict[str, Any]]:
@@ -759,8 +785,9 @@ def submit_with_codex(
         file=sys.stderr,
     )
 
-    # round_num≥2 时为 codex 拼增量摘要：log + diff stat since round-(N-1).triggered_commit
-    comment_body = _build_codex_comment_body(req_id, round_num)
+    # 若 PR 上已有 codex 历史 review，则为 codex 拼增量摘要：log + diff stat since
+    # 上轮 review 的 commit_id（_latest_codex_reviewed_commit 反查）
+    comment_body = _build_codex_comment_body(pr_number)
     head_sha = _current_head_sha()
 
     # 发 @codex review 评论并记录触发时刻（wall clock）
