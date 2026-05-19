@@ -223,12 +223,18 @@ def _validate_requirement_id(req_id: str) -> bool:
       - legacy REQ-YYYY-NNN（4 位年份 + 3 位序号）
       - 新格式 YYYYMMDD-<slug>[-NN]（D-013 起的默认）
     任一匹配即合法；拒绝含 .. / / 等路径穿越字符的输入。
+
+    Note：用 `import requirement_naming` 顶层模块名（_LIB_DIR 已注入 sys.path，
+    line 84-87），而非 `from scripts.lib.requirement_naming import ...`——后者要求
+    repo root 在 sys.path 上，subprocess 直接跑 `python scripts/gates/run.py` 时
+    sys.path[0] 是 scripts/gates/，会触发 ModuleNotFoundError（codex-fix round 6
+    根因）。
     """
-    from scripts.lib.requirement_naming import (
-        is_legacy_requirement_key,
-        is_new_requirement_key,
+    import requirement_naming  # _LIB_DIR 已入 sys.path（line 84-87）
+    return (
+        requirement_naming.is_legacy_requirement_key(req_id)
+        or requirement_naming.is_new_requirement_key(req_id)
     )
-    return is_legacy_requirement_key(req_id) or is_new_requirement_key(req_id)
 
 
 def _resolve_trigger(trigger: Optional[str]) -> str:
