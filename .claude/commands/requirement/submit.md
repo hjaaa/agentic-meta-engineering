@@ -40,7 +40,10 @@ argument-hint: [--draft] [--target <branch>] [--skip-rebase] [--reviewer <user>]
 | `--skip-rebase` | false | 跳过 `git rebase origin/<base>`（冲突时手工处理后重跑 submit） |
 | `--reviewer <user>` | — | 可多次，追加 reviewer |
 | `--force-with-blockers` | false | 有 blocker 级审查问题时仍放行，正文顶部会加 ⚠️ 标记 |
-| `--codex` | false | 启用 codex 单轮 review-loop（开 PR → @codex review → 轮询 → 落 round-N.md） |
+| `--no-ci-wait` | false | 跳过 PR 开启后的 CI 等待（默认会等所有 check 完成才进入 codex / 收尾） |
+| `--ci-poll-interval` | 15 | CI 状态轮询间隔秒数 |
+| `--ci-timeout` | 600 | CI 等待总超时秒数（超时不阻塞退出，但禁止进入 codex review-loop） |
+| `--codex` | false | 启用 codex 单轮 review-loop（开 PR → CI 绿 → @codex review → 轮询 → 落 round-N.md） |
 | `--codex-poll-interval` | 10 | （需 `--codex`）轮询间隔秒数 |
 | `--codex-timeout` | 600 | （需 `--codex`）整轮超时秒数 |
 
@@ -48,11 +51,12 @@ argument-hint: [--draft] [--target <branch>] [--skip-rebase] [--reviewer <user>]
 
 **`--codex` 异常文案**：
 
-- 推 PR 后 `gh pr comment` 失败 → exit 1，stderr `❌ failed to post @codex review comment: <gh error>`
+- step 11 CI 等待失败 / 超时 → 跳过 codex（不发 @codex review 评论），见 `reference/submit-rules.md §11`
+- CI 绿后 `gh pr comment` 失败 → exit 1，stderr `❌ failed to post @codex review comment: <gh error>`
 - `gh api` 连续 3 次 5xx → exit 1，stderr `❌ gh api repeated 5xx during poll; aborting`
 - 429 限流 → 直接 verdict=timeout（不重试），exit 0
 
-详细状态机与三常量定义见 `reference/submit-rules.md §7.5`。
+详细状态机与三常量定义见 `reference/submit-rules.md §7.5`；CI 等待与判定见 `§11`。
 
 ## PR 成功后的 worktree 保留
 
@@ -64,7 +68,7 @@ PR 开启成功后，当前开发分支所关联的 worktree（若存在）将�
 
 调用 Skill `managing-requirement-lifecycle` 的 **submit** 流程，按 `reference/submit-rules.md` 执行：
 
-1. 解析 base → 2. 门禁 → 3. rebase → 4. push → 5. 渲染 `templates/pr-body.md.tmpl` → 6. 推断标题 → 7. `gh pr create` 或 `gh pr edit`（幂等）→ 8. 回写 meta.yaml → 9. 追加 process.txt → 10. 终端汇报
+1. 解析 base → 2. 门禁 → 3. rebase → 4. push → 5. 渲染 `templates/pr-body.md.tmpl` → 6. 推断标题 → 7. `gh pr create` 或 `gh pr edit`（幂等）→ 8. 回写 meta.yaml → 9. 追加 process.txt → 10. 中间反馈 → **11. CI 等待与判定**（默认开启；失败阻断 codex；详见 `reference/submit-rules.md §11`）→ 12. 终端汇报（含 CI 状态）
 
 ## 幂等性
 
