@@ -25,3 +25,6 @@
 2026-05-19 13:08:52 [codex-review-triggered] round=1 pr=#82
 2026-05-19 13:12:56 [codex-review-received] verdict=not_passed round=1
 2026-05-19 13:15:09 [codex-fix] codex round 4 verdict=not_passed P2：test_standard_8phase_terminal_nodes.py + test_workflow_dispatcher_dispatch.py + test_status_verbose_stale.py 3 测试仍含旧 *-signoff 节点名。修复：把 test-final-signoff → test-final-confirm；req-signoff fixture 改 req-confirm；retroactive 加入 F-006.md touches
+2026-05-19 13:15:23 [codex-review-triggered] round=1 pr=#82
+2026-05-19 13:19:31 [codex-review-received] verdict=not_passed round=1
+2026-05-19 13:22:26 [codex-fix] codex round 5 verdict=not_passed P1：test_adr_line_count_drift.py 仍监控已删的 signoff.py + 旧 save_review.py 行数（drift 17 > 5）；CI quality-check fail。修复：_MONITORED_FILES 收敛为仅 save_review_validation.py（注释解释 signoff.py F-003 下线 + save_review.py F-002 定向退化的决策）
