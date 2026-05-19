@@ -1205,3 +1205,88 @@ def test_archive_loads_meta_from_main_repo_after_rebind(
     )
     assert final_meta["phase"] == "completed"
     assert final_meta["lessons_extracted"] is True  # 主仓权威值，非 worktree 的 False
+
+
+def test_archive_from_main_repo_dirty_worktree_fails_fast(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """codex P1 round-5 F-6 回归（F-4 对称场景）：archive 从**主仓** cwd 启动，
+    但 meta.worktree.owner=workflow 且 worktree path 下有 uncommitted 改动时，
+    _precheck_dirty 必须检查 worktree path（而非仅主仓）→ fail-fast。
+
+    旧实现：REPO_ROOT 已经 = 主仓 → git status cwd=主仓 clean → 通过 → cleanup
+    `git worktree remove` 因 worktree dirty 失败但 fail-soft → meta 仍被 mark
+    completed，状态不一致。
+    """
+    main_repo = tmp_path / "main_repo"
+    worktree_root = main_repo / ".worktrees" / "wt"
+    req_id = "REQ-2099-W04"
+
+    main_req_dir = main_repo / "requirements" / req_id
+    main_req_dir.mkdir(parents=True)
+    meta = {
+        "id": req_id,
+        "title": "from main repo dirty wt",
+        "phase": "testing",
+        "branch": "feat/req-2099-w04",
+        "base_branch": "develop",
+        "pr_number": 42,
+        "archived_at": "",
+        "created_at": "2026-05-04 19:00:00",
+        "project": "agentic-meta-engineering",
+        "lessons_extracted": True,
+        "worktree": {
+            "owner": "workflow",
+            "path": ".worktrees/wt",
+            "location": ".worktrees",
+        },
+    }
+    with (main_req_dir / "meta.yaml").open("w", encoding="utf-8") as f:
+        yaml.safe_dump(meta, f, allow_unicode=True, sort_keys=False)
+    (main_req_dir / "process.txt").write_text(
+        "2026-05-04 19:00:00 [phase-transition] bootstrap → testing\n",
+        encoding="utf-8",
+    )
+    # 主仓 worktree 路径必须存在，否则 _precheck_dirty 会跳过检查
+    worktree_root.mkdir(parents=True)
+
+    # 从主仓启动：REPO_ROOT = 主仓
+    monkeypatch.setattr(archive_runner, "REPO_ROOT", main_repo)
+    monkeypatch.setattr(
+        archive_runner, "REQUIREMENTS_DIR", main_repo / "requirements"
+    )
+
+    fake_worktree_manager = sys.modules["worktree_manager"]
+    # 从主仓启动时 resolve_main_repo_root 应返主仓本身（同当前 REPO_ROOT）
+    monkeypatch.setattr(
+        fake_worktree_manager, "resolve_main_repo_root", lambda _cwd: main_repo
+    )
+
+    # _run stub：主仓 git status 干净；worktree git status 报 dirty
+    def cwd_aware_run(cmd, *, cwd=None):
+        if tuple(cmd[:3]) == ("git", "status", "--porcelain"):
+            cwd_resolved = Path(cwd).resolve() if cwd else None
+            wt_resolved = worktree_root.resolve()
+            stdout = " M dirty_file.py\n" if cwd_resolved == wt_resolved else ""
+            return types.SimpleNamespace(returncode=0, stdout=stdout, stderr="")
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(archive_runner, "_run", cwd_aware_run)
+    monkeypatch.chdir(main_repo)
+
+    with pytest.raises(SystemExit) as exc_info:
+        archive_requirement(req_id, no_experience=True, yes_local_branch=True)
+    assert exc_info.value.code == 1, "F-6: dirty worktree 应 fail-fast"
+
+    # 主仓 meta 未被 mark completed
+    final_meta = yaml.safe_load(
+        (main_req_dir / "meta.yaml").read_text(encoding="utf-8")
+    )
+    assert final_meta["phase"] == "testing", (
+        f"dirty fail-fast 后主仓 meta 不应被 mutate; 实际 phase={final_meta['phase']!r}"
+    )
+    assert final_meta["archived_at"] == ""
+
+    # worktree 目录仍存在（cleanup 没跑）
+    assert worktree_root.exists()

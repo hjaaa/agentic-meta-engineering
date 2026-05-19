@@ -156,23 +156,55 @@ def _precheck_phase(meta: dict[str, Any], req_id: str) -> None:
         )
 
 
-def _precheck_dirty(req_id: str) -> None:
+def _check_git_status_clean(cwd: Path, req_id: str, label: str) -> None:
+    """在指定 cwd 跑 `git status --porcelain`，dirty → SystemExit(1) + 标签化错误信息。"""
     try:
-        result = _run(["git", "status", "--porcelain"], cwd=REPO_ROOT)
+        result = _run(["git", "status", "--porcelain"], cwd=cwd)
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
-        _abort("R-ARCHIVE-DIRTY", f"git status 调用失败: {exc}", req_id)
+        _abort("R-ARCHIVE-DIRTY", f"git status 调用失败 ({label} {cwd}): {exc}", req_id)
     if result.returncode != 0:
         _abort(
             "R-ARCHIVE-DIRTY",
-            f"git status 返回非零: {result.stderr.strip() or result.stdout.strip()}",
+            f"git status 返回非零 ({label} {cwd}): "
+            f"{result.stderr.strip() or result.stdout.strip()}",
             req_id,
         )
     if (result.stdout or "").strip():
         _abort(
             "R-ARCHIVE-DIRTY",
-            "工作目录有未提交改动；先 commit 再 archive",
+            f"{label} 有未提交改动 ({cwd})；先 commit 再 archive",
             req_id,
         )
+
+
+def _precheck_dirty(meta: dict[str, Any], req_id: str) -> None:
+    """检查主仓 + owned linked worktree 双仓干净状态（codex P1 F-4 / F-6）。
+
+    场景覆盖：
+      - 主仓 cwd 启动 archive，meta.worktree.path 指向 owned 但 dirty 的 linked
+        worktree：主仓 clean → 单点检查会漏 → cleanup `git worktree remove` 因
+        dirty 失败但 fail-soft → meta 已 mark completed（codex round-5 F-6）
+      - linked worktree cwd 启动 archive，主仓 clean 但 worktree dirty：rebind 后
+        REPO_ROOT 已切主仓 → 单点检查只看 clean 主仓（codex round-3 F-4）
+
+    设计：先主仓，再 owned worktree（只在 owner=workflow 时检查；external / legacy
+    不强制——它们不归 workflow 管，dirty 也不会被 cleanup_worktree_if_owned 触动）。
+    """
+    _check_git_status_clean(REPO_ROOT, req_id, "主仓")
+
+    worktree_meta = meta.get("worktree") or {}
+    if not isinstance(worktree_meta, dict):
+        return
+    if worktree_meta.get("owner") != "workflow":
+        return
+    raw_path = (worktree_meta.get("path") or "").strip()
+    if not raw_path:
+        return
+    worktree_path = (REPO_ROOT / Path(raw_path)).resolve()
+    if not worktree_path.exists():
+        # worktree 已被外部清理：cleanup 阶段会按 git worktree prune 处理，本步无需阻塞
+        return
+    _check_git_status_clean(worktree_path, req_id, "linked worktree")
 
 
 def _precheck_pr_number(meta: dict[str, Any], req_id: str) -> int:
@@ -725,27 +757,30 @@ def archive_requirement(
             req_id,
         )
 
-    # —— 关键顺序约束（codex P1 round-1~4 F-1 / F-3 / F-4 / F-5 累积修复）——
+    # —— 关键顺序约束（codex P1 round-1~5 F-1 / F-3 / F-4 / F-5 / F-6 累积修复）——
     #
-    # 1. _precheck_dirty 必须在 _rebind_to_main_repo 之前：dirty 检查对象是用户实际
-    #    工作的 worktree（可能有 uncommitted 改动），不是 PR merged 后干净的主仓
-    #    （F-4）。_precheck_dirty 不依赖 meta，可以独立先跑。
-    # 2. _rebind_to_main_repo 必须在 _load_meta 之前：否则 meta 从 worktree 副本读
-    #    入内存，后续 _atomic_write_meta 写主仓时可能用 stale dict 覆盖主仓较新的
-    #    metadata（F-5 / round-4）。
-    # 3. _rebind_to_main_repo 必须在 _cleanup_worktree_before_archive 之前：cleanup
-    #    删 worktree 后 module-level REPO_ROOT 若仍指向 worktree，后续
-    #    _atomic_write_meta / _append_process_event 写已删路径会失败（F-1/F-3）。
+    # 1. _rebind_to_main_repo 必须在 _load_meta / dirty / cleanup / write_meta 之前：
+    #    确保 path helper 一律解析到主仓（F-1 / F-3）。
+    # 2. _load_meta 必须在 rebind 之后：从主仓加载 meta dict，避免 worktree stale
+    #    副本覆盖主仓较新 metadata（F-5）。
+    # 3. _precheck_dirty 必须在 cleanup 之前 且 必须同时检查主仓 + owned worktree
+    #    （F-4 / F-6）：
+    #      - 主仓 cwd 启动 + worktree dirty 场景（F-6）：rebind 不变 REPO_ROOT=主仓，
+    #        仅看主仓会漏 dirty worktree
+    #      - worktree cwd 启动 + worktree dirty 场景（F-4）：rebind 后 REPO_ROOT 切
+    #        主仓，仅看主仓会漏 dirty worktree
+    #    两种场景都需要显式检查 meta.worktree.path（owner=workflow 时）。
     #
     # 综合顺序：
-    #   dirty (worktree) → rebind → load_meta (main) → 其他 precheck → cleanup → write_meta
+    #   rebind → load_meta (main) → dirty (both main+owned-worktree) → 其他 precheck
+    #   → cleanup → write_meta
 
-    _precheck_dirty(req_id)
     _rebind_to_main_repo(req_id)
 
     meta = _load_meta(req_id)
 
-    # —— 余下预检（任一失败 → SystemExit(1)） ——
+    # —— 预检（任一失败 → SystemExit(1)） ——
+    _precheck_dirty(meta, req_id)
     _precheck_phase(meta, req_id)
     pr_number = _precheck_pr_number(meta, req_id)
     _precheck_pr_merged(pr_number, req_id, force=force)
