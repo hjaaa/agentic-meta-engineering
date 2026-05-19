@@ -118,3 +118,4 @@
 2026-05-19 09:47:29 [codex-review-triggered] round=1 pr=#80
 2026-05-19 09:52:08 [codex-review-received] verdict=not_passed round=1
 2026-05-19 09:55:36 [codex-fix] PR #80 codex round-5 反馈闭环：P1 F-6（archive_runner.py:743，F-4 对称场景）archive 从主仓 cwd 启动时 _precheck_dirty 只检查主仓 git status，没看 meta.worktree.path 下的 owned worktree → 若 worktree dirty，cleanup git worktree remove 失败但 fail-soft，meta 仍 mark completed → 改造 _precheck_dirty 接 meta 参数，统一检查主仓 + owned worktree 双仓干净；调整顺序：rebind→load_meta→dirty(both)→其他 precheck→cleanup→write_meta；新增 test_archive_from_main_repo_dirty_worktree_fails_fast 回归测试；tests/ 1672 passed 0 fail / ruff 0 issue
+2026-05-19 10:26:50 [archived] (PR #80 merged at 2026-05-19 10:26:50)

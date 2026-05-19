@@ -48,6 +48,8 @@
 - [`dual-side-contract-needs-round-trip-test.md`](dual-side-contract-needs-round-trip-test.md) — 跨模块算法对称契约（writer-reader / encode-decode / 双侧 hash 比对）必须有 round-trip 端到端测试；单侧自闭环测不能证对侧等价
 - [`detail-design-nfr-estimate-needs-testing-calibration-adr.md`](detail-design-nfr-estimate-needs-testing-calibration-adr.md) — detail-design NFR 阈值是骨架估算，testing 实测偏离 > 2x 时落 D-XXX 校准 ADR 为绝对值；features.json acceptance 字面不动避免 R005 连锁
 - [`dispatch-precheck-task-status-flip-after-agent-call.md`](dispatch-precheck-task-status-flip-after-agent-call.md) — 派 subagent 时 task.md.status 翻 in-progress 必须在调 Agent 工具之后；提前翻被 hook B-1 拦下 BLOCKED
+- [`multi-stage-order-constraints-doc.md`](multi-stage-order-constraints-doc.md) — 多阶段流程的顺序约束必须以累积清单格式注释（来源 + 依赖关系）；每修一轮约束就破另一轮的反模式由此终结
+- [`cli-explicit-input-normalize-fail-fast.md`](cli-explicit-input-normalize-fail-fast.md) — CLI 显式输入必须在入口 normalize（友好预处理）+ 校验失败 fail-fast；不能跳到下游 git/subprocess 层才报错
 
 ## 什么值得沉淀
 
