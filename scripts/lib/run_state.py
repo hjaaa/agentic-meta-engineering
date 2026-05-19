@@ -245,6 +245,14 @@ class RunState:
                 iteration = data.get("iteration")
                 if iteration is not None:
                     state.loop_counters[node_id] = int(iteration)
+                # Bug-14：interactive loop 由 save_node_result 写 loop_iteration_completed
+                # 时把 state 从 awaiting_claude_action 拉回 running，保证 current_node
+                # 不变、下一次 /workflow:continue 能再次进入 loop 节点派发
+                if (
+                    ev_type == "loop_iteration_completed"
+                    and state.state == "awaiting_claude_action"
+                ):
+                    state.state = "running"
             elif ev_type == "loop_counter_advanced" and node_id:
                 # workflow_continue loop_continue 路径递增后写入：data.new_value 为
                 # 递增后的"下一轮迭代编号"。crash 后 rebuild 必须看到此事件才能正确

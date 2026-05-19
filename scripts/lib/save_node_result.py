@@ -61,13 +61,18 @@ _NODE_LEVEL_EVENTS: frozenset[str] = frozenset({
 _KIND_EXPECTED_TAIL: dict[str, str] = {
     "skill_result": "node_ready",
     "approval_repair": "approval_repair_started",
+    "loop_iteration": "node_ready",  # Bug-14：interactive loop 同样在 node_ready 后回写
 }
 
 # kind → 写入的目标事件类型
 _KIND_WRITE_EVENT: dict[str, str] = {
     "skill_result": "node_completed",
     "approval_repair": "approval_repair_completed",
+    "loop_iteration": "loop_iteration_completed",
 }
+
+# Bug-14：interactive loop iteration 合法 outcome 枚举
+_VALID_LOOP_OUTCOMES: frozenset[str] = frozenset({"continue", "all_done"})
 
 
 def _parse_output(output_raw: str) -> dict[str, Any]:
@@ -159,7 +164,7 @@ def _check_node_match_or_fail(
         SystemExit(2): 任一校验失败时打印 stderr 对应错误码并退出。
     """
     # (2a) RunState 字段匹配
-    if kind == "skill_result":
+    if kind in ("skill_result", "loop_iteration"):
         actual = run_state.current_node
         field_name = "current_node"
     else:
@@ -274,6 +279,76 @@ def _handle_skill_result(
     return 0
 
 
+def _handle_loop_iteration(
+    run_state: RunState,
+    node_id: str,
+    output: dict[str, Any],
+    events: list[dict[str, Any]],
+    jsonl_path: Path,
+    run_dir: Path,
+) -> int:
+    """处理 kind=loop_iteration（Bug-14）：通过三道闸后写 loop_iteration_completed。
+
+    output 必含 "outcome" ∈ {"continue", "all_done"}：
+    - continue：写 loop_iteration_completed{iteration, outcome:continue}
+                  + loop_counter_advanced{new_value:iter+1}
+    - all_done：写 loop_iteration_completed{iteration, outcome:all_done}
+                  （终止动作由 dispatcher 下一轮派发时写 loop_completed + node_completed）
+
+    iteration 从末位 node_ready 事件 data.loop_iteration 反扫得到（dispatcher 写入）。
+    """
+    _check_state_or_fail(run_state)
+    _check_node_match_or_fail(run_state, node_id, "loop_iteration", events)
+
+    outcome = output.get("outcome")
+    if outcome not in _VALID_LOOP_OUTCOMES:
+        print(
+            f"ERROR [E-NODE-RESULT-006]: --kind=loop_iteration 的 output.outcome 必须是 "
+            f"{sorted(_VALID_LOOP_OUTCOMES)} 之一，实际 {outcome!r}",
+            file=sys.stderr,
+        )
+        return 1
+
+    # 反扫最近 node_ready{node_id} 拿当前 loop_iteration
+    iteration: int | None = None
+    for evt in reversed(events):
+        if evt.get("type") == "node_ready" and evt.get("node_id") == node_id:
+            iteration = (evt.get("data") or {}).get("loop_iteration")
+            break
+    if not isinstance(iteration, int):
+        print(
+            f"ERROR [E-NODE-RESULT-099]: 末位 node_ready 缺 data.loop_iteration "
+            f"(node_id={node_id!r})；无法确定当前迭代号",
+            file=sys.stderr,
+        )
+        return 1
+
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    completed_event: dict[str, Any] = {
+        "type": "loop_iteration_completed",
+        "node_id": node_id,
+        "ts": ts,
+        "data": {"iteration": iteration, "outcome": outcome, "output": output},
+    }
+    events_to_write: list[dict[str, Any]] = [completed_event]
+
+    if outcome == "continue":
+        events_to_write.append({
+            "type": "loop_counter_advanced",
+            "node_id": node_id,
+            "ts": ts,
+            "data": {"new_value": iteration + 1},
+        })
+
+    append_events_with_manifest(
+        jsonl_path,
+        events_to_write,
+        large_field_paths=[("data", "output")],
+        run_dir=run_dir,
+    )
+    return 0
+
+
 def _handle_approval_repair(
     run_state: RunState,
     node_id: str,
@@ -337,8 +412,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--kind",
         required=True,
-        choices=["skill_result", "approval_repair"],
-        help="outcome 类型",
+        choices=["skill_result", "approval_repair", "loop_iteration"],
+        help="outcome 类型（loop_iteration 用于 interactive loop 节点回写，Bug-14）",
     )
     parser.add_argument(
         "--output",
@@ -376,6 +451,10 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.kind == "skill_result":
             return _handle_skill_result(
+                run_state, args.node, output, events, jsonl_path, run_dir
+            )
+        elif args.kind == "loop_iteration":
+            return _handle_loop_iteration(
                 run_state, args.node, output, events, jsonl_path, run_dir
             )
         else:
