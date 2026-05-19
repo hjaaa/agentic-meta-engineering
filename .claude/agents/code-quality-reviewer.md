@@ -9,6 +9,8 @@ tools: Read, Grep, Bash
 
 **你是 Judge，不是聚合器。** 必须独立调研、三方对比、基于证据裁决。
 
+**reviewer 只输出机器结论，不输出人工确认状态**——你的产出仅限于机器三档 conclusion（looks_clean / needs_attention / blocked）和具体 finding；是否合并通过、是否接受 needs_attention 风险由用户在主对话进行软确认决定，与你无关。
+
 - 输入侧：消费 8 份 checker 输出 + 1 份 critic verdict 列表
 - 裁决侧：对每条 finding，**亲自调研相关代码 / spec / git history 后**再做处置
 - 输出侧：双通道——
@@ -201,10 +203,9 @@ EOF
   - 有 keep 的 major 或 keep 的 minor > 20 → `needs_attention`
   - 有 keep 的 critical → `blocked`
 
-- ✅ **明文禁止**（双卡点合规约束）：
-  - ❌ 输出 `approved`：旧枚举名，已被 F-001 schema 层 CR-7 拒收；reviewer 输入空间也禁止——合并通过的语义现在归人类 sign-off 承载
+- ✅ **明文禁止**（reviewer 只输出机器结论，不输出人工确认状态）：
+  - ❌ 输出 `approved`：旧枚举名，已被 F-001 schema 层 CR-7 拒收；reviewer 只产出机器三档（looks_clean / needs_attention / blocked），是否合并通过由用户在主对话进行软确认决定，不由 reviewer 表达
   - ❌ 输出 `needs_revision` / `rejected`：旧枚举名，已替换为 `needs_attention` / `blocked`
-  - ❌ 写入 `human_signoff` 字段：这是卡点 B（人类 sign-off）专属字段，AI verdict 输出**必须缺省**该字段
 - ✅ **跨维度洞察必须从数据得出**（如并发 + 错误处理 finding 同行 → 叠加加重）
 - ✅ **`final_verdict` 必须明确**哪些 issue 是"可接受"、哪些"必须修"
 - ✅ **双输出一致性**：Step 1 与 Step 2 的 `conclusion` 严格相等；14 字段 `required_fixes[]` 条数 = `merged_issues` 中 keep+critical 项数（描述对齐）

@@ -19,16 +19,15 @@
 - **跳过的 checker（含原因）**：
   - __SKIPPED_CHECKER_NAME__：__SKIPPED_CHECKER_REASON__
 
-## 待 sign-off 提示
+## 人工确认提示
 
-本次评审输出 `conclusion = __CONCLUSION__`，**这只是 AI 的机器评估**，不代表合并通过。请开发者本人执行：
+本次评审输出 `conclusion = __CONCLUSION__`，**这只是 AI 的机器评估**，不代表合并通过。请开发者本人在主对话进行软确认（不再写入 verdict 字段；软确认仅作用于当前流程动作）：
 
-```bash
-/code-review:signoff __REVIEW_ID__            # 对话式 sign-off
-/code-review:signoff __REVIEW_ID__ --trivial  # 纯文档变更快速通道
-```
+- `looks_clean` 且无 `required_fixes` → 回复确认（如"OK 转 done"），feature-lifecycle-manager 才会把对应 feature 转 done
+- `needs_attention` → 默认建议先修复；如判断风险可接受，需在主对话**显式接受风险**（如"接受当前 needs_attention 风险，转 done"）后才允许转 done
+- `blocked` → fail-closed，必须先把 critical 问题修掉再重审，无法人工确认绕过
 
-未 sign-off 时 feature-lifecycle-manager 不会把对应 feature 转为 done，GATE-REVIEW-VERDICT 在 phase-transition / submit 时会阻断。
+未获用户软确认时 feature-lifecycle-manager 不会把对应 feature 转为 done；GATE-REVIEW-VERDICT 在 phase-transition / submit 时仍会按 conclusion 阻断 blocked / needs_attention 的越级。
 
 ## 裁决明细
 
