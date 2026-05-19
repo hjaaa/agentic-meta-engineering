@@ -73,8 +73,12 @@ fields:
 # ---------- 字段格式 ----------
 format:
   schema_version: '^1\.0$'
-  review_id: '^REV-REQ-\d{4}-\d{3}-(definition|outline-design|detail-design|code(-F-\d{3})?)-\d{3}$'
-  requirement_id: '^REQ-\d{4}-\d{3}$'
+  # 20260519-remove-human-signoff codex-fix P1 / F-009 follow-up：扩接受新旧两种 key 格式
+  #   - legacy review_id：REV-REQ-YYYY-NNN-<phase>(-F-NNN)?-NNN
+  #   - 新格式 review_id：REV-YYYYMMDD-<slug>[-NN]-<phase>(-F-NNN)?-NNN
+  # phase 段（definition / outline-design / detail-design / code(-F-NNN)?）保持原约束。
+  review_id: '^REV-(REQ-\d{4}-\d{3}|\d{8}-[a-z0-9]+(?:-[a-z0-9]+)*(?:-\d{2})?)-(definition|outline-design|detail-design|code(-F-\d{3})?)-\d{3}$'
+  requirement_id: '^(REQ-\d{4}-\d{3}|\d{8}-[a-z0-9]+(?:-[a-z0-9]+)*(?:-\d{2})?)$'
   reviewed_at: datetime          # YYYY-MM-DD HH:MM:SS（time-format.md）
   reviewed_commit: '^[0-9a-f]{7,40}$'
 
