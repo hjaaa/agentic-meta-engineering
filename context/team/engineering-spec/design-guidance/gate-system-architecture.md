@@ -1,5 +1,7 @@
 # 门禁系统架构
 
+> 历史机制：human sign-off 已下线（`requirements/20260519-remove-human-signoff/` F-001/F-002/F-003，2026-05-19）。当前阶段推进与 feature done 仅依赖机器结论 + 人工软确认（不写 verdict）。本文中残留的 "sign-off" 字样仅作历史背景叙述——保护 `reviews/*.json` 直写的 hook 规则仍然生效（防止 reviewer Agent 绕过 `scripts/save-review.sh` 写盘），但语义已不再与"人类签字"挂钩。
+
 | 字段 | 值 |
 |---|---|
 | 创建 | 2026-05-03 |
@@ -210,7 +212,7 @@ check_review_path() {
   if [[ "$p" =~ ^.*requirements/[^/]+/reviews/.+\.json$ ]]; then
     cat >&2 <<EOF
 BLOCKED: $p
-reviews/*.json 不能直写。必须走 scripts/save-review.sh 或人类 sign-off CLI。
+reviews/*.json 不能直写。必须走 scripts/save-review.sh（reviewer Agent 唯一入口）。
 规避方式：CLAUDE_GATES_GLOBAL_BYPASS="<理由>" 但请先停下来想想是不是真的应该绕过。
 EOF
     exit 2
@@ -228,8 +230,8 @@ check_bash_writes_review() {
   if echo "$cmd" | grep -qE "$pattern"; then
     cat >&2 <<EOF
 BLOCKED: Bash 写入 requirements/*/reviews/*.json 被禁。
-规避方式：scripts/save-review.sh 是 reviewer Agent 的标准入口；
-     人类 sign-off 走 python3 scripts/lib/save_review.py signoff ...（必须 tty；F-012 后唯一入口）。
+规避方式：scripts/save-review.sh 是 reviewer Agent 的唯一写盘入口。
+     （历史背景：human sign-off CLI 曾在此处作为人类入口，2026-05-19 已下线）
 EOF
     exit 2
   fi
@@ -467,7 +469,7 @@ matcher 保持 `"Bash|Edit|Write|MultiEdit"`。
 | 规范文件 | 关系 |
 |---|---|
 | `context/team/engineering-spec/design-guidance/hook-fail-open.md` | 本设计**实现**这份规范的承诺（spec 早就要求 fail-open，但实现有 gap），不冲突 |
-| `context/team/ai-collaboration.md` 之"sign-off 是人类专属动作" | 本设计**强化**这条——`pre-tool-use-guard.sh` 的 rule 2/3 是 tty 校验的深度防御层，硬阻断保留 |
+| `context/team/ai-collaboration.md` 规则三"人工确认动作（approve / reject）是人类专属" | hook rule 2/3 仍硬阻断 `reviews/*.json` 直写，但目的从"保护 sign-off tty 校验"降级为"保证 reviewer Agent 走 save-review.sh 标准写盘"；human sign-off 已下线（2026-05-19） |
 | `context/team/engineering-spec/design-guidance/four-layer-hierarchy.md` | 本设计涉及 Layer 3（场景规范）和 Layer 4（工具实现）；Layer 1/2 不动 |
 | `CLAUDE.md` 项目级"保护分支" | 行为不变；只是实现路径换了 |
 
@@ -489,4 +491,4 @@ matcher 保持 `"Bash|Edit|Write|MultiEdit"`。
 
 1. 用户 review 本 spec 并确认（或提修改意见）
 2. 用 `superpowers:writing-plans` skill 把本 spec 拆成可执行的 4 个 PR 实施计划
-3. 每个 PR 走标准 PR 流程：分支 → 实现 → 自测 → `/code-review` → sign-off → merge
+3. 每个 PR 走标准 PR 流程：分支 → 实现 → 自测 → `/code-review` → 人工确认 → merge

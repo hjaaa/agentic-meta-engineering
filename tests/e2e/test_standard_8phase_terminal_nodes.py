@@ -88,13 +88,14 @@ class TestPrSubmitNode:
         assert "pr_url" in bash_script, "pr-submit bash 必须写 pr_url 到 meta.yaml"
         assert "yq" in bash_script, "pr-submit bash 必须用 yq 写入 meta.yaml"
 
-    def test_depends_on_test_final_signoff(self, nodes_by_id: dict[str, dict[str, Any]]) -> None:
-        """pr-submit 必须依赖 test-final-signoff（当前 yaml 实际拓扑末端）。"""
+    def test_depends_on_test_final_confirm(self, nodes_by_id: dict[str, dict[str, Any]]) -> None:
+        """pr-submit 必须依赖 test-final-confirm（20260519-remove-human-signoff F-006：
+        原 test-final-signoff 改名为 test-final-confirm；当前 yaml 实际拓扑末端）。"""
         node = nodes_by_id["pr-submit"]
         # depends_on 可能在 loader 展开后才存在，直接读原始字段
         deps = node.get("depends_on", [])
-        assert "test-final-signoff" in deps, (
-            f"pr-submit 必须 depends_on test-final-signoff，实际: {deps}"
+        assert "test-final-confirm" in deps, (
+            f"pr-submit 必须 depends_on test-final-confirm，实际: {deps}"
         )
 
     def test_output_format_has_pr_url(self, nodes_by_id: dict[str, dict[str, Any]]) -> None:

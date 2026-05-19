@@ -37,7 +37,12 @@ def test_old_conclusion_mapping_not_in_rules():
 
 
 def test_explicit_prohibition_segment_present():
-    """验证明文禁止段存在且包含关键约束。"""
+    """验证明文禁止段存在且包含关键约束（20260519-remove-human-signoff F-005 同步迁移）。
+
+    历史：原断言含 `❌ 写入 human_signoff` + `卡点 B`；本期 F-001/F-002/F-003 下线
+    human_signoff 字段与卡点 B 体系后，agent.md 同步删除，断言迁移到新口径
+    （reviewer 只输出机器结论 + 软确认由用户在主对话进行）。
+    """
     agent_file = Path(__file__).resolve().parents[2] / '.claude' / 'agents' / 'code-quality-reviewer.md'
     content = agent_file.read_text(encoding='utf-8')
 
@@ -45,10 +50,9 @@ def test_explicit_prohibition_segment_present():
     assert '明文禁止' in content, "缺少明文禁止段标题"
     assert '❌ 输出 `approved`' in content, "缺少禁止输出 approved 的说明"
     assert '❌ 输出 `needs_revision` / `rejected`' in content, "缺少禁止输出旧枚举的说明"
-    assert '❌ 写入 `human_signoff`' in content, "缺少禁止写入 human_signoff 的说明"
 
-    # 验证明文禁止段包含卡点 B 引用
-    assert '卡点 B' in content, "缺少卡点 B 的引用"
+    # 验证 reviewer 只输出机器结论（替代原 human_signoff / 卡点 B 表述）
+    assert 'reviewer 只输出机器结论' in content, "缺少 'reviewer 只输出机器结论' 表述"
 
 
 def test_equivalence_class_descriptions_present():

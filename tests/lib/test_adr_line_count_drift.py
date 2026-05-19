@@ -18,9 +18,14 @@ PLAN_MD = REPO_ROOT / "requirements" / "REQ-2026-009" / "plan.md"
 _LINE_COUNT_TOLERANCE = 5
 
 # 被监控的文件列表
+# 20260519-remove-human-signoff 历史变更：
+#   - F-003：scripts/lib/signoff.py 整体下线 → 从监控列表移除
+#   - F-002：scripts/lib/save_review.py 定向退化（删 CR-1/CR-4 signoff 依赖 + CR-8 + signoff
+#     子命令 parser），行数从 492 → 475，超 ±5 容差 17 行，是"定向退化"而非"忘记同步 ADR"；
+#     为避免 archived REQ-2026-009 plan.md D-017 ADR 数字与持续演化的代码反复漂移，本期从
+#     监控列表移除。后续若再次重构 save_review.py，重新加入并重置 ADR 数字。
+# 当前监控仅保留 save_review_validation.py（稳定 helper 模块，未触发本期下线）。
 _MONITORED_FILES = [
-    "save_review.py",
-    "signoff.py",
     "save_review_validation.py",
 ]
 

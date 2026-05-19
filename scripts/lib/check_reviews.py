@@ -33,31 +33,10 @@ _NORMALIZE_TASK_FIELDS: set[str] = {"status", "updated_at"}
 # save_review 同目录，scripts/lib 已在 sys.path 中（脚本入口由 sh 启动）
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-# ─── REQ-2026-003 双卡点 sign-off 判定 ──────────────────────────────────────
-# 所有调用方（feature-lifecycle-manager / GATE-REVIEW-VERDICT / save_review.CR 检查）
-# 共用此常量+helper，严禁在各自逻辑里重复比对字符串（避免双轨 D-008）。
-#
-# 注意：SIGNOFF_PASS / is_signed_off 必须定义在 `import save_review` 之前——
-# save_review 顶层会 `from check_reviews import is_signed_off`，若放在 import
-# save_review 之后，循环导入会让 save_review 拿到 ImportError 并永久绑定 stub
-# `return False`，导致 CR-1 / CR-4 静默失效（Codex P1-B verified bug）。
-SIGNOFF_PASS: set[str] = {"approved", "approved-trivial"}
-
-
-def is_signed_off(verdict: dict) -> bool:
-    """REQ-2026-003 双卡点 sign-off 判定。
-    所有调用方必须共用此 helper（feature-lifecycle-manager / GATE-REVIEW-VERDICT）。
-    True 当且仅当 verdict.human_signoff.decision ∈ {approved, approved-trivial}。
-    缺字段 / decision 为 rejected / 空字符串 → False。
-    """
-    sig = verdict.get("human_signoff") or {}
-    return sig.get("decision") in SIGNOFF_PASS
-
-
 # ─── F-001 D-013 normalize helpers ────────────────────────────────────────────
-# 同 SIGNOFF_PASS 的循环依赖原因（line 40-43）：save_review 顶层 `from check_reviews import
-# _compute_hash_with_normalize` 锁定 sha256 算法，必须定义在 `import save_review` 之前，
-# 否则 save_review 拿到 ImportError 永久 stub，A1 双侧对称失效。
+# save_review 顶层 `from check_reviews import _compute_hash_with_normalize` 锁定
+# sha256 算法，必须定义在 `import save_review` 之前，否则 save_review 拿到
+# ImportError 永久 stub，A1 双侧对称失效（Codex P1-B verified bug）。
 
 
 def _strip_frontmatter_fields(content: str, fields: set[str]) -> str:
@@ -203,18 +182,21 @@ def _r003_blocked_or_unsigned(
     label: str,
     req: str,
 ) -> None:
-    """R003: latest.conclusion != blocked（D-008 旧 rejected 等价）且必须有 human_signoff。
+    """R003: latest.conclusion != blocked（D-008 旧 rejected 等价）。
+
+    F-002（remove human sign-off）：human_signoff 字段已从 schema 退化，
+    R003 仅保留 conclusion 判定——只要 latest verdict conclusion ∈ {blocked, rejected}
+    即阻断切阶段；不再依赖 human_signoff 字段。人工确认改由 workflow approval
+    节点承担（standard-8phase yaml *-confirm 节点）。
 
     F-012 rev2 F-24：required_phases None 守卫。
-
-    升级口径（REQ-2026-003 D-008）：
-    - 旧 schema 里 conclusion=rejected → 新 schema 里 conclusion=blocked；两者都阻断
-    - 新要求：所有非 code phase 的 latest verdict 必须经过人类 sign-off 才允许切阶段
     F-012：required_phases 改为显式入参（旧 target_phase 参数已删——R003 不在错误消息里
     引用 target_phase）。
+    req 参数保留以维持调用方签名稳定，本函数体不再使用。
     """
     if required_phases is None:
         required_phases = []
+    _ = req  # 保留签名兼容；F-002 移除 verdict 文件读取后不再使用
     reviews = meta.get("reviews") or {}
     for phase in required_phases:
         if phase == "code":
@@ -224,30 +206,6 @@ def _r003_blocked_or_unsigned(
         if entry.get("conclusion") in ("blocked", "rejected"):
             report.add(label, Severity.ERROR, "R003",
                        f"reviews.{phase}.conclusion={entry.get('conclusion')}，禁止切阶段")
-        # 读 verdict 文件做 sign-off 判定（参考 _r002_schema_recheck 文件读取模式）
-        latest_id = entry.get("latest")
-        if not latest_id:
-            continue
-        prefix = f"REV-{req}-"
-        if not latest_id.startswith(prefix):
-            # 格式异常交由 R002 报告，R003 跳过
-            continue
-        suffix = latest_id[len(prefix):]
-        review_path = REQUIREMENTS_DIR / req / "reviews" / f"{suffix}.json"
-        if not review_path.exists():
-            # 文件缺失交由 R002 报告，R003 跳过
-            continue
-        try:
-            verdict = json.load(review_path.open(encoding="utf-8"))
-        except json.JSONDecodeError:
-            # 解析失败交由 R002 报告，R003 跳过
-            continue
-        # 升级判定：必须有 human_signoff.decision ∈ SIGNOFF_PASS 才放行
-        if not is_signed_off(verdict):
-            report.add(
-                label, Severity.ERROR, "R003",
-                f"reviews.{phase}.latest 缺 human_signoff 或 decision=rejected，未签字禁止切阶段",
-            )
 
 
 def _r002_schema_recheck(
@@ -427,7 +385,14 @@ def _r006_supersedes_chain(meta: dict, target_phase: str, report: Report, label:
 
 
 def _r007_code_by_feature_coverage(meta: dict, target_phase: str, report: Report, label: str, req: str) -> None:
-    """R007: 切到 testing 时，code.by_feature 必须覆盖 features.json 中所有 status=done 的 feature"""
+    """R007: 切到 testing 时，code.by_feature 必须覆盖 features.json 中所有 status=done 的 feature。
+
+    F-002（remove human sign-off）：human_signoff 字段已从 schema 退化，
+    R007 仅保留两项判定：
+      1. 每个 done feature 必须有 latest code review
+      2. 该 latest 的 conclusion ∉ {blocked, rejected}
+    不再依赖 human_signoff 字段；人工确认改由 workflow approval 节点承担。
+    """
     if target_phase != "testing":
         return
     features_path = REQUIREMENTS_DIR / req / "artifacts" / "features.json"
@@ -464,26 +429,6 @@ def _r007_code_by_feature_coverage(meta: dict, target_phase: str, report: Report
         if entry.get("conclusion") in ("rejected", "blocked"):
             report.add(label, Severity.ERROR, "R007",
                        f"feature {fid} 的 code review conclusion={entry.get('conclusion')}")
-        # 升级判定：code review 也必须经过 human sign-off（REQ-2026-003 D-008）
-        prefix = f"REV-{req}-"
-        if not latest_id.startswith(prefix):
-            continue
-        suffix = latest_id[len(prefix):]
-        review_path = REQUIREMENTS_DIR / req / "reviews" / f"code-{suffix}.json"
-        # 兼容两种路径模式：code-<suffix>.json 与 <suffix>.json
-        if not review_path.exists():
-            review_path = REQUIREMENTS_DIR / req / "reviews" / f"{suffix}.json"
-        if not review_path.exists():
-            continue
-        try:
-            verdict = json.load(review_path.open(encoding="utf-8"))
-        except json.JSONDecodeError:
-            continue
-        if not is_signed_off(verdict):
-            report.add(
-                label, Severity.ERROR, "R007",
-                f"feature {fid} 的 code review 缺 human_signoff 或 decision=rejected，未签字禁止切阶段",
-            )
 
 
 def main() -> int:

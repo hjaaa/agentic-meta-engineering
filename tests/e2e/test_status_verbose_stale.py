@@ -64,7 +64,8 @@ def test_e2e_stale_warn_with_approval_pending(tmp_path, capsys, monkeypatch):
     events = [
         {"type": "workflow_started", "run_id": run_id, "ts": old_ts,
          "data": {"workflow_name": "standard-8phase"}},
-        {"type": "approval_pending", "node_id": "req-signoff",
+        # 20260519-remove-human-signoff F-006：req-signoff 改名 req-confirm
+        {"type": "approval_pending", "node_id": "req-confirm",
          "ts": old_ts},
     ]
     _make_run_dir(tmp_path, run_id, events)

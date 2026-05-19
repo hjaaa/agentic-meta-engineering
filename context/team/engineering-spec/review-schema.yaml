@@ -10,6 +10,17 @@
 #
 # 关联文档：
 #   - context/team/engineering-spec/specs/2026-04-27-reviewer-verdict-structuring-design.md
+#   - docs/superpowers/specs/2026-05-19-remove-human-signoff-soft-confirmation-design.md
+#
+# 历史变更：
+#   - 20260519-remove-human-signoff（F-001）：删除 human_signoff 字段与 signoff_decision /
+#     signoff_source 枚举；删除 CR-1（已签字 + required_fixes == [] 约束）与 CR-8（signoff.source
+#     枚举校验）；CR-4 仅保留 `score < 70 => conclusion != looks_clean`（不再带 signoff 约束）。
+#     保留收紧的三条机器规则：
+#       (a) required_fixes 非空 → conclusion ∈ {needs_attention, blocked}（CR-2）
+#       (b) 总评 score < 70 → conclusion != looks_clean（CR-4）
+#       (c) blocker issue 存在 → conclusion = blocked（CR-6）
+#     人工动作改为软确认（不写 verdict），详 spec §目标行为。
 
 schema_version: "1.0"
 
@@ -47,12 +58,6 @@ enums:
     - looks_clean
     - needs_attention
     - blocked
-  signoff_decision:
-    - approved
-    - approved-trivial
-    - rejected
-  signoff_source:
-    - cli-tty
   severity:
     - blocker
     - major
@@ -64,30 +69,16 @@ fields:
     type: enum
     enum: conclusion
     required: true          # 已在 required_fields 声明
-  human_signoff:
-    required: false         # 可选子 schema；不进 required_fields 列表
-    description: "人工签字记录；由 cli-tty 交互写入（D-004 out of scope 的其他 source 待扩）"
-    properties:
-      decision:
-        type: enum
-        enum: signoff_decision
-        required: true
-      signed_at:
-        format: iso8601
-        required: true
-      signed_by:
-        format: email
-        required: true
-      source:
-        type: enum
-        enum: signoff_source
-        required: true
 
 # ---------- 字段格式 ----------
 format:
   schema_version: '^1\.0$'
-  review_id: '^REV-REQ-\d{4}-\d{3}-(definition|outline-design|detail-design|code(-F-\d{3})?)-\d{3}$'
-  requirement_id: '^REQ-\d{4}-\d{3}$'
+  # 20260519-remove-human-signoff codex-fix P1 / F-009 follow-up：扩接受新旧两种 key 格式
+  #   - legacy review_id：REV-REQ-YYYY-NNN-<phase>(-F-NNN)?-NNN
+  #   - 新格式 review_id：REV-YYYYMMDD-<slug>[-NN]-<phase>(-F-NNN)?-NNN
+  # phase 段（definition / outline-design / detail-design / code(-F-NNN)?）保持原约束。
+  review_id: '^REV-(REQ-\d{4}-\d{3}|\d{8}-[a-z0-9]+(?:-[a-z0-9]+)*(?:-\d{2})?)-(definition|outline-design|detail-design|code(-F-\d{3})?)-\d{3}$'
+  requirement_id: '^(REQ-\d{4}-\d{3}|\d{8}-[a-z0-9]+(?:-[a-z0-9]+)*(?:-\d{2})?)$'
   reviewed_at: datetime          # YYYY-MM-DD HH:MM:SS（time-format.md）
   reviewed_commit: '^[0-9a-f]{7,40}$'
 
@@ -98,10 +89,10 @@ ranges:
 
 # ---------- CR 规则（C3，烧进 schema 的内部一致性约束） ----------
 # 违反任一条 → save-review.sh 拒收，返回 ERROR
+# 20260519-remove-human-signoff F-001：CR-1（已签字 + required_fixes==[] 约束）与 CR-8
+# （human_signoff.source 枚举校验）已删除；CR-4 仅保留 score < 70 → conclusion 非
+# looks_clean 单一约束。其余规则保持不变。
 cr_rules:
-  CR-1:
-    description: "已签字（is_signed_off）时 required_fixes 必须为空"
-    rule: "is_signed_off(verdict) => required_fixes == []"
   CR-2:
     description: "required_fixes 非空时 conclusion 必须 ∈ {needs_attention, blocked}"
     rule: "len(required_fixes) > 0 => conclusion in [needs_attention, blocked]"
@@ -109,8 +100,8 @@ cr_rules:
     description: "任一 dimensions.*.score < 60 时 conclusion 不能为 looks_clean"
     rule: "any dim.score < 60 => conclusion != looks_clean"
   CR-4:
-    description: "总评 score < 70 时 conclusion 不能为 looks_clean 且不能已签字"
-    rule: "score < 70 => conclusion != looks_clean AND is_signed_off(verdict) == False"
+    description: "总评 score < 70 时 conclusion 不能为 looks_clean"
+    rule: "score < 70 => conclusion != looks_clean"
   CR-5:
     description: "dimensions.*.issues[] 每项必须有合法 severity 和非空 description"
     rule: "for issue in dim.issues: issue.severity in enums.severity AND issue.description != ''"
@@ -120,9 +111,6 @@ cr_rules:
   CR-7:
     description: "conclusion 必须命中新枚举 {looks_clean, needs_attention, blocked}；阻断 AI 残留写旧值 approved"
     rule: "conclusion in {looks_clean, needs_attention, blocked}"
-  CR-8:
-    description: "human_signoff.source 若存在必须 ∈ signoff_source 枚举（当前仅 cli-tty）"
-    rule: "human_signoff.source in [cli-tty] (if human_signoff present)"
 
 # ---------- scope 约束 ----------
 # phase=code 必须有 scope.feature_id；其他 phase 必须 scope=null

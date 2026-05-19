@@ -35,30 +35,11 @@ Agent 写入 `requirements/<id>/artifacts/*.md` 的每条关键信息必须属�
 
 禁止一次性输出完整长文档。
 
-### 规则三：sign-off 是人类专属动作
+### 规则三：人工确认动作（approve / reject）是人类专属
 
-**Sign-off 唯一入口**（人类在 tty 终端执行）：
+> 历史背景：本规则曾包含 "sign-off 是人类专属动作"——通过 `python3 scripts/lib/save_review.py signoff` / `/code-review:signoff` 把签字字段写入 verdict。该机制已下线（`requirements/20260519-remove-human-signoff/` F-001/F-002/F-003，2026-05-19），改为"AI 出机器结论 → 用户在主对话中给出软确认（自然语言）→ main agent 触发 feature lifecycle 转 done"。reviewer Agent 不再写 `human_signoff` 字段；不再有专门的 sign-off CLI / slash command。
 
-```bash
-python3 scripts/lib/save_review.py signoff --rev-id <REV-ID> --decision <approved|approved-trivial|rejected>
-# 或文档变更快速通道：
-python3 scripts/lib/save_review.py signoff --rev-id <REV-ID> --trivial
-# slash command 糖（等价）：/code-review:signoff <REV-ID> --decision=<v>
-```
-
-F-012 后，原 `scripts/lib/code_review_signoff.py` 已合并入 `save_review.py signoff`
-子命令——同一入口承担 tty 校验 + trivial 路径白名单 + git email 自动取 + CR-1~CR-8 校验
-+ verdict 写盘 + process.txt 追加全套职责。
-
-Agent 在主对话或子 Agent 中，**禁止**调用上述入口：
-
-- `python3 scripts/lib/save_review.py signoff ...`（F-012 后唯一用户入口）
-- `/code-review:signoff <REV-ID>`（slash command 糖，最终也调上面入口）
-
-> 注：`scripts/save-review.sh` 是**写 verdict** 的入口（reviewer Agent 用），不接受 `signoff` 子命令；用户不要把它当作 sign-off 入口。
-
-调用前的 tty 校验（`sys.stdin.isatty()`）会拒绝 AI shell，但 AI 不得通过假 tty / pipe trick / heredoc 等方式绕过。
-违反视为流程违规——人类发现即回滚 verdict 字段并在需求 notes.md 记录。
+当前仍然属于"人类专属动作"的只有 **approve / reject**——它们用于 workflow approval 节点（不写 verdict，只标记节点放行/驳回）。
 
 **Approval 唯一入口**（人类在 tty 终端执行）：
 

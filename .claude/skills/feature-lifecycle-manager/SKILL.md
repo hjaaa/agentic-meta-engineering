@@ -47,12 +47,10 @@ pending → in-progress → done
    - `python3 scripts/gates/run.py --trigger=post-dev --req=<REQ-ID> --feature=<F-xxx>`
    - 退出码 ≠ 0 → status 保持 `in-progress`，列出失败项让用户/subagent 修，**禁止进入下一步**
 3. 触发 `/code-review` scope = 该 feature
-4. 审查结果：
-   - 调用 wrapper 脚本判定 sign-off 状态（不允许自行 grep / 一行式）：
-       bash scripts/check-signoff.sh requirements/<id>/reviews/<rev-id>.json
-   - 退出码 0 → human_signoff.decision ∈ {approved, approved-trivial} → 转 done
-   - 退出码 1 → 未签字 / decision=rejected / 缺字段 → 保持 in-progress，提示开发者执行 /code-review:signoff
-   - `needs_revision` / `blocked` → status 保持 `in-progress`，把 review 结果交给**同一 subagent 重派修复**（不是主 Agent 亲自修）
+4. 审查结果：等待用户软确认 + review conclusion 判定。读最新 review JSON 的 `conclusion` 字段并按三分支推进：
+   - `looks_clean` 且 `required_fixes` 为空 → 主 Agent 在主对话发出软确认提示（展示 review 路径 + conclusion + 关键 finding），等用户回复确认（如"OK 转 done"），再把 task `status` 更新为 `done`
+   - `needs_attention` → 默认要求修复，把 review 结果交给**同一 subagent 重派修复**（不是主 Agent 亲自修），状态保持 `in-progress`；**仅当用户在主对话显式接受风险**（如"接受当前 needs_attention 风险，转 done"）后才允许把 `status` 更新为 `done`，并在 `process.txt` 留一行 `[development] F-xxx 用户显式接受 needs_attention 风险转 done`
+   - `blocked` → fail-closed，禁止转 done；status 保持 `in-progress`，把 review 结果交给**同一 subagent 重派修复**（不是主 Agent 亲自修）
 5. **转 done 后必须释放 dispatch lock**（hotfix REQ-2026-010 follow-up）：
    - `python3 scripts/lib/dispatch_state_cleanup.py --req-dir requirements/<REQ-ID>`
    - CLI 幂等，重复调安全；漏调会导致 `.dispatch-state.json.current_feature` 一直停在本 feature，后续主 Agent 任何 Edit 都会被 `touches_guard` 误记到该 feature.receipt.json，触发 `GATE-TOUCHES-VIOLATION` 硬挡 phase-transition / submit

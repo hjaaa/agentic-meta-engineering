@@ -56,15 +56,16 @@ description: 聚合 8 个专项 checker + review-critic 对抗验证 + code-qual
 - **跑了哪些 checker**：`{checker_route}` 列表
 - **跳过的 checker（含原因）**：从 `skipped_checkers[]` 渲染列表
 
-### 待 sign-off 提示
+### 人工确认提示
 
-显示当前 verdict 的机器评估结论 + 引导用户执行 sign-off：
+显示当前 verdict 的机器评估结论 + 引导用户在主对话进行软确认（不再写入 verdict 字段，软确认只作用于当前流程动作）：
 
 - 头：`本次评审输出 conclusion = {conclusion}（looks_clean / needs_attention / blocked），这只是 AI 的机器评估，不代表合并通过。`
-- 引导：列出两条命令模板：
-  - `/code-review:signoff <review_id>`（对话式 sign-off）
-  - `/code-review:signoff <review_id> --trivial`（纯文档变更快速通道）
-- 警示：未 sign-off 时 feature-lifecycle-manager 不会把对应 feature 转 done；GATE-REVIEW-VERDICT 在 phase-transition / submit 时会阻断
+- 引导：根据 conclusion 给出对应的软确认动作提示：
+  - `looks_clean` 且 `required_fixes` 为空 → 提示用户回复确认（如"OK 转 done"）后 feature-lifecycle-manager 才会把对应 feature 转 done
+  - `needs_attention` → 默认建议先修复；如用户判断风险可接受，需在主对话**显式接受风险**（如"接受当前 needs_attention 风险，转 done"）后才允许转 done
+  - `blocked` → fail-closed，必须先把 critical 问题修掉再重审，无法软确认绕过
+- 警示：未获用户软确认时 feature-lifecycle-manager 不会把对应 feature 转 done；GATE-REVIEW-VERDICT 在 phase-transition / submit 时 hard-block `blocked`（error 级），`needs_attention` 仅触发 warning（strict 模式才升 fail）；软门禁由主对话的人工确认承担
 
 ## 参考资源
 

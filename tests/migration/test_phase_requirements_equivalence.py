@@ -429,6 +429,11 @@ def test_three_triggers() -> None:
 # TC-F11-4：R003 signoff through hook 联动断言
 # ============================================================================
 
+@pytest.mark.skip(
+    reason="20260519-remove-human-signoff F-002：R003 已删除 is_signed_off 子条件；"
+    "本测试假定 R003 在缺 human_signoff 时 fail，与新口径冲突；"
+    "保留函数体作历史 migration 记录，标 skip 让 CI 通过。"
+)
 def test_r003_signoff_through_hook(tmp_path: Path) -> None:
     """R003 signoff 路径：有 human_signoff → PASS；无 → FAIL；双跑等价。
 

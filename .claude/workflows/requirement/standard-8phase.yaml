@@ -141,7 +141,7 @@ nodes:
           sections: [角色与场景, 验收标准, 待确认清单]
     depends_on: [req-quality-review]
 
-  - id: req-signoff
+  - id: req-confirm
     approval:
       message: |
         ## 需求定义阶段完成
@@ -186,7 +186,7 @@ nodes:
       yq e '.gates_passed += ["GATE-REQUIREMENT-SIGNOFF"]' -i "$META_PATH"
       python3 scripts/lib/append_process.py "phase-transition: definition → tech-research"
     timeout: 30000
-    depends_on: [req-signoff]
+    depends_on: [req-confirm]
 
   # ════════════════════════════════════════════════════════════════════
   # 阶段 3：tech-research（技术预研）
@@ -240,7 +240,7 @@ nodes:
           sections: [可行性结论, 风险识别, 工作量估算]
     depends_on: [tech-feasibility-assess]
 
-  - id: tech-research-signoff
+  - id: tech-research-confirm
     approval:
       message: |
         ## 技术预研阶段完成
@@ -273,7 +273,7 @@ nodes:
       yq e ".affected_modules = $tech-feasibility-assess.output.affected_modules" -i "$META_PATH"
       python3 scripts/lib/append_process.py "phase-transition: tech-research → outline-design"
     timeout: 30000
-    depends_on: [tech-research-signoff]
+    depends_on: [tech-research-confirm]
 
   # ════════════════════════════════════════════════════════════════════
   # 阶段 4：outline-design（概要设计）
@@ -319,7 +319,7 @@ nodes:
           sections: [架构方案, 模块划分, 技术选型, 关键流程]
     depends_on: [outline-design-review]
 
-  - id: outline-design-signoff
+  - id: outline-design-confirm
     approval:
       message: |
         ## 概要设计阶段完成
@@ -349,7 +349,7 @@ nodes:
       yq e '.phase = "detail-design"' -i "$META_PATH"
       python3 scripts/lib/append_process.py "phase-transition: outline-design → detail-design"
     timeout: 30000
-    depends_on: [outline-design-signoff]
+    depends_on: [outline-design-confirm]
 
   # ════════════════════════════════════════════════════════════════════
   # 阶段 5：detail-design（详细设计）
@@ -432,7 +432,7 @@ nodes:
           sections: [接口签名, 数据结构, 时序图, 异常处理]
     depends_on: [detail-design-review]
 
-  - id: detail-design-signoff
+  - id: detail-design-confirm
     approval:
       message: |
         ## 详细设计阶段完成
@@ -467,7 +467,7 @@ nodes:
       yq e '.phase = "task-planning"' -i "$META_PATH"
       python3 scripts/lib/append_process.py "phase-transition: detail-design → task-planning"
     timeout: 30000
-    depends_on: [detail-design-signoff]
+    depends_on: [detail-design-confirm]
 
   # ════════════════════════════════════════════════════════════════════
   # 阶段 6：task-planning（任务规划）
@@ -498,7 +498,7 @@ nodes:
     timeout: 30000
     depends_on: [task-frontmatter-check]
 
-  - id: task-signoff
+  - id: task-confirm
     approval:
       message: |
         ## 任务规划阶段完成
@@ -523,7 +523,7 @@ nodes:
       yq e '.phase = "development"' -i "$META_PATH"
       python3 scripts/lib/append_process.py "phase-transition: task-planning → development"
     timeout: 30000
-    depends_on: [task-signoff]
+    depends_on: [task-confirm]
 
   # ════════════════════════════════════════════════════════════════════
   # 阶段 7：development（开发实施）
@@ -633,7 +633,7 @@ nodes:
           sections: [测试总结, 失败用例, 覆盖率]
     depends_on: [test-runner-execute]
 
-  - id: test-final-signoff
+  - id: test-final-confirm
     approval:
       message: |
         ## 测试验收阶段完成
@@ -669,8 +669,8 @@ nodes:
   # pr-merged-gate：人工确认 PR 已合并
   # archive-finalize：写 meta.yaml 归档字段（吸收原 workflow-mark-completed）
   #
-  # 注：depends_on 按当前 yaml 实际拓扑接 test-final-signoff
-  #   （详细设计原文写 test-traceability-check，但当前末端实际是 test-final-signoff）
+  # 注：depends_on 按当前 yaml 实际拓扑接 test-final-confirm
+  #   （详细设计原文写 test-traceability-check，但当前末端实际是 test-final-confirm）
   # ════════════════════════════════════════════════════════════════════
 
   - id: pr-submit
@@ -688,7 +688,7 @@ nodes:
       yq e ".pr_url = \"$PR_URL\"" -i "$META_PATH"
       echo "PR 已创建：$PR_URL"
     timeout: 120000
-    depends_on: [test-final-signoff]
+    depends_on: [test-final-confirm]
     output_format:
       type: object
       properties:
