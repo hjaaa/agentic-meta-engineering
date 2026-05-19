@@ -725,19 +725,24 @@ def archive_requirement(
             req_id,
         )
 
-    # —— codex P1 F-1 / F-3 修复：rebind module-level REPO_ROOT / REQUIREMENTS_DIR
-    # 到主仓后再读 meta；否则从 linked worktree 内调 archive 时 path helper 会指向
-    # 即将被 cleanup 删除的 worktree 副本，导致 bookkeeping 写入失败 ——
-    _rebind_to_main_repo(req_id)
-
     meta = _load_meta(req_id)
 
     # —— 1 ~ 5 项预检（任一失败 → SystemExit(1)） ——
+    # 顺序要求（codex P1 round-3 F-4 修复）：_precheck_dirty 必须在 _rebind_to_main_repo
+    # 之前——dirty 检查的对象是用户实际工作的 worktree（feat 分支可能有 uncommitted
+    # 改动），不是 PR merged 后干净的主仓。先 rebind 会把 git status 检查指向 clean
+    # 的主仓 → 误判通过 → 后续 cleanup 失败仅 log warning 不阻塞 → meta.yaml 被 mark
+    # completed 但 worktree 残留 uncommitted 改动，状态不一致。
     _precheck_phase(meta, req_id)
     _precheck_dirty(req_id)
     pr_number = _precheck_pr_number(meta, req_id)
     _precheck_pr_merged(pr_number, req_id, force=force)
     _precheck_lessons_extracted(meta, req_id)
+
+    # —— codex P1 round-1/2 F-1 / F-3 修复：rebind module-level REPO_ROOT /
+    # REQUIREMENTS_DIR 到主仓，让后续 _atomic_write_meta / _append_process_event 写
+    # 主仓而非即将被 cleanup 删除的 worktree 副本 ——
+    _rebind_to_main_repo(req_id)
 
     # —— worktree cleanup（rebind 后 REPO_ROOT 已锁到主仓；cleanup 删 worktree 不影响
     # 后续 _atomic_write_meta / _append_process_event 对主仓的写入）——
