@@ -1,10 +1,15 @@
 """F-001/F-003 · workflow run ID/REQ ID 生成 + schema 门禁单测。
 
 覆盖范围：
-  TC-F1-1  generate_req_id：_generate_req_id 空 requirements/ 返回 REQ-YYYY-001
-  TC-F1-2  generate_req_id_concurrency_safe：_generate_req_id 并发 3 路 ID 唯一
-  TC-F1-3  generate_req_id_max_plus_one：存在多个目录时返回 max+1 编号
+  TC-F1-1  [DEPRECATED · REQ-2026-014 D-013] generate_req_id 空 requirements/ 返回 REQ-YYYY-001
+  TC-F1-2  [DEPRECATED · REQ-2026-014 D-013] generate_req_id_concurrency_safe 并发 3 路 ID 唯一
+  TC-F1-3  [DEPRECATED · REQ-2026-014 D-013] generate_req_id_max_plus_one max+1 编号
   TC-F3-1  load_workflow_schema_gate：非法 yaml exit 1，合法模板正常路由
+
+REQ-2026-014 F-003 D-013 迁移：requirement key 格式从 REQ-YYYY-NNN 改为 YYYYMMDD-<slug>。
+TC-F1-1 / TC-F1-2 / TC-F1-3 的 REQ-YYYY-NNN 断言已失效；新格式覆盖在
+tests/lib/test_requirement_naming.py（24 用例）。本文件保留作历史档存，
+3 个旧用例标 @pytest.mark.skip（contract 已迁移，非测试 bug），不删除以保留 git blame 追溯。
 
 外部依赖全部 mock（git / TaskStop / isatty）。
 pytest 命名规范：test_<场景>_<期望>（CLAUDE.md §7）。
@@ -67,6 +72,7 @@ nodes:
 # F-001：_generate_req_id 单测
 # ============================================================
 
+@pytest.mark.skip(reason="REQ-2026-014 F-003 D-013 contract 迁移：REQ-YYYY-NNN → YYYYMMDD-<slug>；新覆盖见 tests/lib/test_requirement_naming.py")
 class TestGenerateReqId:
     """_generate_req_id 空 requirements/ 时返回 REQ-{当年}-001。"""
 
@@ -91,6 +97,7 @@ class TestGenerateReqId:
         )
 
 
+@pytest.mark.skip(reason="REQ-2026-014 F-003 D-013 contract 迁移：REQ-YYYY-NNN → YYYYMMDD-<slug>；新覆盖见 tests/lib/test_requirement_naming.py")
 class TestGenerateReqIdConcurrencySafe:
     """_generate_req_id 并发 3 路调用，3 个 REQ-ID 唯一（原子化验证）。"""
 
@@ -139,6 +146,7 @@ class TestGenerateReqIdConcurrencySafe:
 
 
 # TC-F1-3: max+1 策略一致（features.json F-001 acceptance[2]）
+@pytest.mark.skip(reason="REQ-2026-014 F-003 D-013 contract 迁移：REQ-YYYY-NNN → YYYYMMDD-<slug>；新覆盖见 tests/lib/test_requirement_naming.py")
 class TestGenerateReqIdMaxPlusOne:
     """_generate_req_id 存在多个现有目录时，返回 max+1 编号。"""
 

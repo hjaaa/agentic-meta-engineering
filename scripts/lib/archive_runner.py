@@ -36,6 +36,7 @@ archive 命令始终 exit 0（除非 5 项预检挂）。
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -49,6 +50,7 @@ import yaml
 # 复用 common 提供的仓库根定位（与 check_meta / list_requirements 同模块风格）
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import REPO_ROOT  # noqa: E402
+import worktree_manager  # noqa: E402
 
 REQUIREMENTS_DIR = REPO_ROOT / "requirements"
 
@@ -61,6 +63,8 @@ _SUBPROC_TIMEOUT_SEC = 30
 # 受保护的长寿命分支白名单（本地+远程对称）——任何情况下都不允许 archive 删除
 # 即便 meta.base_branch 为空 / 漂移，命中本集合也直接 fail-closed（codex round-5 P1 F-10）
 _PROTECTED_BRANCHES = frozenset({"main", "master", "develop"})
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -152,23 +156,55 @@ def _precheck_phase(meta: dict[str, Any], req_id: str) -> None:
         )
 
 
-def _precheck_dirty(req_id: str) -> None:
+def _check_git_status_clean(cwd: Path, req_id: str, label: str) -> None:
+    """在指定 cwd 跑 `git status --porcelain`，dirty → SystemExit(1) + 标签化错误信息。"""
     try:
-        result = _run(["git", "status", "--porcelain"], cwd=REPO_ROOT)
+        result = _run(["git", "status", "--porcelain"], cwd=cwd)
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
-        _abort("R-ARCHIVE-DIRTY", f"git status 调用失败: {exc}", req_id)
+        _abort("R-ARCHIVE-DIRTY", f"git status 调用失败 ({label} {cwd}): {exc}", req_id)
     if result.returncode != 0:
         _abort(
             "R-ARCHIVE-DIRTY",
-            f"git status 返回非零: {result.stderr.strip() or result.stdout.strip()}",
+            f"git status 返回非零 ({label} {cwd}): "
+            f"{result.stderr.strip() or result.stdout.strip()}",
             req_id,
         )
     if (result.stdout or "").strip():
         _abort(
             "R-ARCHIVE-DIRTY",
-            "工作目录有未提交改动；先 commit 再 archive",
+            f"{label} 有未提交改动 ({cwd})；先 commit 再 archive",
             req_id,
         )
+
+
+def _precheck_dirty(meta: dict[str, Any], req_id: str) -> None:
+    """检查主仓 + owned linked worktree 双仓干净状态（codex P1 F-4 / F-6）。
+
+    场景覆盖：
+      - 主仓 cwd 启动 archive，meta.worktree.path 指向 owned 但 dirty 的 linked
+        worktree：主仓 clean → 单点检查会漏 → cleanup `git worktree remove` 因
+        dirty 失败但 fail-soft → meta 已 mark completed（codex round-5 F-6）
+      - linked worktree cwd 启动 archive，主仓 clean 但 worktree dirty：rebind 后
+        REPO_ROOT 已切主仓 → 单点检查只看 clean 主仓（codex round-3 F-4）
+
+    设计：先主仓，再 owned worktree（只在 owner=workflow 时检查；external / legacy
+    不强制——它们不归 workflow 管，dirty 也不会被 cleanup_worktree_if_owned 触动）。
+    """
+    _check_git_status_clean(REPO_ROOT, req_id, "主仓")
+
+    worktree_meta = meta.get("worktree") or {}
+    if not isinstance(worktree_meta, dict):
+        return
+    if worktree_meta.get("owner") != "workflow":
+        return
+    raw_path = (worktree_meta.get("path") or "").strip()
+    if not raw_path:
+        return
+    worktree_path = (REPO_ROOT / Path(raw_path)).resolve()
+    if not worktree_path.exists():
+        # worktree 已被外部清理：cleanup 阶段会按 git worktree prune 处理，本步无需阻塞
+        return
+    _check_git_status_clean(worktree_path, req_id, "linked worktree")
 
 
 def _precheck_pr_number(meta: dict[str, Any], req_id: str) -> int:
@@ -608,6 +644,89 @@ def _render_summary(result: ArchiveResult) -> str:
     return "\n".join(lines)
 
 
+# ---------- worktree cleanup（F-005）----------
+
+
+def _rebind_to_main_repo(req_id: str) -> None:
+    """archive 入口最早调用：把 module-level REPO_ROOT / REQUIREMENTS_DIR 锁定到主仓。
+
+    问题（codex P1 F-1 / F-3）：archive 可能从 linked worktree 内被 invoke，此时
+    Python 通过 cwd-relative sys.path 找到 worktree 副本里的 scripts/lib/，
+    `__file__` → REPO_ROOT 都指向 worktree。后续 `_cleanup_worktree_before_archive`
+    虽然 os.chdir 到主仓并删 worktree，但 module-level REPO_ROOT 不变 →
+    `_meta_path` / `_process_path` 仍解析到已删的 worktree 副本 → 写盘失败 / 写入
+    无人能读到的孤儿路径。
+
+    本函数在所有 path-dependent 操作之前调用，把全局常量重绑到主仓。失败时不抛
+    异常（caller 已显式 chdir cleanup 兜底），但保留 stderr warning 让问题可观察。
+    """
+    global REPO_ROOT, REQUIREMENTS_DIR
+    try:
+        main = worktree_manager.resolve_main_repo_root(Path.cwd())
+    except worktree_manager.WorktreeBootstrapError as exc:
+        logger.info(
+            "rebind_to_main_repo: skipped req_id=%s reason=%s "
+            "(可能 cwd 已在主仓或非 git 上下文)",
+            req_id, getattr(exc, "reason", str(exc)),
+        )
+        return
+    if main == REPO_ROOT:
+        return
+    REPO_ROOT = main
+    REQUIREMENTS_DIR = main / "requirements"
+    logger.info(
+        "rebind_to_main_repo: REPO_ROOT %s → %s req_id=%s",
+        REPO_ROOT, main, req_id,
+    )
+
+
+def _cleanup_worktree_before_archive(meta: dict[str, Any], req_id: str) -> None:
+    """预检全部通过后，atomic_write_meta 之前注入 worktree 清理（F-005 / P1-3 修复）。
+
+    三步顺序硬约束（详见 detailed-design §3.5 / P1-3）：
+      1. resolve_main_repo_root：从当前 cwd（可能是 worktree 内）解出主仓根
+      2. os.chdir(main_repo_root)：保证后续 git 操作（含 archive 自身）在主仓根下
+      3. cleanup_worktree_if_owned：owner=workflow → remove；其他 → skipped/aborted/failed
+
+    OD-3 落点：不读 meta.worktree.cleanup.policy（占位字段，本期不消费）。
+    设计来源：detailed-design.md:792-826（§3.5）。
+    """
+    try:
+        main_repo_root = worktree_manager.resolve_main_repo_root(Path.cwd())
+    except worktree_manager.WorktreeBootstrapError as exc:
+        # resolve 规约只抛 WorktreeBootstrapError；非此类型向上传播（fail loud > silent）
+        logger.error(
+            "worktree cleanup skipped: resolve_main_repo_root failed req_id=%s reason=%s",
+            req_id, getattr(exc, "reason", str(exc)),
+        )
+        return
+
+    # os.chdir 裸调在权限异常或 race 时会 crash archive 主流程，违反 D-009 fail-soft；
+    # 用 OSError 兜住，让 cleanup 跳过而非整体 abort。
+    try:
+        os.chdir(main_repo_root)
+    except OSError as exc:
+        logger.error(
+            "worktree cleanup skipped: chdir to %s failed req_id=%s: %s",
+            main_repo_root, req_id, exc,
+        )
+        return
+
+    cleanup_result = worktree_manager.cleanup_worktree_if_owned(meta, main_repo_root)
+
+    if cleanup_result.action == "removed":
+        logger.info("worktree removed: %s", cleanup_result.removed_path)
+        # 仅 removed 分支才 mutate meta，避免给 legacy meta 引入空 worktree 段
+        meta.setdefault("worktree", {}).setdefault("cleanup", {})["removed_at"] = _now_cst_str()
+    elif cleanup_result.action == "skipped":
+        logger.info("worktree cleanup skipped: %s", cleanup_result.reason)
+    else:
+        # aborted / failed：记 error 但不阻塞 archive 主流程（D-009）
+        logger.error(
+            "worktree cleanup %s: %s", cleanup_result.action, cleanup_result.reason
+        )
+
+
 # ---------- 主入口 ----------
 
 
@@ -638,14 +757,38 @@ def archive_requirement(
             req_id,
         )
 
+    # —— 关键顺序约束（codex P1 round-1~5 F-1 / F-3 / F-4 / F-5 / F-6 累积修复）——
+    #
+    # 1. _rebind_to_main_repo 必须在 _load_meta / dirty / cleanup / write_meta 之前：
+    #    确保 path helper 一律解析到主仓（F-1 / F-3）。
+    # 2. _load_meta 必须在 rebind 之后：从主仓加载 meta dict，避免 worktree stale
+    #    副本覆盖主仓较新 metadata（F-5）。
+    # 3. _precheck_dirty 必须在 cleanup 之前 且 必须同时检查主仓 + owned worktree
+    #    （F-4 / F-6）：
+    #      - 主仓 cwd 启动 + worktree dirty 场景（F-6）：rebind 不变 REPO_ROOT=主仓，
+    #        仅看主仓会漏 dirty worktree
+    #      - worktree cwd 启动 + worktree dirty 场景（F-4）：rebind 后 REPO_ROOT 切
+    #        主仓，仅看主仓会漏 dirty worktree
+    #    两种场景都需要显式检查 meta.worktree.path（owner=workflow 时）。
+    #
+    # 综合顺序：
+    #   rebind → load_meta (main) → dirty (both main+owned-worktree) → 其他 precheck
+    #   → cleanup → write_meta
+
+    _rebind_to_main_repo(req_id)
+
     meta = _load_meta(req_id)
 
-    # —— 1 ~ 5 项预检（任一失败 → SystemExit(1)） ——
+    # —— 预检（任一失败 → SystemExit(1)） ——
+    _precheck_dirty(meta, req_id)
     _precheck_phase(meta, req_id)
-    _precheck_dirty(req_id)
     pr_number = _precheck_pr_number(meta, req_id)
     _precheck_pr_merged(pr_number, req_id, force=force)
     _precheck_lessons_extracted(meta, req_id)
+
+    # —— worktree cleanup（REPO_ROOT 已锁到主仓；cleanup 删 worktree 不影响后续
+    # _atomic_write_meta / _append_process_event 对主仓的写入）——
+    _cleanup_worktree_before_archive(meta, req_id)
 
     # —— 5 步执行 ——
     result = ArchiveResult(req_id=req_id)

@@ -14,6 +14,23 @@ pr_url: ""                     # /requirement:submit 成功后回写
 pr_number: 0                   # /requirement:submit 成功后回写
 log_layout: split              # split（默认，工具日志→process.tool.log / 语义事件→process.txt） | legacy（老格式，全写 process.txt）
 
+# ============ worktree 组（F-008 / F-010；旧需求缺该段视同 enabled=false） ============
+worktree:
+  enabled: __WT_ENABLED__         # 默认 true；--no-worktree 时 false
+  owner: __WT_OWNER__             # workflow | external | none
+  path: __WT_PATH__               # .worktrees/feat-req-<key>
+  absolute_path: __WT_ABS_PATH__
+  branch: __WT_BRANCH__
+  base_branch: __WT_BASE_BRANCH__
+  created_at: __WT_CREATED_AT__
+  baseline:
+    command: __WT_BASELINE_CMD__  # 默认 make gates-validate
+    status: __WT_BASELINE_STATUS__ # passed | failed | skipped
+    completed_at: __WT_BASELINE_COMPLETED_AT__
+  cleanup:
+    policy: owned-only            # OD-3：本期固定 owned-only，archive_runner 不消费
+    removed_at: ""                # canonical unset = 空串；archive cleanup 成功时回填 ts（P1-4）
+
 # ============ 语义组（definition 阶段补齐，供跨需求检索） ============
 feature_area: ""                         # definition 起必填；值必须在 context/project/<project>/areas.yaml 白名单内
 change_type: ""                          # definition 起必填；枚举：feature / bugfix / refactor / perf / security

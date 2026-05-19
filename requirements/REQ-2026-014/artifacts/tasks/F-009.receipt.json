@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-009",
+  "status": "DONE",
+  "commit_sha": "bc6f7c4",
+  "files_changed": [
+    ".claude/commands/requirement/submit.md",
+    ".claude/commands/requirement/archive.md",
+    ".claude/skills/managing-requirement-lifecycle/SKILL.md",
+    "tests/lifecycle/test_submit_archive_worktree_docs.py"
+  ],
+  "test_summary": "4 new tests passed (test_submit_md_contains_worktree_retained_phrase, test_archive_md_contains_triple_protection_phrases, test_archive_md_cli_signature_unchanged, test_skill_md_cross_link_to_archive_md); pytest tests/lifecycle/ 78 passed (full regression)",
+  "touches_violations": [],
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-18T22:19:48+08:00"
+}

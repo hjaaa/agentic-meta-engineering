@@ -1,0 +1,135 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-014-code-F-004-001",
+  "requirement_id": "REQ-2026-014",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-18 19:19:14",
+  "reviewed_commit": "7953abd",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "a26809b7ca38829bf875ec18dd148ad8476009a212dedcde387e7c7281203440"
+    },
+    {
+      "path": "artifacts/tasks/F-004.md",
+      "sha256": "b1a743aa8d74fb1590e58d49bc7079a7fe315c232ec579c64ad044475a464ec1"
+    }
+  ],
+  "conclusion": "blocked",
+  "score": 72,
+  "dimensions": {
+    "design_consistency": {
+      "score": 70,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/workflow_run.py:419-427 未检 exc.retain_worktree，baseline_failed_required 路径仍调 _bootstrap_rollback，破坏 detailed-design.md §4.2/§5.1 保留现场设计意图 (升 critical 入 required_fixes)"
+        },
+        {
+          "severity": "major",
+          "description": "scripts/lib/workflow_run.py:424-427 _bootstrap_rollback 调用未传 worktree_info，step 1 (workflow_bootstrap.py:700) worktree remove 守卫永不触发，rollback 后留下孤儿 worktree (升 critical 入 required_fixes)"
+        },
+        {
+          "severity": "major",
+          "description": "scripts/lib/workflow_bootstrap.py:196 _render_meta_yaml 在 worktree_info 非空时无条件 wt_enabled='true'，未区分 owner='none'，与 run-state.jsonl line 595 (worktree_info.owner != 'none') 判定不一致"
+        },
+        {
+          "severity": "major",
+          "description": "scripts/lib/workflow_bootstrap.py:455 注释 'gitignore_missing' 与 BootstrapError reason 枚举 (line 65 / design.md line 1195) 'worktree_dir_not_ignored' 不一致"
+        },
+        {
+          "severity": "major",
+          "description": "scripts/lib/workflow_bootstrap.py:673-674 _bootstrap_rollback artifacts_created/branch_created 应 keyword-only (detailed-design.md §3.4)，当前是位置参数易误调"
+        }
+      ]
+    },
+    "security": {
+      "score": 90,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 90,
+      "issues": []
+    },
+    "complexity": {
+      "score": 72,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/workflow_bootstrap.py:669-803 _bootstrap_rollback 单方法 125 行 / CC=21 (阈值 80/10)，建议拆 _rollback_worktree / _rollback_branch / _rollback_artifacts 三子函数"
+        },
+        {
+          "severity": "major",
+          "description": "scripts/lib/workflow_bootstrap.py:469-614 _bootstrap_requirement 146 行 (阈值 80)，但语义为编排 8 步骤连续动作，拆分价值较低"
+        },
+        {
+          "severity": "major",
+          "description": "scripts/lib/workflow_bootstrap.py 全文 804 行 (阈值 500)，worktree-first 改造一次性引入，拆 _meta_render.py / _worktree_setup.py 子模块需专项 refactor feature"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/workflow_bootstrap.py:299 _write_artifact_file 硬编码 branch_created=False (F-002 遗留)，F-004 worktree-first 流程在 step 5-6 调用时实际 branch_created=True 已成立，rollback 信号丢失"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "tests/lib/test_workflow_bootstrap_worktree.py:25 MagicMock 未使用 (整文件零引用)"
+        },
+        {
+          "severity": "minor",
+          "description": "tests/lib/test_workflow_bootstrap_worktree.py:39 WorktreeBootstrapError 未使用 (整文件零引用)"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_bootstrap.py:273 _load_yaml_worktree_cfg yaml 解析失败 logging.debug 应升 warning (配置问题用户应感知)"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/workflow_bootstrap.py:170 _render_meta_yaml worktree_state docstring 提到但实际未作为参数 (死参数文档)"
+        }
+      ]
+    },
+    "performance": {
+      "score": 90,
+      "issues": []
+    },
+    "history_context": {
+      "score": 90,
+      "issues": []
+    }
+  },
+  "required_fixes": [
+    {
+      "description": "workflow_run.py:419-427 baseline_failed_required 路径 retain_worktree 守卫缺失，必须在 _bootstrap_rollback 前检 exc.retain_worktree 跳过 rollback (保留现场)",
+      "location": "scripts/lib/workflow_run.py:419-427",
+      "severity": "blocker"
+    },
+    {
+      "description": "workflow_run.py:424-427 _bootstrap_rollback 调用必须传 worktree_info=exc.worktree_info (或 BootstrapError 携带 worktree_info 字段) 让 step 1 workflow_bootstrap.py:700 worktree remove 守卫可触发，避免孤儿 worktree",
+      "location": "scripts/lib/workflow_run.py:424-427",
+      "severity": "blocker"
+    }
+  ],
+  "suggestions": [
+    "跨维度: F-1/F-2 (design_consistency 双 critical) 联动暴露 BootstrapError 与 _bootstrap_rollback 协议未端到端校验——建议 rev2 顺手在 BootstrapError 加 worktree_info: Optional[WorktreeInfo] 字段，统一协议",
+    "跨维度: F-3 (complexity major) 与 F-1/F-2 (consistency critical) 同点同因——_bootstrap_rollback 既复杂又被错误调用，rev2 拆 3 子函数同时修可一并降两条 critical 与一条 major",
+    "F-5 + F-10 同属 worktree owner='none' 路径覆盖不足，rev2 修 wt_enabled 时一并修 _write_artifact_file branch_created 透传 (避免 F-006/F-009 时再返工)",
+    "F-6 (_bootstrap_requirement 146 行) / F-7 (805 行) 建议推迟到独立 refactor feature；当前 diff 已 1026 insertions，二次扩张噪音过大",
+    "F-13 / F-17 (yaml debug→warning、死参数 worktree_state) 顺手在 rev2 修，单点编辑无 diff 风险",
+    "F-11 / F-12 (unused import) 顺手一行删除即可，不构成阻塞"
+  ],
+  "scope": {
+    "feature_id": "F-004"
+  },
+  "supersedes": null
+}

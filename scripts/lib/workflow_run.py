@@ -1,6 +1,6 @@
-"""workflow run 命令入口（F-005 + F-002）。
+"""workflow run 命令入口（F-005 + F-002 + F-003）。
 
-/workflow:run <template-id> [<title-or-args>...]
+/workflow:run <template-id> [<title-or-args>...] [--slug=<slug>] [--no-worktree] [--worktree-policy=<policy>]
 
 副作用：
   - requirement 类模板（category == "requirement"）：走 _bootstrap_requirement
@@ -9,7 +9,7 @@
     _bootstrap_rollback 反向撤销，不残留中间产物。
   - 其他模板：保留原有 run_id 路径，建 `runs/<RUN-ID>/` + meta.yaml + jsonl。
 
-详细设计 §1.2 / §1.3 / §1.4。
+详细设计 §1.2 / §1.3 / §1.4 / §3.3。
 """
 from __future__ import annotations
 
@@ -18,17 +18,18 @@ import logging
 import os
 import re
 import sys
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 # _generate_run_id 最大 EEXIST 重试次数（并发冲突时递增编号）
 _RUN_ID_MAX_RETRIES = 3
 
-# _generate_req_id 最大 EEXIST 重试次数（并发冲突时递增编号）
-_REQ_ID_MAX_RETRIES = 3
-
-# REQ-YYYY-NNN 格式正则
+# REQ-YYYY-NNN 格式正则（legacy 格式检测用）
 _REQ_ID_PATTERN = re.compile(r"^REQ-(\d{4})-(\d{3})$")
+
+# .worktrees/ 内 worktree 目录名前缀（对应 branch feat/req-<key>）
+_WORKTREE_DIR_PREFIX = "feat-req-"
 
 _LIB_DIR = Path(__file__).resolve().parent
 if str(_LIB_DIR) not in sys.path:
@@ -54,6 +55,8 @@ from workflow_bootstrap import (  # noqa: E402,F401
     _strip_req_prefix,
     _write_artifact_file,
 )
+import requirement_naming  # noqa: E402
+from requirement_naming import SlugError  # noqa: E402
 
 
 def _generate_run_id(repo_root: Path) -> str:
@@ -97,86 +100,202 @@ def _generate_run_id(repo_root: Path) -> str:
     )
 
 
-def _generate_req_id(repo_root: Path) -> str:
-    """扫 requirements/ 下现有 REQ-YYYY-NNN 取 max+1，原子化建目录。
+def _scan_existing_requirement_keys(repo_root: Path) -> set[str]:
+    """收集主仓根 requirements/ 与 .worktrees/ 下的占用 key。
 
-    并发安全：mkdir(exist_ok=False) + EEXIST 重试，与 _generate_run_id 一致。
-
-    max 取**当年** REQ-YYYY-NNN 中 NNN 的 max（year==ts_prefix），跨年从 1 重新开始。
-
-    返回：成功创建目录的 REQ-ID（str）。
-    抛出：WorkflowError 若超 _REQ_ID_MAX_RETRIES。
+    requirements/<key>/ 直接取目录名；.worktrees/feat-req-<key>/ 去前缀 'feat-req-'。
+    缺目录视同空集；不抛异常。
     """
-    # 当前年份（4 位，UTC）
-    ts_prefix = datetime.now(timezone.utc).strftime("%Y")
-    base = repo_root / "requirements"
-    base.mkdir(parents=True, exist_ok=True)
+    occupied: set[str] = set()
 
-    # 扫描已有当年编号，取 max+1 作为起始候选
-    # os.scandir 先按名字过滤再 stat，规避 requirements/ 累积大量目录时的性能退化
-    nums = []
-    with os.scandir(base) as it:
-        for entry in it:
-            m = _REQ_ID_PATTERN.match(entry.name)
-            if m and m.group(1) == ts_prefix and entry.is_dir():
-                # 仅收集当年编号；跨年重新从 1 计
-                nums.append(int(m.group(2)))
-    next_num = max(nums) + 1 if nums else 1
-
-    # 检查溢出（NNN 为 3 位，最大 999）；进入此分支前 next_num>999 已保证 nums 非空
-    if next_num > 999:
-        raise WorkflowError(
-            f"生成 req_id 失败：{ts_prefix} 年编号已达上限 999（当前 max={max(nums)}），请人工干预"
-        )
-
-    # 原子化创建：exist_ok=False 确保只有一个进程成功；EEXIST 时递增重试
-    for attempt in range(_REQ_ID_MAX_RETRIES):
-        candidate_id = f"REQ-{ts_prefix}-{next_num:03d}"
-        candidate_dir = base / candidate_id
+    # 扫 requirements/<key>/
+    req_base = repo_root / "requirements"
+    if req_base.is_dir():
         try:
-            candidate_dir.mkdir(parents=False, exist_ok=False)
-            logging.debug("req_id=%s 顶层目录已创建", candidate_id)
-            return candidate_id
-        except FileExistsError:
-            # 并发冲突：另一进程已抢占该编号，取下一个编号重试
-            logging.debug("req_id %s 冲突，递增重试 attempt=%d", candidate_id, attempt)
-            next_num += 1
-            if next_num > 999:
-                raise WorkflowError(
-                    f"生成 req_id 失败：{ts_prefix} 年编号已达上限 999（当前 max={next_num - 1}）"
-                )
+            with os.scandir(req_base) as it:
+                for entry in it:
+                    if entry.is_dir():
+                        occupied.add(entry.name)
+        except OSError as exc:
+            logging.warning("_scan_existing_requirement_keys requirements/ 扫描失败：%s", exc)
 
-    # 超过最大重试次数（极低概率；最多支持 3 路并发冲突重试，≥4 进程同时竞争才会失败）
-    raise WorkflowError(
-        f"生成 req_id 失败：并发冲突超过 {_REQ_ID_MAX_RETRIES} 次重试"
-    )
+    # 扫 .worktrees/feat-req-<key>/（去前缀还原 key）
+    worktrees_base = repo_root / ".worktrees"
+    if worktrees_base.is_dir():
+        try:
+            with os.scandir(worktrees_base) as it:
+                for entry in it:
+                    if entry.is_dir() and entry.name.startswith(_WORKTREE_DIR_PREFIX):
+                        key = entry.name[len(_WORKTREE_DIR_PREFIX):]
+                        if key:
+                            occupied.add(key)
+        except OSError as exc:
+            logging.warning("_scan_existing_requirement_keys .worktrees/ 扫描失败：%s", exc)
+
+    return occupied
+
+
+def _generate_req_id(
+    repo_root: Path,
+    *,
+    slug: str | None = None,
+    today: date | None = None,
+) -> str:
+    """生成新 requirement key（D-013）。
+
+    保留函数名 _generate_req_id 作为兼容入口，内部转调
+    requirement_naming.generate_requirement_key（OD-1 汇合点）。
+
+    函数体不出现 mkdir / open(W) 等占名 IO（P1-2）。
+    slug 为 None 时，尝试 derive_slug_from_title("legacy-req") 作兜底
+    （保持与旧签名的向后兼容）。
+
+    返回：新 requirement key（str，格式 YYYYMMDD-<slug> 或带后缀）。
+    抛出：SlugError 若同日同 slug 后缀 -02~-99 均已占用。
+    """
+    effective_slug = slug
+    if effective_slug is None:
+        effective_slug = requirement_naming.derive_slug_from_title("legacy-req")
+    today = today or date.today()
+    existing = _scan_existing_requirement_keys(repo_root)
+    return requirement_naming.generate_requirement_key(today, effective_slug, existing_keys=existing)
+
+
+def _generate_req_id_with_existing(
+    repo_root: Path,
+    *,
+    slug: str,
+    existing_keys: set[str],
+    today: date | None = None,
+) -> str:
+    """生成新 requirement key，将外部 existing_keys 注入（retry 循环专用）。
+
+    与 _generate_req_id 不同：existing_keys 由调用方管理（retry 时累积 tried_keys），
+    不重新扫描文件系统——避免 race 窗口内的重复扫描。
+    """
+    today = today or date.today()
+    # 合并文件系统已有 key 与调用方传入的 tried_keys
+    fs_keys = _scan_existing_requirement_keys(repo_root)
+    all_existing = fs_keys | existing_keys
+    return requirement_naming.generate_requirement_key(today, slug, existing_keys=all_existing)
 
 
 # ============================================================================
-# F-002 helpers：模板分类 / 参数解析（其余 bootstrap helper 已迁至 workflow_bootstrap.py）
+# F-003 RunArgs dataclass + 参数解析
 # ============================================================================
-# 注：F-002 的过渡 helper _is_requirement_template 已在 F-003 删除，
-# 改由 load_workflow().workflow.get("category") 直接获取，无路径兜底降级。
 
 
-def _parse_args(args: list[str]) -> tuple[str, str, str]:
-    """切分 /workflow:run 的位置参数。
+# --worktree-policy 合法枚举值（来源：requirements/REQ-2026-014/artifacts/detailed-design.md:862）
+_VALID_WORKTREE_POLICIES: frozenset[str] = frozenset({"auto", "never", "require", "current"})
 
-    约定（最小可行）：
+
+@dataclass(frozen=True)
+class RunArgs:
+    """_parse_args 返回类型（F-003 扩展）。"""
+    template_id: str
+    template_args: str
+    title: str
+    slug: str | None
+    no_worktree: bool
+    worktree_policy: str | None
+
+
+def _parse_args(args: list[str]) -> RunArgs:
+    """切分 /workflow:run 的位置参数与 long-option 参数。
+
+    位置参数约定：
       args[0]      → template_id
       args[1]      → title（如缺省，title 退回 template_id 作 fallback）
-      args[1:]     → arguments（template_args，整体作为模板渲染输入字符串）
+      args[1:]     → arguments（template_args，整体作为模板渲染输入字符串，
+                       不含 -- 选项部分）
 
-    返回：(template_id, template_args, title)
-    抛出：WorkflowError 若 args 为空。
+    支持 long-option（空格形式 `--key value` 与等号形式 `--key=value` 均接受）：
+      --slug       → RunArgs.slug
+      --no-worktree → RunArgs.no_worktree（单独 flag，无值）
+      --worktree-policy → RunArgs.worktree_policy
+
+    抛出：WorkflowError 若 args 为空 / --slug 后无值 / 遇未知 -- 选项。
     """
     if not args:
         raise WorkflowError("/workflow:run 需要 <template-id> 参数")
-    template_id = args[0]
-    template_args = " ".join(args[1:]) if len(args) > 1 else ""
+
+    # 已识别的 long-option 名（不含 --）
+    _KNOWN_OPTIONS = {"slug", "no-worktree", "worktree-policy"}
+
+    slug: str | None = None
+    no_worktree: bool = False
+    worktree_policy: str | None = None
+    positional: list[str] = []
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg.startswith("--"):
+            # 等号形式：--key=value
+            if "=" in arg:
+                key, _, value = arg[2:].partition("=")
+                if key not in _KNOWN_OPTIONS:
+                    raise WorkflowError(f"未知选项：{arg!r}（允许：{sorted(_KNOWN_OPTIONS)}）")
+                if key == "slug":
+                    slug = value
+                elif key == "worktree-policy":
+                    if value not in _VALID_WORKTREE_POLICIES:
+                        raise WorkflowError(
+                            f"--worktree-policy 非法值 {value!r}，"
+                            f"合法值：{', '.join(sorted(_VALID_WORKTREE_POLICIES))}"
+                        )
+                    worktree_policy = value
+                elif key == "no-worktree":
+                    no_worktree = True
+                i += 1
+            # 单 flag（--no-worktree 无值）
+            elif arg == "--no-worktree":
+                no_worktree = True
+                i += 1
+            # 空格形式：--key value
+            else:
+                key = arg[2:]
+                if key not in _KNOWN_OPTIONS:
+                    raise WorkflowError(f"未知选项：{arg!r}（允许：{sorted(_KNOWN_OPTIONS)}）")
+                if key == "no-worktree":
+                    no_worktree = True
+                    i += 1
+                else:
+                    # 需要后续 value
+                    if i + 1 >= len(args) or args[i + 1].startswith("--"):
+                        raise WorkflowError(f"选项 {arg!r} 缺少值（后接 -- 选项或参数列表结束）")
+                    value = args[i + 1]
+                    if key == "slug":
+                        slug = value
+                    elif key == "worktree-policy":
+                        if value not in _VALID_WORKTREE_POLICIES:
+                            raise WorkflowError(
+                                f"--worktree-policy 非法值 {value!r}，"
+                                f"合法值：{', '.join(sorted(_VALID_WORKTREE_POLICIES))}"
+                            )
+                        worktree_policy = value
+                    i += 2
+        else:
+            positional.append(arg)
+            i += 1
+
+    if not positional:
+        raise WorkflowError("/workflow:run 需要 <template-id> 参数")
+
+    template_id = positional[0]
     # title 取第一个位置参数；为空时降级用 template_id（避免 plan.md __TITLE__ 留占位）
-    title = args[1] if len(args) > 1 and args[1].strip() else template_id
-    return template_id, template_args, title
+    title = positional[1] if len(positional) > 1 and positional[1].strip() else template_id
+    # template_args 是所有位置参数（除 template_id）拼合
+    template_args = " ".join(positional[1:]) if len(positional) > 1 else ""
+
+    return RunArgs(
+        template_id=template_id,
+        template_args=template_args,
+        title=title,
+        slug=slug,
+        no_worktree=no_worktree,
+        worktree_policy=worktree_policy,
+    )
 
 
 # ============================================================================
@@ -187,7 +306,7 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
     """run 命令主入口。
 
     参数：
-        args      — [template_id, title?, ...rest_args]
+        args      — [template_id, title?, ...rest_args, --slug=<slug>, ...]
         repo_root — 注入 repo 根路径（测试用）
 
     返回：exit code（0 成功，1 失败）
@@ -196,14 +315,16 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
 
     # 参数解析（_parse_args 抛 WorkflowError 时统一兜底）
     try:
-        template_id, template_args, title = _parse_args(args)
+        run_args = _parse_args(args)
     except WorkflowError as exc:
         print(
             f"ERROR: {exc}\n"
-            "用法：/workflow:run <template-id> [<title>] [<args>...]",
+            "用法：/workflow:run <template-id> [<title>] [<args>...] [--slug <slug>] [--no-worktree] [--worktree-policy <policy>]",
             file=sys.stderr,
         )
         return 1
+
+    template_id = run_args.template_id
 
     # 查找模板（.claude/workflows/*.yaml 三层）
     workflow_dir = root / ".claude" / "workflows"
@@ -231,57 +352,132 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
     # F-003 替换 _is_requirement_template：用 workflow.get("category") 直接判定，
     # 无路径兜底降级——schema 已保证 category 在 ALLOWED_CATEGORIES 内。
     if workflow.get("category") == "requirement":
-        return _run_requirement(template_id, template_args, title, template_path, root)
-    return _run_generic(template_id, template_args, template_path, root)
+        return _run_requirement(run_args, template_path, root)
+    return _run_generic(run_args.template_id, run_args.template_args, template_path, root)
 
 
 def _run_requirement(
-    template_id: str,
-    template_args: str,
-    title: str,
+    args: RunArgs,
     template_path: Path,
     root: Path,
 ) -> int:
-    """requirement 类模板的 run 流程：生成 REQ-ID → bootstrap → 输出提示。
+    """requirement 类模板的 run 流程：决定 slug → 生成 REQ-ID → bootstrap retry → 输出提示。
 
     返回：int（0 成功 / 1 失败）
     失败处理：BootstrapError 已在函数内部触发 _bootstrap_rollback 反向撤销，
     调用方无需再清理 requirements/<req_id>/ 或 feat 分支。
-    """
-    previous_branch = _current_branch(root)
 
-    # 生成 REQ-ID + 顶层目录（_generate_req_id 已 mkdir requirements/<REQ-ID>/）
+    F-003 改造点（§3.3 改造点 3）：
+    1. 决定 slug（args.slug 或 derive_slug_from_title）
+    2. 中文标题 + 缺 slug 时 fail-closed exit 1
+    3. bootstrap retry 循环：仅 reason='path_or_branch_exists' 重试（≤ 99 次）
+    """
+    template_id = args.template_id
+    template_args = args.template_args
+    title = args.title
+
+    # 决定 slug
+    # codex P2 修复：args.slug 是用户显式输入，必须经 normalize_slug 校验字符集
+    # / 长度 / ASCII；否则非法字符（空格 / 斜杠 / 大写 / 中文）会一路传到
+    # `generate_requirement_key` → `feat/req-<bad>` → git checkout -b 才报错，
+    # 错误信息对用户不友好且 rollback 成本高。
+    if args.slug:
+        try:
+            slug = requirement_naming.normalize_slug(args.slug)
+        except requirement_naming.SlugError as exc:
+            print(
+                f"ERROR: --slug 校验失败：{exc}\n"
+                "  合法 slug 字符集：a-z 0-9 - （连字符），长度 ≤ 64",
+                file=sys.stderr,
+            )
+            return 1
+    else:
+        slug = requirement_naming.derive_slug_from_title(title)
+    if not slug:
+        print(
+            "ERROR: 中文标题需显式 --slug=<ascii-slug>；详见 D-013\n"
+            "  用法示例（空格形式）：/workflow:run standard-8phase 我的需求 --slug my-req\n"
+            "  用法示例（等号形式）：/workflow:run standard-8phase 我的需求 --slug=my-req",
+            file=sys.stderr,
+        )
+        return 1
+
+    previous_branch = _current_branch(root)
+    # tried_keys 在每次 retry 前累积已尝试过的 key，避免重复生成同一 key
+    tried_keys: set[str] = set()
+
     try:
-        req_id = _generate_req_id(root)
-    except WorkflowError as exc:
+        for attempt in range(1, 100):
+            # 每轮重新生成 req_id（注入 tried_keys 使其跳过已尝试的 key）
+            try:
+                req_id = _generate_req_id_with_existing(root, slug=slug, existing_keys=tried_keys)
+            except SlugError as exc:
+                print(f"ERROR: 无法生成 requirement key：{exc}", file=sys.stderr)
+                return 1
+
+            try:
+                req_dir = _bootstrap_requirement(
+                    req_id, title, template_id, template_path, template_args, root,
+                    worktree_policy=args.worktree_policy,
+                    no_worktree=args.no_worktree,
+                )
+            except BootstrapError as exc:
+                reason = getattr(exc, "reason", None)
+                if reason == "path_or_branch_exists":
+                    # 路径/分支占用：bump tried_keys 重试（F-003 retry 语义）
+                    logging.warning(
+                        "bootstrap req_id=%s reason=path_or_branch_exists，尝试下一个 key（attempt=%d）",
+                        req_id, attempt,
+                    )
+                    tried_keys.add(req_id)
+                    continue
+                # F-004 rev2 F-1：baseline_failed_required（或其它 retain_worktree=True
+                # 的失败）必须保留现场——不调 _bootstrap_rollback，让用户手工排查。
+                if getattr(exc, "retain_worktree", False):
+                    worktree_path_hint = getattr(
+                        getattr(exc, "worktree_info", None), "path", "<worktree path>"
+                    )
+                    print(
+                        f"WARN: bootstrap baseline 失败保留现场（req_id={req_id}）；"
+                        f"worktree path / 分支 / requirements/<key> 全部保留供排查。"
+                        f" 下一步：cd {worktree_path_hint} 查看 baseline 输出；"
+                        f"或将 yaml.worktree.setup.baseline.required 改为 false 跳过 baseline；"
+                        f"或手动 archive / discard 清理。detail={exc}",
+                        file=sys.stderr,
+                    )
+                    return 1
+                # 其它 reason：先 logging 再 rollback，原异常透传
+                logging.error(
+                    "bootstrap req_id=%s 失败，已触发 rollback：%s",
+                    req_id, exc,
+                )
+                # F-004 rev2 F-2 / F-4：传 worktree_info 让 rollback step 1 worktree
+                # remove 守卫可触发；keyword-only 签名（防 bool 位置参数混淆）。
+                _bootstrap_rollback(
+                    req_id, root, previous_branch,
+                    artifacts_created=exc.artifacts_created,
+                    branch_created=exc.branch_created,
+                    worktree_info=getattr(exc, "worktree_info", None),
+                )
+                print(f"ERROR: bootstrap 失败：{exc}", file=sys.stderr)
+                return 1
+            else:
+                # bootstrap 成功
+                print("workflow run 已启动（requirement）")
+                print(f"  req_id:   {req_id}")
+                print(f"  template: {template_id}")
+                print(f"  req_dir:  {req_dir.relative_to(root)}")
+                print(f"  branch:   feat/req-{_strip_req_prefix(req_id)}")
+                print(f"  下一步: /requirement:continue 或 /workflow:continue {req_id}")
+                return 0
+
+        # 超过 99 次重试上限（与 generate_requirement_key 内部上限对齐）
+        raise SlugError(
+            f"bootstrap retry 超过 99 次上限（slug={slug!r}），无法生成可用 requirement key"
+        )
+    except SlugError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
-
-    try:
-        req_dir = _bootstrap_requirement(
-            req_id, title, template_id, template_path, template_args, root,
-        )
-    except BootstrapError as exc:
-        # 关键失败链路必须先 logging 再 rollback——rollback 自身若再异常会掩盖原因，
-        # logging.error 在前确保 ERROR 日志至少落盘一行（不依赖 rollback 成功与否）
-        logging.error(
-            "bootstrap req_id=%s 失败，已触发 rollback：%s",
-            req_id, exc,
-        )
-        _bootstrap_rollback(
-            req_id, root, previous_branch,
-            exc.artifacts_created, exc.branch_created,
-        )
-        print(f"ERROR: bootstrap 失败：{exc}", file=sys.stderr)
-        return 1
-
-    print("workflow run 已启动（requirement）")
-    print(f"  req_id:   {req_id}")
-    print(f"  template: {template_id}")
-    print(f"  req_dir:  {req_dir.relative_to(root)}")
-    print(f"  branch:   feat/req-{_strip_req_prefix(req_id)}")
-    print(f"  下一步: /requirement:continue 或 /workflow:continue {req_id}")
-    return 0
 
 
 def _run_generic(

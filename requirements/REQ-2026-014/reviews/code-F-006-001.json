@@ -1,0 +1,78 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-014-code-F-006-001",
+  "requirement_id": "REQ-2026-014",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-18 21:54:56",
+  "reviewed_commit": "f6df47e",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "773915ee297b01a02882449cf892a40fa8faf7d8300abcb0ce5a8d227cdc11a5"
+    },
+    {
+      "path": "artifacts/tasks/F-006.md",
+      "sha256": "1b4018e92c0c6f62449b2f232182e7ea455827e1c7a4f5be2d262e37bd40aaee"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 91,
+  "dimensions": {
+    "design_consistency": {
+      "score": 86,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "tests/lib/test_workflow_loader_worktree.py:1-194 缺 design §3.6 line 863 明列的 test_load_workflow_no_worktree_section_returns_none_default 用例（4 骨架到位 3）"
+        },
+        {
+          "severity": "minor",
+          "description": "tests/lib/test_workflow_loader_worktree.py:168-172 setup.baseline.command 仅断言 isinstance(str)，未硬断言 'make gates-validate' 字面值（design §2.2 line 160 默认值无锚点）"
+        }
+      ]
+    },
+    "security": {
+      "score": 95,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 95,
+      "issues": []
+    },
+    "complexity": {
+      "score": 95,
+      "issues": []
+    },
+    "error_handling": {
+      "score": 92,
+      "issues": []
+    },
+    "auxiliary_spec": {
+      "score": 90,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "tests/lib/test_workflow_loader_worktree.py:1-7 docstring 缺『测试运行』pytest 命令段（蓝本 test_workflow_loader.py:9-10 含该段）"
+        }
+      ]
+    },
+    "performance": {
+      "score": 95,
+      "issues": []
+    },
+    "history_context": {
+      "score": 95,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "F-3/F-4 两处 design contract 缺口（缺失 worktree 回归用例 + command 字面值未断言）虽属 minor，但都是 AC 写了实现没写 的 trend-H-ac-implementation-gap 模式微复现——建议下次 review 派发时由 dispatch prompt 强制 grep AC 条目 vs 测试函数名映射，把 AC vs test 对账表 作为 dev 自检前置项",
+    "F-6 docstring 测试运行段：可在 F-007/F-009/F-010 等同模块新增测试时统一补齐，作为 tests/lib/ 模块级一致性提升"
+  ],
+  "scope": {
+    "feature_id": "F-006"
+  },
+  "supersedes": null
+}

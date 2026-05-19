@@ -1,0 +1,93 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-014-detail-design-001",
+  "requirement_id": "REQ-2026-014",
+  "phase": "detail-design",
+  "reviewer": "detail-design-quality-reviewer",
+  "reviewed_at": "2026-05-18 09:57:37",
+  "reviewed_commit": "0d870f5",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/detailed-design.md",
+      "sha256": "8ed6a85ca6ec1e49a456ae273107ca072af419aa38baea2661554200d345d595"
+    },
+    {
+      "path": "artifacts/features.json",
+      "sha256": "c228fadab722d1c2f5b74c91d8a929a4dad3394c2208fb205f05b132ec5f87f3"
+    },
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "6ea59c7acb64c2660e02c0466eeb218e138bbb2ca25567685896783f71a54378"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 89,
+  "dimensions": {
+    "consistency_with_outline": {
+      "score": 90,
+      "issues": []
+    },
+    "interface_completeness": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 606 行：F-004 _setup_worktree_or_branch 引用 _bind_current_worktree(state, req_id, base_branch) 但未在 §3.4 给出该 helper 的签名或落点；建议补一行说明该函数仍在 F-004 内私有定义，或将其签名补入 §3.4 改造点列表，避免实现期歧义"
+        },
+        {
+          "severity": "minor",
+          "description": "第 422-427 行：F-002 resolve_main_repo_root 返回类型为 Path，但 docstring 仅写「失败抛 BootstrapError」未明确包装的原 OSError / subprocess.CalledProcessError 范畴；建议与 §5 异常表对齐，统一标注 BootstrapError(branch_created=False) 风格"
+        }
+      ]
+    },
+    "data_model_soundness": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 132-139 行：§2.1 meta.yaml.worktree 段「字段属性表」仅列 6 字段（enabled / owner / path / branch / baseline.status / cleanup.policy），与上方 113-128 行 YAML 示例展示的 12 字段不对齐（漏列 absolute_path / base_branch / created_at / baseline.command / baseline.completed_at / cleanup.removed_at）；建议补全或在表头注明「关键字段子集」避免读者误以为其余字段不是契约一部分"
+        },
+        {
+          "severity": "minor",
+          "description": "第 882-892 行：F-010 schema 中 baseline.command / baseline.completed_at 未在 properties 下声明 type，仅给出嵌套；建议显式标 type: string + required: false 保持与 enabled / path 同款风格，便于未来 schema 校验器逐字段读取"
+        }
+      ]
+    },
+    "sequence_correctness": {
+      "score": 90,
+      "issues": []
+    },
+    "feature_granularity": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "features.json 第 188-189 行：F-008 (meta.yaml.tmpl) depends_on_features 标注 F-002，但 F-008 是模板字面量 + workflow_bootstrap.py 占位符替换扩展，与 worktree_manager.py 公开函数实现并无强耦合；真实强依赖是 F-004 的 _render_meta_yaml 改造（详细设计 §3.8 改造点 2 明示）。建议把 F-008.depends_on_features 改为 [F-004] 或 [F-002, F-004] 双依赖，与 §3.8 实现路径对齐，避免阶段 7 派发器把 F-008 / F-002 错误排成同优先级并行"
+        },
+        {
+          "severity": "minor",
+          "description": "features.json 第 17-18 行：F-001 depends_on_features=[] 且 §3.1 显示该模块仅依赖标准库；与详细设计「叶子节点 OD-1 默认锁死」表述一致，验证通过，无 fix-required。但 F-003 (workflow_run 改造) 在 features.json 中 depends_on_features=[F-001]，符合「先有 naming lib 后改 workflow_run」语义，DAG 自洽"
+        }
+      ]
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "F-008.depends_on_features 建议从 [F-002] 改为 [F-004]（或 [F-002, F-004]），与详细设计 §3.8 改造点 2「workflow_bootstrap.py::_render_meta_yaml 扩展占位符替换」的实现路径对齐。这是阶段 7 派发器读机读字段时影响并行调度的关键信号。",
+    "§2.1 meta.yaml.worktree 字段属性表建议补全 absolute_path / base_branch / created_at / baseline.command / baseline.completed_at / cleanup.removed_at 6 字段，与上方 YAML 示例的 12 字段一一对应，避免读者把表当成「契约白名单」误判其余字段非契约。",
+    "F-010 schema YAML 中 baseline.command / baseline.completed_at / cleanup.removed_at 建议显式标 type: string + required: false，与 enabled / owner 等同款风格，方便 GATE-META-SCHEMA 校验器逐字段读取。",
+    "§3.4 F-004 _setup_worktree_or_branch 函数引用了 _bind_current_worktree(state, req_id, base_branch) 但未给签名；建议补一行私有 helper 签名（或在 §3.4 末尾用 1 行说明该 helper 仍在 workflow_bootstrap.py 内私有定义），避免实现期歧义。"
+  ],
+  "scope": null,
+  "supersedes": null,
+  "features_json_validation": {
+    "valid": true,
+    "issues": [],
+    "enhancement_suggestions": [
+      "F-001 / F-002 详细设计已完整冻结公开签名（§3.1 / §3.2 含 dataclass + 函数 docstring + 异常类型），建议补 interfaces_frozen: true，阶段 7 派发器据此可启用激进并行（sonnet）策略",
+      "F-006 / F-007 / F-008 / F-010 配置类 feature 已含 complexity: trivial / light，机读字段齐；F-009 文档同步 complexity 已标 trivial，建议保留",
+      "F-008 depends_on_features 建议改为 [F-004]（或追加 F-004）以反映 §3.8 改造点 2 的真实依赖（模板占位 + _render_meta_yaml 扩展），这是机读字段的实际语义短板（不阻塞 schema valid，但派发器据此调度会更准确）",
+      "F-005 archive_runner 改造 depends_on_features=[F-002, F-008] 已合理；建议在 acceptance 中明确「F-008 模板必须先存在以便 archive_runner.cleanup_worktree_if_owned 能读到 worktree 段」的前置语义"
+    ]
+  }
+}

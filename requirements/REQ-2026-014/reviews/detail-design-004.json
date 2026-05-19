@@ -1,0 +1,78 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-014-detail-design-004",
+  "requirement_id": "REQ-2026-014",
+  "phase": "detail-design",
+  "reviewer": "detail-design-quality-reviewer",
+  "reviewed_at": "2026-05-18 11:07:49",
+  "reviewed_commit": "8d7754d",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/detailed-design.md",
+      "sha256": "69f665a40e627192d43622fa54db5d6a09bb217623abe35dddff1b692d1ada68"
+    },
+    {
+      "path": "artifacts/features.json",
+      "sha256": "2045647fa0bde954c8ee5665ecc95ace2a768c9191de6d59e3880cf4f92d4b74"
+    },
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "6ea59c7acb64c2660e02c0466eeb218e138bbb2ca25567685896783f71a54378"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 82,
+  "dimensions": {
+    "consistency_with_outline": {
+      "score": 82,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "第 127 行 §2.1 schema fragment 与 第 898 行 §3.8 meta.yaml.tmpl 模板示例仍写 `removed_at: null` 字面量，但 第 145 行 §2.1 字段表 已收紧为 \"canonical unset = 空串 `\"\"`\" + 默认值列 = `\"\"`，第 1007 行 §3.10 schema 注释 + 第 1014-1016 行 §3.10 schema 语义边界 prose 均明确 \"canonical unset = 空串 \\\"\\\"\" + \"不依赖 null 语义\"。features.json F-008/F-010 acceptance + tasks/F-008.md L61-62 + tasks/F-010.md L58-59 都已正确改成 \"模板初值为空串 `\\\"\\\"`\" + \"不测 null\"。本轮 Patch 4 收尾只改了字段表注释（第 145 行）和 prose（第 1014-1016 行），但同文档 §2.1 schema fragment 与 §3.8 模板 YAML 代码块内的字面量 `null` 未同步替换为 `\"\"`，造成同一文档内部 \"字段表 vs 代码块示例\" 直接矛盾；impl-engineer 拿到 F-008 task md 后回查详细设计，会看到 §3.8 模板示例 `removed_at: null` 与 task acceptance \"模板初值为空串\" 二者冲突，必须二次确认。建议把第 127 行与第 898 行的 `removed_at: null` 改为 `removed_at: \"\"` 并在行尾注释补 \"# canonical unset = 空串；archive 回填 ts\""
+        }
+      ]
+    },
+    "interface_completeness": {
+      "score": 94,
+      "issues": []
+    },
+    "data_model_soundness": {
+      "score": 78,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "第 127 行 §2.1 schema fragment 行内 `removed_at: null` 与 第 145 行字段表 \"canonical unset = 空串 \\\"\\\" + 默认 = \\\"\\\"\" + 第 1014-1016 行 §3.10 prose \"代码里不需要处理 removed_at is None 分支\" 三处描述形成数据契约层面的直接矛盾：YAML schema 示例展示 null 形态、字段表与 prose 明确不依赖 null。F-008 模板（第 898 行 `removed_at: null`）作为渲染源会直接产出 null 字面量，与 F-008 acceptance \"模板初值为空串\" 冲突；落到 archive_runner 的 _now_cst_str 回填路径上（第 817 行 `meta.setdefault(...)...['removed_at'] = _now_cst_str()`）虽然 setdefault 不影响 setitem，但模板初值 null 与代码假设 \"unset=空串\" 不匹配——若 impl-engineer 按 §3.8 模板照搬，archive 未发生时 meta.worktree.cleanup.removed_at 会是 None（yaml null），F-005 测试 test_archive_runner_cleanup_removed_at_writes_meta 与 F-010 测试 \"removed_at 取空串 OR 合法 ts 均通过（不测 null）\" 之间形成漏洞——模板默认值就是 null，schema 测试又不覆盖 null，遇到 legacy meta 反而走 meta.get 防御短路、新建 meta 反而带 null 不被强校验。建议把所有 YAML 代码块内的 `removed_at: null` 与 `baseline.status=null` 同步审视；至少第 127 行 §2.1 schema fragment 与 第 898 行 §3.8 模板内的 removed_at 必须改为 `\"\"`"
+        }
+      ]
+    },
+    "sequence_correctness": {
+      "score": 92,
+      "issues": []
+    },
+    "feature_granularity": {
+      "score": 92,
+      "issues": []
+    }
+  },
+  "required_fixes": [
+    "把详细设计 第 127 行 §2.1 schema fragment 内 `removed_at: null` 改为 `removed_at: \"\"`，行尾注释改为 `# canonical unset = 空串；archive 回填 YYYY-MM-DD HH:MM:SS`",
+    "把详细设计 第 898 行 §3.8 meta.yaml.tmpl 模板示例内 `removed_at: null              # archive 回填` 改为 `removed_at: \"\"                # canonical unset = 空串；archive 回填 ts`，与 F-008 acceptance \"模板初值为空串 `\\\"\\\"`\" 一致"
+  ],
+  "suggestions": [
+    "§2.3 主状态机表格（第 412-416 行 outline-design.md）保留 \"cleanup.removed_at = null\" 是 outline 层面的状态语义抽象，不强制改；但若想做到上下游完全一致，可在 outline-design.md 第 220 行附近补一行 prose 'null 在 outline 层为状态语义占位；detail-design 层 canonical unset = 空串 \\\"\\\"，二者等价'",
+    "BootstrapError.reason 7 枚举 + CleanupResult.reason 5 枚举 单点汇总表（§5.1）已完整覆盖 §3.2/§3.4/§3.5 散落字面量，原 rev-003 提的两个 interface_completeness minor 已闭环；建议下一轮（开发期）在异常类源码 docstring 顶部把 reason 枚举列举一遍，保持 IDE 内可见性",
+    "F-008 / F-010 单测命名 'test_*_removed_at_empty_string_or_valid_ts_passes' 比当前 'test_*_validates'（隐含覆盖）更显式，建议开发期补具名用例"
+  ],
+  "scope": null,
+  "supersedes": "REV-REQ-2026-014-detail-design-003",
+  "features_json_validation": {
+    "valid": true,
+    "issues": [],
+    "enhancement_suggestions": [
+      "features.json F-008 acceptance L201-203 + F-010 acceptance L254-256 已正确收紧为 \"模板初值为空串\" + \"不测 null 形式\"，本轮 Patch 4 在 features.json 与 tasks/F-008.md / tasks/F-010.md 层面落地完整；唯一缺口在 detailed-design.md §2.1 schema fragment + §3.8 模板 YAML 代码块字面量未同步（见 required_fixes）",
+      "F-001~F-010 全部含 ac_refs 字段；F-001 / F-002 / F-004 已有 interfaces_frozen=true；F-003 / F-005 等接入类 feature 可考虑补 interfaces_frozen=true（rev-003 同条建议保留）",
+      "F-003 depends_on_features 当前 [F-001]，按调用链 _run_requirement → _bootstrap_requirement 实际依赖 F-004，rev-003 已记为 enhancement，本轮按用户约束不动 depends_on 继续保留",
+      "§5.1 BootstrapError.reason 7 枚举（path_or_branch_exists / other / policy_current_in_normal_repo / worktree_dir_not_ignored / baseline_failed_required / porcelain_malformed / main_root_missing）与 features.json F-002 acceptance \"BootstrapError(reason='path_or_branch_exists') / reason='other' / reason='main_root_equals_worktree'\" + F-003 acceptance \"path_or_branch_exists retry / 其它 reason 不重试\" 一致；CleanupResult.reason 5 枚举 与 F-002 acceptance \"main_root_equals_worktree 阻断 self-remove\" + F-005 acceptance \"owner=external 跳过 + log 含 'cleanup skipped: external'\" 一致"
+    ]
+  }
+}

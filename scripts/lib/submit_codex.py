@@ -1,26 +1,27 @@
 """submit --codex 子模式 runner —— /requirement:submit --codex 的实现核心。
 
-设计契约（detailed-design §3.3，已 frozen）：
+设计契约（detailed-design §3.3，已 frozen；2026-05 移除本地落盘改造）：
 
     submit_with_codex(req_id, *, poll_interval_sec, timeout_sec) -> CodexRoundResult
 
 行为流程：
   1. 读 meta.yaml → 取 pr_number（预检失败则 SystemExit(1)）
-  2. 计算 round 号（已有 round-*.md 数 + 1，禁止重号）
+  2. 计算 round 号（仓库不再落 round-*.md，本地无文件 → 永远返回 1；保留函数
+     仅用于潜在恢复路径）
   3. `gh pr comment <pr_num> --body "@codex review"` 触发 review
   4. 单轮轮询 `_poll_codex`（time.monotonic 计时）：
-       - 命中三因子（Bot + /codex/i + submitted_at > triggered_at）→ 落 round-N.md
-       - 超时 / 429 → verdict=timeout，落 round-N.md（仅 3 字段）
+       - 命中三因子（Bot + /codex/i + submitted_at > triggered_at）→ 算 verdict
+       - 超时 / 429 → verdict=timeout
        - 连续 5xx ≥ 3 次 → GhApiAbort → exit 1
   5. 判 verdict（精确匹配 pass phrase，在 submit-rules.md 顶部定义为三常量）
-  6. 向 stderr 输出 verdict 摘要（passed 时静默）
+  6. 向 stderr 输出 verdict 摘要（passed 时静默）+ 写一行 `[codex-review-received]`
+     到 process.txt；review 全文保留在 GitHub PR review comments 不本地落盘
 
 三 verdict 全部 exit 0；exit 1 仅在 GhApiAbort 或 gh pr comment 失败时触发。
 
-frontmatter quote 规则：
-  - reviewer 含 `[bot]` 后缀必须 quote（防 YAML flow-list 解析歧义）
-  - triggered_at / submitted_at 含 `:` 建议 quote
-  - review_id 建议 quote（防 >2^53 精度丢失）
+frontmatter 与 round-N.md 写盘逻辑已保留为内部辅助函数（_render_frontmatter /
+_persist_round 等），仅供单元测试与可能的恢复路径使用——主入口 submit_with_codex
+不再触发落盘。
 
 时间戳遵循 context/team/engineering-spec/time-format.md：
   wall clock 用 ISO8601（含时区 offset），轮询超时判定用 time.monotonic。
@@ -28,7 +29,6 @@ frontmatter quote 规则：
 from __future__ import annotations
 
 import json
-import os
 import re
 import subprocess
 import sys
@@ -276,29 +276,43 @@ def _current_head_sha() -> Optional[str]:
     return sha or None
 
 
-def _read_round_triggered_commit(req_id: str, round_n: int) -> Optional[str]:
-    """从 round-N.md frontmatter 读 triggered_commit；缺失/格式错误时返 None。"""
-    path = _codex_reviews_dir(req_id) / f"round-{round_n}.md"
-    if not path.exists():
-        return None
+def _latest_codex_reviewed_commit(pr_number: int) -> Optional[str]:
+    """从 PR reviews 拉 codex bot 最近一次 review 的 commit_id 短 sha。
+
+    2026-05 改造背景：round-N.md 不再本地落盘后，「上轮 review 触发时的 HEAD sha」
+    没有本地锚点；改从 GitHub PR reviews API 的 `commit_id` 字段反查。优势：
+      - 单一事实源（codex review 留痕本来就在 PR 上）
+      - 多设备 / 多用户协作时 review 历史一致
+      - 无需在本地维护任何状态
+
+    过滤规则与 _poll_codex 一致：`user.type == 'Bot'` 且 login 匹配 /codex/i。
+    取 submitted_at 最大者；没命中或 API 失败时返 None（caller 兜底 plain 评论）。
+    """
     try:
-        text = path.read_text(encoding="utf-8")
-    except OSError:
+        reviews = _gh_pr_reviews(pr_number)
+    except (GhApi5xx, GhApi429):
         return None
-    if not text.startswith("---"):
+    # 过滤 codex bot reviews
+    codex_reviews: list[tuple[str, str]] = []  # (submitted_at, commit_id)
+    for r in reviews:
+        user = r.get("user") or {}
+        if user.get("type") != "Bot":
+            continue
+        login = (user.get("login") or "").lower()
+        if "codex" not in login:
+            continue
+        commit_id = r.get("commit_id")
+        submitted_at = r.get("submitted_at")
+        if not commit_id or not submitted_at:
+            continue
+        codex_reviews.append((submitted_at, str(commit_id)))
+    if not codex_reviews:
         return None
-    # 拆 frontmatter（首段 --- 之间）
-    parts = text.split("---", 2)
-    if len(parts) < 3:
-        return None
-    try:
-        meta = yaml.safe_load(parts[1]) or {}
-    except yaml.YAMLError:
-        return None
-    if not isinstance(meta, dict):
-        return None
-    val = meta.get("triggered_commit")
-    return str(val).strip() if val else None
+    # ISO8601 wall clock 时间戳字典序 = 时序，取最大者
+    codex_reviews.sort(key=lambda x: x[0])
+    full_sha = codex_reviews[-1][1]
+    # 截短 sha 与本地 _current_head_sha 输出对齐（git diff --short 默认 7 字符够）
+    return full_sha[:10] if full_sha else None
 
 
 def _git_log_diff_since(prev_sha: str) -> Optional[tuple[str, str]]:
@@ -332,20 +346,20 @@ def _git_log_diff_since(prev_sha: str) -> Optional[tuple[str, str]]:
     return log_out, diff_out
 
 
-def _build_codex_comment_body(req_id: str, round_n: int) -> str:
+def _build_codex_comment_body(pr_number: int) -> str:
     """组装 @codex review 评论正文。
 
-    - round 1：plain `@codex review`
-    - round N≥2：尝试读 round-(N-1).md.frontmatter.triggered_commit，
-      命中则附「Changes since round N-1（log + diff stat）」段；
-      上轮文件缺失 / 解析失败 / git 命令失败 → 静默退化为 plain（不阻断流程）。
+    策略（2026-05 改造）：
+    - 上轮锚点不再读本地 round-N.md（已废）；改通过 `_latest_codex_reviewed_commit`
+      拉 PR 上 codex bot 最近一次 review 的 commit_id 作为 diff 起点
+    - 命中起点 → 附「Changes since last codex review（log + diff stat）」段
+      用户能看到「本次 push 改了哪些文件 + 提交说明了什么」，codex 能针对性复评
+    - 未命中（首次 review / 拉 API 失败）→ plain `@codex review` 兜底
 
     评论体超过 _COMMENT_BODY_BUDGET 时截断 diff stat，保留 log 完整。
     """
     plain = "@codex review"
-    if round_n <= 1:
-        return plain
-    prev_sha = _read_round_triggered_commit(req_id, round_n - 1)
+    prev_sha = _latest_codex_reviewed_commit(pr_number)
     if not prev_sha:
         return plain
     pair = _git_log_diff_since(prev_sha)
@@ -354,21 +368,33 @@ def _build_codex_comment_body(req_id: str, round_n: int) -> str:
     log_out, diff_out = pair
 
     head_short = _current_head_sha() or "HEAD"
-    header = f"## Changes since round {round_n - 1} (`{prev_sha}` → `{head_short}`)"
+    header = (
+        f"## Changes since last codex review (`{prev_sha}` → `{head_short}`)"
+    )
+    intro = (
+        "_本次 push 自上轮 codex review 以来的改动摘要——请重点核对：(1) 上轮 finding "
+        "是否已修复且无回归；(2) 新增 / 改动的代码是否引入新问题。_"
+    )
     log_section = f"### Commits\n```\n{log_out or '(no new commits)'}\n```"
-    diff_section = f"### Diff stat\n```\n{diff_out or '(no diff)'}\n```"
+    diff_section = f"### Files changed (diff stat)\n```\n{diff_out or '(no diff)'}\n```"
 
-    body = f"{plain}\n\n{header}\n\n{log_section}\n\n{diff_section}"
+    body = f"{plain}\n\n{header}\n\n{intro}\n\n{log_section}\n\n{diff_section}"
     if len(body) <= _COMMENT_BODY_BUDGET:
         return body
-    # 超额：截 diff stat，给 log 让位（commits 一行能读出意图，diff stat 可以短）
-    available = _COMMENT_BODY_BUDGET - len(plain) - len(header) - len(log_section) - 80
+    # 超额：截 diff stat，给 log 让位（commits 一行能读出意图）
+    available = (
+        _COMMENT_BODY_BUDGET
+        - len(plain) - len(header) - len(intro) - len(log_section) - 100
+    )
     if available > 200:
         truncated = diff_out[:available] + "\n... (truncated, see PR Files Changed tab)"
-        diff_section = f"### Diff stat\n```\n{truncated}\n```"
-        return f"{plain}\n\n{header}\n\n{log_section}\n\n{diff_section}"
-    # 极端情况（log 也很大）：只发 plain + header，给 codex 一个起点
-    return f"{plain}\n\n{header}\n\n_(变更过大无法内嵌 stat，请直接看 PR Files Changed)_"
+        diff_section = f"### Files changed (diff stat)\n```\n{truncated}\n```"
+        return f"{plain}\n\n{header}\n\n{intro}\n\n{log_section}\n\n{diff_section}"
+    # 极端情况（log 也很大）：只发 plain + header + intro，给 codex 一个起点
+    return (
+        f"{plain}\n\n{header}\n\n{intro}\n\n"
+        "_(变更过大无法内嵌 stat，请直接看 PR Files Changed)_"
+    )
 
 
 def _gh_pr_reviews(pr_number: int) -> list[dict[str, Any]]:
@@ -653,37 +679,20 @@ def _persist_round(
     result: CodexRoundResult,
     body: Optional[str],
     timeout_sec: int,
-) -> Path:
-    """将 round-N.md 写入 codex-reviews/ 目录；返回写入路径。
+) -> None:
+    """记录 [codex-review-received] 事件到 process.txt。
 
-    原子写入：先写 .tmp 再 os.replace，防止写入中途被读。
-    写完后追加 process.txt `[codex-review-received]` 事件（detailed-design §4.3）。
+    本函数曾经把 codex review 落地为 `artifacts/codex-reviews/round-N.md`，
+    在仓库中长期留痕；现已停止本地写盘——审查全文保留在 GitHub PR review
+    comments，本地仅保留 verdict 摘要事件供跨会话恢复。
+
+    保留参数签名（body / timeout_sec）以便未来恢复落盘时不破契约；当前忽略。
     """
-    reviews_dir = _codex_reviews_dir(req_id)
-    reviews_dir.mkdir(parents=True, exist_ok=True)
-
-    round_path = reviews_dir / f"round-{result.round}.md"
-    tmp_path = round_path.with_suffix(".md.tmp")
-
-    frontmatter = _render_frontmatter(result)
-    if result.verdict == "timeout":
-        content_body = f"(timeout after {timeout_sec}s, no codex review received)"
-    else:
-        content_body = body or ""
-
-    full_content = f"{frontmatter}\n\n{content_body}\n"
-
-    with tmp_path.open("w", encoding="utf-8") as f:
-        f.write(full_content)
-    os.replace(tmp_path, round_path)
-
-    # round-N.md 写完后记录 process.txt 事件（features.json TC-F4-8）
+    del body, timeout_sec  # 显式声明不再使用
     _append_process_event(
         req_id,
         f"[codex-review-received] verdict={result.verdict} round={result.round}",
     )
-
-    return round_path
 
 
 def _handle_poll_result(
@@ -748,7 +757,7 @@ def submit_with_codex(
     poll_interval_sec: int = 10,
     timeout_sec: int = 600,
 ) -> CodexRoundResult:
-    """submit 子模式：开 PR → @codex review → 单轮轮询 → 落 round-N.md → 判 verdict。
+    """submit 子模式：开 PR → @codex review → 单轮轮询 → 判 verdict（不再本地落盘）。
 
     多轮由主对话推动（D-002）；本函数命令内仅一轮。
 
@@ -776,8 +785,9 @@ def submit_with_codex(
         file=sys.stderr,
     )
 
-    # round_num≥2 时为 codex 拼增量摘要：log + diff stat since round-(N-1).triggered_commit
-    comment_body = _build_codex_comment_body(req_id, round_num)
+    # 若 PR 上已有 codex 历史 review，则为 codex 拼增量摘要：log + diff stat since
+    # 上轮 review 的 commit_id（_latest_codex_reviewed_commit 反查）
+    comment_body = _build_codex_comment_body(pr_number)
     head_sha = _current_head_sha()
 
     # 发 @codex review 评论并记录触发时刻（wall clock）
@@ -801,16 +811,15 @@ def submit_with_codex(
 
     # 组装结果
     result = _handle_poll_result(review, pr_number, round_num, triggered_at)
-    # 把本轮触发时的 HEAD sha 钉到 round-N.md，供下一轮算 diff
+    # 本轮触发时的 HEAD sha 仅运行时使用（不再落盘到 round-N.md）
     result.triggered_commit = head_sha
 
-    # 写 round-N.md
+    # 仅记录 verdict 事件到 process.txt；review 全文留存于 GitHub PR comments
     body = (review or {}).get("body") if review else None
-    artifact_path = _persist_round(req_id, result, body, timeout_sec)
-    result.artifact_path = str(artifact_path)
+    _persist_round(req_id, result, body, timeout_sec)
 
     print(
-        f"[submit_codex] verdict={result.verdict} round-{result.round}.md → {artifact_path}",
+        f"[submit_codex] verdict={result.verdict}（review 全文见 GitHub PR #{pr_number} comments）",
         file=sys.stderr,
     )
 

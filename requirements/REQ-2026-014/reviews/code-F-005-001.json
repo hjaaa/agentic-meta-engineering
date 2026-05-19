@@ -1,0 +1,87 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-014-code-F-005-001",
+  "requirement_id": "REQ-2026-014",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-18 21:05:40",
+  "reviewed_commit": "669c552",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "773915ee297b01a02882449cf892a40fa8faf7d8300abcb0ce5a8d227cdc11a5"
+    },
+    {
+      "path": "artifacts/tasks/F-005.md",
+      "sha256": "c5524c43aa31cfbe41e4c591c62d263d0793faacc4a9aadd4816fd4e879400cd"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 86,
+  "dimensions": {
+    "design_consistency": {
+      "score": 92,
+      "issues": []
+    },
+    "security": {
+      "score": 90,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 90,
+      "issues": []
+    },
+    "complexity": {
+      "score": 88,
+      "issues": []
+    },
+    "error_handling": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/archive_runner.py:631 except Exception 过宽——resolve_main_repo_root 已明确抛 WorktreeBootstrapError(reason='porcelain_malformed'/'main_root_missing')（来源：scripts/lib/worktree_manager.py:616），应改窄为 except WorktreeBootstrapError 让真正意外异常向上传播；当前写法掩盖意外异常类型"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/archive_runner.py:639 os.chdir(main_repo_root) 无 try/except——resolve 成功后 main_repo_root 应存在，但权限/race 仍可能抛 OSError 直接冒泡 crash archive 主流程；建议包 try/except OSError 走与 resolve 失败相同的降级路径（log + return）"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 90,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "tests/lib/test_archive_runner_worktree_cleanup.py:1-13 模块 docstring 写「覆盖（≥7 用例）」列 TC-1..TC-7 共 7 条但实际有 TC-8（line 511 test_archive_runner_resolve_fails_cleanup_skipped_does_not_block），docstring 与实际用例数不一致；建议补 TC-8 行说明"
+        }
+      ]
+    },
+    "performance": {
+      "score": 90,
+      "issues": []
+    },
+    "history_context": {
+      "score": 90,
+      "issues": []
+    }
+  },
+  "required_fixes": [
+    {
+      "description": "tests/lib/test_archive_runner_worktree_cleanup.py:21 `from unittest.mock import patch` 未使用（F401 lint 级）；全文件使用 monkeypatch 替代 patch，未出现 patch(...) 调用——删除该 import 行",
+      "location": "tests/lib/test_archive_runner_worktree_cleanup.py:21",
+      "severity": "blocker"
+    }
+  ],
+  "suggestions": [
+    "F-13 error-handling 改窄：scripts/lib/archive_runner.py:631 except Exception → except WorktreeBootstrapError（精确化已知契约异常；其他意外异常向上传播让 archive 失败更显式而非静默 log）",
+    "F-14 archive_runner.py:639 os.chdir 加 try/except OSError 走与 resolve 失败相同的降级路径——log error + return，不让 OSError 冒泡 crash archive 主流程",
+    "F-17 features.json:170 验收第 5 条字面要求 'owner=external + dirty workspace fail-closed 路径覆盖'：当前 8 TC 全用 clean stub (_archive_run_stub_success)，建议补 TC-9 owner=external + git status 非空 → _precheck_dirty SystemExit(1) 且 cleanup_worktree_if_owned 未被调用",
+    "F-27 docstring 文字补齐：tests/lib/test_archive_runner_worktree_cleanup.py:9 在 TC-7 后追加 'TC-8: resolve_main_repo_root 抛 WorktreeBootstrapError → cleanup 跳过但 archive 主流程继续（fail-closed）' 一行",
+    "rev1 闭环成绩：28 条 checker 候选 finding 经 critic 收敛 → 16 rejected + 7 not_proven → 5 not_rebutted 真实 keep；judge 二次裁决后 required_fixes 1（F-24 unused import）+ suggestions 4（F-13/F-14/F-17/F-27 error handling 改窄 + 测试补缺）"
+  ],
+  "scope": {
+    "feature_id": "F-005"
+  },
+  "supersedes": null
+}

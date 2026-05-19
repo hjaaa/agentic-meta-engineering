@@ -1,0 +1,73 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-014-code-F-008-001",
+  "requirement_id": "REQ-2026-014",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-18 18:34:11",
+  "reviewed_commit": "9330b1a",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "1f5fdc00b36a2653d8d2d2977d95d1d97ac97fe2e6c896b158b5a4d73ecbc133"
+    },
+    {
+      "path": "artifacts/tasks/F-008.md",
+      "sha256": "d5349558414b8180d6a11bc54614dcaa93f1005a144b212e840af9a6075845cc"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 92,
+  "dimensions": {
+    "design_consistency": {
+      "score": 95,
+      "issues": []
+    },
+    "security": {
+      "score": 92,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 95,
+      "issues": []
+    },
+    "complexity": {
+      "score": 92,
+      "issues": []
+    },
+    "error_handling": {
+      "score": 90,
+      "issues": []
+    },
+    "auxiliary_spec": {
+      "score": 95,
+      "issues": []
+    },
+    "performance": {
+      "score": 95,
+      "issues": []
+    },
+    "history_context": {
+      "score": 95,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "F-008 是 trivial-级别 patch（complexity=light / 0.125d / 163+0-/3 文件 / 10 个 hardcoded 占位值），AC1~AC5 全 5 项闭环；6 候选 finding 经独立调研 + critic 三方对比后全部 drop（4 rejected + 2 not_proven），net 反引入 0",
+    "trend-H-ac-implementation-gap 未复现：F-008 实现路径全程对齐 features.json AC + detailed-design §3.8（12 字段全集 / OD-3 owned-only 硬编码 / P1-4 removed_at 空串 canonical unset），无设计漂移",
+    "trend-G-meta 未复现：detailed-design.md 在 P1-4 修复时已同步到 12 字段全集，模板 / 代码 / 文档三处保持一致",
+    "Pre-existing follow-up（非 F-008 引入，归 F-004 接管 worktree 时一并处理）：(1) _render_meta_yaml 用字符串 replace 渲染 __TITLE__/__BRANCH__，外部不可信输入含换行可注入 yaml 字段——F-004 改 worktree-first bootstrap 时建议改用 yaml.safe_dump 渲染（同时覆盖本次新增的 __WT_BRANCH__/__WT_BASE_BRANCH__）；(2) template_path.read_text 不 catch FileNotFoundError，模板缺失时栈跟踪上抛——属仓库结构性损坏场景可接受，但 F-004 改造时可顺手包 BootstrapError 提升错误可观察性",
+    "Pre-existing F-003 regression（concern from implementer, F-008.receipt.json 已记录）：tests/skills/test_workflow_bootstrap.py 7 用例失败，根因是 F-003 _parse_args 返 RunArgs + _generate_req_id 取消 mkdir-as-lock 后的 API 漂移，**不在 F-008 touches 范围**——建议人类决定后续处理路径：(a) F-004 一并修；(b) 单独 hotfix 立即修；(c) 接受现状到 testing 阶段集中清理"
+  ],
+  "scope": {
+    "feature_id": "F-008"
+  },
+  "supersedes": null,
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-18T18:39:30.317402+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-006",
+  "status": "DONE",
+  "commit_sha": "66b60d6",
+  "files_changed": [
+    "tests/lib/test_workflow_loader_worktree.py"
+  ],
+  "test_summary": "13 passed in 0.22s (pytest tests/lib/test_workflow_loader_worktree.py); 33 passed (test_workflow_loader.py regression); ruff: All checks passed!",
+  "touches_violations": [],
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-18T22:30:00Z"
+}

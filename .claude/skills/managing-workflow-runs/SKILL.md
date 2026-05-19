@@ -11,13 +11,13 @@ description: workflow run 全生命周期管理伞形 Skill，被 9 个 /workflo
 
 1. **识别意图**：映射到 9 个子动作之一
    - `run`    → bootstrap（创建 run 目录 + jsonl + `workflow_started` 事件）
-   - `continue` → 反扫 jsonl 重建 RunState，进 main loop（F-006 落地前为 stub）
+   - `continue` → 反扫 jsonl 重建 RunState，进 main loop（已完整实现：7 outcome 路由 + 失败矩阵 + sub_workflow 父子回填）
    - `save`   → 追加 `save` 事件 + note
    - `status` → 只读展示父子树（spec §6.4）
    - `list`   → 扫 requirements/* + runs/*，过滤输出
    - `approve` → tty 校验 + `approval_approved` 事件
    - `reject`  → tty 校验 + reason 校验 + `approval_rejected` 事件
-   - `rollback` → state 校验 + 调 rollback_run（F-010 占位）
+   - `rollback` → state 校验 + 调 rollback_run（已落地：workflow_rollback.py 拓扑序归档 + jsonl 截断 + 双层锁）
    - `cancel`  → `cancel_requested` 事件 + TaskStop 兜底（D-005）
 
 2. **状态机矩阵校验**（每子动作开头必做）
@@ -61,8 +61,7 @@ description: workflow run 全生命周期管理伞形 Skill，被 9 个 /workflo
 - ❌ 禁止跳过状态矩阵校验（每子动作开头必做）
 - ❌ 禁止 AI 调用 approve / reject（hook + isatty 双层拦截）
 - ❌ 禁止直接改 run_state.py / workflow_loader.py / common.py（F-001 已锁定）
-- ❌ rollback_run 完整实现属于 F-010，F-005 只做占位调用
-- ✅ cancel 必须写 `cancel_requested` 事件（任何三种允许状态），30s 超时调 TaskStop
+- ✅ cancel 必须写 `cancel_requested` 事件（任何三种允许状态），30s 超时调 TaskStop（TaskStop 兜底当前为 stub，失败时降级写 `cancel_taskstop_failed`）
 - ✅ approve / reject 非 tty 环境 → exit 2（fail-closed 原则）
 
 ## 参考资源

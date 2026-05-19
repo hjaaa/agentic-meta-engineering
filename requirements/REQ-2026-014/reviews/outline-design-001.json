@@ -1,0 +1,74 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-014-outline-design-001",
+  "requirement_id": "REQ-2026-014",
+  "phase": "outline-design",
+  "reviewer": "outline-design-quality-reviewer",
+  "reviewed_at": "2026-05-18 09:05:47",
+  "reviewed_commit": "cbae1e8",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "b2063be45299533756c03342ed6f9d4ec870da622b8b62d6d1f2f4ebd8207af7"
+    },
+    {
+      "path": "artifacts/requirement.md",
+      "sha256": "db86d22706b784cdc96db237ecbf5a3749173175a8016235e9de8fe7b63f64e0"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 86,
+  "dimensions": {
+    "alignment_with_requirement": {
+      "score": 90,
+      "issues": []
+    },
+    "module_decomposition": {
+      "score": 90,
+      "issues": []
+    },
+    "tech_choice_rationale": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 194 行：7 条 D 摘要筛选标准未在文中显式说明。注释只写'选 7 条架构影响最大的决策'，缺客观判据，读者无法验证为何 D-002 / D-007 / D-008 / D-011 / D-012 不入选；建议加一句筛选标准说明（仅纳入会影响模块边界 / 数据流向 / 状态机的决策）。"
+        }
+      ]
+    },
+    "scalability": {
+      "score": 90,
+      "issues": []
+    },
+    "integration_with_existing": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "第 386-394 行：worktree.state 主状态机图中 baseline_failed 节点只有文字提示'修复后人工 retry baseline'，没有画回 pending / active 的回边箭头。字段映射表（第 414 行）与流程三（第 308-325 行）均证明该状态不是吸收态，detail-design 写状态机契约时易误读为终态，建议补虚线箭头 baseline_failed → pending（人工 retry）。"
+        },
+        {
+          "severity": "minor",
+          "description": "第 222 行：选型四 D-006 的'字段范围'枚举了 enabled / owner / path / absolute_path / branch / base_branch / created_at / baseline.* / cleanup.* 共 9 个字段，与 spec §5.2 detail schema 重合度约 90%，与第 528 行阶段约束自检'无字段 schema'声明自相矛盾；建议改为'覆盖 enabled / owner / path / 生命周期时间戳 / baseline / cleanup 6 类；具体字段列表与类型见 detail-design'。"
+        },
+        {
+          "severity": "minor",
+          "description": "第 495 行：待澄清 #1 与 requirement.md:184 的 #1 protect-branch 编号撞车，'#1' 在不同 artifact 中语义不同；建议用 OD-1 / OD-2 / OD-3 / OD-4 前缀分隔命名空间。"
+        }
+      ]
+    }
+  },
+  "required_fixes": [
+    "补全 worktree.state 主状态机 baseline_failed → pending 回边箭头（outline-design.md:386-394），消除'baseline_failed 是终态'的误读隐患",
+    "收敛 D-006 字段范围枚举为 6 类（outline-design.md:222），避免与阶段自检'无字段 schema'声明矛盾"
+  ],
+  "suggestions": [
+    "outline-design.md:194 增补 7 条 D 摘要的筛选标准（仅纳入影响模块边界 / 数据流向 / 状态机的决策）",
+    "outline-design.md:495 待澄清项改用 OD-1~OD-4 前缀，避免与 requirement.md / tech-feasibility.md 的 #N 命名空间撞车"
+  ],
+  "scope": null,
+  "supersedes": null,
+  "architectural_concerns": [
+    "AC-A1~A3 预留位置已足够，但若未来 feature 级 worktree 真触发，meta.yaml.worktree 单块结构需扩成 list，本期不预埋字段是正确取舍；detail-design 写 schema 时需在注释中标注该演化点"
+  ]
+}

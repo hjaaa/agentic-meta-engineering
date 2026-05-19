@@ -8,16 +8,15 @@
 
 ## 双层校验机制
 
-### 第一层：Hook 拦截（F-013 落地）
+### 第一层：Hook 拦截（已落地）
 
-pre-tool-use hook 识别调用方是 AI：
+`.claude/hooks/pre-tool-use-guard.sh` 已实现 D-006 拦截：
 
-- 拦截条件：工具调用来源不是 tty 终端用户
-- 动作：拒绝，exit 2，stderr `BLOCKED: approve/reject requires human in tty`
+- 模式：`APPROVAL_SLASH_PATTERN`（`/workflow:(approve|reject)`）+ `APPROVAL_PYTHON_PATTERN`（`python3 scripts/lib/workflow_(approve|reject).py`）
+- 命中即 exit 2 + stderr `BLOCKED: /workflow:approve / /workflow:reject 是人类专属动作（D-006）`
+- 仅对 AI Bash 触发；tty 用户走 slash command 路径不经此 hook
 
-> F-013 落地前，hook 层仅做 mock。F-005 命令实现不依赖 hook 层功能性，只调 isatty 兜底。
-
-### 第二层：isatty 兜底（F-005 范围，fail-closed）
+### 第二层：isatty 兜底（fail-closed）
 
 `workflow_approve.py` / `workflow_reject.py` 入口文件内：
 

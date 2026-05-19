@@ -15,20 +15,17 @@
 3. **状态矩阵校验**
 4. 调 `append_event(jsonl_path, {"type": "cancel_requested", "run_id": run_id})`
 5. 输出：`Cancel requested at <ts>; awaiting graceful exit (≤ 30s)`
-6. 等待 graceful 退出（子 subagent poll `cancel_requested`）；30s 超时后：
+6. 等待 graceful 退出（poll `workflow_cancelled` 事件）；30s 超时后：
    ```python
    try:
-       # TaskStop forceful 兜底（F-009 落地；F-005 用 mock）
        _task_stop_forceful(run_id)
    except Exception as exc:
-       # TaskStop 失败 → warn + 写事件
-       warnings.append(f"TaskStop 失败: {exc}")
-       append_event(jsonl_path, {"type": "cancel_taskstop_failed", "run_id": run_id,
-                                  "data": {"error": str(exc)}})
+       # TaskStop 失败 → _handle_taskstop_failure：WARN + 写 cancel_taskstop_failed 审计事件
+       _handle_taskstop_failure(exc, jsonl_path, run_id)
    ```
 
-   > 注：`cancel_taskstop_failed` 需加入 VALID_EVENT_TYPES（F-005 在 workflow_cancel.py 内临时 patch）
-   > 完整 TaskStop 实现在 F-009；F-005 测试时用 mock 验证调用链。
+   > 注：`cancel_taskstop_failed` 已在 VALID_EVENT_TYPES 白名单中。
+   > **TaskStop forceful 当前仍是 stub**（`workflow_cancel.py:_task_stop_forceful` 抛 NotImplementedError）——原计划在 F-009 落地，但 REQ-2026-011 的 F-009 被重新定义为 `workflow_status --verbose`，TaskStop 落地未排期。stub 触发后走 `_handle_taskstop_failure` 降级路径写 `cancel_taskstop_failed`，cancel 主流程（`cancel_requested` 事件）仍成功。
 
 7. 输出：`cancelled` 状态确认 / `cancel_taskstop_failed` 警告
 

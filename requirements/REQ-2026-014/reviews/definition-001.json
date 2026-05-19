@@ -1,0 +1,78 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-014-definition-001",
+  "requirement_id": "REQ-2026-014",
+  "phase": "definition",
+  "reviewer": "requirement-quality-reviewer",
+  "reviewed_at": "2026-05-18 07:58:25",
+  "reviewed_commit": "8db84f7",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/requirement.md",
+      "sha256": "0f9469506f9e54c4346672d8c4af37c92edd695c417a4e5a1a697080b5b11b44"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 91,
+  "dimensions": {
+    "completeness": {
+      "score": 95,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 86-88 行：性能维度仅约束 baseline 命令名（make gates-validate），未给出量化 SLA（如 bootstrap 端到端 < N 秒），建议技术预研阶段补一条"
+        }
+      ]
+    },
+    "consistency": {
+      "score": 90,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 17 行声明 6 类场景暴露问题，但下文场景章节只展开 4 个（新建 / 复用 / submit / archive），未显式说明其余 2 类（多 active 并行 / 跨会话恢复续错分支）是合并到哪个场景或归入非功能需求，可能导致读者怀疑场景覆盖度"
+        }
+      ]
+    },
+    "traceability": {
+      "score": 96,
+      "issues": []
+    },
+    "clarity": {
+      "score": 90,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 117 行 /workflow:submit 不实现的说明嵌入在『不包含』表项内部，理由+备选+风险三段塞在一个 bullet 内，建议拆为独立的『范围边界说明』子节或链接到第 179 行待澄清 #5"
+        }
+      ]
+    },
+    "testability": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 156 行验收 #8 仅说『第二个目录稳定落到 -02 后缀』，但场景 1 第 41 行只说『冲突时追加 -NN』——未明确 NN 是否两位补零、最大并行数上限、第 3+ 个的规则，detail-design 阶段需补充断言精确度"
+        },
+        {
+          "severity": "minor",
+          "description": "第 163 行待澄清 #1（protect-branch hook 兼容性）未给可量化断言，仅说『由技术预研阶段验证』；建议补一句『验证产出物：tech-research/notes 中记录 git worktree add 是否被 hook 拦截 + 应对方案』"
+        }
+      ]
+    },
+    "business_rationale": {
+      "score": 92,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "第 17 行 6 类场景与第 34-82 行 4 个场景的差额，在 detail-design 阶段补一段对应表（哪几类痛点合并到哪个场景）",
+    "第 156 行 #8 验收在 detail-design 时把 -NN 的位数规则写成具体可测断言（如 -02 / -03 / 上限 -99 → 第 100 个返回 exit 2）",
+    "考虑在 plan.md 把第 117 行与第 179 行的 /workflow:submit 决策合并为单条 D-001 决策记录，减少阅读时的来回跳"
+  ],
+  "scope": null,
+  "supersedes": null,
+  "project_specific_issues": [
+    "项目索引（context/project/）未声明对本需求的特殊约束；六维评审基于 context/team/engineering-spec/specs/2026-05-17-worktree-isolation-migration-design.md v0.2 作为权威单源核对"
+  ]
+}

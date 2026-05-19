@@ -1,0 +1,66 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-REQ-2026-014-detail-design-005",
+  "requirement_id": "REQ-2026-014",
+  "phase": "detail-design",
+  "reviewer": "detail-design-quality-reviewer",
+  "reviewed_at": "2026-05-18 11:12:53",
+  "reviewed_commit": "8d7754d",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/detailed-design.md",
+      "sha256": "3277c94619195e3edec4ec1b4e7969617dc74f9d6ccb36a46cd01fcad931faec"
+    },
+    {
+      "path": "artifacts/features.json",
+      "sha256": "2045647fa0bde954c8ee5665ecc95ace2a768c9191de6d59e3880cf4f92d4b74"
+    },
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "6ea59c7acb64c2660e02c0466eeb218e138bbb2ca25567685896783f71a54378"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 92,
+  "dimensions": {
+    "consistency_with_outline": {
+      "score": 93,
+      "issues": []
+    },
+    "interface_completeness": {
+      "score": 92,
+      "issues": []
+    },
+    "data_model_soundness": {
+      "score": 93,
+      "issues": []
+    },
+    "sequence_correctness": {
+      "score": 92,
+      "issues": []
+    },
+    "feature_granularity": {
+      "score": 90,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "outline-design.md L356/L360 保留 `removed_at = null` 伪代码描述（rev-003 起沿用）；detailed-design 内部已显式声明 canonical unset = 空串、不依赖 null 语义。后续如要彻底闭环可在 outline-design 同行加注脚指向 §2.1 schema 语义边界，本期不强制（属上游历史伪码，不影响实现）。"
+  ],
+  "scope": null,
+  "supersedes": "REV-REQ-2026-014-detail-design-004",
+  "features_json_validation": {
+    "valid": true,
+    "issues": [],
+    "enhancement_suggestions": [
+      "features.json F-008 / F-010 验收条款已显式声明 `removed_at` 模板初值空串 + 不测 null 形式，与 detailed-design §2.1 字段表 L145 备注一一对应；可选锦上添花：在 §2.1 字段表表头加一行 invariant 注脚。"
+    ]
+  },
+  "human_signoff": {
+    "decision": "approved",
+    "signed_at": "2026-05-18T11:16:18.366279+08:00",
+    "signed_by": "hj19961223@gmail.com",
+    "source": "cli-tty"
+  }
+}

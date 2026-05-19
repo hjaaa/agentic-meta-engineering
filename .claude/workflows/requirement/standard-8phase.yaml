@@ -36,6 +36,16 @@ applicable_when:
   change_type: [feature, refactor, enhancement]
   recommended: true
 
+# Worktree 配置
+worktree:
+  enabled: true
+  policy: auto
+  location: .worktrees
+  setup:
+    baseline:
+      command: make gates-validate
+      required: true
+
 # ====================================================================
 # 节点定义
 # ====================================================================
