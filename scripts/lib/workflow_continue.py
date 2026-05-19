@@ -10,6 +10,9 @@ sub_workflow_done；F-008 接入失败矩阵 retry/skip/abort；F-011 接入 loo
 """
 from __future__ import annotations
 
+import logging
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -460,6 +463,113 @@ def _load_workflow_for_run(
     return workflow
 
 
+def _find_active_worktrees(repo_root: Path) -> list[dict]:
+    """扫 `git worktree list --porcelain` 找所有 feat/req-* 分支的活跃 worktree。
+
+    porcelain 输出格式（每个 worktree 由空行分隔）：
+        worktree <absolute_path>
+        HEAD <sha>
+        branch refs/heads/<branch_name>      ← 仅常规分支；detached / bare 会换其他键
+        # 可选行：bare / detached / locked / prunable
+
+    解析规则：
+      - 必须有 `branch refs/heads/feat/req-*` 这一行才算"活跃需求 worktree"
+      - run_id = branch 字符串去掉 `feat/req-` 前缀
+
+    Args:
+        repo_root: 跑 git worktree list 的 cwd（任意工作区根都可，git 会返回同一份列表）
+
+    Returns:
+        list of dict：每项 {"path": Path, "branch": str, "run_id": str}；
+        无活跃 worktree 时返回空列表。git 命令失败时也返空列表（fail-open，不挡正常 ERROR 文案）。
+    """
+    try:
+        result = subprocess.run(
+            ["git", "worktree", "list", "--porcelain"],
+            cwd=str(repo_root),
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except (subprocess.SubprocessError, OSError) as exc:
+        logging.debug("git worktree list failed: %s", exc)
+        return []
+
+    if result.returncode != 0:
+        return []
+
+    worktrees: list[dict] = []
+    # porcelain 输出按空行分块；每块第一行是 `worktree <path>`
+    blocks = result.stdout.strip().split("\n\n")
+    for block in blocks:
+        path_str: str | None = None
+        branch: str | None = None
+        for line in block.splitlines():
+            if line.startswith("worktree "):
+                path_str = line[len("worktree "):].strip()
+            elif line.startswith("branch refs/heads/"):
+                branch = line[len("branch refs/heads/"):].strip()
+        if not path_str or not branch:
+            continue
+        if not branch.startswith("feat/req-"):
+            continue
+        run_id = branch[len("feat/req-"):]
+        worktrees.append({
+            "path": Path(path_str),
+            "branch": branch,
+            "run_id": run_id,
+        })
+    return worktrees
+
+
+def _switch_to_worktree_and_exec(worktree: dict, args: list[str]) -> int:
+    """切到目标 worktree 并 exec workflow_continue.py 重跑（替换当前进程）。
+
+    成功则 os.execv 不返回；失败（exec 抛 OSError）打降级提示并返 exit code，
+    让调用方退出——降级路径要求用户手动 cd 后重跑。
+    """
+    target = worktree["path"]
+    run_id = worktree["run_id"]
+    script = target / "scripts" / "lib" / "workflow_continue.py"
+    if not script.is_file():
+        print(
+            f"ERROR: 目标 worktree {target} 内无 scripts/lib/workflow_continue.py，"
+            f"无法切入续跑。请确认 worktree 内仓库内容完整。",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(f"INFO: 检测到活跃 worktree {target}（branch=feat/req-{run_id}），切入续跑 ...")
+    try:
+        os.chdir(str(target))
+        argv = [sys.executable, str(script)] + (args or [run_id])
+        os.execv(sys.executable, argv)
+    except OSError as exc:
+        print(
+            f"ERROR: 自动切入 worktree 失败（{exc}）。请手动执行：\n"
+            f"  cd {target} && python3 scripts/lib/workflow_continue.py {run_id}",
+            file=sys.stderr,
+        )
+        return 1
+    # execv 不返回；下行仅为类型完整
+    return 0  # pragma: no cover
+
+
+def _print_multiple_worktrees(worktrees: list[dict]) -> None:
+    """列出多个活跃 worktree 供用户选择。"""
+    print(
+        "ERROR: 当前处于主仓（非 feat/req-* 分支）且检测到多个活跃需求 worktree，"
+        "无法自动选择。请加 run_id 参数或 cd 到目标 worktree 后重跑：",
+        file=sys.stderr,
+    )
+    for wt in worktrees:
+        print(
+            f"  - run_id={wt['run_id']}  branch={wt['branch']}\n"
+            f"    path={wt['path']}",
+            file=sys.stderr,
+        )
+
+
 def main(args: list[str], repo_root: Path | None = None) -> int:
     """continue 命令主入口。
 
@@ -473,9 +583,18 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
 
     run_id = args[0] if args else infer_run_id_from_branch(root)
     if not run_id:
+        # Bug-1 修复：未传 run_id 且当前不在 feat/req-* 分支（典型场景：主仓 develop）
+        # 时扫所有活跃需求 worktree。0 个 → 维持原 ERROR；1 个 → 自动切入续跑；
+        # ≥2 个 → 列出供选，让人决策。
+        worktrees = _find_active_worktrees(root)
+        if len(worktrees) == 1:
+            return _switch_to_worktree_and_exec(worktrees[0], args)
+        if len(worktrees) >= 2:
+            _print_multiple_worktrees(worktrees)
+            return 2
         print(
             "ERROR: 无法推断 run_id\n"
-            "请提供 run_id 或确保当前分支为 feat/req-<id> 格式",
+            "请提供 run_id 或确保当前分支为 feat/req-<id> 格式（或在主仓启动需求 worktree）",
             file=sys.stderr,
         )
         return 1
