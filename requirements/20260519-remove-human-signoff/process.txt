@@ -19,3 +19,6 @@
 2026-05-19 12:48:18 [codex-review-triggered] round=1 pr=#82
 2026-05-19 12:52:07 [codex-review-received] verdict=not_passed round=1
 2026-05-19 12:54:19 [codex-fix] codex round 2 verdict=not_passed P1：test_code_review_report_routing_section.py 仍断言旧 '### 待 sign-off 提示' + /code-review:signoff + --trivial 示例，F-005 改文案后 6/6 测试 fail。修复：测试函数名与 assert 同步迁移到'人工确认提示'+ 软确认语义，retroactive 加入 F-005.md touches
+2026-05-19 12:54:33 [codex-review-triggered] round=1 pr=#82
+2026-05-19 13:04:44 [codex-review-received] verdict=timeout round=1
+2026-05-19 13:08:28 [ci-fix] GitHub Actions quality-check fail：GATE-SOURCING 拒 F-003.md:17 + F-006.md:24 两处复合引用（'F-002 commit message §遗留' / '详 detailed-design.md §1.F-006'）。修复：拆 inline 引用为合法路径 + 跑本地 ci strict 全过 rc=0
