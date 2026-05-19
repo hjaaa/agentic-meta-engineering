@@ -65,7 +65,7 @@ description: 聚合 8 个专项 checker + review-critic 对抗验证 + code-qual
   - `looks_clean` 且 `required_fixes` 为空 → 提示用户回复确认（如"OK 转 done"）后 feature-lifecycle-manager 才会把对应 feature 转 done
   - `needs_attention` → 默认建议先修复；如用户判断风险可接受，需在主对话**显式接受风险**（如"接受当前 needs_attention 风险，转 done"）后才允许转 done
   - `blocked` → fail-closed，必须先把 critical 问题修掉再重审，无法软确认绕过
-- 警示：未获用户软确认时 feature-lifecycle-manager 不会把对应 feature 转 done；GATE-REVIEW-VERDICT 在 phase-transition / submit 时仍会按 conclusion 阻断 blocked / needs_attention 的越级
+- 警示：未获用户软确认时 feature-lifecycle-manager 不会把对应 feature 转 done；GATE-REVIEW-VERDICT 在 phase-transition / submit 时 hard-block `blocked`（error 级），`needs_attention` 仅触发 warning（strict 模式才升 fail）；软门禁由主对话的人工确认承担
 
 ## 参考资源
 
