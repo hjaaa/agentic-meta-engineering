@@ -34,3 +34,6 @@
 2026-05-19 13:35:06 [codex-review-triggered] round=1 pr=#82
 2026-05-19 13:53:38 [codex-review-received] verdict=passed round=1
 2026-05-19 14:01:41 [ci-fix] CI quality-check fail：pytest tests/agents/test_code_quality_reviewer_three_tier.py + tests/migration/test_phase_requirements_equivalence.py 各 1 测试断言旧 human_signoff 失效。修复：test_explicit_prohibition_segment_present 断言迁移到'reviewer 只输出机器结论' + 'human_signoff' / '卡点 B' 断言下线；test_r003_signoff_through_hook 标 pytest.skip（R003 已不再 require signoff，函数体保留作历史 migration 记录）。全量 1618 passed 0 fail
+2026-05-19 14:01:55 [codex-review-triggered] round=1 pr=#82
+2026-05-19 14:07:43 [codex-review-received] verdict=not_passed round=1
+2026-05-19 14:10:20 [ci-fix] CI ruff lint F401 fail：scripts/gates/run.py:28 import re unused（_REQ_ID_PATTERN 删后 re 没用了）。修复：删 import re。codex round 8 P2：development.md step 7 仍写 'sign-off'，dev-feature-loop 卡住。修复：改'用户在主对话进行软确认' + 列三分支

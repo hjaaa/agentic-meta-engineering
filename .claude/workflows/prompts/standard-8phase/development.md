@@ -122,7 +122,12 @@ prompt: |
 ```
 
 子 workflow 会跑完整的 8 critic + critic-验证 + judge + report 流程。
-等子 workflow 完成（含 review 报告生成 + 用户对 review 的 sign-off）。
+等子 workflow 完成（含 review 报告生成 + 用户在主对话进行软确认）。
+
+软确认分支（20260519-remove-human-signoff F-005）：
+- `conclusion=looks_clean` 且无 required_fixes → 直接允许下一步 feature done
+- `conclusion=needs_attention` → 默认要求修复并重审；若用户在主对话显式接受风险则继续
+- `conclusion=blocked` → fail-closed，必须修复并重审，不可绕过
 
 ### 第 8 步：标记本 feature done
 
