@@ -1,0 +1,1 @@
+2026-05-19 11:26:35 [definition] 起草 artifacts/requirement.md：4 场景 + 9 验收 + 4 待澄清 + spec 单源压缩 D-000；check_sourcing --strict 0 issue
