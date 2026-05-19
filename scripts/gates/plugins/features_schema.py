@@ -103,7 +103,8 @@ class FeaturesSchemaGate(Gate):
                     "请检查 features.json 字段是否完整（必填：id/title/description/"
                     "modules/depends_on/depends_on_features/complexity/touches/acceptance），"
                     "complexity 枚举须为 trivial/light/medium/heavy，"
-                    "id 格式须为 ^F-\\d{3}$，requirement_id 格式须为 ^REQ-\\d{4}-\\d{3}$。"
+                    "id 格式须为 ^F-\\d{3}$；requirement_id 须匹配 ^REQ-\\d{4}-\\d{3}$（legacy）"
+                    " 或 ^\\d{8}-[a-z0-9]+(?:-[a-z0-9]+)*(?:-\\d{2})?$（新格式，D-013）。"
                     "注意：status 字段不在 features.json 中（在 tasks/<fid>.md frontmatter）。"
                 ),
             )

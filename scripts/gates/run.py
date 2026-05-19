@@ -123,8 +123,10 @@ _stash_state = _state_io.stash_state
 _restore_state = _state_io.restore_state
 _cleanup_snapshots = _state_io.cleanup_snapshots
 
-# 安全校验：requirement_id 白名单正则，防止路径穿越（F-001 review 建议）
-_REQ_ID_PATTERN = r"^REQ-\d{4}-\d{3}$"
+# 安全校验：requirement_id 白名单复合校验，防止路径穿越（F-001 review 建议；
+# 20260519-remove-human-signoff F-009 / D-001：扩接受 YYYYMMDD-<slug>[-NN] 新格式）。
+# 校验委托 requirement_naming.is_legacy_requirement_key / is_new_requirement_key
+# 单一事实源（来源：scripts/lib/requirement_naming.py）；避免在此重写正则。
 
 
 class GateFailed(Exception):
@@ -217,9 +219,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 def _validate_requirement_id(req_id: str) -> bool:
     """校验 requirement_id 格式，防止路径穿越（F-001 review 安全建议）。
 
-    只接受 REQ-YYYY-NNN 格式（4 位年份 + 3 位序号），拒绝含 .. / / 等路径穿越字符的输入。
+    20260519-remove-human-signoff F-009：接受两种格式：
+      - legacy REQ-YYYY-NNN（4 位年份 + 3 位序号）
+      - 新格式 YYYYMMDD-<slug>[-NN]（D-013 起的默认）
+    任一匹配即合法；拒绝含 .. / / 等路径穿越字符的输入。
     """
-    return bool(re.match(_REQ_ID_PATTERN, req_id))
+    from scripts.lib.requirement_naming import (
+        is_legacy_requirement_key,
+        is_new_requirement_key,
+    )
+    return is_legacy_requirement_key(req_id) or is_new_requirement_key(req_id)
 
 
 def _resolve_trigger(trigger: Optional[str]) -> str:
@@ -242,7 +251,8 @@ def _load_meta_for_req(req_id: Optional[str]) -> dict[str, Any]:
         return {}
     if not _validate_requirement_id(req_id):
         print(
-            f"ERROR requirement_id={req_id!r} 格式非法，必须匹配 REQ-YYYY-NNN",
+            f"ERROR requirement_id={req_id!r} 格式非法，必须匹配 REQ-YYYY-NNN（legacy）"
+            f" 或 YYYYMMDD-<slug>[-NN]（新格式，D-013）",
             file=sys.stderr,
         )
         raise SystemExit(2)

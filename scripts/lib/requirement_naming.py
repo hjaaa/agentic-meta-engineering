@@ -116,6 +116,17 @@ def is_legacy_requirement_key(key: str) -> bool:
     return bool(_LEGACY_REQUIREMENT_KEY_RE.match(key))
 
 
+def is_new_requirement_key(key: str) -> bool:
+    """识别 YYYYMMDD-<slug>[-NN] 新格式 key（D-013）。
+
+    入参：任意字符串
+    返回：是否为合法新格式 key（True / False；不抛异常）
+    用途：gate runner / features_schema plugin 在 ID 校验时复合使用 is_legacy + is_new
+    （来源：requirements/20260519-remove-human-signoff/plan.md D-001）。
+    """
+    return bool(_NEW_REQUIREMENT_KEY_RE.match(key))
+
+
 def branch_for_requirement_key(key: str) -> str:
     """两种 key 统一生成 feat/req-<key> 分支名。
 
