@@ -22,3 +22,6 @@
 2026-05-19 12:54:33 [codex-review-triggered] round=1 pr=#82
 2026-05-19 13:04:44 [codex-review-received] verdict=timeout round=1
 2026-05-19 13:08:28 [ci-fix] GitHub Actions quality-check fail：GATE-SOURCING 拒 F-003.md:17 + F-006.md:24 两处复合引用（'F-002 commit message §遗留' / '详 detailed-design.md §1.F-006'）。修复：拆 inline 引用为合法路径 + 跑本地 ci strict 全过 rc=0
+2026-05-19 13:08:52 [codex-review-triggered] round=1 pr=#82
+2026-05-19 13:12:56 [codex-review-received] verdict=not_passed round=1
+2026-05-19 13:15:09 [codex-fix] codex round 4 verdict=not_passed P2：test_standard_8phase_terminal_nodes.py + test_workflow_dispatcher_dispatch.py + test_status_verbose_stale.py 3 测试仍含旧 *-signoff 节点名。修复：把 test-final-signoff → test-final-confirm；req-signoff fixture 改 req-confirm；retroactive 加入 F-006.md touches

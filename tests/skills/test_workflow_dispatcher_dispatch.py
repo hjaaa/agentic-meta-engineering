@@ -240,7 +240,8 @@ def test_dispatch_approval_node_reads_message_field_from_schema(tmp_path):
         "data": {},
     }
     node = {
-        "id": "req-signoff",
+        # 20260519-remove-human-signoff F-006：req-signoff 改名 req-confirm
+        "id": "req-confirm",
         "approval": {
             "message": "需求评审 verdict=$req-quality-review.output.verdict",
         },
