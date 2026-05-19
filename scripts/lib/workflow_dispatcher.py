@@ -292,7 +292,8 @@ def _dispatch_prompt_node(
     if "prompt" in node:
         raw_text: str = node["prompt"]
     elif "prompt_file" in node:
-        prompt_path = root / node["prompt_file"]
+        from workflow_loader import _resolve_prompt_file  # Bug-8 workaround: dispatcher/loader 解析逻辑对齐
+        prompt_path = _resolve_prompt_file(node["prompt_file"])
         try:
             raw_text = prompt_path.read_text(encoding="utf-8")
         except FileNotFoundError as exc:
@@ -485,6 +486,15 @@ def _dispatch_loop_node(
                     "node_id": node_id,
                     "data": {"iteration": current_iteration},
                 })
+                # loop_done 也属于节点完成生命周期：补写 node_completed 让 rebuild
+                # 能把 loop 节点标 SUCCESS_TERMINAL，避免 bootstrap 把它当 ready 重派。
+                # 对齐 completed / sub_workflow_done 两个 outcome 的 jsonl 写入语义。
+                append_event(jsonl_path, {
+                    "type": "node_completed",
+                    "node_id": node_id,
+                    "data": {"output": "", "loop_done": True,
+                              "iteration": current_iteration},
+                })
                 return DispatchResult(outcome="loop_done")
             # exit≠0 → 条件不成立，继续走迭代路径
         except subprocess.TimeoutExpired:
@@ -556,6 +566,15 @@ def _loop_check_max_or_continue(
             "type": "loop_max_iterations_exceeded",
             "node_id": node_id,
             "data": {"max_iterations": max_iterations, "iteration": current_iteration},
+        })
+        # 与 until_bash exit=0 路径对称：loop_done 必须伴随 node_completed，
+        # 否则 rebuild 时 loop 节点缺 SUCCESS_TERMINAL 标记，bootstrap 反复重派。
+        append_event(jsonl_path, {
+            "type": "node_completed",
+            "node_id": node_id,
+            "data": {"output": "", "loop_done": True,
+                      "max_iterations_exceeded": True,
+                      "iteration": current_iteration},
         })
         return DispatchResult(outcome="loop_done")
     return DispatchResult(outcome="loop_continue")
