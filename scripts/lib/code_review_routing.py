@@ -65,7 +65,7 @@ _ERROR_MESSAGES: dict[int, str] = {
         "[routing] 入参非法：{detail}\n"
         "  fix-hint：检查 --mode / --requirement-id / --base-sha / --head-sha / "
         "--base-branch / --current-branch 必填项；sha 格式应为 7 位短 hash；"
-        "requirement-id 格式应为 REQ-YYYY-NNN。"
+        "requirement-id 格式应为 REQ-YYYY-NNN 或 YYYYMMDD-<slug>（D-013 双格式）。"
     ),
     2: (
         "[routing] 卡点 A 必须人工执行：检测到 stdin 非 tty"
@@ -564,10 +564,18 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
                 exit_code=EXIT_BAD_ARGS,
             )
 
-    # 白名单：requirement-id 格式（REQ-YYYY-NNN）
-    if not re.fullmatch(r"^REQ-\d{4}-\d{3}$", ns.requirement_id):
+    # 白名单：requirement-id 格式
+    # D-013（REQ-2026-014）起 requirement-id 接受两种格式，与 features-schema.yaml
+    # `format.requirement_id` 同源（避免双格式校验在两处 drift）：
+    #   - legacy REQ-YYYY-NNN：兼容 REQ-2026-001 ~ 014 历史数据
+    #   - 新格式 YYYYMMDD-<slug>[-NN]：D-013 之后的默认
+    if not re.fullmatch(
+        r"^(REQ-\d{4}-\d{3}|\d{8}-[a-z0-9]+(?:-[a-z0-9]+)*(?:-\d{2})?)$",
+        ns.requirement_id,
+    ):
         raise RoutingError(
-            f"--requirement-id 格式非法（期望 REQ-YYYY-NNN），实际为 {ns.requirement_id!r}",
+            f"--requirement-id 格式非法（期望 REQ-YYYY-NNN 或 YYYYMMDD-<slug>），"
+            f"实际为 {ns.requirement_id!r}",
             exit_code=EXIT_BAD_ARGS,
         )
 
