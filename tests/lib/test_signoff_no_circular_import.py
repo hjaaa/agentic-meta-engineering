@@ -1,19 +1,20 @@
-"""回归测试：is_signed_off 不能因循环导入退化为 stub（Codex P1-B 防再发）。
+"""回归测试：is_signed_off 不能因循环导入退化为 stub（已退化）。
 
-背景：check_reviews.py 顶层 `import save_review`，save_review.py 顶层
-`from check_reviews import is_signed_off`。若 SIGNOFF_PASS / is_signed_off 的定义
-位于 `import save_review` 之后，循环导入会让 save_review 拿到 ImportError 并永久
-绑定 stub `return False`——CR-1 / CR-4 静默失效。
-
-本测试通过两种 import 顺序触发循环路径，断言 is_signed_off 在两个模块里都是真函数
-（对 approved verdict 返回 True），而不是 stub。
+F-002（remove human sign-off）：is_signed_off / SIGNOFF_PASS 已删除——
+此循环导入回归不再适用。pytest.skip 整体跳过 collection，配合 F-003 收尾
+时随 signoff 子系统一起删除（F-003 touches 已列）。
 """
 from __future__ import annotations
 
+import pytest
+
+pytest.skip(
+    "F-002 已删除 is_signed_off helper；本测试文件随 F-003 收尾删除",
+    allow_module_level=True,
+)
+
 import sys
 from pathlib import Path
-
-import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SCRIPTS_LIB = _REPO_ROOT / "scripts" / "lib"

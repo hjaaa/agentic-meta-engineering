@@ -28,15 +28,12 @@ from ruamel.yaml import YAML
 
 from common import REPO_ROOT, Report, Severity, paint, rel
 
-# is_signed_off 来自 check_reviews——必须在 check_reviews 完成 SIGNOFF_PASS / is_signed_off
-# 定义之后才能 import 本文件，否则循环导入会绑死 stub。check_reviews.py 已把这两个符号
-# 放在 `import save_review` 之前；如改动 check_reviews import 顺序，必须同步验证此处导入。
-from check_reviews import is_signed_off, _compute_hash_with_normalize  # noqa: E402
+# F-002（remove human sign-off）：原签字判定符号已删除；
+# 仅保留 _compute_hash_with_normalize（D-013 双侧 hash 对称所需）。
+from check_reviews import _compute_hash_with_normalize  # noqa: E402
 
 # 新三档 conclusion 枚举（v2.0 schema）
 CONCLUSION_NEW: set[str] = {"looks_clean", "needs_attention", "blocked"}
-# human_signoff.decision 通过值集合
-SIGNOFF_DECISION_PASS: set[str] = {"approved", "approved-trivial"}
 
 SCHEMA_PATH = REPO_ROOT / "context" / "team" / "engineering-spec" / "review-schema.yaml"
 REQUIREMENTS_DIR = REPO_ROOT / "requirements"
@@ -98,10 +95,9 @@ def _check_cr_rules(verdict: dict, report: Report, label: str) -> None:
     score = verdict.get("score")
     dimensions = verdict.get("dimensions") or {}
 
-    # CR-1: 已签字 ⇒ required_fixes == []
-    # is_signed_off 来自 F-004b；未合并时占位实现一律返回 False（跳过本条）
-    if is_signed_off(verdict) and len(required_fixes) > 0:
-        report.add(label, Severity.ERROR, "CR-1", "已签字（is_signed_off=True）但 required_fixes 非空")
+    # F-002（remove human sign-off）：CR-1 已删除——human_signoff 字段下线后
+    # "已签字 ⇒ required_fixes == []" 不再有判定依据；CR-2/3/4 已能覆盖
+    # required_fixes 与 conclusion 的一致性约束。
 
     # CR-2: required_fixes 非空 ⇒ conclusion ∈ {needs_attention, blocked}
     if len(required_fixes) > 0 and conclusion not in ("needs_attention", "blocked"):
@@ -113,12 +109,10 @@ def _check_cr_rules(verdict: dict, report: Report, label: str) -> None:
         if isinstance(dim_score, int) and dim_score < 60 and conclusion == "looks_clean":
             report.add(label, Severity.ERROR, "CR-3", f"维度 {dim_name} score={dim_score} < 60 但 conclusion=looks_clean")
 
-    # CR-4: score < 70 ⇒ conclusion ≠ looks_clean 且不能已签字
-    if isinstance(score, int) and score < 70:
-        if conclusion == "looks_clean":
-            report.add(label, Severity.ERROR, "CR-4", f"score={score} < 70 但 conclusion=looks_clean")
-        if is_signed_off(verdict):
-            report.add(label, Severity.ERROR, "CR-4", f"score={score} < 70 但已签字（is_signed_off=True），禁止签字通过低分 verdict")
+    # CR-4: score < 70 ⇒ conclusion ≠ looks_clean
+    # F-002：删去"且不能已签字"子条件——human_signoff 字段下线后失去判定依据。
+    if isinstance(score, int) and score < 70 and conclusion == "looks_clean":
+        report.add(label, Severity.ERROR, "CR-4", f"score={score} < 70 但 conclusion=looks_clean")
 
     # CR-5: 每个 issue 必须 severity 合法 + description 非空
     for dim_name, dim in dimensions.items():
@@ -147,12 +141,8 @@ def _check_cr_rules(verdict: dict, report: Report, label: str) -> None:
         report.add(label, Severity.ERROR, "CR-7",
                    f"conclusion {verdict.get('conclusion')!r} not in enum {sorted(CONCLUSION_NEW)}")
 
-    # CR-8（新增）: human_signoff.source 若存在必须 ∈ signoff_source 枚举（当前仅 cli-tty）
-    sig = verdict.get("human_signoff") or {}
-    src = sig.get("source")
-    if sig and src != "cli-tty":
-        report.add(label, Severity.ERROR, "CR-8",
-                   f"human_signoff.source {src!r} not in [cli-tty]")
+    # F-002（remove human sign-off）：CR-8 已删除——human_signoff 字段下线后
+    # signoff_source 校验失去意义。
 
 
 def _git_head_short() -> str | None:
@@ -226,16 +216,6 @@ def _check_artifact_blacklist(artifacts: list) -> str | None:
                 "reviewer 输出自身不应被 hash 跟踪"
             )
     return None
-
-
-# ─── F-012 rev2：signoff 子模块 re-export ─────────────────────────────────────
-# signoff 相关 helper 已迁入 scripts/lib/signoff.py；
-# 下面的 import 保留原模块级名字，确保测试 monkeypatch 继续工作。
-import signoff as _signoff_mod  # noqa: E402
-
-_resolve_verdict_path = _signoff_mod._resolve_verdict_path
-_run_signoff = _signoff_mod.run_signoff
-_check_trivial_paths = _signoff_mod._check_trivial_paths
 
 
 def _load_stdin_verdict() -> tuple[dict | None, int | None]:
@@ -433,12 +413,12 @@ def _run_save(args: argparse.Namespace) -> int:
     return rc if rc is not None else 0
 
 
-_KNOWN_CMDS: frozenset[str] = frozenset({"save", "signoff"})
+_KNOWN_CMDS: frozenset[str] = frozenset({"save"})
 
 
 def _build_parsers() -> tuple[argparse.ArgumentParser, argparse._SubParsersAction]:
     """构造主 parser + subparser，供 main() 和单测复用。"""
-    parser = argparse.ArgumentParser(description="写入 review JSON / 签字")
+    parser = argparse.ArgumentParser(description="写入 review JSON")
     sub = parser.add_subparsers(dest="cmd", required=False)
 
     # save 子命令（与既有调用方完全兼容）
@@ -450,18 +430,20 @@ def _build_parsers() -> tuple[argparse.ArgumentParser, argparse._SubParsersActio
     save_p.add_argument("--scope", default=None,
                         help="形如 feature_id=F-001（仅 phase=code 必填）")
 
-    # signoff 子命令——parser 定义集中在 signoff.py 统一维护（F-012 rev2）
-    _signoff_mod.build_signoff_parser(sub)
+    # F-002（remove human sign-off）：signoff 子命令已删除——人工确认改由
+    # workflow approval 节点承担（standard-8phase yaml *-confirm 节点）。
 
     return parser, sub
 
 
 def main() -> int:
-    """CLI 入口：支持 save（默认）与 signoff 两个子命令。
+    """CLI 入口：支持 save 子命令。
 
     兼容性保证：
       既有调用 'python3 save_review.py --req X --phase Y --reviewer Z'（无 subcommand）
       在升级后等价于 'python3 save_review.py save --req X --phase Y --reviewer Z'。
+
+    F-002（remove human sign-off）：signoff 子命令已删除。
 
     实现方案：
       检查 sys.argv 第一个非 '-' 开头的参数是否是已知子命令。
@@ -486,8 +468,6 @@ def main() -> int:
 
     if args.cmd == "save":
         return _run_save(args)
-    if args.cmd == "signoff":
-        return _run_signoff(args)
     return 2
 
 

@@ -1,19 +1,20 @@
-"""is_signed_off helper 单测：4 等价类验证。
+"""is_signed_off helper 单测（已退化）。
 
-验收要求（TC-B8 ~ TC-B11）：
-  - TC-B8: decision=approved → True
-  - TC-B9: decision=approved-trivial → True
-  - TC-B10: decision=rejected → False
-  - TC-B11: 空 dict（无 human_signoff 字段）→ False
-
-来源：requirements/REQ-2026-003/artifacts/detailed-design.md §F-004.9
+F-002（remove human sign-off）：is_signed_off helper 与 SIGNOFF_PASS 已从
+check_reviews.py 中删除；本测试文件整体不再适用，pytest.skip 整体跳过
+collection，配合 F-003 收尾时随 signoff 子系统一起删除。
 """
 from __future__ import annotations
 
+import pytest
+
+pytest.skip(
+    "F-002 已删除 is_signed_off helper；本测试文件随 F-003 收尾删除",
+    allow_module_level=True,
+)
+
 import sys
 from pathlib import Path
-
-import pytest
 
 # 注入 scripts/lib 到 path
 _LIB_DIR = Path(__file__).resolve().parents[2] / "scripts" / "lib"

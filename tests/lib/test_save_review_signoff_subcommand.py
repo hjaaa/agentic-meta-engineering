@@ -1,20 +1,17 @@
 """save_review.py signoff 子命令测试 + subparser 兼容性回归。
 
-测试范围：
-  (a) 兼容性回归：旧调用 'python3 save_review.py --req X --phase Y --reviewer Z'
-      （无 cmd）走 save 路径等价
-  (b) 新调用 'python3 save_review.py save --req X --phase Y --reviewer Z' 走 save
-  (c) signoff 子命令：写 human_signoff + CR-1~CR-8 全跑 + process.txt append
-  (d) _resolve_verdict_path 单测：REV-ID 反推路径
-  (e) D-003 深防御第三层：非 tty stdin 直调 signoff 子命令 → 退出码 2
-
-实现说明：
-  - (a)(b) 用 monkeypatch mock _run_save/_run_signoff 验证路由
-  - (c) 函数级单测，直接调 _run_signoff(args)，monkeypatch sys.stdin 为 tty
-  - (e) subprocess 跑 save_review.py signoff，stdin=PIPE 非 tty → 退出码 2
-  - 不引入任何 env var 旁路（FAKE_TTY 等已被 D-003 红线封禁）
+F-002（remove human sign-off）：signoff 子命令已删除——本测试文件整体
+不再适用，pytest.skip 整体跳过 collection，配合 F-003 收尾时随 signoff
+子系统一起删除。
 """
 from __future__ import annotations
+
+import pytest
+
+pytest.skip(
+    "F-002 已删除 signoff 子命令；本测试文件随 F-003 收尾删除",
+    allow_module_level=True,
+)
 
 import argparse
 import json

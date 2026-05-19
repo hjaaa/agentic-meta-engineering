@@ -1,14 +1,17 @@
-"""CR-8 单测：human_signoff.source 不是 cli-tty 时必须被拒收。
+"""CR-8 单测：F-002（remove human sign-off）已删除 CR-8 规则。
 
-验收要求：
-  - human_signoff.source=pr-review → report.errors > 0
-  - 发现项中必须有 code='CR-8'
-  - 错误消息必须包含子串 'human_signoff.source'
-  - CR-8 仅在 human_signoff 非空时触发
-
-来源：requirements/REQ-2026-003/artifacts/detailed-design.md §F-001.3 CR-8
+历史背景：CR-8 校验 human_signoff.source ∈ {cli-tty}；human_signoff 字段下线后
+本测试文件整体不再适用。F-002 阶段先用 pytest.skip 整体跳过 collection，
+配合 F-003 收尾时随 signoff 子系统一起删除。
 """
 from __future__ import annotations
+
+import pytest
+
+pytest.skip(
+    "F-002 已删除 CR-8 规则——human_signoff 字段下线；本测试文件随 F-003 收尾删除",
+    allow_module_level=True,
+)
 
 import sys
 from pathlib import Path
