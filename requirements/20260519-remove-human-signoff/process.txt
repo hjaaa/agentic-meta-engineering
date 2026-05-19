@@ -4,3 +4,5 @@
 2026-05-19 11:31:50 [phase-transition] definition → tech-research：tech-feasibility GO/high 36h；6 风险全有缓解；4 待澄清不阻塞；gate runner 兜底（D-001）
 2026-05-19 11:33:39 [phase-transition] tech-research → outline-design：outline-design.md 完成（4 类制品退化拓扑 + 10 features + 4 选型 + 3 流程 + 2 AC）；check_sourcing 0 issue
 2026-05-19 11:38:26 [phase-transition] outline-design → detail-design：detailed-design.md + features.json (10 features) 完成；features-schema.yaml requirement_id regex 扩接受新旧两种格式（D-001 数据结构变更部分）；check_features 通过
+2026-05-19 11:41:44 [phase-transition] detail-design → task-planning：10 task.md 全过 GATE-TASK-FRONTMATTER 校验
+2026-05-19 11:41:44 [phase-transition] task-planning → development：开始顺序实施 F-009 → F-001 → F-002 → ... 派发循环

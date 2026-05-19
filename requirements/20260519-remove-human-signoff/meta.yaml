@@ -3,7 +3,7 @@
 # ============ 流程组（bootstrap 时填） ============
 id: 20260519-remove-human-signoff                 # 例：REQ-2026-001
 title: 移除 human sign-off，改为软性人工确认
-phase: detail-design
+phase: development
 created_at: 2026-05-19 11:18:52     # 格式 YYYY-MM-DD HH:MM:SS（Asia/Shanghai），见 context/team/engineering-spec/time-format.md
 branch: feat/req-20260519-remove-human-signoff             # 例：feat/req-2026-001
 base_branch: develop   # feat/* 派生的基点分支：develop / main / master
