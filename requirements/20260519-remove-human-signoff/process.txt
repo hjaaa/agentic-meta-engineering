@@ -7,3 +7,5 @@
 2026-05-19 11:41:44 [phase-transition] detail-design → task-planning：10 task.md 全过 GATE-TASK-FRONTMATTER 校验
 2026-05-19 11:41:44 [phase-transition] task-planning → development：开始顺序实施 F-009 → F-001 → F-002 → ... 派发循环
 2026-05-19 11:46:49 [development] F-009 完成（D-001 顺带）：requirement_naming.is_new_requirement_key 公开；gates/run.py _validate_requirement_id 改复合校验；features_schema.py:106 错误文案更新；features-schema.yaml 与 meta-schema.yaml format.id regex 扩接受新旧两格式；GATE-META-SCHEMA + GATE-FEATURES-SCHEMA + phase-transition gate runner 对新格式 ID 直接 reject 的 blocker 解除。测试用例补丁延后到下一轮（任务列表第 4-7 步）。意外发现 meta-schema.yaml:69 是第三处漏改（D-001 兜底纳入）
+2026-05-19 11:50:02 [development] F-001 完成：review-schema.yaml 删除 human_signoff/signoff_decision/signoff_source enum + CR-1/CR-8 整删 + CR-4 去签字分支；头部注释段保留变更历史
+2026-05-19 11:50:02 [development] F-006 完成：standard-8phase.yaml 6 节点 *-signoff → *-confirm（sed 批量）+ depends_on 同步；yaml 合法；approve.md/reject.md 文案已合规（无签字字眼）
