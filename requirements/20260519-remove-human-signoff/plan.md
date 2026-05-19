@@ -16,6 +16,10 @@
   - **文档清理**：`context/team/engineering-spec/specs/2026-04-30-code-review-human-checkpoints.md` / `design-guidance/gate-system-architecture.md` / `context/team/ai-collaboration.md` / onboarding / learning-path / experience / 当前需求 task 文件中"sign-off=approved" 验收项 全面替换（来源：spec §文档清理）
   - **数据迁移**：仓库内当前 active 与可清理 review JSON 中 `human_signoff` 字段删除（不动 review_id / conclusion / score / reviewed_artifacts；process.txt 的 `[signoff]` 时间线保留作历史事件）（来源：spec §review JSON 历史内容）
   - **测试同步**：单元（check_reviews / save_review CR 规则）+ 集成（feature lifecycle 转 done / phase-transition / CI gate）+ 删除 signoff CLI / tty / trivial / 循环导入测试；schema 校验逻辑迁移到非 signoff 测试（来源：spec §测试策略）
+  - **顺带修复**（D-001 决策；REQ-2026-014 命名迁移遗漏的 ID 校验回归点）：
+    - `scripts/gates/run.py:127` `_REQ_ID_PATTERN` 扩为同时接受新格式 `YYYYMMDD-<slug>[-NN]` 与旧 `REQ-YYYY-NNN`（直接复用 `scripts/lib/requirement_naming.py` 的两类正则）
+    - `scripts/gates/plugins/features_schema.py:106` requirement_id 校验同步扩格式
+    - 顺带补回归测试：`tests/gates/test_run.py` + `tests/gates/test_features_schema.py` 新增 20260519-remove-human-signoff 等新格式入参 case
 - 不包含：
   - workflow 引擎 `approval` 节点类型本身（保留）
   - AI review 自动合并 / 自动转 done（仍需用户对当前流程给出软确认）
@@ -60,3 +64,9 @@
 - **Decision**：阶段 2-5 产出物（requirement / tech-feasibility / outline-design / detailed-design）对照 spec 抽取相应章节并补缺口（业务术语 / 验收标准 / 模块接口签名 / features.json），不从零撰写。代码契约、删/改清单、测试矩阵以 spec §实现边界 §测试策略 §验证命令 为权威
 - **Consequences**：节奏与 REQ-2026-014 对齐，减少重复推导；风险——若 spec 漏写细节（如未定义 features 拆分粒度、未给具体 schema 改动 diff），需在补缺口时显式标 [待用户确认] 而非默默推断
 - **时间**：2026-05-19 11:25:00
+
+### D-001 把 REQ-2026-014 命名迁移漏改的 ID 校验回归点纳入本需求范围
+- **Context**：bootstrap 后跑 `scripts/gates/run.py --trigger=phase-transition --req=20260519-remove-human-signoff` 直接 reject，原因 `scripts/gates/run.py:127` `_REQ_ID_PATTERN = r"^REQ-\d{4}-\d{3}$"` 仍硬编码旧格式（来源：scripts/gates/run.py:127）；同时扫到 `scripts/gates/plugins/features_schema.py:106` 错误提示也写死"id 格式须为 ^F-\\d{3}$，requirement_id 格式须为 ^REQ-\\d{4}-\\d{3}$"（来源：scripts/gates/plugins/features_schema.py:106）。REQ-2026-014 spec §6.1 列入回归点扫描时遗漏了 gate runner / features_schema plugin
+- **Decision**：本期 development 阶段顺带修两点 + 加新格式回归用例。修复原则——复用 `scripts/lib/requirement_naming.py` 已有的 `_LEGACY_REQUIREMENT_KEY_RE` 与 `_NEW_REQUIREMENT_KEY_RE` 两个正则，不要再写一份。当前 definition→tech-research 切换走 process.txt [phase-transition] 兜底（同 REQ-2026-014 `infer_run_id_from_branch` 兜底先例：requirements/REQ-2026-014/notes.md 2026-05-18 00:03:37），不在 definition 阶段提前 patch
+- **Consequences**：本需求范围扩到不止 human-signoff（多了 ID 校验回归）；好处——把 REQ-2026-014 的漏改一次性收口，避免后续每个新 REQ 都被 gate runner 拦；风险——若开发期间发现还有第三处漏改，由 D-001 兜底，开发记录列入；scope 微膨胀不触发 plan rollback（与 spec §设计原则"最小可验证路径"一致）
+- **时间**：2026-05-19 11:28:00
