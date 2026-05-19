@@ -37,3 +37,6 @@
 2026-05-19 14:01:55 [codex-review-triggered] round=1 pr=#82
 2026-05-19 14:07:43 [codex-review-received] verdict=not_passed round=1
 2026-05-19 14:10:20 [ci-fix] CI ruff lint F401 fail：scripts/gates/run.py:28 import re unused（_REQ_ID_PATTERN 删后 re 没用了）。修复：删 import re。codex round 8 P2：development.md step 7 仍写 'sign-off'，dev-feature-loop 卡住。修复：改'用户在主对话进行软确认' + 列三分支
+2026-05-19 14:10:35 [codex-review-triggered] round=1 pr=#82
+2026-05-19 14:15:48 [codex-review-received] verdict=not_passed round=1
+2026-05-19 14:17:36 [codex-fix] codex round 9 verdict=not_passed P3：review-report.md.tmpl + SKILL.md 文案声称 GATE-REVIEW-VERDICT 阻断 needs_attention 失实；R004 仅 warning，strict 才升 fail。修复：精确化文案——hard-block 仅 blocked（error），needs_attention warning（strict 升 fail），软门禁由主对话承担。CI quality-check 已 SUCCESS。
