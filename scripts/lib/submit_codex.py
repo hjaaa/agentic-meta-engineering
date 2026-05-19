@@ -1,26 +1,27 @@
 """submit --codex 子模式 runner —— /requirement:submit --codex 的实现核心。
 
-设计契约（detailed-design §3.3，已 frozen）：
+设计契约（detailed-design §3.3，已 frozen；2026-05 移除本地落盘改造）：
 
     submit_with_codex(req_id, *, poll_interval_sec, timeout_sec) -> CodexRoundResult
 
 行为流程：
   1. 读 meta.yaml → 取 pr_number（预检失败则 SystemExit(1)）
-  2. 计算 round 号（已有 round-*.md 数 + 1，禁止重号）
+  2. 计算 round 号（仓库不再落 round-*.md，本地无文件 → 永远返回 1；保留函数
+     仅用于潜在恢复路径）
   3. `gh pr comment <pr_num> --body "@codex review"` 触发 review
   4. 单轮轮询 `_poll_codex`（time.monotonic 计时）：
-       - 命中三因子（Bot + /codex/i + submitted_at > triggered_at）→ 落 round-N.md
-       - 超时 / 429 → verdict=timeout，落 round-N.md（仅 3 字段）
+       - 命中三因子（Bot + /codex/i + submitted_at > triggered_at）→ 算 verdict
+       - 超时 / 429 → verdict=timeout
        - 连续 5xx ≥ 3 次 → GhApiAbort → exit 1
   5. 判 verdict（精确匹配 pass phrase，在 submit-rules.md 顶部定义为三常量）
-  6. 向 stderr 输出 verdict 摘要（passed 时静默）
+  6. 向 stderr 输出 verdict 摘要（passed 时静默）+ 写一行 `[codex-review-received]`
+     到 process.txt；review 全文保留在 GitHub PR review comments 不本地落盘
 
 三 verdict 全部 exit 0；exit 1 仅在 GhApiAbort 或 gh pr comment 失败时触发。
 
-frontmatter quote 规则：
-  - reviewer 含 `[bot]` 后缀必须 quote（防 YAML flow-list 解析歧义）
-  - triggered_at / submitted_at 含 `:` 建议 quote
-  - review_id 建议 quote（防 >2^53 精度丢失）
+frontmatter 与 round-N.md 写盘逻辑已保留为内部辅助函数（_render_frontmatter /
+_persist_round 等），仅供单元测试与可能的恢复路径使用——主入口 submit_with_codex
+不再触发落盘。
 
 时间戳遵循 context/team/engineering-spec/time-format.md：
   wall clock 用 ISO8601（含时区 offset），轮询超时判定用 time.monotonic。
@@ -28,7 +29,6 @@ frontmatter quote 规则：
 from __future__ import annotations
 
 import json
-import os
 import re
 import subprocess
 import sys
@@ -653,37 +653,20 @@ def _persist_round(
     result: CodexRoundResult,
     body: Optional[str],
     timeout_sec: int,
-) -> Path:
-    """将 round-N.md 写入 codex-reviews/ 目录；返回写入路径。
+) -> None:
+    """记录 [codex-review-received] 事件到 process.txt。
 
-    原子写入：先写 .tmp 再 os.replace，防止写入中途被读。
-    写完后追加 process.txt `[codex-review-received]` 事件（detailed-design §4.3）。
+    本函数曾经把 codex review 落地为 `artifacts/codex-reviews/round-N.md`，
+    在仓库中长期留痕；现已停止本地写盘——审查全文保留在 GitHub PR review
+    comments，本地仅保留 verdict 摘要事件供跨会话恢复。
+
+    保留参数签名（body / timeout_sec）以便未来恢复落盘时不破契约；当前忽略。
     """
-    reviews_dir = _codex_reviews_dir(req_id)
-    reviews_dir.mkdir(parents=True, exist_ok=True)
-
-    round_path = reviews_dir / f"round-{result.round}.md"
-    tmp_path = round_path.with_suffix(".md.tmp")
-
-    frontmatter = _render_frontmatter(result)
-    if result.verdict == "timeout":
-        content_body = f"(timeout after {timeout_sec}s, no codex review received)"
-    else:
-        content_body = body or ""
-
-    full_content = f"{frontmatter}\n\n{content_body}\n"
-
-    with tmp_path.open("w", encoding="utf-8") as f:
-        f.write(full_content)
-    os.replace(tmp_path, round_path)
-
-    # round-N.md 写完后记录 process.txt 事件（features.json TC-F4-8）
+    del body, timeout_sec  # 显式声明不再使用
     _append_process_event(
         req_id,
         f"[codex-review-received] verdict={result.verdict} round={result.round}",
     )
-
-    return round_path
 
 
 def _handle_poll_result(
@@ -748,7 +731,7 @@ def submit_with_codex(
     poll_interval_sec: int = 10,
     timeout_sec: int = 600,
 ) -> CodexRoundResult:
-    """submit 子模式：开 PR → @codex review → 单轮轮询 → 落 round-N.md → 判 verdict。
+    """submit 子模式：开 PR → @codex review → 单轮轮询 → 判 verdict（不再本地落盘）。
 
     多轮由主对话推动（D-002）；本函数命令内仅一轮。
 
@@ -801,16 +784,15 @@ def submit_with_codex(
 
     # 组装结果
     result = _handle_poll_result(review, pr_number, round_num, triggered_at)
-    # 把本轮触发时的 HEAD sha 钉到 round-N.md，供下一轮算 diff
+    # 本轮触发时的 HEAD sha 仅运行时使用（不再落盘到 round-N.md）
     result.triggered_commit = head_sha
 
-    # 写 round-N.md
+    # 仅记录 verdict 事件到 process.txt；review 全文留存于 GitHub PR comments
     body = (review or {}).get("body") if review else None
-    artifact_path = _persist_round(req_id, result, body, timeout_sec)
-    result.artifact_path = str(artifact_path)
+    _persist_round(req_id, result, body, timeout_sec)
 
     print(
-        f"[submit_codex] verdict={result.verdict} round-{result.round}.md → {artifact_path}",
+        f"[submit_codex] verdict={result.verdict}（review 全文见 GitHub PR #{pr_number} comments）",
         file=sys.stderr,
     )
 

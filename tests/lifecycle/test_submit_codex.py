@@ -1,14 +1,17 @@
 """submit_codex.submit_with_codex 单元测试。
 
 覆盖 features.json acceptance TC-F4-1 ~ TC-F4-7 + TC-F4-9（V-09 常量验收）：
-  - TC-F4-1: test_passed_path        — mock 命中 pass phrase → verdict=passed + exit 0 + round-1.md 写入
+  - TC-F4-1: test_passed_path        — mock 命中 pass phrase → verdict=passed + exit 0 + 不本地落盘
   - TC-F4-2: test_not_passed_path    — body 不含 pass phrase → verdict=not_passed + stderr ⚠️ NOT passed
-  - TC-F4-3: test_timeout_path       — mock 永不返回 → verdict=timeout + stderr ⚠️ TIMEOUT + frontmatter 仅 3 字段
+  - TC-F4-3: test_timeout_path       — mock 永不返回 → verdict=timeout + stderr ⚠️ TIMEOUT
   - TC-F4-4: test_429_to_timeout     — mock 429 → 走 timeout，不重试
-  - TC-F4-5: test_round_increment    — 已存在 round-1.md → 写 round-2.md
   - TC-F4-6: test_filter_old_review  — submitted_at <= triggered_at 不算命中
   - TC-F4-7: test_codex_args_mutex   — --codex-poll-interval 不带 --codex → stderr 含 requires --codex
   - TC-F4-9: test_v09_constant_uniqueness — grep 验收：CODEX_PASS_PHRASE 仅 submit-rules.md 一处
+
+注：TC-F4-5（round 递增）原依赖本地累积 round-*.md 文件；2026-05 改造后停止本地
+落盘，多轮区分由 GitHub PR comments 时间序承担，本测试已删除。`_calc_round` 单元
+测试仍保留（test_calc_round_*），确认函数本身在有/无本地文件时的行为正确。
 
 外部依赖（subprocess gh / _gh_pr_reviews）全 mock，不触网络、不动真 git。
 """
@@ -109,7 +112,7 @@ def _make_review(
 
 
 def test_passed_path(fake_repo: Path) -> None:
-    """TC-F4-1: mock gh api 含 pass phrase → verdict=passed + round-1.md 写入。"""
+    """TC-F4-1: mock gh api 含 pass phrase → verdict=passed + 不本地落盘。"""
     req_id = "REQ-2099-007"
     _make_meta(fake_repo, req_id=req_id, pr_number=42)
 
@@ -133,12 +136,10 @@ def test_passed_path(fake_repo: Path) -> None:
     assert result.reviewer == "chatgpt-codex-connector[bot]"
     assert result.review_id == 12345678
 
-    # 验证 round-1.md 写入
-    artifact = fake_repo / req_id / "artifacts" / "codex-reviews" / "round-1.md"
-    assert artifact.exists(), "round-1.md 应已写入"
-    content = artifact.read_text(encoding="utf-8")
-    assert "verdict: passed" in content
-    assert "Didn't find any major issues." in content
+    # 2026-05 改造：不再本地落盘 round-N.md
+    reviews_dir = fake_repo / req_id / "artifacts" / "codex-reviews"
+    assert not reviews_dir.exists(), "codex-reviews/ 目录不应被创建"
+    assert result.artifact_path is None
 
 
 # ---------- TC-F4-2: not_passed 路径 ----------
@@ -175,7 +176,7 @@ def test_not_passed_path(fake_repo: Path, capsys: pytest.CaptureFixture) -> None
 
 
 def test_timeout_path(fake_repo: Path, capsys: pytest.CaptureFixture) -> None:
-    """TC-F4-3: mock 永不返回 codex review → verdict=timeout + frontmatter 仅 3 字段。"""
+    """TC-F4-3: mock 永不返回 codex review → verdict=timeout + stderr ⚠️ TIMEOUT + 不本地落盘。"""
     req_id = "REQ-2099-007"
     _make_meta(fake_repo, req_id=req_id, pr_number=42)
 
@@ -201,15 +202,10 @@ def test_timeout_path(fake_repo: Path, capsys: pytest.CaptureFixture) -> None:
     captured = capsys.readouterr()
     assert "⚠️ codex review TIMEOUT" in captured.err
 
-    # frontmatter 应仅含 3 字段（round / triggered_at / verdict）
-    artifact = fake_repo / req_id / "artifacts" / "codex-reviews" / "round-1.md"
-    assert artifact.exists()
-    content = artifact.read_text(encoding="utf-8")
-    assert "review_id" not in content
-    assert "reviewer" not in content
-    assert "submitted_at:" not in content
-    assert "verdict: timeout" in content
-    assert "(timeout after 600s" in content
+    # 2026-05 改造：不再本地落盘 round-N.md
+    reviews_dir = fake_repo / req_id / "artifacts" / "codex-reviews"
+    assert not reviews_dir.exists(), "codex-reviews/ 目录不应被创建"
+    assert result.artifact_path is None
 
 
 # ---------- TC-F4-4: 429 → timeout ----------
@@ -235,39 +231,6 @@ def test_429_to_timeout(fake_repo: Path, capsys: pytest.CaptureFixture) -> None:
     # 确认 _gh_pr_reviews 只被调用一次（429 不重试）
     captured = capsys.readouterr()
     assert "⚠️ codex review TIMEOUT" in captured.err
-
-
-# ---------- TC-F4-5: round 递增 ----------
-
-
-def test_round_increment(fake_repo: Path) -> None:
-    """TC-F4-5: 已存在 round-1.md → 写 round-2.md，不允许重号。"""
-    req_id = "REQ-2099-007"
-    _make_meta(fake_repo, req_id=req_id, pr_number=42)
-
-    # 预先写入 round-1.md
-    reviews_dir = fake_repo / req_id / "artifacts" / "codex-reviews"
-    reviews_dir.mkdir(parents=True, exist_ok=True)
-    (reviews_dir / "round-1.md").write_text("existing round-1\n", encoding="utf-8")
-
-    triggered_at = "2026-05-04T19:30:00+08:00"
-    review = _make_review(submitted_at="2026-05-04T19:32:14+08:00")
-
-    with (
-        patch.object(submit_codex, "_trigger_codex_comment", return_value=triggered_at),
-        patch.object(submit_codex, "_gh_pr_reviews", return_value=[review]),
-        patch.object(submit_codex, "_gh_pr_issue_comments", return_value=[]),
-        patch("submit_codex.time.sleep"),
-        patch("submit_codex.time.monotonic", side_effect=[0, 100, 200]),
-    ):
-        result = submit_with_codex(req_id, poll_interval_sec=1, timeout_sec=600)
-
-    assert result.round == 2
-
-    # round-1.md 原有内容不应被改动
-    assert (reviews_dir / "round-1.md").read_text(encoding="utf-8") == "existing round-1\n"
-    # round-2.md 应已写入
-    assert (reviews_dir / "round-2.md").exists()
 
 
 # ---------- TC-F4-6: 过滤旧 review ----------

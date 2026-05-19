@@ -107,3 +107,5 @@
 2026-05-19 08:19:00 [ci-fix] PR #80 quality-check FAILURE → ruff 3 错误：workflow_bootstrap.py:409 F821 (TYPE_CHECKING 块补 import worktree_manager) + test_meta_schema_worktree.py:19 F401 (删未用 pytest import) + test_workflow_run_worktree_args.py:239 F841 (删未用 first_req_id 变量)；本地 ruff 0 issue / 31 相关测试 pass；下一步 commit + push 触发 CI 重跑
 2026-05-19 08:21:00 [ci-passed] PR #80 cfee5cb quality-check SUCCESS（重跑通过）；mergeable=MERGEABLE / 唯一 check=quality-check=SUCCESS
 2026-05-19 08:23:13 [doc] /requirement:submit 流程加 step 11「CI 等待与判定」：reference/submit-rules.md §11 + §7.5 前置条件 + submit.md 参数表 (--no-ci-wait/--ci-poll-interval/--ci-timeout) + 失败处理矩阵 2 行；判定矩阵：全 SUCCESS→进 codex / FAILURE→exit1 不进 codex / 超时→exit0 不进 codex；codex 异常文案补 CI 前置条件
+2026-05-19 08:27:09 [codex-review-triggered] round=1 pr=#80
+2026-05-19 08:53:43 [cleanup] 停止本地落 codex review 文件：删 7 个历史 codex-reviews/ 目录（共 28 round-N.md）；submit_codex.py:_persist_round 改为只写 [codex-review-received] 到 process.txt 不写盘；submit-rules.md §7.5 状态机去除 persist 节点 + 改"留痕策略"段；test_submit_codex.py 改 TC-F4-1/3 断言 + 删 TC-F4-5 round 递增；review 全文留存于 GitHub PR comments；tests/ 1665 passed 0 fail

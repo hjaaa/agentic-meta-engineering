@@ -43,7 +43,7 @@ argument-hint: [--draft] [--target <branch>] [--skip-rebase] [--reviewer <user>]
 | `--no-ci-wait` | false | 跳过 PR 开启后的 CI 等待（默认会等所有 check 完成才进入 codex / 收尾） |
 | `--ci-poll-interval` | 15 | CI 状态轮询间隔秒数 |
 | `--ci-timeout` | 600 | CI 等待总超时秒数（超时不阻塞退出，但禁止进入 codex review-loop） |
-| `--codex` | false | 启用 codex 单轮 review-loop（开 PR → CI 绿 → @codex review → 轮询 → 落 round-N.md） |
+| `--codex` | false | 启用 codex 单轮 review-loop（开 PR → CI 绿 → @codex review → 轮询 → verdict 写 process.txt；review 全文仅留存于 GitHub PR comments，不在本地落盘） |
 | `--codex-poll-interval` | 10 | （需 `--codex`）轮询间隔秒数 |
 | `--codex-timeout` | 600 | （需 `--codex`）整轮超时秒数 |
 

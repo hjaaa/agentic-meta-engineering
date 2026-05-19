@@ -199,16 +199,19 @@ gh pr checks <num> --json name,status,conclusion,bucket
 ```
 [idle] --submit --codex--> [pr-opened/updated]
 [pr-opened/updated] --post @codex review--> [poll-loop]
-[poll-loop] --hit codex review--> [persist round-N.md]
-[poll-loop] --elapsed > timeout--> [persist round-N.md verdict=timeout]
-[poll-loop] --gh 429--> [persist round-N.md verdict=timeout]
+[poll-loop] --hit codex review--> [judge body]
+[poll-loop] --elapsed > timeout--> [judge body verdict=timeout]
+[poll-loop] --gh 429--> [judge body verdict=timeout]
 [poll-loop] --gh 5xx x3--> [error-exit-1]
-[persist round-N.md] --judge body--> [done]
+[judge body] --emit verdict--> [done]
 [done] --verdict=passed--> exit 0 (silent stderr)
 [done] --verdict=not_passed--> exit 0 (stderr ⚠️ codex review NOT passed)
 [done] --verdict=timeout--> exit 0 (stderr ⚠️ codex review TIMEOUT)
 [error-exit-1] --> exit 1 (stderr ❌ gh api repeated 5xx during poll; aborting)
 ```
+
+review 全文留存于 GitHub PR review comments（`gh pr view <num> --comments` 可查），
+本地仅记录一行 `[codex-review-received] verdict=<v> round=<N>` 到 `process.txt`。
 
 ### 异常文案
 
@@ -220,10 +223,18 @@ gh pr checks <num> --json name,status,conclusion,bucket
 | verdict=not_passed | `⚠️ codex review NOT passed ...` | 0 |
 | verdict=timeout | `⚠️ codex review TIMEOUT ...` | 0 |
 
-### round-N.md 落地路径
+### 留痕策略（2026-05 改造：不再本地落盘）
 
-`requirements/<req_id>/artifacts/codex-reviews/round-N.md`
+codex review 的 finding 全文保留在 GitHub PR review comments（可通过 `gh pr view
+<num> --comments` 或 PR Web UI 查看），本地不再生成 `codex-reviews/round-N.md`。
 
-round 号 = 已有 `round-*.md` 数 + 1；timeout 时 frontmatter 仅 `round / triggered_at / verdict` 三字段必填，其他可省。
+`submit_with_codex` 仅向 `requirements/<req_id>/process.txt` 追加一行：
+
+```
+[YYYY-MM-DD HH:MM:SS] [codex-review-received] verdict=<passed|not_passed|timeout> round=<N>
+```
+
+`round` 字段保留为兼容字段；由于本地不再有 `round-*.md` 文件可数，新一次 submit
+--codex 总是 round=1（多轮区分仅靠 GitHub PR comments 的时间序）。
 
 实现入口：`scripts/lib/submit_codex.py:submit_with_codex`。
