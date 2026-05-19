@@ -14,8 +14,6 @@
 from __future__ import annotations
 
 import argparse
-import fnmatch
-import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -24,13 +22,16 @@ from urllib.parse import unquote
 import yaml
 
 from common import REPO_ROOT, Report, Severity, paint, rel
+from markdown_links import (
+    extract_links as _ml_extract_links,
+    resolve_link as _ml_resolve_link,
+    is_external_or_intra_anchor as _is_external_or_intra_anchor,
+    slugify as _slugify,
+    extract_headings as _ml_extract_headings,
+    glob_match,
+)
 
 CONFIG_PATH = Path(__file__).parent / "index-config.yaml"
-
-# 解析 markdown 链接 `[text](url)` 但不包含图片 `![alt](url)`
-LINK_RE = re.compile(r"(?<!!)\[([^\]]*)\]\(([^)]+)\)")
-# 解析标题行
-HEADING_RE = re.compile(r"^(#+)\s+(.+?)\s*$")
 
 
 def _load_config() -> dict[str, Any]:
@@ -39,83 +40,29 @@ def _load_config() -> dict[str, Any]:
 
 
 def _glob_match_any(rel_path: str, patterns: list[str]) -> bool:
-    # 用 fnmatch 逐条测试；fnmatch 支持 * 和 ?，不支持 **。人工扩展 **。
+    # 用 glob_match 逐条测试；支持 * / ? / **。
     for pat in patterns:
-        if _fnmatch_glob(rel_path, pat):
+        if glob_match(rel_path, pat):
             return True
     return False
 
 
-def _fnmatch_glob(path: str, pattern: str) -> bool:
-    """把 `**` 视为"任意层级"，其余交给 fnmatch。"""
-    if "**" not in pattern:
-        return fnmatch.fnmatch(path, pattern)
-    # 把 ** 变正则 .*
-    regex_parts = []
-    i = 0
-    while i < len(pattern):
-        if pattern[i : i + 2] == "**":
-            regex_parts.append(".*")
-            i += 2
-            if i < len(pattern) and pattern[i] == "/":
-                i += 1
-        elif pattern[i] == "*":
-            regex_parts.append("[^/]*")
-            i += 1
-        elif pattern[i] == "?":
-            regex_parts.append("[^/]")
-            i += 1
-        elif pattern[i] == ".":
-            regex_parts.append(r"\.")
-            i += 1
-        else:
-            regex_parts.append(re.escape(pattern[i]))
-            i += 1
-    regex = "^" + "".join(regex_parts) + "$"
-    return re.match(regex, path) is not None
-
-
-def _slugify(title: str) -> str:
-    """近似 GitHub anchor 规则：lower + 空格→`-` + 去非字母数字/中文/连字符。"""
-    s = title.lower().strip()
-    s = re.sub(r"[^\w一-龥\s-]", "", s)
-    s = re.sub(r"\s+", "-", s)
-    return s
-
-
 def _extract_headings(md_path: Path) -> set[str]:
     """提取目标 md 里所有 H1-H6 标题的 slug 集合（用于 anchor 对比）。"""
-    slugs: set[str] = set()
     try:
-        for line in md_path.read_text(encoding="utf-8").splitlines():
-            m = HEADING_RE.match(line)
-            if m:
-                slugs.add(_slugify(m.group(2)))
+        md_text = md_path.read_text(encoding="utf-8")
     except (FileNotFoundError, UnicodeDecodeError):
-        pass
-    return slugs
+        return set()
+    return {slug for _level, _text, slug in _ml_extract_headings(md_text)}
 
 
 def _extract_links(index_path: Path) -> list[tuple[str, int]]:
     """返回 [(link_url, line_no), ...]；line_no 用于错误定位。"""
-    out: list[tuple[str, int]] = []
     try:
-        lines = index_path.read_text(encoding="utf-8").splitlines()
+        md_text = index_path.read_text(encoding="utf-8")
     except (FileNotFoundError, UnicodeDecodeError):
-        return out
-    for i, line in enumerate(lines, start=1):
-        for m in LINK_RE.finditer(line):
-            url = m.group(2).strip()
-            out.append((url, i))
-    return out
-
-
-def _is_external_or_intra_anchor(url: str) -> bool:
-    if url.startswith(("http://", "https://", "mailto:", "tel:")):
-        return True
-    if url.startswith("#"):
-        return True
-    return False
+        return []
+    return [(link.url, link.line) for link in _ml_extract_links(md_text)]
 
 
 def _resolve_link(index_path: Path, url: str) -> tuple[Path, str | None]:
@@ -126,10 +73,13 @@ def _resolve_link(index_path: Path, url: str) -> tuple[Path, str | None]:
       - /context/foo.md（从 repo 根的绝对路径）
       - foo/bar.md#section（带 anchor）
     """
-    path_part, _, anchor = url.partition("#")
-    path_part = unquote(path_part)
+    _path_part, _, anchor = url.partition("#")
     anchor = anchor or None
-
+    resolved = _ml_resolve_link(url, index_path, REPO_ROOT)
+    if resolved is not None:
+        return resolved, anchor
+    # 回退：直接按原逻辑构造路径（处理 _ml_resolve_link 返回 None 的边界情况）
+    path_part = unquote(_path_part)
     if path_part.startswith("/"):
         target = REPO_ROOT / path_part.lstrip("/")
     else:
