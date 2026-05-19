@@ -16,7 +16,6 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-import pytest
 
 # ---------- 路径注入 ----------
 _REPO_ROOT = Path(__file__).resolve().parents[2]

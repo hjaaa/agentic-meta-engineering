@@ -236,7 +236,6 @@ def test_run_requirement_bootstrap_retry_path_exists(
     fixed_date = date(2026, 5, 18)
     # 第一次 req_id 将是 20260518-retry-feat
     # 第二次 req_id 将是 20260518-retry-feat-02（existing_keys 含第一次 key）
-    first_req_id = "20260518-retry-feat"
     second_req_id = "20260518-retry-feat-02"
 
     fake_req_dir_second = tmp_path / "requirements" / second_req_id

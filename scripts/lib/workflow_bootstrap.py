@@ -35,6 +35,7 @@ from common import REPO_ROOT, WorkflowError  # noqa: E402
 from run_state import append_event  # noqa: E402
 
 if TYPE_CHECKING:  # pragma: no cover  避免运行时循环 import
+    import worktree_manager
     from worktree_manager import SetupResult, WorktreeInfo
 
 # requirement 类 base_branch 选择优先级（develop 优先，兜底 main/master）
