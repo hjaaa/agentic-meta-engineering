@@ -377,7 +377,22 @@ def _run_requirement(
     title = args.title
 
     # 决定 slug
-    slug = args.slug or requirement_naming.derive_slug_from_title(title)
+    # codex P2 修复：args.slug 是用户显式输入，必须经 normalize_slug 校验字符集
+    # / 长度 / ASCII；否则非法字符（空格 / 斜杠 / 大写 / 中文）会一路传到
+    # `generate_requirement_key` → `feat/req-<bad>` → git checkout -b 才报错，
+    # 错误信息对用户不友好且 rollback 成本高。
+    if args.slug:
+        try:
+            slug = requirement_naming.normalize_slug(args.slug)
+        except requirement_naming.SlugError as exc:
+            print(
+                f"ERROR: --slug 校验失败：{exc}\n"
+                "  合法 slug 字符集：a-z 0-9 - （连字符），长度 ≤ 64",
+                file=sys.stderr,
+            )
+            return 1
+    else:
+        slug = requirement_naming.derive_slug_from_title(title)
     if not slug:
         print(
             "ERROR: 中文标题需显式 --slug=<ascii-slug>；详见 D-013\n"

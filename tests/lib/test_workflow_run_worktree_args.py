@@ -468,3 +468,52 @@ def test_run_requirement_when_bootstrap_fails_passes_worktree_info_to_rollback(
     )
     assert captured_kwargs.get("artifacts_created") is True
     assert captured_kwargs.get("branch_created") is True
+
+
+# ============================================================================
+# codex P2 回归：显式 --slug 含非法字符应 fail-fast 抛 SlugError
+# （而非传到 generate_requirement_key / git checkout -b 才报 git 错误）
+# ============================================================================
+
+@pytest.mark.parametrize(
+    "bad_slug, expected_substring",
+    [
+        ("FEAT/BAD", "非法字符"),       # 斜杠不在 a-z 0-9 - 字符集
+        ("中文-slug", "非 ASCII"),       # 非 ASCII
+        ("---", "全连字符"),            # 全连字符空 slug
+        ("a" * 65, "长度超限"),         # 超长
+        # 说明：'Bad Slug' / 'snake_case' 等会被 normalize_slug 转 'bad-slug' /
+        # 'snake-case'（设计：whitespace/underscore → '-'，大写 → 小写），属于合法
+        # 输入，不在本测试覆盖范围。
+    ],
+)
+def test_run_requirement_explicit_slug_invalid_fails_fast(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture,
+    bad_slug: str,
+    expected_substring: str,
+) -> None:
+    """显式 --slug 含非法字符 / 非 ASCII / 超长时，_run_requirement 应在 key 生成
+    前 fail-fast 返回 1 + stderr 含 SlugError 关键提示，而不是传到 git 层产生
+    不友好的 'invalid reference' 错误。
+
+    复现 codex F-2 (P2)：args.slug 直接用未经 normalize_slug 校验。
+    """
+    args = RunArgs(
+        template_id="standard-8phase",
+        template_args="",
+        title="ASCII Title OK",  # title 合法，污染只来自 --slug
+        slug=bad_slug,
+        no_worktree=False,
+        worktree_policy=None,
+    )
+    result = _run_requirement(args, Path("/fake/template.yaml"), tmp_path)
+    assert result == 1, f"slug={bad_slug!r} 应 fail-fast 返 1"
+
+    captured = capsys.readouterr()
+    assert "--slug" in captured.err, (
+        f"stderr 应提示 --slug 校验失败，实际：{captured.err}"
+    )
+    assert expected_substring in captured.err, (
+        f"stderr 应包含 SlugError 关键提示 {expected_substring!r}，实际：{captured.err}"
+    )
