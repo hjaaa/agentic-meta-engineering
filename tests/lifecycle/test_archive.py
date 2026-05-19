@@ -1101,3 +1101,107 @@ def test_archive_dirty_worktree_fails_before_rebind(
 
     # worktree 副本仍存在（没进 cleanup）
     assert worktree_root.exists(), "dirty fail-fast 后 worktree 不应被删"
+
+
+def test_archive_loads_meta_from_main_repo_after_rebind(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """codex P1 round-4 F-5 回归：archive 从 linked worktree 启动时，meta 必须在
+    rebind 之后从主仓加载，避免 stale worktree 副本覆盖主仓较新 metadata。
+
+    场景：主仓 meta（phase=testing / lessons_extracted=true）vs worktree meta
+    （phase=development / lessons_extracted=false，stale）。
+    - 如用 worktree meta：_precheck_phase 抛 R-ARCHIVE-PHASE 拒绝（development 不允许 archive）
+    - 如用主仓 meta（修复后）：phase=testing 通过 → archive 成功
+
+    断言：archive 成功完成；主仓 meta.yaml.phase=completed，且仍含主仓原本的
+    title（"MAIN")，证明 archive 走的是主仓 meta dict 而非 worktree 副本。
+    """
+    main_repo = tmp_path / "main_repo"
+    worktree_root = main_repo / ".worktrees" / "wt"
+    req_id = "REQ-2099-W03"
+
+    main_req_dir = main_repo / "requirements" / req_id
+    main_req_dir.mkdir(parents=True)
+    main_meta = {
+        "id": req_id,
+        "title": "MAIN canonical",  # ← 主仓权威值
+        "phase": "testing",         # ← 主仓允许 archive
+        "branch": "feat/req-2099-w03",
+        "base_branch": "develop",
+        "pr_number": 42,
+        "archived_at": "",
+        "created_at": "2026-05-04 19:00:00",
+        "project": "agentic-meta-engineering",
+        "lessons_extracted": True,
+        "worktree": {
+            "owner": "workflow",
+            "path": ".worktrees/wt",
+            "location": ".worktrees",
+        },
+    }
+    with (main_req_dir / "meta.yaml").open("w", encoding="utf-8") as f:
+        yaml.safe_dump(main_meta, f, allow_unicode=True, sort_keys=False)
+    (main_req_dir / "process.txt").write_text(
+        "2026-05-04 19:00:00 [phase-transition] bootstrap → testing\n",
+        encoding="utf-8",
+    )
+
+    wt_req_dir = worktree_root / "requirements" / req_id
+    wt_req_dir.mkdir(parents=True)
+    stale_meta = dict(main_meta)
+    stale_meta["title"] = "WORKTREE stale"
+    stale_meta["phase"] = "development"  # ← stale，会被 _precheck_phase 拒绝
+    stale_meta["lessons_extracted"] = False
+    with (wt_req_dir / "meta.yaml").open("w", encoding="utf-8") as f:
+        yaml.safe_dump(stale_meta, f, allow_unicode=True, sort_keys=False)
+    (wt_req_dir / "process.txt").write_text(
+        "2026-05-04 19:00:00 [phase-transition] bootstrap → development\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(archive_runner, "REPO_ROOT", worktree_root)
+    monkeypatch.setattr(
+        archive_runner, "REQUIREMENTS_DIR", worktree_root / "requirements"
+    )
+
+    fake_worktree_manager = sys.modules["worktree_manager"]
+    monkeypatch.setattr(
+        fake_worktree_manager, "resolve_main_repo_root", lambda _cwd: main_repo
+    )
+
+    def fake_cleanup(_meta: dict, _main_root: Path):
+        shutil.rmtree(worktree_root)
+        from worktree_manager import CleanupResult
+
+        return CleanupResult(
+            action="removed", reason="workflow_ok", removed_path=worktree_root
+        )
+
+    monkeypatch.setattr(
+        fake_worktree_manager, "cleanup_worktree_if_owned", fake_cleanup
+    )
+
+    plan = {
+        ("git", "status", "--porcelain"): _ok(),
+        ("gh", "pr", "view"): _ok(stdout=json.dumps({"state": "MERGED"})),
+        ("git", "branch", "-d"): _ok(),
+    }
+    monkeypatch.setattr(archive_runner, "_run", _make_run_stub(plan))
+    monkeypatch.chdir(worktree_root)
+
+    # 用主仓 meta（testing）走通；用 worktree meta（development）会 SystemExit
+    result = archive_requirement(req_id, no_experience=True, yes_local_branch=True)
+    assert result.phase == "completed"
+
+    # 主仓 meta 应保留 "MAIN canonical" title，证明 archive 用主仓 meta dict
+    final_meta = yaml.safe_load(
+        (main_repo / "requirements" / req_id / "meta.yaml").read_text(encoding="utf-8")
+    )
+    assert final_meta["title"] == "MAIN canonical", (
+        "archive 应使用主仓 meta dict 写回，title 不应被 worktree stale 覆盖；"
+        f"实际 title={final_meta['title']!r}"
+    )
+    assert final_meta["phase"] == "completed"
+    assert final_meta["lessons_extracted"] is True  # 主仓权威值，非 worktree 的 False

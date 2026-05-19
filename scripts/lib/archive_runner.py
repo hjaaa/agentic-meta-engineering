@@ -725,27 +725,34 @@ def archive_requirement(
             req_id,
         )
 
+    # —— 关键顺序约束（codex P1 round-1~4 F-1 / F-3 / F-4 / F-5 累积修复）——
+    #
+    # 1. _precheck_dirty 必须在 _rebind_to_main_repo 之前：dirty 检查对象是用户实际
+    #    工作的 worktree（可能有 uncommitted 改动），不是 PR merged 后干净的主仓
+    #    （F-4）。_precheck_dirty 不依赖 meta，可以独立先跑。
+    # 2. _rebind_to_main_repo 必须在 _load_meta 之前：否则 meta 从 worktree 副本读
+    #    入内存，后续 _atomic_write_meta 写主仓时可能用 stale dict 覆盖主仓较新的
+    #    metadata（F-5 / round-4）。
+    # 3. _rebind_to_main_repo 必须在 _cleanup_worktree_before_archive 之前：cleanup
+    #    删 worktree 后 module-level REPO_ROOT 若仍指向 worktree，后续
+    #    _atomic_write_meta / _append_process_event 写已删路径会失败（F-1/F-3）。
+    #
+    # 综合顺序：
+    #   dirty (worktree) → rebind → load_meta (main) → 其他 precheck → cleanup → write_meta
+
+    _precheck_dirty(req_id)
+    _rebind_to_main_repo(req_id)
+
     meta = _load_meta(req_id)
 
-    # —— 1 ~ 5 项预检（任一失败 → SystemExit(1)） ——
-    # 顺序要求（codex P1 round-3 F-4 修复）：_precheck_dirty 必须在 _rebind_to_main_repo
-    # 之前——dirty 检查的对象是用户实际工作的 worktree（feat 分支可能有 uncommitted
-    # 改动），不是 PR merged 后干净的主仓。先 rebind 会把 git status 检查指向 clean
-    # 的主仓 → 误判通过 → 后续 cleanup 失败仅 log warning 不阻塞 → meta.yaml 被 mark
-    # completed 但 worktree 残留 uncommitted 改动，状态不一致。
+    # —— 余下预检（任一失败 → SystemExit(1)） ——
     _precheck_phase(meta, req_id)
-    _precheck_dirty(req_id)
     pr_number = _precheck_pr_number(meta, req_id)
     _precheck_pr_merged(pr_number, req_id, force=force)
     _precheck_lessons_extracted(meta, req_id)
 
-    # —— codex P1 round-1/2 F-1 / F-3 修复：rebind module-level REPO_ROOT /
-    # REQUIREMENTS_DIR 到主仓，让后续 _atomic_write_meta / _append_process_event 写
-    # 主仓而非即将被 cleanup 删除的 worktree 副本 ——
-    _rebind_to_main_repo(req_id)
-
-    # —— worktree cleanup（rebind 后 REPO_ROOT 已锁到主仓；cleanup 删 worktree 不影响
-    # 后续 _atomic_write_meta / _append_process_event 对主仓的写入）——
+    # —— worktree cleanup（REPO_ROOT 已锁到主仓；cleanup 删 worktree 不影响后续
+    # _atomic_write_meta / _append_process_event 对主仓的写入）——
     _cleanup_worktree_before_archive(meta, req_id)
 
     # —— 5 步执行 ——

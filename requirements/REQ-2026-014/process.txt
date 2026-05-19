@@ -113,3 +113,5 @@
 2026-05-19 09:16:46 [codex-review-triggered] round=1 pr=#80
 2026-05-19 09:21:54 [codex-review-received] verdict=not_passed round=1
 2026-05-19 09:31:08 [codex-fix] PR #80 codex round-3 反馈闭环：P1 F-4（archive_runner.py:731）_precheck_dirty 在 _rebind_to_main_repo 之前跑 → 否则 rebind 切到 clean 主仓让 dirty 检查误判通过，archive 仍 mark completed 但 worktree 残留 uncommitted 改动 → 把 _rebind_to_main_repo 挪到所有 precheck 之后；新增 test_archive_dirty_worktree_fails_before_rebind 回归测试。同时改造 codex review-loop 增量摘要锚点（用户 reqs）：_build_codex_comment_body 不再读 round-N.md（已废）→ 改从 PR reviews API 通过 _latest_codex_reviewed_commit(pr_number) 取上轮 codex commit_id；附 intro 提示语让 codex 复评聚焦"上轮 finding 是否修复 + 新代码是否引入新问题"；删 _read_round_triggered_commit 死代码 + 重写 5 个测试用 _gh_pr_reviews mock；tests/ 1670 passed 0 fail / ruff 0 issue
+2026-05-19 09:35:10 [codex-review-triggered] round=1 pr=#80
+2026-05-19 09:38:59 [codex-review-received] verdict=not_passed round=1
