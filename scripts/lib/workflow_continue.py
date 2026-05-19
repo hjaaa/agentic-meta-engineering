@@ -570,6 +570,67 @@ def _print_multiple_worktrees(worktrees: list[dict]) -> None:
         )
 
 
+def _read_recent_process_entries(req_dir: Path, last_n: int = 10) -> list[str]:
+    """读 requirements/<id>/process.txt 末 N 条非空行。
+
+    process.txt 是人类语义日志（每行 `YYYY-MM-DD HH:MM:SS [phase] message`），
+    跟 jsonl 完全独立。本函数为 continue 提供"上次会话语义快照"展示用，
+    fail-open——文件缺失 / IO 错误 / 编码异常时返空列表，不挡主流程。
+
+    Args:
+        req_dir: 需求根目录（_resolve_run_dir 输出）
+        last_n: 取末位多少条，默认 10
+
+    Returns:
+        list of stripped non-empty lines；空文件 / 缺文件 → []。
+    """
+    process_file = req_dir / "process.txt"
+    try:
+        if not process_file.is_file():
+            return []
+        text = process_file.read_text(encoding="utf-8")
+    except OSError as exc:
+        logging.debug("read process.txt failed: %s", exc)
+        return []
+    lines = [line for line in text.splitlines() if line.strip()]
+    return lines[-last_n:]
+
+
+def _print_resume_summary(req_dir: Path, run_state: "RunState") -> None:
+    """打印 process.txt 末位语义摘要 + 当前 state / current_node。
+
+    打印目标 = stderr（与 INFO / ERROR 同流，避免污染 stdout 的结构化输出）。
+    末位 save 事件（含 `save:` 或 `save：` 标识）用 `★` 前缀高亮，给人/AI
+    立刻看到关键提示（典型如"下一个 F-005 / 不要用 /workflow:continue"）。
+
+    Args:
+        req_dir: 需求根目录
+        run_state: 已 rebuild 的内存 state
+    """
+    entries = _read_recent_process_entries(req_dir, last_n=10)
+    if not entries:
+        return
+
+    last_save_idx = -1
+    for idx, line in enumerate(entries):
+        # 兼容半角 / 全角冒号（既有 save 事件两种写法都用过）
+        if " save:" in line or " save：" in line:
+            last_save_idx = idx
+
+    print(
+        f"\n── 上次会话语义快照（process.txt 末 {len(entries)} 条） ──",
+        file=sys.stderr,
+    )
+    for idx, line in enumerate(entries):
+        prefix = "  ★ " if idx == last_save_idx else "    "
+        print(f"{prefix}{line}", file=sys.stderr)
+    print(
+        f"── 当前 state={run_state.state} / "
+        f"current_node={run_state.current_node or '(none)'} ──\n",
+        file=sys.stderr,
+    )
+
+
 def main(args: list[str], repo_root: Path | None = None) -> int:
     """continue 命令主入口。
 
@@ -623,6 +684,10 @@ def main(args: list[str], repo_root: Path | None = None) -> int:
             return rc
 
         print(f"恢复 workflow run {run_id!r}（state={run_state.state}）")
+
+        # process.txt 摘要展示：状态校验通过后、main loop 派发前打印上次会话语义快照
+        # 纯打印副作用（stderr），不影响 state machine；fail-open 不挡主流程
+        _print_resume_summary(run_dir, run_state)
 
         workflow = _load_workflow_for_run(run_state, run_dir, root)
         if workflow is None:
