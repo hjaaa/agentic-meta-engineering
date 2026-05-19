@@ -16,3 +16,6 @@
 2026-05-19 12:37:51 [codex-review-triggered] round=1 pr=#82
 2026-05-19 12:45:08 [codex-review-received] verdict=not_passed round=1
 2026-05-19 12:47:55 [codex-fix] codex review round 1 verdict=not_passed 反馈闭环：P1 review-schema.yaml 的 review_id + requirement_id regex 仍只接受 REQ-YYYY-NNN，对新格式 ID 的 review verdict 会被 _check_format 拒收 → 扩两 regex 接受新旧两格式（同 F-009 模式）；smoke + pytest 78 passed (check_reviews + review_verdict + requirement_naming) + 19 passed (save_review + schema) 全过
+2026-05-19 12:48:18 [codex-review-triggered] round=1 pr=#82
+2026-05-19 12:52:07 [codex-review-received] verdict=not_passed round=1
+2026-05-19 12:54:19 [codex-fix] codex round 2 verdict=not_passed P1：test_code_review_report_routing_section.py 仍断言旧 '### 待 sign-off 提示' + /code-review:signoff + --trivial 示例，F-005 改文案后 6/6 测试 fail。修复：测试函数名与 assert 同步迁移到'人工确认提示'+ 软确认语义，retroactive 加入 F-005.md touches

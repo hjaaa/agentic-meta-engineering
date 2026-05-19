@@ -1,11 +1,14 @@
 """
-测试 code-review-report SKILL 和模板的路由说明段 + 待 sign-off 提示段。
+测试 code-review-report SKILL 和模板的路由说明段 + 人工确认提示段。
 
-验证：
+验证（20260519-remove-human-signoff F-005 更新）：
 1. SKILL.md 包含路由说明段（含 routing_confirmed_by / checker_route 占位）
-2. SKILL.md 包含待 sign-off 提示段（含 /code-review:signoff 命令 + --trivial 选项）
+2. SKILL.md 包含人工确认提示段（不再有 /code-review:signoff 命令；改为主对话软确认）
 3. 模板中包含警示内容（phase-transition / submit / 阻断）
 4. 两个新段都在 verdict 摘要段之后
+
+历史：原 "### 待 sign-off 提示" + "/code-review:signoff --trivial" 已在 F-001/F-002/F-003 下线；
+本测试同步迁移到新口径，断言"人工确认提示"段 + "软确认"语义。
 """
 
 from pathlib import Path
@@ -27,19 +30,18 @@ def test_routing_explanation_section_in_skill():
     assert 'skipped_checkers' in content, "缺少 skipped_checkers 占位"
 
 
-def test_signoff_prompt_section_in_skill():
-    """验证 SKILL.md 中包含待 sign-off 提示段。"""
+def test_confirmation_prompt_section_in_skill():
+    """验证 SKILL.md 中包含人工确认提示段（20260519-remove-human-signoff F-005）。"""
     skill_file = Path(__file__).resolve().parents[2] / '.claude' / 'skills' / 'code-review-report' / 'SKILL.md'
     content = skill_file.read_text(encoding='utf-8')
 
-    # 验证待 sign-off 提示段标题
-    assert '### 待 sign-off 提示' in content, "缺少待 sign-off 提示段标题"
+    # 验证人工确认提示段标题
+    assert '### 人工确认提示' in content, "缺少人工确认提示段标题"
 
-    # 验证命令示例
-    assert '/code-review:signoff' in content, "缺少 /code-review:signoff 命令示例"
-    assert '--trivial' in content, "缺少 --trivial 快速通道说明"
+    # 验证软确认语义
+    assert '软确认' in content, "缺少软确认描述"
 
-    # 验证警示内容
+    # 验证警示内容（phase-transition / submit 阻断逻辑保留）
     assert 'phase-transition' in content or 'submit' in content, "缺少 phase-transition 或 submit 警示"
     assert '阻断' in content, "缺少阻断警示"
 
@@ -57,18 +59,17 @@ def test_routing_section_in_template():
     assert '__ROUTING_DECISION__' in content or 'routing' in content.lower(), "模板缺少路由决策占位"
 
 
-def test_signoff_prompt_section_in_template():
-    """验证 review-report.md.tmpl 中包含待 sign-off 提示段。"""
+def test_confirmation_prompt_section_in_template():
+    """验证 review-report.md.tmpl 中包含人工确认提示段（20260519-remove-human-signoff F-005）。"""
     template_file = (
         Path(__file__).resolve().parents[2] /
         '.claude' / 'skills' / 'code-review-report' / 'templates' / 'review-report.md.tmpl'
     )
     content = template_file.read_text(encoding='utf-8')
 
-    # 验证待 sign-off 提示段
-    assert '## 待 sign-off 提示' in content, "模板缺少待 sign-off 提示段"
-    assert '/code-review:signoff' in content, "模板缺少 /code-review:signoff 命令"
-    assert '--trivial' in content, "模板缺少 --trivial 选项"
+    # 验证人工确认提示段
+    assert '## 人工确认提示' in content, "模板缺少人工确认提示段"
+    assert '软确认' in content, "模板缺少软确认描述"
 
     # 验证警示内容
     assert 'feature-lifecycle-manager' in content or 'GATE-REVIEW-VERDICT' in content, "模板缺少下游门禁警示"
@@ -96,28 +97,28 @@ def test_sections_after_verdict():
     )
     content = template_file.read_text(encoding='utf-8')
 
-    # 查找各段位置
+    # 查找各段位置（20260519-remove-human-signoff F-005：待 sign-off 提示 → 人工确认提示）
     verdict_pos = content.find('## 结论')
     routing_pos = content.find('## 路由说明')
-    signoff_pos = content.find('## 待 sign-off 提示')
+    confirm_pos = content.find('## 人工确认提示')
     verdict_detail_pos = content.find('## 裁决明细')
 
-    # 验证顺序：verdict -> routing -> signoff -> verdict_detail
+    # 验证顺序：verdict -> routing -> confirm -> verdict_detail
     assert verdict_pos != -1, "模板缺少结论段"
     assert routing_pos != -1, "模板缺少路由说明段"
-    assert signoff_pos != -1, "模板缺少待 sign-off 提示段"
+    assert confirm_pos != -1, "模板缺少人工确认提示段"
     assert verdict_detail_pos != -1, "模板缺少裁决明细段"
 
-    assert verdict_pos < routing_pos < signoff_pos < verdict_detail_pos, (
-        "新段位置不正确，应该是：结论 -> 路由说明 -> 待 sign-off 提示 -> 裁决明细"
+    assert verdict_pos < routing_pos < confirm_pos < verdict_detail_pos, (
+        "新段位置不正确，应该是：结论 -> 路由说明 -> 人工确认提示 -> 裁决明细"
     )
 
 
 if __name__ == '__main__':
     test_routing_explanation_section_in_skill()
-    test_signoff_prompt_section_in_skill()
+    test_confirmation_prompt_section_in_skill()
     test_routing_section_in_template()
-    test_signoff_prompt_section_in_template()
+    test_confirmation_prompt_section_in_template()
     test_conclusion_enum_updated_in_template()
     test_sections_after_verdict()
     print("✓ 所有测试通过")
