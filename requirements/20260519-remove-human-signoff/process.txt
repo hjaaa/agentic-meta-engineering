@@ -42,3 +42,5 @@
 2026-05-19 14:17:36 [codex-fix] codex round 9 verdict=not_passed P3：review-report.md.tmpl + SKILL.md 文案声称 GATE-REVIEW-VERDICT 阻断 needs_attention 失实；R004 仅 warning，strict 才升 fail。修复：精确化文案——hard-block 仅 blocked（error），needs_attention warning（strict 升 fail），软门禁由主对话承担。CI quality-check 已 SUCCESS。
 2026-05-19 14:17:51 [codex-review-triggered] round=1 pr=#82
 2026-05-19 14:20:46 [codex-review-received] verdict=not_passed round=1
+2026-05-19 14:22:58 [codex-review-triggered] round=1 pr=#82
+2026-05-19 14:27:08 [codex-review-received] verdict=not_passed round=1

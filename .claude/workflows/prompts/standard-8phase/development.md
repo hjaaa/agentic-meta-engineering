@@ -125,8 +125,8 @@ prompt: |
 等子 workflow 完成（含 review 报告生成 + 用户在主对话进行软确认）。
 
 软确认分支（20260519-remove-human-signoff F-005）：
-- `conclusion=looks_clean` 且无 required_fixes → 直接允许下一步 feature done
-- `conclusion=needs_attention` → 默认要求修复并重审；若用户在主对话显式接受风险则继续
+- `conclusion=looks_clean` 且无 required_fixes → 提示用户在主对话进行软确认（如回复"OK 转 done"），用户确认后才允许执行下一步 feature-lifecycle-manager 转 done；**不允许绕过用户软确认直接转 done**
+- `conclusion=needs_attention` → 默认要求修复并重审；若用户在主对话显式接受风险（如"接受当前 needs_attention 风险，转 done"）则允许转 done
 - `conclusion=blocked` → fail-closed，必须修复并重审，不可绕过
 
 ### 第 8 步：标记本 feature done

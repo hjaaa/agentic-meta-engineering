@@ -41,9 +41,11 @@ def test_confirmation_prompt_section_in_skill():
     # 验证软确认语义
     assert '软确认' in content, "缺少软确认描述"
 
-    # 验证警示内容（phase-transition / submit 阻断逻辑保留）
+    # 验证警示内容（phase-transition / submit hard-block 逻辑保留）
     assert 'phase-transition' in content or 'submit' in content, "缺少 phase-transition 或 submit 警示"
-    assert '阻断' in content, "缺少阻断警示"
+    # codex round 9 P3：原文案"按 conclusion 阻断" 已精确化为"hard-block blocked（error 级），
+    # needs_attention 仅 warning"——断言文本同步迁移
+    assert 'hard-block' in content or '阻断' in content, "缺少 hard-block / 阻断 警示"
 
 
 def test_routing_section_in_template():
