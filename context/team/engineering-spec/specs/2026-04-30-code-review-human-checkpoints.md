@@ -1,5 +1,11 @@
 # 代码审查人类必经卡点 · 设计留档
 
+> ⚠️ **本 spec 已被 `requirements/20260519-remove-human-signoff/` 取代（2026-05-19），human sign-off 已下线。**
+>
+> 当前阶段推进与 feature done 仅依赖机器结论 + 人工软确认（不写 verdict）。本 spec 保留历史结构供回溯——以下卡点 B（sign-off）相关章节均为"历史机制"，**不再代表当前流程**；卡点 A（路由确认）仍生效。
+>
+> 当前权威文档：`context/team/ai-collaboration.md` 规则三（人工确认）+ `context/team/engineering-spec/design-guidance/gate-system-architecture.md`。
+
 **日期**：2026-04-30
 **作者**：huangjian
 **状态**：已落地（REQ-2026-003 F-004b 实施完成）
