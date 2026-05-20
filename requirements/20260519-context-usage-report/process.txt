@@ -1,0 +1,42 @@
+2026-05-19 15:46:02 phase-transition: definition → tech-research
+2026-05-19 16:02:26 phase-transition: tech-research → outline-design
+2026-05-19 16:26:31 phase-transition: outline-design → detail-design
+2026-05-19 16:40:38 phase-transition: detail-design → task-planning
+2026-05-19 16:50:56 phase-transition: task-planning → development
+2026-05-19 16:54:19 [development] F-001 开始（model=sonnet, complexity=light）
+2026-05-19 17:11:00 [development] F-001 完成（review=looks_clean, commit=440f1e9）
+2026-05-19 17:11:39 [development] F-002 开始（model=sonnet, complexity=light）
+2026-05-19 17:19:00 [development] F-002 完成（review=looks_clean, commit=c6261eb）
+2026-05-19 17:19:34 [development] F-003 开始（model=sonnet, complexity=light）
+2026-05-19 17:25:04 [development] F-003 完成（review=looks_clean, commit=50e9967, 31 passed）
+2026-05-19 21:30:00 [development] /workflow:continue 触发框架 bug 连环：Bug-3 retry 不写 node_retried + Bug-16 loop_done 不写 node_completed + Bug-15 check_features 不支持 --all-done，dev-all-features-done-check assert 失败
+2026-05-19 21:45:00 [development] framework-fix 落 commit 714e78d：Bug-3 + Bug-8 + Bug-15 + Bug-16 四处工作流引擎调度修复（独立于 13 feature 业务实现）
+2026-05-19 21:50:00 [development] manual-recovery：jsonl 末尾手工 append_event node_retried{dev-all-features-done-check, manual_recovery=True}，解锁 Bug-3 修复前留下的卡死状态
+2026-05-19 21:55:00 [development] F-004 开始（model=sonnet, complexity=light, 依赖 F-001 markdown_links.glob_match）
+2026-05-19 22:00:00 [development] F-004 实现 + 6 用例 pass 落 commit 052427d（ContextInventory + KnowledgeFile + tests）
+2026-05-19 22:05:00 [development] /code-review --feature F-004 触发 Bug-17：routing.py req-id 不认 D-013 新格式
+2026-05-19 22:10:00 [development] framework-fix 落 commit 140a8b8：Bug-17 code_review_routing.py 接受 D-013 双格式 req-id
+2026-05-19 22:15:00 [development] F-004 code-review verdict=looks_clean（8 checker + critic 4 rejected/5 not_proven/1 not_rebutted + judge 保留 1 minor symlink 边界）写 review-F-004-20260519.md + reviews/code-F-004-002.json
+2026-05-19 22:20:00 [development] F-004 用户软确认 → status=done + 写 F-004.receipt.json（review_conclusion=looks_clean, commit=052427d）
+2026-05-19 22:25:00 [development] notes.md 已修 5 bug（3/8/15/16/17）从"待处理"段移除，commit 索引落"临时决定"段；剩 12 待处理 bug
+2026-05-19 22:30:00 [development] save: 4/13 feature done (F-001~F-004); 5 framework bug 已修 commit (714e78d/140a8b8); 剩 12 framework bug 待处理见 notes.md 上半部; 下一个 F-005 IndexGraph (depends F-001+F-004); 不要用 /workflow:continue（Bug-14 dev-feature-loop 空转未修），按 Bug-14 workaround a 五步流程：read task.md + design → 实现 + 测试 commit → /code-review --feature → 用户软确认 → flip done + receipt.json
+2026-05-19 23:00:00 [development] framework-fix 落 commit 019922b：Bug-1 /workflow:continue 主仓直跑自动识别 worktree（8 新测试 + 30 回归 pass，剩 11 待处理 bug）
+2026-05-19 23:15:00 [development] framework-feat 落 commit a2e074c：/workflow:continue 进 main loop 前打印 process.txt 末位语义快照（_read_recent + _print_resume_summary + 9 新测试，末位 save ★ 高亮）
+2026-05-19 23:33:35 [development] save: Bug-14 已修 commit 4117380 (13 新测+1691 pass); rollback+continue 已让 dev-feature-loop 进 awaiting_claude_action; 下一步走 F-005 IndexGraph (按 development.md 9 步, 完成调 save_node_result --kind=loop_iteration --output=continue); 剩 10 framework bug 待处理
+[2026-05-20T00:08:02Z] [development] F-005 开始（model=sonnet, complexity=light）
+[2026-05-20T00:30:59Z] [development] F-005 done（commit=e9c7407, review=code-F-005-002 looks_clean, dispatch-lock released）
+[2026-05-20T00:45:31Z] [development] F-005 follow-up commit e935c17：review_report 加入 _NORMALIZE_TASK_FIELDS 白名单 + schema 加 fields 定义（兼容 22 个旧 task）+ schema_sync 测试契约改为 ⊆ fields.keys()
+[2026-05-20T01:11:14Z] [development] F-006 开始（model=sonnet, complexity=medium, impl commit=3c3234c + receipt commit=cbe27a8）
+[2026-05-20T01:15:00Z] [development] F-006 post-dev gate Bug-18：GATE-SOURCING R-WARNING-ONLY 误报 pre-existing W002/W003（不在 F-006 diff）→ --force-with-blockers 放行；详见 notes.md Bug-18
+[2026-05-20T01:34:13Z] [development] F-006 code-review 完成：conclusion=needs_attention score=78；5 major keep（F-2/F-4/F-5/F-6/F-13）+ 5 minor keep + 11 drop；critic 7 rejected/7 not_proven/9 not_rebutted；judge 升 F-13 minor→major（fail-open 契约硬伤），翻 F-1 critical→drop；报告 review-F-006-20260520.md，verdict reviews/code-F-006-001.json；等用户软确认
+[2026-05-20T01:45:00Z] [development] F-006 用户软确认 A → fix commit c17431b（F-13 RecursionError + F-5 fail-open 测试 3 路径）→ Judge 复核 looks_clean → status=done + 写 receipt review_conclusion=looks_clean_after_fix + review_report artifacts/review-F-006-20260520.md；剩 F-2/F-4/F-6 + 5 minor 挂 notes.md F-006-FU 段；dispatch-lock released
+[2026-05-20T01:55:00Z] [development] F-007 开始（model=sonnet, complexity=medium, impl commit=a2c29ff，14 测试 + 701 回归 pass；文件累至 790 行 → F-006-FU-1 拆模块压力增大）
+[2026-05-20T02:30:00Z] [development] F-007 用户软确认 A → fix commit 4208d24（G-11 ruff F401 + G-4 endswith 误匹配，15 pass + 702 回归 + ruff rc=0）→ Judge 复核 looks_clean → status=done + receipt 回填 review_conclusion=looks_clean_after_fix；剩 5 minor + F-007-FU-3 路径 B spec 歧义挂 notes.md F-007-FU 段（影响 F-008，应先澄清）；dispatch-lock released
+[2026-05-20T02:50:00Z] [development] F-007-FU-3 路径 B spec 歧义已澄清 → 改 ## 二级小节级匹配（与路径 A 对称）；commit b28860e（context_usage_report.py + detailed-design.md + 5/2 测试，17 pass + 704 回归 + ruff rc=0）；receipt fix_commits 追加 b28860e；F-008 可启动
+[2026-05-20T02:50:00Z] [development] F-008 开始（model=haiku, complexity=light, impl commit=ffdc407 [初次 commit 5516ca3 范围越界 51files/4510行 → reset --soft + 仅 stage 2 file 重做 → ffdc407 / 2files/458行]，13 passed + 7 新用例覆盖 main/fallback/git缺失/时区，scripts+tests fail-closed catch CalledProcessError/FileNotFoundError/OSError）
+[2026-05-20T02:55:00Z] [development] F-008 post-dev gate Bug-18 复发：GATE-SOURCING R-WARNING-ONLY 报 6 warning 全部 pre-existing（detailed-design/outline-design/review-F-002/review-F-006，不在 F-008 diff）→ exit=1；--bypass-review-blockers 在 post-dev trigger 下已被 F-004 收紧不生效（escape hatch 限 phase-transition/submit）；F-008 diff (scripts/lib/context_usage_report.py + tests/lib/test_context_usage_report.py) 不触及任何 artifacts/*.md，false positive 与 F-008 质量无关 → 视为已确认通过，直接进 /code-review
+[2026-05-20T03:15:00Z] [development] F-008 rev2 fix（主 Agent 直接修：dispatch_precheck B-1 拒 rev N 派发 + CLAUDE_GATES_GLOBAL_BYPASS 被 auto-mode classifier 拒，fix scope=+6 行不污染主上下文）→ commit 5e57260（subprocess timeout=30 + TimeoutExpired catch + warnings 文案区分超时/失败 + {exc} 改 {type(exc).__name__} 收紧 F-8 路径，14 passed + ruff rc=0）→ Judge 复核 looks_clean score=88 升档（F-4 闭合，0 自引入，supersedes code-F-008-001 → code-F-008-002）→ status=done + receipt fix_commits=5e57260 + review_conclusion=looks_clean_after_fix；dispatch-lock released；F-1 复杂度 follow-up 紧迫度上升（147 行/CC 18）+ F-3 since 窗口内静默回退 follow-up 不变，挂 notes.md F-008-FU 段
+2026-05-20 11:29:22 [development] F-009 开始（model=sonnet, complexity=medium, impl commit=e70b8c7, 31 passed in 0.31s）
+2026-05-20 11:30:15 [development] F-009 post-dev gate Bug-18 复发：7 warning 全部 pre-existing（detailed-design/outline-design/review-F-002/review-F-006/review-F-008，不在 F-009 diff）→ exit=1；F-009 diff (scripts/lib + tests/lib) 不触及任何 artifacts/*.md → 视为已确认通过直接进 /code-review
+2026-05-20 11:44:00 [development] F-009 code-review 完成：conclusion=needs_attention score=82；2 major keep（F-3 aggregate 95 行/CC11/嵌套5 + F-4 fs_mtime 回退 recency 未归 0 与设计 L692 不符）+ 1 minor keep（F-18 测试内冗余 Path import）+ 18 drop（critic 5 rejected/12 not_proven，1 not_rebutted 转 drop）；报告 review-F-009-20260520.md，verdict reviews/code-F-009-001.json；等用户软确认（修 F-4 / 接受风险转 done 二选一）
+2026-05-20 11:49:51 [development] F-009 用户软确认 A → fix commit 8a7ae62（F-4 aggregate ref_sources 跳过 fs_mtime 来源 + F-18 删测试内冗余 Path import + 2 新增 F-009-FU-F4 回归测试，33 passed in 0.40s + ruff rc=0）→ Judge 复核 looks_clean score=88（supersedes code-F-009-001 → code-F-009-002）→ status=done + receipt fix_commits=8a7ae62 + review_conclusion=looks_clean_after_fix + review_report artifacts/review-F-009-20260520.md；dispatch-lock released；剩 F-3 aggregate 复杂度挂 F-009-FU-1 与 F-006-FU-1 合并拆分

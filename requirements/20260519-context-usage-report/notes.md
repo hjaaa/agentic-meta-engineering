@@ -6,6 +6,149 @@
 
 ---
 
+## F-006 code-review follow-up（用户接受 A 方案：先修 F-13+F-5 再转 done；其余 major 挂这里）
+
+来源：`artifacts/review-F-006-20260520.md` + `reviews/code-F-006-001.json`，Judge 复核 F-13+F-5 fix（commit c17431b）通过，剩 3 major + 5 minor 留 F-007 之前一并清。
+
+### F-006-FU-1：单文件 594 行 > 阈值 500（原 F-2 major）
+
+- 位置：`scripts/lib/context_usage_report.py`
+- 处置建议：拆 `evidence_scan.py` 子模块（_scan_text_lines / _scan_json_values / EvidenceScanner），原文件 re-export
+- 优先级：F-007 起新 feature 仍在该文件继续累积，**应在 F-007 启动前先做拆分**
+
+### F-006-FU-2：_scan_json_file 嵌套 O(M×L) 全行扫描（原 F-4 major）
+
+- 位置：`scripts/lib/context_usage_report.py:570-577`
+- 处置建议：用 dict 预扫一次 lines 构建 target→first_line 映射，O(L+M)
+- 优先级：当前 requirements 规模不会触发，违反 detailed-design.md L812 性能目标 `<2s`；与 F-006-FU-1 同源 keep follow-up
+
+### F-006-FU-3：tests/lib/test_context_usage_report_evidence_scanner.py:17 import pytest 未用（原 F-6 major）
+
+- 处置建议：删 `import pytest` 行（ruff F401 会拦）
+- 优先级：lint 红 → F-006-FU-1 拆模块时一并清
+
+### F-006-FU 系列 minor（5 条）
+
+- F-006-FU-M1：`_scan_json_file` 嵌套深度 5 > 阈值 4（与 FU-2 同源）
+- F-006-FU-M2：`_resolve_url_to_context_rel` 内重复调 `repo_root.resolve()` syscall（context_usage_report.py:346,355）
+- F-006-FU-M3：`_scan_json_values` 死参数 `source_rel` 从未消费（context_usage_report.py:435）
+- F-006-FU-M4：`_RAW_PATH_RE` 注释 ".md 结尾" 偏离实际正则（.md/.txt/.yaml/.yml/.json）（context_usage_report.py:303）
+- F-006-FU-M5：`rglob("*")` 后 suffix 过滤（context_usage_report.py:493，reviewer 自标 low priority）
+
+---
+
+## F-007 code-review follow-up（用户接受 A 方案：先修 G-11+G-4 再转 done；其余 minor 挂这里）
+
+来源：`artifacts/review-F-007-20260520.md` + `reviews/code-F-007-001.json`，Judge 复核 G-11+G-4 fix（commit 4208d24）通过，剩 5 minor + 1 design 澄清留 F-008 之前一并清。
+
+### F-007-FU-1：classify CC 偏高（原 G-2 major→minor）
+
+- 位置：`scripts/lib/context_usage_report.py:707-790`
+- 描述：classify 函数 84 行，嵌套 4 层（critic 实测，非 7）；与 F-006-FU-1 同源拆模块时一并处理
+- 优先级：与 F-006-FU-1 合并处理
+
+### F-007-FU-2：classify 2 处裸 except Exception 缺 _warnings 机制（原 G-5）
+
+- 位置：`scripts/lib/context_usage_report.py:719,732`
+- 描述：F-006 EvidenceScanner 有 `_warnings: list[str]` 机制（fail-open 可观测），F-007 AppliedSignalClassifier 未沿用；实测吞的异常源（Path.name / str.endswith / mask_code_blocks / _build_section_map）实抛错概率极低，但完全静默
+- 建议：增加 `self._warnings: list[str]`，捕获后 append；与 EvidenceScanner 一致
+- 与 F-007-FU-1 同源拆函数时一并处理
+
+### ~~F-007-FU-3：路径 B 作用域 spec 歧义~~（**已解决 2026-05-20** commit b28860e）
+
+- ~~设计层债务~~ → 已澄清为 `##` 二级小节级匹配（与路径 A 对称，符合 spec L48 保守原则）
+- 实现：classify 路径 B 改为按 ref_section 切小节文本 + section=None 时跳过
+- detailed-design.md §组件 4 路径 B 已补"作用域"段
+- 测试：3 现有 + 2 新增（小节内命中 / 不同小节不命中）= 17 全 pass
+
+### F-007-FU 系列其他 minor（2 条）
+
+- F-007-FU-M1：`# noqa: E402（中文）` 全角括号注释（context_usage_report.py:610）—— 当前 ruff 不报，旧版本会 warn，建议改英文或挪到上一行
+- F-007-FU-M2：UPGRADE_PHRASES frozenset 迭代非确定 → matched_keyword 跨运行可能不同（context_usage_report.py:316-319）—— 改 sorted 或 tuple
+
+---
+
+## F-008 code-review follow-up（用户接受 A 方案：rev2 修 F-4 后 looks_clean 转 done；其他 follow-up 挂这里）
+
+### F-008-FU-1：fetch_git_timestamps 复杂度超线（rev2 后紧迫度上升）
+
+- 函数 147 行 / 圈复杂度约 18（rev1 是 138 行/CC 17，rev2 加 timeout + TimeoutExpired catch + warning 微增 +9 行）
+- 项目硬约束：80 行 / CC 10
+- 根因：git log 输出协议适配（commit-header + file-path + exception 三分支同居一函数）
+- 建议下个 feature 抽两个纯函数：
+  - `_parse_git_log_output(output: str) -> dict[str, tuple[datetime, datetime]]`
+  - `_build_timestamp_result(files, timestamps) -> dict[str, GitTimestamp]`
+- 与 F-006-FU-1（文件 980 行拆模块）协同处理：先拆 module → 再拆 func
+
+### F-008-FU-2：since 窗口内无 commit 文件静默回退 fs_mtime（design 一致性 + observability）
+
+- 位置：`context_usage_report.py:196-203`
+- 现象：git log 成功但某文件超出 `since_days` 窗口 → 静默 `source=fs_mtime, first_commit_at=None, last_commit_at=fs_mtime`，无 warning
+- 与 subprocess 失败路径用户层无法区分
+- design doc L763 异常表仅定义 subprocess 失败分支，未覆盖"窗口内无 commit"
+- 建议二选一：(a) 补 design 异常表显式声明该分支为静默回退；(b) 在该分支聚合追加 `f"N 个文件在 since={D}d 内无 git 记录，已回退 fs_mtime"`
+- 优先级：JSON 输出已含 `last_modified_at_source=fs_mtime` 信号，最终用户可辨；属可观测性增强
+
+### F-009-FU-1：aggregate() 方法复杂度超线（与 F-006-FU-1 合并）
+
+- 位置：`scripts/lib/context_usage_report.py:1072-1166` `UsageAggregator.aggregate`
+- 指标：95 行 / 圈复杂度 CC=11 / 最大嵌套深度 5
+- 项目硬约束：80 行 / CC 10 / depth 4
+- 根因：单函数承担 4 件事——构建倒排索引 + 解析时间戳 + 评分 + 状态分类
+- 建议抽取：
+  - `_build_lookup_indexes() -> tuple[dict, dict]`（构建 ref_by_target / applied_by_target）
+  - `_resolve_timestamps(file_refs, rel) -> tuple[datetime|None, datetime|None, datetime|None, Literal]`（解析 last/first_referenced_at + last_modified_at）
+- 与 F-006-FU-1（整文件 1220 行拆模块）协同处理：先拆 module → 再拆 func
+- 来源：F-009 review-F-009-20260520.md F-3 keep major，用户软确认 A 接受 follow-up
+
+### F-009-FU 系列 minor / drop（已被 critic + judge drop，仅备忘）
+
+- F-5 UsageAggregator.__init__ 缺 Args docstring（drop，detailed-design.md L376-384 已逐字段说明）
+- F-6 `from enum import Enum` 位于 L999 而非顶部（drop，L440/L774 已有 mid-file import per feature block 先例）
+- F-7 `partial: dict` 裸类型（drop，私有方法内部 4-key dict 不必 TypedDict）
+- F-8 私有方法形参名 `s` vs `summary_partial`（drop，interfaces_frozen 不约束私有方法形参）
+- F-9 KnowledgeUsageSummary.index_paths 别名 IndexGraphResult.indexed_by[rel] list（drop，单线程纯计算下游不 mutate）
+- F-10/F-11 future timestamp / naive datetime（drop，clock skew 极端边角 + 调用方契约保证）
+- F-13 last_modified_at else 死代码（drop，契约保守化保留 defensive 回退）
+- F-14 last_ref_at None → ACTIVE 文档（drop，与 design L898-901 伪码一致）
+- F-15 test_aggregate_full_pipeline 85 行（drop，共享 fixture 拆分会复制）
+- F-16 性能 SLA benchmark 缺失（drop，由 F-013 fixture 仓 / 集成测试承担）
+- F-17/F-19 测试 import 分散 + 工厂函数缺 docstring（drop，feature 段集中 import 是文件既定风格）
+- F-20 `[待用户确认]` 在源码注释（drop，ai-collaboration.md 约束范围仅 artifacts/*.md）
+- F-21 per-loop dict 分配 + sort 冗余（drop，< 5ms 不命中 SLA + 不同维度排序）
+- F-2 history-context 4 critical "F-009 紧跟 4 fix"（drop，事实陈述误判为 bug）
+
+---
+
+### F-008-FU 系列 minor / drop（已被 critic + judge drop，仅备忘）
+
+- AUX-003：`(blank line)` 注释（drop，是 git log 输出格式字面示例）
+- AUX-004：GitTimestamp 字段列对齐（drop，风格偏好）
+- AUX-005：tests 内 import os（drop，fixture 惯例）
+- AUX-006：source 字段注释信息量（drop，已含语义）
+- PERF-003：output.split 全量物化（drop，规模 ≪ MB 级）
+- PERF-004 / SEC-003：commit header `|` 判定歧义（drop，context/** 112 文件无 `|`）
+- SEC-001：rel_path 路径穿越（drop，结构上不可能）
+- SEC-002：CalledProcessError exc 泄漏（**已在 rev2 顺手收紧**，{exc} → {type(exc).__name__}）
+
+---
+
+### Bug-18：post-dev gate 在 GATE-SOURCING 非 strict 模式下也把 R-WARNING-ONLY 升为 exit 1（误报）
+
+**触发**：F-006 完成后跑 `python3 scripts/gates/run.py --trigger=post-dev --req=20260519-context-usage-report`，stdout 显示 `Total: 0 error, 5 warning` 但 exit=1。
+
+**现象**：audit 日志显示 `GATE-SOURCING` 被记为 failed，code=`R-WARNING-ONLY`，message 是 detailed-design.md L778 / outline-design.md L188 / review-F-002 L39 三处 W002/W003。3 处 warning 都是 **pre-existing 内容**，**不在 F-006 diff 内**（F-006 只动 `scripts/lib/context_usage_report.py` + 新建 test 文件）。
+
+**根因猜测**：GATE-SOURCING 注册时 severity=error，但 `check_sourcing.py --strict` 才把 W 升为 error；非 strict 时仍报 Decision.FAIL（plugin 把"含 warning"视为 fail？）。audit.py `calc_exit_code` 按 registry severity (error) 判定 → exit=1。`strict 模式下视为失败` 这句 fix_hint 与实际行为不符。
+
+**影响面**：所有 post-dev / submit / phase-transition 节点。即便本次 feature 没改设计文档，只要历史 design 文件存在 W002/W003，gate 就硬挡。
+
+**workaround**：F-006 用 `--force-with-blockers "F-006 之外的 pre-existing W002/W003，不在本 feature diff 内"` 放行（exit=0）。
+
+**根治建议**：要么 plugin 在非 strict 时不报 Decision.FAIL（只产生 warning report）；要么 runner 按 plugin 实际 decision 用 plugin 自身 severity；要么把这类 sourcing 校验从 post-dev 触发器移除（pre-commit/CI 仍保留）。
+
+---
+
 ### Bug-2：bootstrap 时 meta.yaml `project:` 字段默认空，bootstrap-validate 必失败
 
 **现象**
