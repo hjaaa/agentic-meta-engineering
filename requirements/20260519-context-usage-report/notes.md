@@ -8,6 +8,25 @@
 
 ## F-006 code-review follow-up（用户接受 A 方案：先修 F-13+F-5 再转 done；其余 major 挂这里）
 
+> **2026-05-20 收尾**：A 阶段重构 commit `7fbdf03` + B 阶段 minor commit `9e4e164` 已闭环以下 follow-up：
+> - F-006-FU-1（拆模块 1881 → 8 模块）✅
+> - F-006-FU-3（删 import pytest）✅
+> - F-006-FU-M2 / M3 / M4 ✅
+> - F-007-FU-1（classify 拆 5 助手）✅ / F-007-FU-2（_warnings 机制）✅ / F-007-FU-M2 ✅
+> - F-008-FU-1（fetch_git_timestamps 拆 2 助手）✅ / F-008-FU-2（since 窗口 warning）✅
+> - F-009-FU-1（aggregate 拆 2 助手）✅
+> - F-010-FU-1（render_markdown 拆 5 _render_*_section）✅
+> - F-011-FU-1（_run 拆 _scan_and_filter + _aggregate_summaries）✅ / F-011-FU m1 / m2 / m3 ✅
+>
+> 已确认无需修（A 重构后实测已干净）：F-007-FU-M1（# noqa 全角括号）
+>
+> 剩余 3 条挂账（理由：算法 / 嵌套结构改动超出 minor 范围）：
+> - **F-006-FU-2**：`_scan_json_values` 算法 O(M×L) → O(L+M) dict 预扫（位置：context_usage_evidence.py）
+> - **F-006-FU-M1**：`_scan_json_values` 嵌套深度 5 → 4（与 FU-2 同源，配合一起改）
+> - **F-006-FU-M5**：`rglob("*")` + suffix 过滤 → 具体扩展名（reviewer 自标 low priority，怕动 ignore_patterns 顺序敏感）
+>
+> 建议处置：归到独立 tech-debt 需求（与本需求解耦），或纳入 F-013 fixture 集成测试后的"性能守门 + 算法优化"批次。
+
 来源：`artifacts/review-F-006-20260520.md` + `reviews/code-F-006-001.json`，Judge 复核 F-13+F-5 fix（commit c17431b）通过，剩 3 major + 5 minor 留 F-007 之前一并清。
 
 ### F-006-FU-1：单文件 594 行 > 阈值 500（原 F-2 major）
