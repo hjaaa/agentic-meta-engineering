@@ -3,7 +3,7 @@
   "feature_id": "F-007",
   "status": "DONE",
   "commit": "a2c29ff",
-  "fix_commits": [],
+  "fix_commits": ["4208d24"],
   "review_report": null,
   "review_conclusion": null,
   "touches_violations": [
