@@ -517,7 +517,6 @@ from context_usage_report import (  # noqa: E402
 
 def _make_file(rel_path: str, kind: str = "team") -> KnowledgeFile:
     """创建最小可用 KnowledgeFile。"""
-    from pathlib import Path
 
     return KnowledgeFile(
         path=Path(f"/fake/{rel_path}"),
@@ -975,3 +974,74 @@ def test_aggregate_now_injection_changes_recency() -> None:
     score_92d = get_score(datetime(2026, 7, 21, tzinfo=timezone.utc))
 
     assert score_30d > score_61d > score_92d
+
+
+# F-009-FU-F4 回归：fs_mtime 来源的 reference source 不参与 recency / first_referenced 计算
+# 修复 review-F-009-20260520 F-4：detailed-design.md L691-692 要求 fs_mtime 路径 recency_score=0
+
+
+def test_aggregate_skips_fs_mtime_source_for_recency() -> None:
+    """fs_mtime source 的 reference source 文件 → last/first_referenced_at 不被采纳，recency_score=0。"""
+    file = _make_file("context/team/x.md")
+    ref = _make_ref(target="context/team/x.md", source="requirements/r1/doc.md")
+    # 同一时刻：用 git_log 算 recency 应得满分 10，但 source=fs_mtime → 应被跳过 → recency=0
+    now = datetime(2026, 5, 20, tzinfo=timezone.utc)
+    ts_fs = GitTimestamp(
+        first_commit_at=None,
+        last_commit_at=now,  # 即便 last_commit_at 落在 30d 内
+        source="fs_mtime",   # 但 source 是 fs_mtime → 不参与 recency
+    )
+
+    agg = UsageAggregator(
+        inventory=[file],
+        index_result=_make_index_result(),
+        references=[ref],
+        applied=[],
+        git_timestamps={"requirements/r1/doc.md": ts_fs},
+        now=now,
+    )
+    summary = agg.aggregate()[0]
+
+    # 验证 fs_mtime 来源被跳过
+    assert summary.last_referenced_at is None
+    assert summary.first_referenced_at is None
+    # 评分组成：indexed=0（_make_index_result 默认无 INDEX）+ ref(1*3=3) + applied(0) + recency(0) = 3
+    assert summary.score == 3
+
+
+def test_aggregate_mixed_git_log_and_fs_mtime_sources() -> None:
+    """混合：git_log 来源参与 max；fs_mtime 来源即便时间更新也被跳过。"""
+    file = _make_file("context/team/x.md")
+    ref_a = _make_ref(target="context/team/x.md", source="requirements/ra/doc.md")
+    ref_b = _make_ref(target="context/team/x.md", source="requirements/rb/doc.md")
+
+    now = datetime(2026, 5, 20, tzinfo=timezone.utc)
+    # ra 是 git_log，时间较早
+    ts_a = GitTimestamp(
+        first_commit_at=datetime(2026, 3, 1, tzinfo=timezone.utc),
+        last_commit_at=datetime(2026, 4, 1, tzinfo=timezone.utc),
+        source="git_log",
+    )
+    # rb 是 fs_mtime，时间较新但应被忽略
+    ts_b = GitTimestamp(
+        first_commit_at=None,
+        last_commit_at=datetime(2026, 5, 19, tzinfo=timezone.utc),
+        source="fs_mtime",
+    )
+
+    agg = UsageAggregator(
+        inventory=[file],
+        index_result=_make_index_result(),
+        references=[ref_a, ref_b],
+        applied=[],
+        git_timestamps={
+            "requirements/ra/doc.md": ts_a,
+            "requirements/rb/doc.md": ts_b,
+        },
+        now=now,
+    )
+    summary = agg.aggregate()[0]
+
+    # last_referenced_at 仅来自 ts_a（git_log），ts_b（fs_mtime）被跳过
+    assert summary.last_referenced_at == datetime(2026, 4, 1, tzinfo=timezone.utc)
+    assert summary.first_referenced_at == datetime(2026, 3, 1, tzinfo=timezone.utc)

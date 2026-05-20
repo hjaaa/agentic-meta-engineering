@@ -1106,12 +1106,14 @@ class UsageAggregator:
 
             # 时间戳：last_referenced_at / first_referenced_at
             # = 引用本文件的所有 requirements source 文件的 last_commit_at max / first_commit_at min
+            # 仅采纳 source=="git_log" 的时间戳：fs_mtime 不参与 recency / first_referenced 计算
+            # （detailed-design.md L691-692：异常路径 GitTimestamp(source="fs_mtime") 时 recency_score=0）
             ref_sources = {ev.source for ev in file_refs}
             last_referenced_at: datetime | None = None
             first_referenced_at: datetime | None = None
             for src in ref_sources:
                 ts = self._git_timestamps.get(src)
-                if ts is None:
+                if ts is None or ts.source != "git_log":
                     continue
                 if ts.last_commit_at is not None:
                     if last_referenced_at is None or ts.last_commit_at > last_referenced_at:
