@@ -172,6 +172,57 @@ class IndexGraph:
         self._context_dir = context_dir
         self._repo_root = repo_root.resolve()
 
+    def _process_index_file(
+        self, index_path: Path, index_rel: str
+    ) -> tuple[list[tuple[str, str]], list[BrokenLink]]:
+        """处理单个 INDEX.md：读文件 + 遍历每条 link，返回该 INDEX 的局部结果。
+
+        Args:
+            index_path: INDEX.md 的绝对路径
+            index_rel:  INDEX.md 相对仓库根的 POSIX rel_path
+
+        Returns:
+            (indexed_items, broken_links)
+              - indexed_items: list of (target_rel, index_rel)，调用方据此聚合 indexed_by
+              - broken_links:  本 INDEX 内的断链列表
+
+        约定（与 build() 一致）：
+          - 外链 / intra-anchor / 越界：跳过
+          - INDEX → INDEX：跳过（INDEX 是索引方，不计入 indexed_by）
+          - INDEX 不可读：返回 ([], []) (fail-open)
+        """
+        try:
+            md_text = index_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            # INDEX 不可读：跳过，不计断链（fail-open；与 EvidenceScanner 一致基调）
+            return [], []
+
+        indexed_items: list[tuple[str, str]] = []
+        broken_links: list[BrokenLink] = []
+
+        for link in extract_links(md_text):
+            resolved = resolve_link(link.url, index_path, self._repo_root)
+            if resolved is None:
+                # 外链 / intra-anchor / 越界 → 跳过
+                continue
+            target_rel = resolved.relative_to(self._repo_root).as_posix()
+            if not resolved.exists():
+                broken_links.append(
+                    BrokenLink(
+                        index_path=index_rel,
+                        line=link.line,
+                        target=target_rel,
+                        link_text=link.text,
+                    )
+                )
+                continue
+            # INDEX 自身不作为被索引对象（避免 INDEX → INDEX 循环计入）
+            if resolved.name == "INDEX.md":
+                continue
+            indexed_items.append((target_rel, index_rel))
+
+        return indexed_items, broken_links
+
     def build(self, files: list[KnowledgeFile]) -> IndexGraphResult:
         """单次构建，返回 IndexGraphResult。
 
@@ -191,31 +242,10 @@ class IndexGraph:
             if not index_path.is_file():
                 continue
             index_rel = index_path.resolve().relative_to(self._repo_root).as_posix()
-            try:
-                md_text = index_path.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError):
-                # INDEX 不可读：跳过，不计断链（fail-open；与 EvidenceScanner 一致基调）
-                continue
-            for link in extract_links(md_text):
-                resolved = resolve_link(link.url, index_path, self._repo_root)
-                if resolved is None:
-                    # 外链 / intra-anchor / 越界 → 跳过
-                    continue
-                target_rel = resolved.relative_to(self._repo_root).as_posix()
-                if not resolved.exists():
-                    broken_links.append(
-                        BrokenLink(
-                            index_path=index_rel,
-                            line=link.line,
-                            target=target_rel,
-                            link_text=link.text,
-                        )
-                    )
-                    continue
-                # INDEX 自身不作为被索引对象（避免 INDEX → INDEX 循环计入）
-                if resolved.name == "INDEX.md":
-                    continue
-                indexed_by.setdefault(target_rel, []).append(index_rel)
+            items, broken = self._process_index_file(index_path, index_rel)
+            for target_rel, idx_rel in items:
+                indexed_by.setdefault(target_rel, []).append(idx_rel)
+            broken_links.extend(broken)
 
         # indexed_by 每个 list 字典序排序
         for k in indexed_by:
