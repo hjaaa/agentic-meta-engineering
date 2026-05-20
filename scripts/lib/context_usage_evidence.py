@@ -13,6 +13,7 @@ import json
 import re
 import sys
 from dataclasses import dataclass
+from itertools import chain
 from pathlib import Path
 from typing import Literal
 
@@ -199,6 +200,23 @@ def _scan_json_values(
     return results
 
 
+def _build_first_line_index(lines: list[str], targets: set[str]) -> dict[str, int]:
+    """一次扫描 lines，返回每个 target 在 lines 中首次出现的 1-based 行号。
+
+    复杂度：O(L × T)，其中 L = 行数，T = 唯一 target 数（早退 break 降低常数）。
+    """
+    first_line: dict[str, int] = {}
+    remaining = set(targets)
+    for idx, raw_line in enumerate(lines, start=1):
+        found = {t for t in remaining if t in raw_line}
+        for t in found:
+            first_line[t] = idx
+        remaining -= found
+        if not remaining:
+            break
+    return first_line
+
+
 class EvidenceScanner:
     """扫 requirements/** 下文档，识别对 context/** 文件的显式引用。
 
@@ -229,12 +247,16 @@ class EvidenceScanner:
     def scan(self) -> list[ReferenceEvidence]:
         """单次扫描，返回 list[ReferenceEvidence]。fail-open，不抛业务异常。"""
         results: list[ReferenceEvidence] = []
-        suffixes = {".md", ".txt", ".json", ".yaml", ".yml"}
 
-        for file_path in sorted(self._requirements_dir.rglob("*")):
+        file_iter = chain(
+            self._requirements_dir.rglob("*.md"),
+            self._requirements_dir.rglob("*.txt"),
+            self._requirements_dir.rglob("*.json"),
+            self._requirements_dir.rglob("*.yaml"),
+            self._requirements_dir.rglob("*.yml"),
+        )
+        for file_path in sorted(file_iter):
             if not file_path.is_file():
-                continue
-            if file_path.suffix.lower() not in suffixes:
                 continue
 
             try:
@@ -309,12 +331,12 @@ class EvidenceScanner:
                 f"[EvidenceScanner] JSON 嵌套过深，跳过：{source_rel}"
             )
             return []
+
+        hit_targets = {target_rel for target_rel, _ in json_hits}
+        first_line_by_target = _build_first_line_index(lines, hit_targets)
+
         for target_rel, line_no in json_hits:
-            actual_line = line_no
-            for idx, raw_line in enumerate(lines, start=1):
-                if target_rel in raw_line:
-                    actual_line = idx
-                    break
+            actual_line = first_line_by_target.get(target_rel, line_no)
             key = (actual_line, target_rel)
             if key not in seen:
                 context_line = lines[actual_line - 1] if actual_line <= len(lines) else ""

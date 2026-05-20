@@ -20,12 +20,12 @@
 >
 > 已确认无需修（A 重构后实测已干净）：F-007-FU-M1（# noqa 全角括号）
 >
-> 剩余 3 条挂账（理由：算法 / 嵌套结构改动超出 minor 范围）：
-> - **F-006-FU-2**：`_scan_json_values` 算法 O(M×L) → O(L+M) dict 预扫（位置：context_usage_evidence.py）
-> - **F-006-FU-M1**：`_scan_json_values` 嵌套深度 5 → 4（与 FU-2 同源，配合一起改）
-> - **F-006-FU-M5**：`rglob("*")` + suffix 过滤 → 具体扩展名（reviewer 自标 low priority，怕动 ignore_patterns 顺序敏感）
+> **2026-05-20 收口（最终 3 条）**：commit `<待填>` 闭环以下 3 条挂账（subagent sonnet 档位）：
+> - **F-006-FU-2** ✅：`_scan_json_file` 抽 `_build_first_line_index(lines, targets) -> dict` 助手，复杂度 O(M×L) → O(L×T)（T = 唯一 target 数，早退 break），实测真机冒烟 reports/context-usage.md 字节级一致 732 行
+> - **F-006-FU-M1** ✅：`_scan_json_file` 嵌套深度 5 → 4（与 FU-2 同源，抽助手即完成）；`_scan_json_values` 原本 ≤ 4 无需改
+> - **F-006-FU-M5** ✅：`EvidenceScanner.scan` 用 `itertools.chain(rglob('*.md'), rglob('*.txt'), rglob('*.json'), rglob('*.yaml'), rglob('*.yml'))` 替代 `rglob('*')` + suffix 过滤；sorted 全集后顺序与改前一致，测试无回归
 >
-> 建议处置：归到独立 tech-debt 需求（与本需求解耦），或纳入 F-013 fixture 集成测试后的"性能守门 + 算法优化"批次。
+> **全 follow-up 收口**：本需求所有 F-006~F-011 系列 follow-up（含 3 条 algo/struct）已全部闭环，无遗留。
 
 来源：`artifacts/review-F-006-20260520.md` + `reviews/code-F-006-001.json`，Judge 复核 F-13+F-5 fix（commit c17431b）通过，剩 3 major + 5 minor 留 F-007 之前一并清。
 
