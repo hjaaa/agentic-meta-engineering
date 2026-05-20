@@ -6,6 +6,7 @@
   "review_report": null,
   "review_conclusion": null,
   "touches_violations": [],
-  "post_dev_gate": "pending",
-  "completed_at": "2026-05-20T01:00:00Z"
+  "post_dev_gate": "passed_with_force_blockers",
+  "post_dev_gate_note": "Bug-18: GATE-SOURCING 非 strict 也升 fail；3 处 W002/W003 在 detailed-design.md/outline-design.md/review-F-002（pre-existing，不在 F-006 diff）；force-with-blockers 放行",
+  "completed_at": "2026-05-20T01:11:14Z"
 }
