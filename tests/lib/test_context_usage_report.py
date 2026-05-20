@@ -380,7 +380,8 @@ def test_fetch_git_timestamps_subprocess_failure(mock_run: MagicMock) -> None:
 
     # 验证 warnings
     assert len(warnings) == 1
-    assert "git log 失败，回退 fs_mtime" in warnings[0]
+    assert "git log 失败" in warnings[0]
+    assert "CalledProcessError" in warnings[0]
 
 
 @patch("context_usage_report.subprocess.run")
@@ -410,7 +411,8 @@ def test_fetch_git_timestamps_git_missing(mock_run: MagicMock) -> None:
     assert ts.first_commit_at is None
     assert ts.last_commit_at == now
     assert len(warnings) == 1
-    assert "git log 失败，回退 fs_mtime" in warnings[0]
+    assert "git log 失败" in warnings[0]
+    assert "FileNotFoundError" in warnings[0]
 
 
 @patch("context_usage_report.subprocess.run")
@@ -440,6 +442,40 @@ def test_fetch_git_timestamps_oserror(mock_run: MagicMock) -> None:
     assert ts.first_commit_at is None
     assert ts.last_commit_at == now
     assert len(warnings) == 1
+
+
+@patch("context_usage_report.subprocess.run")
+def test_fetch_git_timestamps_timeout(mock_run: MagicMock) -> None:
+    """异常回退：subprocess.TimeoutExpired → source='fs_mtime', warnings 标记超时。
+
+    F-008 rev2 修复：subprocess.run 加 timeout=30s，避免大仓库 / git 卡死时无限阻塞。
+    """
+    mock_run.side_effect = subprocess.TimeoutExpired(cmd="git log", timeout=30)
+
+    now = datetime.now(tz=timezone.utc).replace(microsecond=0)
+    files = [
+        KnowledgeFile(
+            path=Path("/fake/context/team/foo.md"),
+            rel_path="context/team/foo.md",
+            kind="team",
+            size_bytes=100,
+            fs_mtime=now,
+        ),
+    ]
+
+    result, warnings = fetch_git_timestamps(
+        files,
+        since_days=90,
+        repo_root=Path("/fake"),
+    )
+
+    ts = result["context/team/foo.md"]
+    assert ts.source == "fs_mtime"
+    assert ts.first_commit_at is None
+    assert ts.last_commit_at == now
+    assert len(warnings) == 1
+    assert "git log 超时" in warnings[0]
+    assert "30s" in warnings[0]
 
 
 def test_fetch_git_timestamps_empty_files() -> None:

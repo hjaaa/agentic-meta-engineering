@@ -133,6 +133,7 @@ def fetch_git_timestamps(
             text=True,
             check=True,
             capture_output=True,
+            timeout=30,
         )
 
         # 解析 git log 输出
@@ -202,9 +203,19 @@ def fetch_git_timestamps(
                     source="fs_mtime",
                 )
 
+    except subprocess.TimeoutExpired:
+        # git log 超时（大仓库 / 网络挂载磁盘 / git 卡死）：回退 fs_mtime
+        warnings.append("git log 超时（30s），回退 fs_mtime")
+        for f in files:
+            result[f.rel_path] = GitTimestamp(
+                first_commit_at=None,
+                last_commit_at=f.fs_mtime,
+                source="fs_mtime",
+            )
     except (subprocess.CalledProcessError, FileNotFoundError, OSError) as exc:
         # git log 失败或 git 缺失：全部回退到 fs_mtime
-        warnings.append(f"git log 失败，回退 fs_mtime: {exc}")
+        # 只记异常类型名，避免泄漏完整 cmd / 路径列表
+        warnings.append(f"git log 失败（{type(exc).__name__}），回退 fs_mtime")
         for f in files:
             result[f.rel_path] = GitTimestamp(
                 first_commit_at=None,
