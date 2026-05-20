@@ -1547,6 +1547,97 @@ def _parse_since(since: str) -> int:
         raise ValueError(f"unknown unit: {unit}")
 
 
+def _check_dirs(context_dir: Path, requirements_dir: Path) -> int | None:
+    """校验输入目录。返回 exit code 或 None 表示通过。"""
+    if not context_dir.is_dir():
+        print(f"ERROR: context-dir 不存在或非目录: {context_dir}", file=sys.stderr)
+        return 2
+    if not requirements_dir.is_dir():
+        print(
+            f"ERROR: requirements-dir 不存在或非目录: {requirements_dir}",
+            file=sys.stderr,
+        )
+        return 2
+    return None
+
+
+def _build_file_cache(
+    evidences: list[ReferenceEvidence],
+    requirements_dir: Path,
+    warnings: list[str],
+) -> dict[Path, str]:
+    """从引用证据收集 source 文件内容缓存。"""
+    file_cache: dict[Path, str] = {}
+    for evidence in evidences:
+        src_path = requirements_dir / evidence.source
+        if src_path not in file_cache and src_path.is_file():
+            try:
+                file_cache[src_path] = src_path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError) as e:
+                warnings.append(f"读取 {evidence.source} 失败: {e}")
+    return file_cache
+
+
+def _print_summary(summaries: list[KnowledgeUsageSummary], warnings: list[str]) -> None:
+    """输出摘要统计到 stdout。"""
+    status_counts = {}
+    for s in summaries:
+        status = s.status.value if isinstance(s.status, KnowledgeStatus) else str(s.status)
+        status_counts[status] = status_counts.get(status, 0) + 1
+    print(f"总数: {len(summaries)}", file=sys.stdout)
+    for status in sorted(status_counts.keys()):
+        print(f"  {status}: {status_counts[status]}", file=sys.stdout)
+    if warnings:
+        print(f"Warnings: {len(warnings)}", file=sys.stdout)
+
+
+def _render_and_write(
+    renderer: ReportRenderer,
+    summaries: list[KnowledgeUsageSummary],
+    warnings: list[str],
+    args: argparse.Namespace,
+) -> int:
+    """渲染并写入报告。返回 exit code：0=success，5=write error。"""
+    try:
+        if args.format in ("md", "both"):
+            renderer.write(renderer.render_markdown(summaries, warnings), args.output)
+        if args.format in ("json", "both"):
+            renderer.write(renderer.render_json(summaries, warnings), args.json_output)
+        return 0
+    except OSError as e:
+        print(f"ERROR: 写报告失败: {e}", file=sys.stderr)
+        return 5
+
+
+def _build_all_files_for_git(
+    files: list[KnowledgeFile],
+    evidences: list[ReferenceEvidence],
+    requirements_dir: Path,
+    warnings: list[str],
+) -> list[KnowledgeFile]:
+    """合并 context files + reference source files 用于 git 时间戳查询。"""
+    all_files: list[KnowledgeFile] = files.copy()
+    reference_source_paths: set[str] = {e.source for e in evidences}
+
+    for src_rel in reference_source_paths:
+        src_abs = requirements_dir / src_rel
+        if src_abs.is_file():
+            try:
+                kf = KnowledgeFile(
+                    path=src_abs,
+                    rel_path=src_rel,
+                    kind="team",
+                    size_bytes=src_abs.stat().st_size,
+                    fs_mtime=datetime.fromtimestamp(
+                        src_abs.stat().st_mtime, tz=timezone.utc
+                    ).replace(microsecond=0),
+                )
+                all_files.append(kf)
+            except OSError as e:
+                warnings.append(f"读取文件元数据 {src_rel} 失败: {e}")
+    return all_files
+
+
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """解析 CLI 参数。
 
@@ -1635,29 +1726,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def _run(args: argparse.Namespace) -> int:
-    """执行报告生成逻辑（main 调度分离）。
+    """执行报告生成逻辑。返回 exit code 0-5。"""
+    # 校验输入目录
+    err = _check_dirs(args.context_dir, args.requirements_dir)
+    if err:
+        return err
 
-    返回 exit code；所有异常由 main 的 try/except 捕获。
-
-    Args:
-        args: 已解析的参数
-
-    Returns:
-        exit code（0-5）
-    """
-    # 1. 校验输入目录
-    if not args.context_dir.is_dir():
-        print(f"ERROR: context-dir 不存在或非目录: {args.context_dir}", file=sys.stderr)
-        return 2
-
-    if not args.requirements_dir.is_dir():
-        print(
-            f"ERROR: requirements-dir 不存在或非目录: {args.requirements_dir}",
-            file=sys.stderr,
-        )
-        return 2
-
-    # 2. 解析 --since
+    # 解析 --since 与初始化
     try:
         since_days = _parse_since(args.since)
     except ValueError as e:
@@ -1666,30 +1741,25 @@ def _run(args: argparse.Namespace) -> int:
 
     warnings: list[str] = []
 
-    # 3. 扫描 context
+    # 扫描与过滤
     inv = ContextInventory(
         context_dir=args.context_dir,
         ignore_patterns=["**/draft/**", "**/INDEX.md"],
         repo_root=args.repo_root,
     )
     files = inv.scan()
-
-    # 4. 按 --project / --only-experience 过滤
     if args.only_experience:
         files = [f for f in files if "experience" in f.rel_path]
-
     if args.project:
-        prefix = f"context/project/{args.project}/"
-        files = [f for f in files if f.rel_path.startswith(prefix)]
+        files = [
+            f
+            for f in files
+            if f.rel_path.startswith(f"context/project/{args.project}/")
+        ]
 
-    # 5. 构建 IndexGraph
-    index_graph = IndexGraph(
-        context_dir=args.context_dir,
-        repo_root=args.repo_root,
-    )
-    graph_result = index_graph.build(files)
-
-    # 6. 扫描引用证据
+    graph_result = IndexGraph(
+        context_dir=args.context_dir, repo_root=args.repo_root
+    ).build(files)
     scanner = EvidenceScanner(
         requirements_dir=args.requirements_dir,
         context_files={f.rel_path for f in files},
@@ -1698,64 +1768,28 @@ def _run(args: argparse.Namespace) -> int:
     evidences = scanner.scan()
     warnings.extend(scanner.warnings)
 
-    # 7. 分类高价值证据
-    # 先收集 reference source 文件内容
-    file_cache: dict[Path, str] = {}
-    for evidence in evidences:
-        src_path = args.requirements_dir / evidence.source
-        if src_path not in file_cache and src_path.is_file():
-            try:
-                file_cache[src_path] = src_path.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError) as e:
-                warnings.append(f"读取 {evidence.source} 失败: {e}")
-
-    classifier = AppliedSignalClassifier()
-    applied_evidences = classifier.classify(evidences, file_cache)
-
-    # 8. 获取 git 时间戳
-    # 合并 context files + reference source files
-    all_files_for_git: list[KnowledgeFile] = files.copy()
-    reference_source_paths: set[str] = set()
-    for evidence in evidences:
-        reference_source_paths.add(evidence.source)
-
-    # 包装 reference source 为 KnowledgeFile-like（仅用于 git 时间戳）
-    for src_rel in reference_source_paths:
-        src_abs = args.requirements_dir / src_rel
-        if src_abs.is_file():
-            try:
-                kf = KnowledgeFile(
-                    path=src_abs,
-                    rel_path=src_rel,
-                    kind="team",
-                    size_bytes=src_abs.stat().st_size,
-                    fs_mtime=datetime.fromtimestamp(
-                        src_abs.stat().st_mtime, tz=timezone.utc
-                    ).replace(microsecond=0),
-                )
-                all_files_for_git.append(kf)
-            except OSError as e:
-                warnings.append(f"读取文件元数据 {src_rel} 失败: {e}")
-
+    # 分类 + git 时间戳
+    file_cache = _build_file_cache(evidences, args.requirements_dir, warnings)
+    applied = AppliedSignalClassifier().classify(evidences, file_cache)
+    all_files_for_git = _build_all_files_for_git(
+        files, evidences, args.requirements_dir, warnings
+    )
     timestamps, git_warnings = fetch_git_timestamps(
-        all_files_for_git,
-        since_days,
-        repo_root=args.repo_root,
+        all_files_for_git, since_days, repo_root=args.repo_root
     )
     warnings.extend(git_warnings)
 
-    # 9. 聚合使用摘要
-    aggregator = UsageAggregator(
+    # 聚合
+    summaries = UsageAggregator(
         inventory=files,
         index_result=graph_result,
         references=evidences,
-        applied=applied_evidences,
+        applied=applied,
         git_timestamps=timestamps,
         now=datetime.now(tz=timezone.utc),
-    )
-    summaries = aggregator.aggregate()
+    ).aggregate()
 
-    # 10. 生成报告
+    # 渲染 + 写入
     renderer = ReportRenderer(
         config={
             "context_dir": str(args.context_dir),
@@ -1769,47 +1803,25 @@ def _run(args: argparse.Namespace) -> int:
         now=datetime.now(tz=timezone.utc),
     )
 
-    # 11. 写入报告
-    try:
-        if args.format in ("md", "both"):
-            md_content = renderer.render_markdown(summaries, warnings)
-            renderer.write(md_content, args.output)
+    exit_code = _render_and_write(renderer, summaries, warnings, args)
+    if exit_code != 0:
+        return exit_code
 
-        if args.format in ("json", "both"):
-            json_content = renderer.render_json(summaries, warnings)
-            renderer.write(json_content, args.json_output)
-    except OSError as e:
-        print(f"ERROR: 写报告失败: {e}", file=sys.stderr)
-        return 5
+    # 输出摘要 + 检查标志
+    _print_summary(summaries, warnings)
 
-    # 12. 输出摘要到 stdout
-    total = len(summaries)
-    status_counts = {}
-    for s in summaries:
-        status = s.status.value if isinstance(s.status, KnowledgeStatus) else str(s.status)
-        status_counts[status] = status_counts.get(status, 0) + 1
-
-    print(f"总数: {total}", file=sys.stdout)
-    for status in sorted(status_counts.keys()):
-        print(f"  {status}: {status_counts[status]}", file=sys.stdout)
-    if warnings:
-        print(f"Warnings: {len(warnings)}", file=sys.stdout)
-
-    # 13. 检查 --fail-on-broken-index / --fail-on-orphan
     if args.fail_on_broken_index and graph_result.broken_links:
         print(
             f"ERROR: BROKEN_LINKS_DETECTED ({len(graph_result.broken_links)} 条)",
             file=sys.stderr,
         )
         return 3
-
     if args.fail_on_orphan and graph_result.orphans:
         print(
             f"ERROR: ORPHANS_DETECTED ({len(graph_result.orphans)} 个文件)",
             file=sys.stderr,
         )
         return 4
-
     return 0
 
 
