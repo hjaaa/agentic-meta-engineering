@@ -298,7 +298,8 @@
         "pytest tests/lib/test_context_usage_report.py 全绿"
       ],
       "estimate_days": 0.5,
-      "interfaces_frozen": true
+      "interfaces_frozen": true,
+      "status": "done"
     },
     {
       "id": "F-013",

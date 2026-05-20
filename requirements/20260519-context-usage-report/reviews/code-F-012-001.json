@@ -1,0 +1,65 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-20260519-context-usage-report-code-F-012-001",
+  "requirement_id": "20260519-context-usage-report",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-20 14:57:26",
+  "reviewed_commit": "d226a24",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "06bbd2d3979818323fa61fa49191273eb4e8bc02403953878969d56341380b3f"
+    },
+    {
+      "path": "artifacts/tasks/F-012.md",
+      "sha256": "7d6496327b86956b3b8fcbb8e5eef88f98b90a55df280e9a2cc73af38e0f21a0"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 95,
+  "dimensions": {
+    "design_consistency": {
+      "score": 95,
+      "issues": []
+    },
+    "security": {
+      "score": 95,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 95,
+      "issues": []
+    },
+    "complexity": {
+      "score": 95,
+      "issues": []
+    },
+    "error_handling": {
+      "score": 95,
+      "issues": []
+    },
+    "auxiliary_spec": {
+      "score": 95,
+      "issues": []
+    },
+    "performance": {
+      "score": 95,
+      "issues": []
+    },
+    "history_context": {
+      "score": 95,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "F-012 commit d226a24 为 --allow-empty audit-only 提交（0 文件改动 / 0 行 diff），不引入代码风险。AC1/AC2/AC3 三类接受标准由 F-004~F-011 各自迭代时已通过 TDD 并经对应 /code-review 验收。本评审在无 diff 前提下做存量审计追认，未跑 8-critic 群。",
+    "测试套件 107 passed + ruff check passed，全量回归齐绿；F-009-FU-F4 / F-010-FU-F-D / F-011-FU-M-1/M-2 等回归路径已纳入对应组件统计。",
+    "F-009 aggregate / F-010 render_markdown / F-011 _run 三处复杂度债务的 follow-up 统一在 F-013 之后拉一个渲染层 refactor follow-up 合并处理。"
+  ],
+  "scope": {
+    "feature_id": "F-012"
+  },
+  "supersedes": null
+}
