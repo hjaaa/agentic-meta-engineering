@@ -663,6 +663,26 @@ def _build_section_map(lines: list[str]) -> dict[int, str | None]:
     return result
 
 
+def _section_line_range(
+    section_map: dict[int, str | None], target_section: str, total_lines: int
+) -> tuple[int, int]:
+    """返回 target_section 对应的行范围 [start, end]（1-based inclusive）。
+
+    线性扫描 section_map，找出连续属于 target_section 的最早 start 和最晚 end。
+    若未找到则返回 (1, 0)（空范围）。
+    """
+    start: int | None = None
+    end: int | None = None
+    for ln in range(1, total_lines + 1):
+        if section_map.get(ln) == target_section:
+            if start is None:
+                start = ln
+            end = ln
+    if start is None:
+        return (1, 0)
+    return (start, end)  # type: ignore[return-value]
+
+
 class AppliedSignalClassifier:
     """把 ReferenceEvidence 升级判定为 AppliedEvidence。
 
@@ -746,24 +766,31 @@ class AppliedSignalClassifier:
             except Exception:
                 continue
 
-            # 预计算：全文是否含显式升级短语（路径 B，全文级别）
-            upgrade_hit: str | None = None
-            for phrase in self.UPGRADE_PHRASES:
-                if phrase in masked_text:
-                    upgrade_hit = phrase
-                    break
-
             for ev in evs:
                 ref_lineno = ev.line  # 1-based
 
-                # --- 路径 B：显式升级声明（全文匹配） ---
-                if upgrade_hit is not None:
-                    results.append(AppliedEvidence(
-                        reference=ev,
-                        rule="explicit_upgrade",
-                        matched_keyword=upgrade_hit,
-                        section_heading=None,
-                    ))
+                # --- 路径 B：显式升级声明（## 二级小节级匹配） ---
+                # FU-3：与路径 A 对称，遵守保守原则（spec L48）
+                # reference 所在 ## 小节内出现任一 UPGRADE_PHRASES → 命中
+                # reference 在第一个 H2 之前（section=None）→ 路径 B 也跳过
+                ref_section_b = section_map.get(ref_lineno)
+                if ref_section_b is not None:
+                    sec_start, sec_end = _section_line_range(
+                        section_map, ref_section_b, total_lines
+                    )
+                    section_text = "\n".join(masked_lines[sec_start - 1 : sec_end])
+                    upgrade_hit: str | None = None
+                    for phrase in self.UPGRADE_PHRASES:
+                        if phrase in section_text:
+                            upgrade_hit = phrase
+                            break
+                    if upgrade_hit is not None:
+                        results.append(AppliedEvidence(
+                            reference=ev,
+                            rule="explicit_upgrade",
+                            matched_keyword=upgrade_hit,
+                            section_heading=None,
+                        ))
 
                 # --- 路径 A：复合窗口命中 ---
                 ref_section = section_map.get(ref_lineno)

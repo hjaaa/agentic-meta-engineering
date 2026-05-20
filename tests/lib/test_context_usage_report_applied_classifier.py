@@ -223,13 +223,15 @@ def test_inline_code_keyword_excluded(tmp_path: Path) -> None:
 def test_explicit_upgrade_chinese_phrase(tmp_path: Path) -> None:
     """中文升级短语"升级为 checklist"命中 → rule=explicit_upgrade。"""
     source_rel = "requirements/req-006/notes.md"
+    # FU-3：路径 B 改为小节级，短语与引用必须在同一 ## 小节内
     content = (
         "# 文档\n"
-        "这条经验已升级为 checklist。\n"  # 含升级短语
-        "引用 context/team/foo.md\n"
+        "## 经验沉淀\n"                    # L2 开启 H2
+        "这条经验已升级为 checklist。\n"   # L3 含升级短语，与引用同小节
+        "引用 context/team/foo.md\n"       # L4 reference
     )
     cache = _make_cache(tmp_path, source_rel, content)
-    ev = _make_evidence(line=3, source=source_rel)
+    ev = _make_evidence(line=4, source=source_rel)
     classifier = AppliedSignalClassifier()
 
     results = classifier.classify([ev], cache)
@@ -243,13 +245,15 @@ def test_explicit_upgrade_chinese_phrase(tmp_path: Path) -> None:
 def test_explicit_upgrade_english_phrase(tmp_path: Path) -> None:
     """英文升级短语"按该经验落 test"命中 → rule=explicit_upgrade。"""
     source_rel = "requirements/req-007/notes.md"
+    # FU-3：路径 B 改为小节级，短语与引用必须在同一 ## 小节内
     content = (
         "# 文档\n"
-        "已按该经验落 test，覆盖边界场景。\n"
-        "引用 context/team/foo.md\n"
+        "## 落地记录\n"                          # L2 开启 H2
+        "已按该经验落 test，覆盖边界场景。\n"    # L3 含升级短语，与引用同小节
+        "引用 context/team/foo.md\n"             # L4 reference
     )
     cache = _make_cache(tmp_path, source_rel, content)
-    ev = _make_evidence(line=3, source=source_rel)
+    ev = _make_evidence(line=4, source=source_rel)
     classifier = AppliedSignalClassifier()
 
     results = classifier.classify([ev], cache)
@@ -262,14 +266,16 @@ def test_explicit_upgrade_english_phrase(tmp_path: Path) -> None:
 def test_explicit_upgrade_all_phrases_hit(tmp_path: Path) -> None:
     """文件含多条升级短语时，至少命中一条（取第一个命中）。"""
     source_rel = "requirements/req-008/notes.md"
+    # FU-3：路径 B 改为小节级，短语与引用必须在同一 ## 小节内
     content = (
         "# 文档\n"
-        "引用 context/team/foo.md\n"
-        "来自该经验的设计。\n"
-        "同时升级为 SOP。\n"
+        "## 升级沉淀\n"                  # L2 开启 H2
+        "引用 context/team/foo.md\n"     # L3 reference，与短语同小节
+        "来自该经验的设计。\n"            # L4 升级短语
+        "同时升级为 SOP。\n"             # L5 另一条升级短语
     )
     cache = _make_cache(tmp_path, source_rel, content)
-    ev = _make_evidence(line=2, source=source_rel)
+    ev = _make_evidence(line=3, source=source_rel)
     classifier = AppliedSignalClassifier()
 
     results = classifier.classify([ev], cache)
@@ -448,3 +454,52 @@ def test_cache_endswith_misuse_no_false_match() -> None:
     assert window_hits[0].matched_keyword == "风险", (
         f"期望命中关键字'风险'，实际：{window_hits[0].matched_keyword}"
     )
+
+
+# ---------------------------------------------------------------------------
+# FU-3 · 路径 B 小节级匹配（新增测试）
+# ---------------------------------------------------------------------------
+
+
+def test_path_b_phrase_in_different_section_not_hit(tmp_path: Path) -> None:
+    """路径 B：升级短语在不同 ## 小节内 → 不命中（小节级匹配保守原则）。"""
+    source_rel = "requirements/req-013/notes.md"
+    content = (
+        "# 文档\n"
+        "## 小节 A\n"                              # L2 开启 H2-A
+        "引用 context/team/foo.md\n"               # L3 reference 在小节 A
+        "## 小节 B\n"                              # L4 开启 H2-B
+        "这条经验已升级为 SOP，沉淀完毕。\n"       # L5 升级短语在小节 B
+    )
+    cache = _make_cache(tmp_path, source_rel, content)
+    ev = _make_evidence(line=3, source=source_rel)
+    classifier = AppliedSignalClassifier()
+
+    results = classifier.classify([ev], cache)
+
+    hits = [r for r in results if r.rule == "explicit_upgrade"]
+    assert len(hits) == 0, (
+        f"升级短语在不同 ## 小节内不应命中路径 B，实际：{results}"
+    )
+
+
+def test_path_b_phrase_in_same_section_hits(tmp_path: Path) -> None:
+    """路径 B：升级短语与引用在同一 ## 小节内 → 命中 explicit_upgrade。"""
+    source_rel = "requirements/req-014/notes.md"
+    content = (
+        "# 文档\n"
+        "## 经验落地\n"                             # L2 开启 H2
+        "引用 context/team/foo.md\n"                # L3 reference 在 H2 内
+        "本次已升级为 SOP，落地完成。\n"            # L4 升级短语，与引用同 H2
+    )
+    cache = _make_cache(tmp_path, source_rel, content)
+    ev = _make_evidence(line=3, source=source_rel)
+    classifier = AppliedSignalClassifier()
+
+    results = classifier.classify([ev], cache)
+
+    hits = [r for r in results if r.rule == "explicit_upgrade"]
+    assert len(hits) >= 1, (
+        f"升级短语与引用在同一 ## 小节内应命中路径 B，实际：{results}"
+    )
+    assert hits[0].matched_keyword == "升级为 SOP"
