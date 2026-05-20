@@ -114,11 +114,16 @@ class AppliedSignalClassifier:
 
     WINDOW_BEFORE: int = 5
     WINDOW_AFTER: int = 10
-    APPLIED_KEYWORDS: frozenset[str] = frozenset({"Decision", "决策", "应对", "风险", "验证"})
-    UPGRADE_PHRASES: frozenset[str] = frozenset({
+    APPLIED_KEYWORDS: tuple[str, ...] = tuple(sorted({
+        "Decision", "决策", "应对", "风险", "验证"
+    }))
+    UPGRADE_PHRASES: tuple[str, ...] = tuple(sorted({
         "升级为 checklist", "升级为 SOP", "升级为测试", "升级为 gate",
         "升级为 hook", "来自该经验", "按该经验落 test", "按该经验落 gate",
-    })
+    }))
+
+    def __init__(self) -> None:
+        self._warnings: list[str] = []
 
     def classify(
         self, evidences: list, file_cache: dict[Path, str]
@@ -153,7 +158,10 @@ class AppliedSignalClassifier:
                 masked_lines = masked_text.splitlines()
                 section_map = _build_section_map(masked_lines)
                 total_lines = len(masked_lines)
-            except Exception:
+            except Exception as exc:
+                self._warnings.append(
+                    f"WARN classify {source_rel}: {type(exc).__name__}"
+                )
                 continue
 
             for ev in evs:
@@ -269,3 +277,8 @@ class AppliedSignalClassifier:
                 if kw in line_text:
                     return kw
         return None
+
+    @property
+    def warnings(self) -> list[str]:
+        """累计的非致命告警。"""
+        return list(self._warnings)

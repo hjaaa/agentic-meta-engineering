@@ -13,10 +13,12 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-
-import pytest
+from typing import TYPE_CHECKING
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts" / "lib"))
+
+if TYPE_CHECKING:
+    import pytest
 
 from context_usage_report import EvidenceScanner, ReferenceEvidence  # noqa: E402
 

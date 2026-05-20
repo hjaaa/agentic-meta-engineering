@@ -134,6 +134,16 @@ def fetch_git_timestamps(
         ts_dict = _parse_git_log_output(proc.stdout)
         result = _build_timestamp_result(files, ts_dict)
 
+        # 检测 since 窗口内无 commit 的文件数量
+        fallback_count = sum(
+            1 for r in result.values()
+            if r.source == "fs_mtime"
+        )
+        if fallback_count > 0:
+            warnings.append(
+                f"WARN {fallback_count} 个文件在 since={since_days}d 内无 git 记录，已回退 fs_mtime"
+            )
+
     except subprocess.TimeoutExpired:
         return _fallback_all("git log 超时（30s），回退 fs_mtime")
     except (subprocess.CalledProcessError, FileNotFoundError, OSError) as exc:
@@ -465,7 +475,7 @@ def _run(args: argparse.Namespace) -> int:
 
     if args.fail_on_broken_index and graph_result.broken_links:
         print(
-            f"ERROR: BROKEN_LINKS_DETECTED ({len(graph_result.broken_links)} 条)",
+            f"BROKEN_LINKS_DETECTED ({len(graph_result.broken_links)})",
             file=sys.stderr,
         )
         return 3

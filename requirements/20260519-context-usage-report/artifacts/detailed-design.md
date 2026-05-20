@@ -783,6 +783,10 @@ flowchart TD
 - **不打印任何敏感信息**：本工具仅读 markdown / json，无密钥 / token，但 warning 中不要包含完整 file 内容片段（最多前 80 字符）
 - **CI 集成**：`--fail-on-*` 标志触发非零退出码时，CI 通过 grep `BROKEN_LINKS_DETECTED` / `ORPHANS_DETECTED` 在 PR 中渲染评论
 
+### 安全模型
+
+本工具为本地 CLI 工具，信任模型：操作者拥有 `context_dir` / `--output` 完全访问权限。不做路径穿越校验或 `--output` 目录边界限制（OWASP A1 不适用）。
+
 ### 幂等性
 
 工具完全幂等：

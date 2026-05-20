@@ -45,7 +45,7 @@ _KIND_PRIORITY: dict[str, int] = {
     "raw_path": 3,
 }
 
-# raw_path 正则：匹配行内独立出现的 context/ 相对路径（.md 结尾），
+# raw_path 正则：匹配行内独立出现的 context/ 相对路径（.md/.txt/.yaml/.yml/.json 结尾），
 # 排除被 ( 或 / 紧接（避免重复捕获 markdown_link 括号内路径）。
 _RAW_PATH_RE = re.compile(
     r"(?<![\(/])\bcontext/[^\s,，()\[\]`\"']+\.(?:md|txt|yaml|yml|json)\b"
@@ -78,6 +78,7 @@ def _resolve_url_to_context_rel(
     """
     from urllib.parse import unquote as _unquote
 
+    _repo_root = repo_root.resolve()
     path_part, _, _ = url.partition("#")
     path_part = _unquote(path_part).strip()
     if not path_part:
@@ -87,7 +88,7 @@ def _resolve_url_to_context_rel(
         clean = path_part.lstrip("/")
         candidate = (repo_root / clean).resolve()
         try:
-            return candidate.relative_to(repo_root.resolve()).as_posix()
+            return candidate.relative_to(_repo_root).as_posix()
         except ValueError:
             return None
 
@@ -95,7 +96,7 @@ def _resolve_url_to_context_rel(
     if resolved is None:
         return None
     try:
-        return resolved.relative_to(repo_root.resolve()).as_posix()
+        return resolved.relative_to(_repo_root).as_posix()
     except ValueError:
         return None
 
@@ -175,7 +176,6 @@ def _scan_text_lines(
 
 def _scan_json_values(
     obj: object,
-    source_rel: str,
     context_files: set[str],
     line_hint: int = 1,
 ) -> list[tuple[str, int]]:
@@ -192,10 +192,10 @@ def _scan_json_values(
                 results.append((target_rel, line_hint))
     elif isinstance(obj, dict):
         for v in obj.values():
-            results.extend(_scan_json_values(v, source_rel, context_files, line_hint))
+            results.extend(_scan_json_values(v, context_files, line_hint))
     elif isinstance(obj, list):
         for item in obj:
-            results.extend(_scan_json_values(item, source_rel, context_files, line_hint))
+            results.extend(_scan_json_values(item, context_files, line_hint))
     return results
 
 
@@ -303,7 +303,7 @@ class EvidenceScanner:
         lines = text.splitlines()
         seen: dict[tuple[int, str], ReferenceEvidence] = {}
         try:
-            json_hits = _scan_json_values(obj, source_rel, self._context_files)
+            json_hits = _scan_json_values(obj, self._context_files)
         except RecursionError:
             self._warnings.append(
                 f"[EvidenceScanner] JSON 嵌套过深，跳过：{source_rel}"

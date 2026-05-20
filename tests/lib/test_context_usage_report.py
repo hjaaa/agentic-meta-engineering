@@ -1624,7 +1624,6 @@ def test_main_exit_5_write_failure(tmp_path: Path, capsys) -> None:
     # mock ReportRenderer.write 抛 OSError
     from context_usage_report import ReportRenderer
 
-    @staticmethod
     def mock_write_error(*args, **kwargs):
         raise OSError("mock write failure")
 
@@ -1673,8 +1672,7 @@ def test_main_exit_3_fail_on_broken_index(tmp_path: Path, capsys) -> None:
 
     assert exit_code == 3
     captured = capsys.readouterr()
-    assert "ERROR" in captured.err
-    assert "BROKEN_LINKS_DETECTED" in captured.err or "断链" in captured.err
+    assert "BROKEN_LINKS_DETECTED" in captured.err
 
 
 def test_main_exit_4_fail_on_orphan(tmp_path: Path, capsys) -> None:
