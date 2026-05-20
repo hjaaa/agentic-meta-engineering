@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-006",
+  "status": "DONE",
+  "commit": "3c3234c",
+  "review_report": null,
+  "review_conclusion": null,
+  "touches_violations": [],
+  "post_dev_gate": "pending",
+  "completed_at": "2026-05-20T01:00:00Z"
+}
