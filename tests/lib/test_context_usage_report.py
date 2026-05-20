@@ -1417,3 +1417,29 @@ def test_renderer_write_tmp_path_suffix(tmp_path: Path) -> None:
 
     # 验证 tmp 写了 .md.tmp 路径
     assert any(".tmp" in p for p in written_paths)
+
+
+# F-010-FU F-D 回归：render_markdown 应消费 warnings 参数（不是死参数）
+# 修复 review-F-010-20260520 F-D：interfaces_frozen 签名声明 warnings 但函数体未渲染
+
+
+def test_renderer_markdown_renders_warnings_when_non_empty() -> None:
+    """warnings 非空时追加 ## Warnings 段，列出每条 warning。"""
+    renderer = _make_renderer()
+    md = renderer.render_markdown(
+        [],
+        [
+            "git log 失败（CalledProcessError），回退 fs_mtime",
+            "reviews/foo.json 解析失败，跳过：JSONDecodeError at line 12 col 5",
+        ],
+    )
+    assert "## Warnings" in md
+    assert "- git log 失败（CalledProcessError），回退 fs_mtime" in md
+    assert "- reviews/foo.json 解析失败" in md
+
+
+def test_renderer_markdown_empty_warnings_no_section() -> None:
+    """warnings 空时不输出 ## Warnings 段，保持 4 章节结构不被空段污染。"""
+    renderer = _make_renderer()
+    md = renderer.render_markdown([], [])
+    assert "## Warnings" not in md

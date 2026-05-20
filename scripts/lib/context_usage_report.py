@@ -1387,6 +1387,14 @@ class ReportRenderer:
             lines.append("（无）")
             lines.append("")
 
+        # F-010-FU F-D：仅在 warnings 非空时追加段，避免 4 章节结构被空段污染
+        if warnings:
+            lines.append("## Warnings")
+            lines.append("")
+            for w in warnings:
+                lines.append(f"- {w}")
+            lines.append("")
+
         return "\n".join(lines)
 
     def render_json(
