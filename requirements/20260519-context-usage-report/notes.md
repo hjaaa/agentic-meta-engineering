@@ -116,6 +116,43 @@
 - **与 F-009-FU-1（aggregate 拆分）+ F-006-FU-1（整文件 1496 行拆模块）合并为统一渲染/聚合层重构**
 - 来源：F-010 review-F-010-20260520.md F-B keep major，用户软确认 A 接受 follow-up
 
+### F-011-FU-1：_run 复杂度超线（合并 F-010-FU-1 / F-009-FU-1 渲染/聚合/调度层重构）
+
+- 位置：`scripts/lib/context_usage_report.py:1728-1825` `_run`
+- 指标：98 行 / 81 业务行（阈值 80）
+- 根因：单方法承载 "校验 + 扫描 + 过滤 + 时间戳 + 聚合 + 渲染 + 标志检查" 7 个阶段；已抽 _check_dirs / _build_file_cache / _build_all_files_for_git / _render_and_write / _print_summary 5 helper，主体仍偏高
+- 建议进一步抽：
+  - `_scan_and_filter(args, warnings) -> tuple[list[KnowledgeFile], IndexGraphResult, list[ReferenceEvidence]]`
+  - `_aggregate(files, graph_result, evidences, applied, timestamps, since_days, now) -> list[KnowledgeUsageSummary]`
+- **与 F-010-FU-1 / F-009-FU-1 / F-006-FU-1 合并为统一渲染/聚合/调度/拆模块 refactor**
+- 来源：F-011 review-F-011-20260520.md M3 keep major，用户软确认 A 接受 follow-up
+
+### F-011-FU 系列 minor / drop（已被 critic + judge drop，仅备忘）
+
+- F-A SEC-001 --project 路径穿越（drop，rel_path POSIX normalize 不命中含 `..` 攻击）
+- F-B SEC-002 _build_file_cache evidence.source 路径穿越（drop，source 来自 rglob.relative_to 真实路径）
+- F-C SEC-003/004 路径泄露 + --output 无边界（follow-up m2：本地 CLI 信任模型，文档补一句）
+- F-D _parse_args 79 行（drop，声明式 CC=1）
+- F-F 文件 1847 行（drop，累积债 F-006-FU-1）
+- F-G _parse_since else 死代码（drop，防御性兜底）
+- F-H import argparse 缺 noqa（drop，ruff `select=["F"]` 不报 E402）
+- F-I --since exit 1 vs 设计 exit 1=argparse（drop，设计未禁止业务层复用）
+- F-J 函数体内 from common import（drop，lazy import 避循环依赖）
+- F-K file=sys.stdout 冗余（drop，风格 nit）
+- F-L 测试 @staticmethod 装饰局部函数（follow-up m3：pytest 实测通过，可清理）
+- F-M 测试函数体内 import（drop，pytest 常见 lazy 模式）
+- F-N .tmp 名固定（drop，单进程单线程契约）
+- F-O git log 路径过长（drop，250KB < ARG_MAX 1MB）
+- F-P 双 stat()（drop，< 1ms）
+- F-Q file_cache 无大小上限（drop，requirements/*.md < MB 级）
+- F-R evidences 双遍历（drop，微优化）
+- F-T BROKEN_LINKS_DETECTED 文案多 `ERROR:` 前缀（follow-up m1：CI grep 仍命中，文案对齐设计）
+- F-U main 注释 exit code 2 vs 设计 exit 1 矛盾（drop，注释 nit，代码透传 argparse 正确）
+- F-V main 无 catch-all 兜底（drop，Python CLI 标准透传）
+- F-X _check_dirs 消息 "不存在或非目录"（drop，设计未要求字面一致）
+
+---
+
 ### F-010-FU 系列 minor / drop（已被 critic + judge drop，仅备忘）
 
 - F-A write 原子化（os.replace 失败 tmp 残留 / 多进程 .tmp 命名冲突）（drop，CLI 单次写不在并发契约内）

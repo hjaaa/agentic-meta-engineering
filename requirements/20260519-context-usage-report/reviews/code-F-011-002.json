@@ -1,0 +1,79 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-20260519-context-usage-report-code-F-011-002",
+  "requirement_id": "20260519-context-usage-report",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-20 14:37:50",
+  "reviewed_commit": "cab4933",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "06bbd2d3979818323fa61fa49191273eb4e8bc02403953878969d56341380b3f"
+    },
+    {
+      "path": "artifacts/tasks/F-011.md",
+      "sha256": "ef773be0e6640fa4e101e93df83743f95d9949a8ee0fdc56087580a6eb9e60a5"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 88,
+  "dimensions": {
+    "design_consistency": {
+      "score": 90,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/context_usage_report.py:1815/1821 stderr 文案 'ERROR: BROKEN_LINKS_DETECTED ({N} 条)' 与 detailed-design.md:765 'BROKEN_LINKS_DETECTED (N)' 文案不字面一致；CI grep 关键字仍命中，follow-up"
+        }
+      ]
+    },
+    "security": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/context_usage_report.py:1637 OSError 直接 str(e) 进 stderr 可能泄露文件路径；本地 CLI 工具信任模型可接受，follow-up"
+        }
+      ]
+    },
+    "concurrency": {
+      "score": 95,
+      "issues": []
+    },
+    "complexity": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/context_usage_report.py:1728-1825 _run() 函数 98 行（含空行 81 业务行），超过 80 行阈值；与 F-009 aggregate / F-010 render_markdown 同型债务，按用户决策本轮挂 follow-up"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 92,
+      "issues": []
+    },
+    "auxiliary_spec": {
+      "score": 90,
+      "issues": []
+    },
+    "performance": {
+      "score": 92,
+      "issues": []
+    },
+    "history_context": {
+      "score": 92,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "M3 _run 98 行复杂度债务与 F-009 aggregate / F-010 render_markdown 同型出现，建议测试验收阶段统一拉一个 refactor follow-up 合并处理",
+    "m2/m3 两个 minor（BROKEN_LINKS 文案、OSError 路径泄露）建议合并到 detailed-design.md 一次性更新：固化 stderr 文案契约 + 明示本地 CLI 工具对路径泄露的豁免"
+  ],
+  "scope": {
+    "feature_id": "F-011"
+  },
+  "supersedes": "REV-20260519-context-usage-report-code-F-011-001"
+}

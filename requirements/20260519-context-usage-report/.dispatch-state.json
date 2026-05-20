@@ -1,7 +1,5 @@
 {
   "schema_version": "1.0",
   "req_id": "20260519-context-usage-report",
-  "current_feature": "F-011",
-  "acquired_at": "2026-05-20T14:09:21+08:00",
-  "acquired_by_pid": 32730
+  "current_feature": null
 }
