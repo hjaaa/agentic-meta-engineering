@@ -56,3 +56,4 @@
 2026-05-20 15:42:16 [development] F-013 开始（model=sonnet, complexity=light，touches=tests/fixtures/context_usage_report/+tests/lib/test_context_usage_report.py，依赖 F-011/F-012 done；本需求最后 1 feature）
 2026-05-20 15:55:00 [development] F-013 post-dev gate Bug-18 复发：12 warning 全部 pre-existing（artifacts/*.md / review-*.md），F-013 仅触 tests/fixtures + tests/lib 范围 → 视为已确认通过直接进 /code-review
 2026-05-20 16:48:40 [development] F-013 用户软确认 OK 转 done → review-002 looks_clean (91, supersedes -001 needs_attention 76) + 3 suggestions fix commit cf66bd7（pytest mark 注册 + slow mark + 拆分准则沉淀）；fix_commits=[3c310a6, 5a04216, cf66bd7]；status=done + receipt review_conclusion=looks_clean_after_fix + review_report artifacts/review-F-013-20260520.md；dispatch-lock released；本需求 13/13 features 全部完成（check_features --all-done exit=0），可推进到 testing 阶段
+2026-05-20 16:49:38 [phase-transition] development → testing
