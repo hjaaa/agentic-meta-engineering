@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -45,6 +46,18 @@ class KnowledgeFile:
     fs_mtime: datetime
 
 
+@dataclass(frozen=True)
+class GitTimestamp:
+    """git log 查询结果或 fs_mtime 回退的时间戳载体。
+
+    三字段对应 detailed-design.md §数据结构（F-008）；frozen 便于放进 set/dict。
+    """
+
+    first_commit_at: datetime | None   # 文件首次提交（UTC，秒精度）；空仓/shallow → None
+    last_commit_at: datetime | None    # 最近一次 commit（UTC，秒精度）
+    source: Literal["git_log", "fs_mtime"]  # 数据来源
+
+
 def _classify_kind(rel_path: str) -> Literal["team", "project"]:
     """按 rel_path 第二段判定 team / project。
 
@@ -60,6 +73,146 @@ def _classify_kind(rel_path: str) -> Literal["team", "project"]:
     if len(parts) >= 2 and parts[0] == "context" and parts[1] == "project":
         return "project"
     return "team"
+
+
+def fetch_git_timestamps(
+    files: list[KnowledgeFile],
+    since_days: int,
+    *,
+    repo_root: Path | None = None,
+    now: datetime | None = None,
+) -> tuple[dict[str, GitTimestamp], list[str]]:
+    """批量获取文件的 git 提交时间戳（F-008）。
+
+    通过 git log 子进程查询文件的首次与最近提交时间；失败时回退 fs_mtime。
+
+    Args:
+        files:       KnowledgeFile 列表（含 rel_path 和 fs_mtime）
+        since_days:  查询范围（days），传给 git log --since
+        repo_root:   仓库根（默认 Path.cwd()）；git log cwd 参数
+        now:         注入当前时间（用于测试）；在回退场景不使用，仅预留
+
+    Returns:
+        tuple:
+            - dict，key 为 KnowledgeFile.rel_path（POSIX），value 为 GitTimestamp
+            - warnings 列表（仅包含全局异常提示，非单文件级）
+
+    异常处理（detailed-design.md L677-L693）：
+        - subprocess.CalledProcessError / FileNotFoundError / OSError → 全局回退
+        - 每个文件取 fs_mtime 并设 source="fs_mtime", first_commit_at=None
+        - warnings 追加一条全局提示（非每文件）
+    """
+    if repo_root is None:
+        repo_root = Path.cwd()
+    repo_root = repo_root.resolve()
+
+    if not files:
+        return {}, []
+
+    warnings: list[str] = []
+    result: dict[str, GitTimestamp] = {}
+
+    try:
+        # 构造 git log 命令：fetch 所有文件的首次和最近提交时间
+        # --since=<N>d：只查最近 N 天
+        # --name-only：每个 commit 后跟修改的文件列表
+        # --pretty=%H|%cI：commit hash | ISO8601 时间戳（含时区）
+        # --：明确分隔，避免歧义
+        rel_paths = [f.rel_path for f in files]
+        cmd = [
+            "git", "log",
+            f"--since={since_days}d",
+            "--name-only",
+            "--pretty=%H|%cI",
+            "--",
+        ] + rel_paths
+
+        proc = subprocess.run(
+            cmd,
+            cwd=repo_root,
+            text=True,
+            check=True,
+            capture_output=True,
+        )
+
+        # 解析 git log 输出
+        # git log 输出格式（newest-first）：
+        #   hash|ISO8601
+        #   (blank line)
+        #   file1
+        #   file2
+        #   hash|ISO8601
+        #   (blank line)
+        #   file3
+        # ...
+        # git log 默认最新优先，所以第一个见到的 commit 是最新的（last_commit_at）
+        output = proc.stdout
+        timestamps: dict[str, tuple[datetime, datetime]] = {}  # path → (first, last)
+
+        if output.strip():
+            lines = output.split("\n")
+            current_commit_time: datetime | None = None
+
+            for line in lines:
+                stripped = line.strip()
+                if not stripped:
+                    # 空行：跳过
+                    continue
+
+                if "|" in stripped:
+                    # 新 commit header（格式：hash|ISO8601）
+                    try:
+                        ts_str = stripped.split("|", 1)[1]
+                        current_commit_time = (
+                            datetime.fromisoformat(ts_str)
+                            .astimezone(timezone.utc)
+                            .replace(microsecond=0)
+                        )
+                    except (ValueError, IndexError):
+                        current_commit_time = None
+                elif current_commit_time is not None:
+                    # 文件路径：关联到当前 commit_time
+                    path = stripped
+                    if path not in timestamps:
+                        # 首次见到该文件
+                        # git log newest-first，所以这次见到是 last_commit_at
+                        # 下次再见到时才是 first_commit_at
+                        timestamps[path] = (current_commit_time, current_commit_time)
+                    else:
+                        # 再次见到该文件
+                        # 保持前面记录的 last_commit_at，更新 first_commit_at
+                        _, last = timestamps[path]
+                        timestamps[path] = (current_commit_time, last)
+
+        # 构造返回结果
+        for f in files:
+            if f.rel_path in timestamps:
+                first, last = timestamps[f.rel_path]
+                result[f.rel_path] = GitTimestamp(
+                    first_commit_at=first,
+                    last_commit_at=last,
+                    source="git_log",
+                )
+            else:
+                # 文件不在 git log 结果中（可能超出 since_days 范围）
+                # 视为未找到 git 记录，用 fs_mtime 回退
+                result[f.rel_path] = GitTimestamp(
+                    first_commit_at=None,
+                    last_commit_at=f.fs_mtime,
+                    source="fs_mtime",
+                )
+
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError) as exc:
+        # git log 失败或 git 缺失：全部回退到 fs_mtime
+        warnings.append(f"git log 失败，回退 fs_mtime: {exc}")
+        for f in files:
+            result[f.rel_path] = GitTimestamp(
+                first_commit_at=None,
+                last_commit_at=f.fs_mtime,
+                source="fs_mtime",
+            )
+
+    return result, warnings
 
 
 class ContextInventory:
