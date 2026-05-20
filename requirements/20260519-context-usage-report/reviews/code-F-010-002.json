@@ -1,0 +1,69 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-20260519-context-usage-report-code-F-010-002",
+  "requirement_id": "20260519-context-usage-report",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-20 14:02:58",
+  "reviewed_commit": "93ea344",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "06bbd2d3979818323fa61fa49191273eb4e8bc02403953878969d56341380b3f"
+    },
+    {
+      "path": "artifacts/tasks/F-010.md",
+      "sha256": "249f8f73e8d06d107e4c04affd5e9c125a613c8e2796b290c5bfd1bf2502c0fc"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 88,
+  "dimensions": {
+    "design_consistency": {
+      "score": 92,
+      "issues": []
+    },
+    "security": {
+      "score": 92,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 92,
+      "issues": []
+    },
+    "complexity": {
+      "score": 78,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/context_usage_report.py:1284-1398 render_markdown 可执行体规模仍偏高（CC≈12 / 嵌套 4），按 F-010-FU-1 与 F-009-FU-1 合并到统一渲染层重构 follow-up，本轮按用户决策不修"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 90,
+      "issues": []
+    },
+    "auxiliary_spec": {
+      "score": 90,
+      "issues": []
+    },
+    "performance": {
+      "score": 90,
+      "issues": []
+    },
+    "history_context": {
+      "score": 92,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "F-010-FU-1（保留）：render_markdown 拆分到 4 个 _render_*_section helper（含本轮新增 _render_warnings_section），主体降至 ~15 行；与 F-009-FU-1 合并到统一渲染层重构 follow-up",
+    "跨维度洞察：本轮 F-D 修复（追加 ## Warnings 段）已消除 Markdown/JSON 渲染面 warnings 可见性不对称，render_markdown 接口死参数闭环；F-B 复杂度问题随之单点收敛——单一 follow-up 可同时解 F-009-FU-1 + F-010-FU-1"
+  ],
+  "scope": {
+    "feature_id": "F-010"
+  },
+  "supersedes": "REV-20260519-context-usage-report-code-F-010-001"
+}

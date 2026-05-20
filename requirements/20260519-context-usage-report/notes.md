@@ -101,6 +101,45 @@
 - 与 F-006-FU-1（整文件 1220 行拆模块）协同处理：先拆 module → 再拆 func
 - 来源：F-009 review-F-009-20260520.md F-3 keep major，用户软确认 A 接受 follow-up
 
+### F-010-FU-1：render_markdown 复杂度超线（合并 F-009-FU-1 渲染/聚合层重构）
+
+- 位置：`scripts/lib/context_usage_report.py:1284-1398` `ReportRenderer.render_markdown`
+- 指标：可执行 89 行（+warnings 段后约 96 行）/ 圈复杂度 CC≈12 / 嵌套深度 4
+- 项目硬约束：80 行 / CC 10 / depth 4
+- 根因：单方法承载 4 章节 + warnings 渲染（"总览 / 高价值知识 / 待治理知识 / 引用明细 / Warnings"）
+- 建议抽取：
+  - `_render_overview_section(summaries) -> list[str]`
+  - `_render_high_value_section(summaries) -> list[str]`
+  - `_render_to_review_section(summaries) -> list[str]`
+  - `_render_reference_detail_section(summaries) -> list[str]`
+  - `_render_warnings_section(warnings) -> list[str]`
+- **与 F-009-FU-1（aggregate 拆分）+ F-006-FU-1（整文件 1496 行拆模块）合并为统一渲染/聚合层重构**
+- 来源：F-010 review-F-010-20260520.md F-B keep major，用户软确认 A 接受 follow-up
+
+### F-010-FU 系列 minor / drop（已被 critic + judge drop，仅备忘）
+
+- F-A write 原子化（os.replace 失败 tmp 残留 / 多进程 .tmp 命名冲突）（drop，CLI 单次写不在并发契约内）
+- F-C 文件 1496 行 + 测试 1419 行（drop，累积债，与 F-006-FU-1/F-009-FU-1 同源）
+- F-E mkdir Raises docstring 不全（drop，OSError 已覆盖子类）
+- F-F summaries 多次遍历（drop，5000 files 仍在 0.5s SLA）
+- F-G render_json TypeError 文档（drop，受控类型不会触发）
+- F-H history-context import 注释缩短（drop，事实陈述，F-010 仅删注释字符串无逻辑变更）
+- F-I mid-file import 注释缺失（drop，与 F-009 drop 的 F-6 同模式）
+- F-J WHAT vs WHY 注释（drop，章节 navigational marker）
+- F-K JSON_SCHEMA_URL 占位常量（drop，设计 L413 自身已标 `[待补充]`）
+- F-L `[:50]` 魔数（drop，一次使用命名收益低）
+- F-M `patch('os.replace')` 路径（drop，当前 import os 写法下正确）
+- F-N context_line 空字符串 → '... |'（drop，EvidenceScanner 保证非空）
+- F-O Markdown `|` 注入（drop，context/** 受信任）
+- F-P write 路径无边界（drop，main() 契约保证）
+- F-Q JSON config 路径泄露（drop，设计 L574-580 schema 要求）
+- F-R __init__ 设计文档未声明（drop，interfaces_frozen 不约束私有构造）
+- F-S generated_at 类型严格（drop，now: datetime 非 Optional）
+- F-T context_line JSON 不截断（drop，与 Markdown :50 分工）
+- F-U history-context 文件高频变更 + 测试 import 交叉（drop，与 F-009 F-2 同模式）
+
+---
+
 ### F-009-FU 系列 minor / drop（已被 critic + judge drop，仅备忘）
 
 - F-5 UsageAggregator.__init__ 缺 Args docstring（drop，detailed-design.md L376-384 已逐字段说明）
