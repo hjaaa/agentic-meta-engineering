@@ -1,0 +1,24 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-007",
+  "status": "DONE",
+  "commit": "a2c29ff",
+  "fix_commits": [],
+  "review_report": null,
+  "review_conclusion": null,
+  "touches_violations": [
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/.worktrees/feat-req-20260519-context-usage-report/tests/lib/test_context_usage_report_applied_classifier.py",
+      "ts": "2026-05-20T02:21:26+00:00",
+      "tool": "Edit"
+    },
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/.worktrees/feat-req-20260519-context-usage-report/tests/lib/test_context_usage_report_applied_classifier.py",
+      "ts": "2026-05-20T02:21:59+00:00",
+      "tool": "Edit"
+    }
+  ],
+  "post_dev_gate": "passed_with_force_blockers",
+  "post_dev_gate_note": "Bug-18 同 F-006：W002/W003 6 处全是 pre-existing 文档（含 F-006 review report 新增 1），不在 F-007 diff（F-007 仅触及 scripts/lib/context_usage_report.py + 新 test 文件）；force-with-blockers 放行",
+  "completed_at": "2026-05-20T02:10:00Z"
+}

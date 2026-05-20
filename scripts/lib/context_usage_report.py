@@ -712,19 +712,28 @@ class AppliedSignalClassifier:
         for ev in evidences:
             by_source[ev.source].append(ev)
 
-        for source_rel, evs in by_source.items():
-            # 尝试从 file_cache 中找到对应内容（key 为绝对路径）
-            raw_text: str | None = None
-            for cache_key, cache_val in file_cache.items():
-                try:
-                    if str(cache_key).endswith(source_rel) or cache_key.name == Path(source_rel).name:
-                        # 精确后缀匹配
-                        if str(cache_key).replace("\\", "/").endswith(source_rel):
-                            raw_text = cache_val
-                            break
-                except Exception:
-                    continue
+        # F-007 fix G-4：O(K) 预建索引，避免 endswith(source_rel) 子串误匹配
+        # 例：source_rel="team/x.md" 不再同时命中 "/abs/team/x.md" 和 "/abs/other/x.md"
+        cache_by_rel: dict[str, str] = {}
+        cache_by_name: dict[str, str] = {}
+        for cache_key, cache_text in file_cache.items():
+            key_str = str(cache_key).replace("\\", "/")
+            cache_by_rel[key_str] = cache_text
+            cache_by_name[cache_key.name] = cache_text
 
+        for source_rel, evs in by_source.items():
+            # 精确匹配：归一化 source_rel
+            normalized = source_rel.replace("\\", "/")
+            raw_text: str | None = cache_by_rel.get(normalized)
+            if raw_text is None:
+                # fallback 1：cache key 以 '/' + normalized 结尾（带分隔符，避免子串误匹配）
+                for ckey, ctext in cache_by_rel.items():
+                    if ckey == normalized or ckey.endswith("/" + normalized):
+                        raw_text = ctext
+                        break
+            if raw_text is None:
+                # fallback 2：basename 匹配（最弱，保留以兼容 F-006 EvidenceScanner 行为）
+                raw_text = cache_by_name.get(Path(normalized).name)
             if raw_text is None:
                 # file_cache 中无此文件，跳过（保守：不命中）
                 continue

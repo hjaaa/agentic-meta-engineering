@@ -14,8 +14,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pytest
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts" / "lib"))
 
 from context_usage_report import (  # noqa: E402
@@ -409,3 +407,44 @@ def test_evidence_before_first_h2_no_window_hit(tmp_path: Path) -> None:
 
     hits = [r for r in results if r.rule == "window_hit"]
     assert len(hits) == 0, f"H2 之前引用行不应 window_hit，实际：{results}"
+
+
+# ---------------------------------------------------------------------------
+# F-007 fix G-4 · file_cache endswith 误匹配回归测试
+# ---------------------------------------------------------------------------
+
+
+def test_cache_endswith_misuse_no_false_match() -> None:
+    """精确匹配验证：source_rel='team/x.md' 应命中 /abs/team/x.md 而非 /abs/other/x.md。
+
+    旧实现 endswith(source_rel) 会让两个路径都匹配；修复后只命中路径段完全对齐的那个。
+    """
+    content_a = "## 小节\n引用行 context/team/foo.md\n风险分析完毕。\n"
+    content_b = "## 小节\n引用行 context/team/foo.md\n这是错误内容，不应被匹配。\n"
+
+    file_cache: dict[Path, str] = {
+        Path("/abs/team/x.md"): content_a,
+        Path("/abs/other/x.md"): content_b,
+    }
+    ev = _make_evidence(
+        target="context/team/foo.md",
+        source="team/x.md",
+        line=2,
+    )
+    classifier = AppliedSignalClassifier()
+
+    results = classifier.classify([ev], file_cache)
+
+    # 应有命中（content_a 含关键字"风险"，在 ## 小节内，窗口内）
+    assert len(results) >= 1, f"应命中 /abs/team/x.md 的内容，实际：{results}"
+    # 所有命中都来自 content_a（matched_keyword 属于 content_a 的关键字）
+    for r in results:
+        assert r.matched_keyword != "这是错误内容", (
+            f"误匹配到 /abs/other/x.md 的内容：{r}"
+        )
+    # 验证确实命中了 content_a 中的"风险"关键字（window_hit 路径）
+    window_hits = [r for r in results if r.rule == "window_hit"]
+    assert len(window_hits) >= 1, f"应有 window_hit 命中 content_a，实际：{results}"
+    assert window_hits[0].matched_keyword == "风险", (
+        f"期望命中关键字'风险'，实际：{window_hits[0].matched_keyword}"
+    )
