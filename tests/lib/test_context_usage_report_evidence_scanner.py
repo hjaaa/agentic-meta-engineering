@@ -326,3 +326,103 @@ def test_txt_and_yaml_files_scanned(tmp_path: Path) -> None:
     targets = {ev.target for ev in results}
     assert "context/team/bar.md" in targets, ".txt 中的裸路径应被识别"
     assert "context/team/foo.md" in targets, ".yaml 中的裸路径应被识别"
+
+
+# ---------------------------------------------------------------------------
+# AC-3 补充 · fail-open 覆盖：文本文件 PermissionError
+# ---------------------------------------------------------------------------
+
+
+def test_text_scan_permission_error_fail_open(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """文本文件读权限拒绝时，warnings 累一条 + scan 不抛。"""
+    repo_root, req_dir, context_files = _make_fake_repo(tmp_path)
+
+    doc = req_dir / "r010" / "notes.md"
+    doc.parent.mkdir(parents=True)
+    doc.write_text("参考 context/team/foo.md\n", encoding="utf-8")
+
+    original_read_text = Path.read_text
+
+    def _patched_read_text(self: Path, *args, **kwargs):  # type: ignore[override]
+        if self == doc:
+            raise PermissionError("Permission denied")
+        return original_read_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", _patched_read_text)
+
+    scanner = EvidenceScanner(req_dir, context_files, repo_root)
+    results = scanner.scan()
+
+    assert isinstance(results, list), "scan() 不应抛异常"
+    assert len(scanner.warnings) >= 1, "应追加至少一条 warning"
+    assert any("notes.md" in w or "不可读" in w for w in scanner.warnings), (
+        f"warning 应提及不可读文件，实际：{scanner.warnings}"
+    )
+    # 该文件内容不应出现在结果中
+    sources = {ev.source for ev in results}
+    assert not any("r010" in s for s in sources), "PermissionError 的文件不应出现在结果中"
+
+
+# ---------------------------------------------------------------------------
+# AC-3 补充 · fail-open 覆盖：resolve() 越界 repo_root（路径穿越）
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_path_traversal_fail_open(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """resolve() 越界 repo_root 时跳过并累 warnings，scan 不抛。"""
+    repo_root, req_dir, context_files = _make_fake_repo(tmp_path)
+
+    doc = req_dir / "r011" / "notes.md"
+    doc.parent.mkdir(parents=True)
+    doc.write_text("参考 context/team/foo.md\n", encoding="utf-8")
+
+    # 构造越界路径：在 repo_root 之外
+    outside_path = tmp_path.parent / "outside_file.md"
+    original_resolve = Path.resolve
+
+    def _patched_resolve(self: Path, *args, **kwargs):  # type: ignore[override]
+        resolved = original_resolve(self, *args, **kwargs)
+        # 只对目标文档模拟越界
+        if self == doc:
+            return outside_path
+        return resolved
+
+    monkeypatch.setattr(Path, "resolve", _patched_resolve)
+
+    scanner = EvidenceScanner(req_dir, context_files, repo_root)
+    results = scanner.scan()
+
+    assert isinstance(results, list), "scan() 不应抛异常"
+    assert len(scanner.warnings) >= 1, "越界应追加至少一条 warning"
+    assert any("越界" in w or "repo_root" in w.lower() for w in scanner.warnings), (
+        f"warning 应提及越界，实际：{scanner.warnings}"
+    )
+    sources = {ev.source for ev in results}
+    assert not any("r011" in s for s in sources), "越界文件不应出现在结果中"
+
+
+# ---------------------------------------------------------------------------
+# AC-3 补充 · fail-open 覆盖：JSON 嵌套过深 RecursionError
+# ---------------------------------------------------------------------------
+
+
+def test_json_recursion_depth_fail_open(tmp_path: Path) -> None:
+    """JSON 嵌套过深时 RecursionError fail-open：warnings 累一条，scan 不抛。"""
+    repo_root, req_dir, context_files = _make_fake_repo(tmp_path)
+
+    # 构造深度 2000 的嵌套 JSON（远超默认递归限制 ~1000）
+    depth = 2000
+    deep_json = '{"a":' * depth + '"x"' + "}" * depth
+
+    doc = req_dir / "r012" / "deep.json"
+    doc.parent.mkdir(parents=True)
+    doc.write_text(deep_json, encoding="utf-8")
+
+    scanner = EvidenceScanner(req_dir, context_files, repo_root)
+    results = scanner.scan()
+
+    assert isinstance(results, list), "scan() 不应抛 RecursionError"
+    assert len(scanner.warnings) >= 1, "嵌套过深应追加至少一条 warning"
+    assert any("嵌套过深" in w for w in scanner.warnings), (
+        f"warning 应含'嵌套过深'，实际：{scanner.warnings}"
+    )

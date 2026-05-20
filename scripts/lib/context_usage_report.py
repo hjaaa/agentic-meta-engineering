@@ -567,7 +567,14 @@ class EvidenceScanner:
 
         lines = text.splitlines()
         seen: dict[tuple[int, str], ReferenceEvidence] = {}
-        for target_rel, line_no in _scan_json_values(obj, source_rel, self._context_files):
+        try:
+            json_hits = _scan_json_values(obj, source_rel, self._context_files)
+        except RecursionError:
+            self._warnings.append(
+                f"[EvidenceScanner] JSON 嵌套过深，跳过：{source_rel}"
+            )
+            return []
+        for target_rel, line_no in json_hits:
             # JSON 扫描行号用近似值（从 1 开始）；若同 target 多次出现取首次
             # 尝试在原文中定位第一次出现的行
             actual_line = line_no
