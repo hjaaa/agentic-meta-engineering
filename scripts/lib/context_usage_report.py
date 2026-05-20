@@ -599,3 +599,192 @@ class EvidenceScanner:
     def warnings(self) -> list[str]:
         """累计的非致命告警（解析失败、越界等）。"""
         return list(self._warnings)
+
+
+# ---------------------------------------------------------------------------
+# F-007 · AppliedSignalClassifier：复合窗口 + 显式升级，把 ReferenceEvidence
+# 升级判定为 AppliedEvidence
+# 接口/数据结构来源：detailed-design.md §组件 4 / §数据结构（interfaces_frozen）
+# ---------------------------------------------------------------------------
+
+import re as _re_applied  # noqa: E402（已在顶层 import re，此为别名避免遮蔽）
+
+
+@dataclass(frozen=True)
+class AppliedEvidence:
+    """一条被判定为 applied 的引用证据。
+
+    字段对应 detailed-design.md §AppliedEvidence（interfaces_frozen）。
+    """
+
+    reference: ReferenceEvidence            # 升级前的原始引用（F-006 dataclass）
+    rule: Literal["window_hit", "explicit_upgrade"]  # 命中规则
+    matched_keyword: str                    # 命中的关键字 / 短语
+    section_heading: str | None             # 仅 window_hit 提供；文件无 ## heading 则 None
+
+
+# 用于识别 ## 二级标题（H2，不多不少两个 # ）
+_H2_RE = _re_applied.compile(r"^##\s+(.+?)\s*$")
+# 用于识别任意标题（H1-H6），用于终止当前 H2 小节
+_ANY_H_RE = _re_applied.compile(r"^(#{1,6})\s+")
+
+
+def _build_section_map(lines: list[str]) -> dict[int, str | None]:
+    """把 masked_text 的每一行映射到所属 ## 二级小节标题。
+
+    规则（保守原则）：
+    - 第一个 H2 之前的行（包括 H1 下方）→ None（不参与窗口同小节判定）
+    - 位于某 H2 之内、下一个 H1/H2 之前的行 → 该 H2 标题文本
+    - H1 重置当前小节为 None（H1 结束前一个 H2 的作用域）
+
+    Args:
+        lines: masked_text.splitlines() 的结果（行 index 0-based，行号 1-based = index+1）
+
+    Returns:
+        dict，key 为 1-based 行号，value 为所属 H2 标题文本（或 None）。
+    """
+    result: dict[int, str | None] = {}
+    current_section: str | None = None
+
+    for idx, line in enumerate(lines):
+        lineno = idx + 1
+        # 检测 H1（# 单个井号）：重置 section
+        h_match = _ANY_H_RE.match(line)
+        if h_match:
+            level = len(h_match.group(1))
+            if level == 1:
+                current_section = None
+            elif level == 2:
+                h2_match = _H2_RE.match(line)
+                current_section = h2_match.group(1) if h2_match else None
+            # H3+ 不改变当前 H2 小节
+        result[lineno] = current_section
+
+    return result
+
+
+class AppliedSignalClassifier:
+    """把 ReferenceEvidence 升级判定为 AppliedEvidence。
+
+    判定规则（来源：requirement.md + detailed-design.md §组件 4）：
+
+    路径 A（复合窗口命中）：
+      - 引用所在行在某 ## 二级小节内（section_heading 不为 None）
+      - AND 前 5 行 + 后 10 行（16 行窗口，masked 文本）内出现关键字
+      - 关键字不在 fenced/inline code 内（mask_code_blocks 已处理）
+      - 关键字与引用行必须在同一 ## 小节
+
+    路径 B（显式升级声明）：
+      - 引用所在行的源文件全文（masked）出现任一 UPGRADE_PHRASES 短语
+      - 子串匹配
+
+    两路任一命中即为 applied；同一 reference 双路均命中时各产一条（不去重）。
+    保守原则：宁可漏判，不可误判——窗口边界外不命中，不同 ## 小节不命中。
+    """
+
+    WINDOW_BEFORE: int = 5
+    WINDOW_AFTER: int = 10
+    APPLIED_KEYWORDS: frozenset[str] = frozenset({"Decision", "决策", "应对", "风险", "验证"})
+    UPGRADE_PHRASES: frozenset[str] = frozenset({
+        "升级为 checklist", "升级为 SOP", "升级为测试", "升级为 gate",
+        "升级为 hook", "来自该经验", "按该经验落 test", "按该经验落 gate",
+    })
+
+    def classify(
+        self, evidences: list[ReferenceEvidence], file_cache: dict[Path, str]
+    ) -> list[AppliedEvidence]:
+        """对每条 ReferenceEvidence 判定是否构成 applied。
+
+        Args:
+            evidences:   来自 EvidenceScanner 的引用证据列表
+            file_cache:  source 文件内容缓存，key 为绝对路径 Path，value 为文件全文
+
+        Returns:
+            list[AppliedEvidence]，只包含命中条目。同一 reference 双路命中时各产一条。
+
+        不抛业务异常（fail-open 风格）。
+        """
+        results: list[AppliedEvidence] = []
+
+        # 按 source 文件分组，每个文件只处理一次 mask 和 section map
+        from collections import defaultdict
+        by_source: dict[str, list[ReferenceEvidence]] = defaultdict(list)
+        for ev in evidences:
+            by_source[ev.source].append(ev)
+
+        for source_rel, evs in by_source.items():
+            # 尝试从 file_cache 中找到对应内容（key 为绝对路径）
+            raw_text: str | None = None
+            for cache_key, cache_val in file_cache.items():
+                try:
+                    if str(cache_key).endswith(source_rel) or cache_key.name == Path(source_rel).name:
+                        # 精确后缀匹配
+                        if str(cache_key).replace("\\", "/").endswith(source_rel):
+                            raw_text = cache_val
+                            break
+                except Exception:
+                    continue
+
+            if raw_text is None:
+                # file_cache 中无此文件，跳过（保守：不命中）
+                continue
+
+            try:
+                masked_text = mask_code_blocks(raw_text)
+                masked_lines = masked_text.splitlines()
+                section_map = _build_section_map(masked_lines)
+                total_lines = len(masked_lines)
+            except Exception:
+                continue
+
+            # 预计算：全文是否含显式升级短语（路径 B，全文级别）
+            upgrade_hit: str | None = None
+            for phrase in self.UPGRADE_PHRASES:
+                if phrase in masked_text:
+                    upgrade_hit = phrase
+                    break
+
+            for ev in evs:
+                ref_lineno = ev.line  # 1-based
+
+                # --- 路径 B：显式升级声明（全文匹配） ---
+                if upgrade_hit is not None:
+                    results.append(AppliedEvidence(
+                        reference=ev,
+                        rule="explicit_upgrade",
+                        matched_keyword=upgrade_hit,
+                        section_heading=None,
+                    ))
+
+                # --- 路径 A：复合窗口命中 ---
+                ref_section = section_map.get(ref_lineno)
+                if ref_section is None:
+                    # 引用行不在任何 ## 小节内，路径 A 不命中（保守原则）
+                    continue
+
+                # 计算窗口范围（1-based，含边界）
+                win_start = max(1, ref_lineno - self.WINDOW_BEFORE)
+                win_end = min(total_lines, ref_lineno + self.WINDOW_AFTER)
+
+                window_keyword: str | None = None
+                for lineno in range(win_start, win_end + 1):
+                    # 关键字命中行必须与引用行在同一 ## 小节
+                    if section_map.get(lineno) != ref_section:
+                        continue
+                    line_text = masked_lines[lineno - 1]  # 0-based index
+                    for kw in self.APPLIED_KEYWORDS:
+                        if kw in line_text:
+                            window_keyword = kw
+                            break
+                    if window_keyword is not None:
+                        break
+
+                if window_keyword is not None:
+                    results.append(AppliedEvidence(
+                        reference=ev,
+                        rule="window_hit",
+                        matched_keyword=window_keyword,
+                        section_heading=ref_section,
+                    ))
+
+        return results
