@@ -736,6 +736,42 @@ running   (K): <state == "running">
 - ~~**Bug-14（dev-feature-loop 空转）属于阶段 7 自动化失效的根本性问题**~~ → 已修，commit `4117380`，见下方"已修 Bug 索引"。
 - 已知次生 bug：**rollback 不识别 `.claude/workflows/<name>.yaml`**，只查 `run_dir/workflow.yaml` 及 1-3 层父目录。本次 rollback 用 `requirements/<id>/workflow.yaml -> ../../.claude/workflows/requirement/standard-8phase.yaml` 软链兜底；建议未来在 `workflow_rollback_topology._find_workflow_yaml` 加 `.claude/workflows/**/<workflow_name>.yaml` 兜底（workflow_name 从 jsonl `workflow_started` 事件读）。
 
+### 大测试文件按 feature 拆分准则（F-013 复核 F-1 沉淀）
+
+来源：F-013 code-review 复核 F-1（test_context_usage_report.py 2012 行 > 500），subagent 拆分实践 commit `3c310a6`。供后续大文件拆分参考。
+
+**触发条件**：单测试文件超 500 行 / 跨 ≥ 3 个 feature / grep / 定位耗时 > 30 秒。
+
+**拆分原则**：
+
+1. **按 feature 一对一映射**：原文件 `test_X.py` 跨 feat F-A/B/C/D → 拆 `test_X_A.py` / `test_X_B.py` / ... 主文件仅留入口（如 CLI / main）
+2. **fixture 共享通过 conftest.py**：跨子文件复用的 fixture（`tmp_path` 工厂 / `_FIXTURE_REPO` 常量 / `git_repo` 仓库构造器）抽到 `tests/lib/conftest.py`
+3. **辅助函数走 `_helpers.py`**：纯函数式辅助（如 `_make_file` / `_make_evidence` 工厂）抽到 `tests/lib/_helpers.py`（前缀 `_` 防 pytest 误收）
+4. **保持各文件 < 500 行**：拆完每个子文件目标 200-450 行；超过仍要继续按子主题拆
+5. **保持 import 风格一致**：sys.path 注入逻辑放各子文件顶部（不要共享到 conftest.py，避免测试间隐式依赖）
+6. **测试函数命名前缀**：`test_<feature_id>_<scenario>` 便于 grep 反查归属（如 `test_aggregate_full_pipeline` → `test_F009_aggregate_full_pipeline` 可选）
+
+**硬约束（拆分时守门）**：
+
+- pytest 全量测试数 = 拆分前；不增不减（除非显式说明新增哪几个）
+- ruff 全绿
+- 不修改任何 production code（拆分仅是测试组织，不应触发实现层差异）
+
+**典型拆分映射**（F-013 实例）：
+
+| 拆出文件 | 来源 feature | 行数 |
+|---|---|---|
+| test_context_usage_inventory.py | F-004 | 141 |
+| test_context_usage_git_timestamps.py | F-008 | 258 |
+| test_context_usage_aggregator.py | F-009 | 463 |
+| test_context_usage_renderer.py | F-010 | 403 |
+| test_context_usage_e2e.py | F-013 (e2e + perf) | 255 |
+| test_context_usage_report.py（保留）| F-011 CLI / main | 435 |
+
+主文件由 2012 行 → 435 行（-78%）；分散 6 子文件后任一文件 < 500，命中阈值。
+
+---
+
 ### 2026-05-19 会话：6 处框架修复已 commit 落盘（Bug-1 / 3 / 8 / 15 / 16 / 17）
 
 为让本需求 dev-all-features-done-check + dev-feature-loop + /code-review + 主仓直跑 continue 跑通，外科手术式修了 6 处工作流引擎层 bug 并落 commit。修完即从上文"待处理"段拿掉（按"修了就取消"约定），下方仅留 commit 索引供回溯：

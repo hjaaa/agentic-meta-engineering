@@ -225,6 +225,7 @@ def _build_perf_fixture(tmp_path: Path) -> tuple[Path, Path]:
     return context_dir, req_dir
 
 
+@pytest.mark.slow
 def test_perf_1000_files(tmp_path: Path) -> None:
     """性能守门：1000 context + 50 requirements → 全流程 < 10.0s。
 
