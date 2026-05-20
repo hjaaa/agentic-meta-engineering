@@ -3,7 +3,7 @@
   "feature_id": "F-007",
   "status": "DONE",
   "commit": "a2c29ff",
-  "fix_commits": ["4208d24"],
+  "fix_commits": ["4208d24", "b28860e"],
   "review_report": "artifacts/review-F-007-20260520.md",
   "review_conclusion": "looks_clean_after_fix",
   "review_conclusion_note": "首轮 needs_attention（2 keep major：G-11 ruff F401 + G-4 endswith 误匹配）→ 用户选 A 修 → fix commit 4208d24（15 pass + 702 回归 + ruff rc=0）→ Judge 复核 looks_clean；剩 5 minor + 1 design 澄清挂 notes.md F-007-FU；F-007-FU-3（路径 B spec 歧义）应在 F-008 启动前先解",
