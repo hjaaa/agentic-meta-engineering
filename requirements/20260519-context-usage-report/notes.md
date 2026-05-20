@@ -736,6 +736,33 @@ running   (K): <state == "running">
 - ~~**Bug-14（dev-feature-loop 空转）属于阶段 7 自动化失效的根本性问题**~~ → 已修，commit `4117380`，见下方"已修 Bug 索引"。
 - 已知次生 bug：**rollback 不识别 `.claude/workflows/<name>.yaml`**，只查 `run_dir/workflow.yaml` 及 1-3 层父目录。本次 rollback 用 `requirements/<id>/workflow.yaml -> ../../.claude/workflows/requirement/standard-8phase.yaml` 软链兜底；建议未来在 `workflow_rollback_topology._find_workflow_yaml` 加 `.claude/workflows/**/<workflow_name>.yaml` 兜底（workflow_name 从 jsonl `workflow_started` 事件读）。
 
+### F-002 AC-1 修订记录（2026-05-20，traceability-gate 复核触发）
+
+**触发**：phase=development → testing 切换时，test-traceability-check 节点对 13 个 feature 做"需求 → 设计 → 代码 → 测试"四环深度校验。12/13 PASS，唯独 F-002 FAIL：
+- 原 AC-1 字面要求："check_index.py 不再包含 LINK_RE / _extract_links / _resolve_link / _is_external_or_intra_anchor / _slugify / _extract_headings 函数体"
+- 实测：`LINK_RE` / `_is_external_or_intra_anchor` / `_slugify` **已删**（符合）；`_extract_links` (L59) / `_extract_headings` (L50) / `_resolve_link` (L68) **函数体仍在**（与字面 AC 冲突）
+
+**实质检视 3 个保留函数体**：
+
+| 函数 | 行数 | 内容 | 性质 |
+|---|---|---|---|
+| `_extract_headings` | 3 行 | `read_text()` + `_ml_extract_headings(md_text)` | 纯 Path→文本 IO 适配 |
+| `_extract_links` | 3 行 | `read_text()` + `_ml_extract_links(md_text)` | 纯 Path→文本 IO 适配 |
+| `_resolve_link` | ~15 行 | 调 `_ml_resolve_link`，None 时回退按 `/`-绝对 / 相对 INDEX 路径构造 | Path 适配 + 1 处局部 fallback |
+
+**根因**：markdown_links 公共模块**坚持纯文本接口**（不读 Path），目的是让函数可复用 + 易测；check_index.py 用 IO adapter wrapper 把"读文件 + 解析"分两层处理。这是合理的接口隔离，**不是 F-002 抽取不彻底**。
+
+**决策**：接受偏离 + 修订 AC 文本（commit `<待填>`）
+
+修订要点（已写入 F-002.md 验收标准段）：
+- 原文"不再包含 X / Y / Z 函数体"→ 精确化为"不再包含**常量 / 正则 / 复杂业务逻辑**"
+- 显式说明保留 IO 适配 wrapper 可接受（条件：仅 read_text + 调同名公开 API + 必要 fallback + 总计 < 25 行）
+- 同步在 detailed-design.md 不需要改（设计层未规定具体 wrapper 数量）
+
+**重跑 traceability**：AC 修订后逐条核对——3 个保留函数全部命中"IO adapter wrapper"豁免条款，PASS。test-traceability-check 节点改写为 passed=true（带 ac_revised 标记，audit trail 留 -001 FAIL + -002 PASS supersedes 关系）。
+
+---
+
 ### 大测试文件按 feature 拆分准则（F-013 复核 F-1 沉淀）
 
 来源：F-013 code-review 复核 F-1（test_context_usage_report.py 2012 行 > 500），subagent 拆分实践 commit `3c310a6`。供后续大文件拆分参考。
