@@ -326,7 +326,8 @@
         "在仓库当前真实数据上跑一次，确认不修改任何非报告文件（git status 仅 reports/* untracked）"
       ],
       "estimate_days": 0.375,
-      "interfaces_frozen": true
+      "interfaces_frozen": true,
+      "status": "done"
     }
   ]
 }
