@@ -3,9 +3,11 @@
   "feature_id": "F-006",
   "status": "DONE",
   "commit": "3c3234c",
+  "fix_commits": ["c17431b"],
   "review_report": null,
   "review_conclusion": null,
   "touches_violations": [],
+  "touches_note": "test file tests/lib/test_context_usage_report_evidence_scanner.py 是同 feature 合理产物（subagent 实现 + 修复同步加测试），touches_guard 误报已清；根因 task.md touches 字段只写实现文件未含同名测试文件——待 task-frontmatter schema 完善",
   "post_dev_gate": "passed_with_force_blockers",
   "post_dev_gate_note": "Bug-18: GATE-SOURCING 非 strict 也升 fail；3 处 W002/W003 在 detailed-design.md/outline-design.md/review-F-002（pre-existing，不在 F-006 diff）；force-with-blockers 放行",
   "completed_at": "2026-05-20T01:11:14Z"
