@@ -1579,16 +1579,23 @@ def _build_file_cache(
 
 
 def _print_summary(summaries: list[KnowledgeUsageSummary], warnings: list[str]) -> None:
-    """输出摘要统计到 stdout。"""
-    status_counts = {}
+    """输出摘要统计到 stdout，warnings 逐条打到 stderr。
+
+    detailed-design.md L781-782：warning / error 行走 stderr，行格式 `<LEVEL> <message>`。
+    F-011 review M1 fix：原实现仅打数量到 stdout，CI grep `WARN ` 无法收集。
+    """
+    status_counts: dict[str, int] = {}
     for s in summaries:
         status = s.status.value if isinstance(s.status, KnowledgeStatus) else str(s.status)
         status_counts[status] = status_counts.get(status, 0) + 1
-    print(f"总数: {len(summaries)}", file=sys.stdout)
+    print(f"总数: {len(summaries)}")
     for status in sorted(status_counts.keys()):
-        print(f"  {status}: {status_counts[status]}", file=sys.stdout)
+        print(f"  {status}: {status_counts[status]}")
     if warnings:
-        print(f"Warnings: {len(warnings)}", file=sys.stdout)
+        print(f"Warnings: {len(warnings)}")
+        # 每条 warning 走 stderr，对齐设计 L781-782「<LEVEL> <message>」
+        for w in warnings:
+            print(f"WARN {w}", file=sys.stderr)
 
 
 def _render_and_write(
@@ -1597,15 +1604,42 @@ def _render_and_write(
     warnings: list[str],
     args: argparse.Namespace,
 ) -> int:
-    """渲染并写入报告。返回 exit code：0=success，5=write error。"""
+    """渲染并写入报告。返回 exit code：0=success，5=write error。
+
+    F-011 review M2 fix：先 render 两份 content 再批量 write，缩小半写窗口。
+    若 json 写失败时 md 已落盘，stderr 提示用户哪一份成功。
+    """
+    md_content: str | None = None
+    json_content: str | None = None
+
+    # 先 render（纯计算，不可能 OSError）
     try:
         if args.format in ("md", "both"):
-            renderer.write(renderer.render_markdown(summaries, warnings), args.output)
+            md_content = renderer.render_markdown(summaries, warnings)
         if args.format in ("json", "both"):
-            renderer.write(renderer.render_json(summaries, warnings), args.json_output)
+            json_content = renderer.render_json(summaries, warnings)
+    except Exception as e:
+        # render 阶段异常（不应发生，但兜底）
+        print(f"ERROR: 渲染失败: {e}", file=sys.stderr)
+        return 5
+
+    # 批量 write（两次 write 之间仍非原子，但窗口已最小化）
+    md_written = False
+    try:
+        if md_content is not None:
+            renderer.write(md_content, args.output)
+            md_written = True
+        if json_content is not None:
+            renderer.write(json_content, args.json_output)
         return 0
     except OSError as e:
+        # 半写状态告知（M2 设计契约：保留写错误 → exit 5）
         print(f"ERROR: 写报告失败: {e}", file=sys.stderr)
+        if md_written and json_content is not None:
+            print(
+                f"WARN 部分写入：md 已成功 ({args.output})，json 未写 ({args.json_output})",
+                file=sys.stderr,
+            )
         return 5
 
 

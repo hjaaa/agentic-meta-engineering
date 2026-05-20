@@ -1733,3 +1733,95 @@ def test_main_stdout_summary(tmp_path: Path, capsys) -> None:
     assert "总数:" in captured.out or "total:" in captured.out.lower()
     # 至少有一个状态计数
     assert any(status in captured.out for status in ["active", "orphan", "needs_review"])
+
+
+# F-011-FU M-1 / M-2 回归：warnings 走 stderr WARN 前缀 + format=both 半写状态告知
+# 修复 review-F-011-20260520 M1/M2
+
+
+def test_main_warnings_printed_to_stderr_with_WARN_prefix(tmp_path: Path, capsys) -> None:
+    """warnings 非空时逐条打到 stderr，行格式 'WARN <msg>'。
+
+    设计 detailed-design.md:781-782 明确：warning / error 行走 stderr，
+    格式 `<LEVEL> <message>`。
+    用 git 缺失场景触发 fetch_git_timestamps fallback warning。
+    """
+    ctx_dir = tmp_path / "context"
+    ctx_dir.mkdir()
+    (ctx_dir / "team").mkdir()
+    (ctx_dir / "team" / "foo.md").write_text("# foo\n", encoding="utf-8")
+
+    req_dir = tmp_path / "requirements"
+    req_dir.mkdir()
+
+    # mock subprocess.run 触发 git log 失败 → 产生 warning
+    with patch(
+        "context_usage_report.subprocess.run",
+        side_effect=FileNotFoundError("git not found"),
+    ):
+        exit_code = main(
+            [
+                "--context-dir",
+                str(ctx_dir),
+                "--requirements-dir",
+                str(req_dir),
+                "--repo-root",
+                str(tmp_path),
+            ]
+        )
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    # stdout 应仍有数量计数
+    assert "Warnings:" in captured.out
+    # stderr 应有 WARN 前缀行
+    assert "WARN" in captured.err
+    assert "git log 失败" in captured.err
+
+
+def test_main_render_and_write_half_write_notice(tmp_path: Path, capsys) -> None:
+    """format=both 时 md 已写、json 写失败 → exit 5 + stderr 告知半写状态。
+
+    M2 fix：先 render 两份 content 再批量 write 缩小窗口；写失败时显式提示用户。
+    """
+    ctx_dir = tmp_path / "context"
+    ctx_dir.mkdir()
+    (ctx_dir / "team").mkdir()
+    (ctx_dir / "team" / "foo.md").write_text("# foo\n", encoding="utf-8")
+
+    req_dir = tmp_path / "requirements"
+    req_dir.mkdir()
+
+    from context_usage_report import ReportRenderer
+
+    # mock：第二次 write 抛 OSError（json 阶段失败）
+    # write 是 @staticmethod，patch 时需 staticmethod 包装否则会绑定 self 改签名
+    call_count = [0]
+    real_write = ReportRenderer.write
+
+    def _flaky_write_impl(content, output_path):
+        call_count[0] += 1
+        if call_count[0] == 2:
+            raise OSError("mock json write failure")
+        return real_write(content, output_path)
+
+    with patch.object(ReportRenderer, "write", staticmethod(_flaky_write_impl)):
+        exit_code = main(
+            [
+                "--context-dir",
+                str(ctx_dir),
+                "--requirements-dir",
+                str(req_dir),
+                "--repo-root",
+                str(tmp_path),
+                "--format",
+                "both",
+            ]
+        )
+
+    assert exit_code == 5
+    captured = capsys.readouterr()
+    assert "ERROR: 写报告失败" in captured.err
+    # M2 半写告知
+    assert "WARN 部分写入" in captured.err
+    assert "md 已成功" in captured.err
