@@ -496,3 +496,482 @@ def test_fetch_git_timestamps_default_repo_root() -> None:
     result, warnings = fetch_git_timestamps(files, since_days=90)
     assert result == {}
     assert warnings == []
+
+
+# ---------------------------------------------------------------------------
+# F-009 · UsageAggregator 测试
+# ---------------------------------------------------------------------------
+
+from context_usage_report import (  # noqa: E402
+    AppliedEvidence,
+    IndexGraphResult,
+    KnowledgeStatus,
+    ReferenceEvidence,
+    UsageAggregator,
+)
+
+# ---------------------------------------------------------------------------
+# 辅助工厂函数
+# ---------------------------------------------------------------------------
+
+
+def _make_file(rel_path: str, kind: str = "team") -> KnowledgeFile:
+    """创建最小可用 KnowledgeFile。"""
+    from pathlib import Path
+
+    return KnowledgeFile(
+        path=Path(f"/fake/{rel_path}"),
+        rel_path=rel_path,
+        kind=kind,  # type: ignore[arg-type]
+        size_bytes=100,
+        fs_mtime=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+
+
+def _make_index_result(
+    indexed_by: dict | None = None,
+    broken_links: list | None = None,
+    orphans: list | None = None,
+) -> IndexGraphResult:
+    return IndexGraphResult(
+        indexed_by=indexed_by or {},
+        broken_links=broken_links or [],
+        orphans=orphans or [],
+    )
+
+
+def _make_ref(
+    target: str,
+    source: str = "requirements/req/process.txt",
+    line: int = 1,
+    kind: str = "raw_path",
+    context_line: str = "",
+) -> ReferenceEvidence:
+    return ReferenceEvidence(
+        target=target,
+        source=source,
+        line=line,
+        kind=kind,  # type: ignore[arg-type]
+        context_line=context_line,
+    )
+
+
+def _make_applied(ref: ReferenceEvidence) -> AppliedEvidence:
+    return AppliedEvidence(
+        reference=ref,
+        rule="window_hit",
+        matched_keyword="按照",
+        section_heading="## 设计",
+    )
+
+
+def _make_aggregator(
+    inventory: list,
+    indexed_by: dict | None = None,
+    references: list | None = None,
+    applied: list | None = None,
+    git_timestamps: dict | None = None,
+    now: datetime | None = None,
+) -> UsageAggregator:
+    return UsageAggregator(
+        inventory=inventory,
+        index_result=_make_index_result(indexed_by=indexed_by),
+        references=references or [],
+        applied=applied or [],
+        git_timestamps=git_timestamps or {},
+        now=now or datetime(2026, 5, 20, tzinfo=timezone.utc),
+    )
+
+
+# ---------------------------------------------------------------------------
+# TC-1 ~ TC-8：状态机矩阵（详见 detailed-design.md L908-917）
+# ---------------------------------------------------------------------------
+
+
+def test_tc1_orphan() -> None:
+    """TC-1：indexed=False, ref=0 → orphan。"""
+    now = datetime(2026, 5, 20, tzinfo=timezone.utc)
+    file = _make_file("context/team/a.md")
+    agg = _make_aggregator([file], indexed_by={}, now=now)
+    summaries = agg.aggregate()
+    assert len(summaries) == 1
+    assert summaries[0].status == KnowledgeStatus.ORPHAN
+
+
+def test_tc2_needs_review() -> None:
+    """TC-2：indexed=False, ref=2, last_ref=5天前 → needs_review。"""
+    now = datetime(2026, 5, 20, tzinfo=timezone.utc)
+    file = _make_file("context/team/b.md")
+    last_commit = datetime(2026, 5, 15, tzinfo=timezone.utc)  # 5天前
+    ref1 = _make_ref("context/team/b.md", source="requirements/r1/doc.md", line=1)
+    ref2 = _make_ref("context/team/b.md", source="requirements/r1/doc.md", line=2)
+    ts = GitTimestamp(
+        first_commit_at=last_commit,
+        last_commit_at=last_commit,
+        source="git_log",
+    )
+    agg = _make_aggregator(
+        [file],
+        indexed_by={},  # not indexed
+        references=[ref1, ref2],
+        git_timestamps={"requirements/r1/doc.md": ts},
+        now=now,
+    )
+    summaries = agg.aggregate()
+    assert summaries[0].status == KnowledgeStatus.NEEDS_REVIEW
+
+
+def test_tc3_visible_unused() -> None:
+    """TC-3：indexed=True, ref=0 → visible_unused。"""
+    now = datetime(2026, 5, 20, tzinfo=timezone.utc)
+    file = _make_file("context/team/c.md")
+    agg = _make_aggregator(
+        [file],
+        indexed_by={"context/team/c.md": ["context/INDEX.md"]},
+        now=now,
+    )
+    summaries = agg.aggregate()
+    assert summaries[0].status == KnowledgeStatus.VISIBLE_UNUSED
+
+
+def test_tc4_high_value() -> None:
+    """TC-4：indexed=True, ref=3, applied=1, last_ref=10天前 → high_value。"""
+    now = datetime(2026, 5, 20, tzinfo=timezone.utc)
+    file = _make_file("context/team/d.md")
+    last_commit = datetime(2026, 5, 10, tzinfo=timezone.utc)  # 10天前
+    refs = [
+        _make_ref("context/team/d.md", source="requirements/r1/doc.md", line=i)
+        for i in range(1, 4)
+    ]
+    applied = [_make_applied(refs[0])]
+    ts = GitTimestamp(first_commit_at=last_commit, last_commit_at=last_commit, source="git_log")
+    agg = _make_aggregator(
+        [file],
+        indexed_by={"context/team/d.md": ["context/INDEX.md"]},
+        references=refs,
+        applied=applied,
+        git_timestamps={"requirements/r1/doc.md": ts},
+        now=now,
+    )
+    summaries = agg.aggregate()
+    assert summaries[0].status == KnowledgeStatus.HIGH_VALUE
+
+
+def test_tc5_high_value_over_stale() -> None:
+    """TC-5：同时满足 high_value 与 stale 条件 → high_value（优先级高于 stale）。"""
+    now = datetime(2026, 5, 20, tzinfo=timezone.utc)
+    file = _make_file("context/team/e.md")
+    last_commit = datetime(2026, 1, 21, tzinfo=timezone.utc)  # 约119天前（>90天）
+    refs = [
+        _make_ref("context/team/e.md", source="requirements/r1/doc.md", line=i)
+        for i in range(1, 6)
+    ]
+    applied = [_make_applied(refs[0]), _make_applied(refs[1])]
+    ts = GitTimestamp(first_commit_at=last_commit, last_commit_at=last_commit, source="git_log")
+    agg = _make_aggregator(
+        [file],
+        indexed_by={"context/team/e.md": ["context/INDEX.md"]},
+        references=refs,
+        applied=applied,
+        git_timestamps={"requirements/r1/doc.md": ts},
+        now=now,
+    )
+    summaries = agg.aggregate()
+    assert summaries[0].status == KnowledgeStatus.HIGH_VALUE
+
+
+def test_tc6_stale_candidate() -> None:
+    """TC-6：indexed=True, ref=2, applied=0, last_ref=100天前 → stale_candidate。"""
+    now = datetime(2026, 5, 20, tzinfo=timezone.utc)
+    file = _make_file("context/team/f.md")
+    last_commit = datetime(2026, 2, 9, tzinfo=timezone.utc)  # 100天前
+    refs = [
+        _make_ref("context/team/f.md", source="requirements/r1/doc.md", line=i)
+        for i in range(1, 3)
+    ]
+    ts = GitTimestamp(first_commit_at=last_commit, last_commit_at=last_commit, source="git_log")
+    agg = _make_aggregator(
+        [file],
+        indexed_by={"context/team/f.md": ["context/INDEX.md"]},
+        references=refs,
+        git_timestamps={"requirements/r1/doc.md": ts},
+        now=now,
+    )
+    summaries = agg.aggregate()
+    assert summaries[0].status == KnowledgeStatus.STALE_CANDIDATE
+
+
+def test_tc7_active() -> None:
+    """TC-7：indexed=True, ref=2, applied=0, last_ref=10天前 → active。"""
+    now = datetime(2026, 5, 20, tzinfo=timezone.utc)
+    file = _make_file("context/team/g.md")
+    last_commit = datetime(2026, 5, 10, tzinfo=timezone.utc)  # 10天前
+    refs = [
+        _make_ref("context/team/g.md", source="requirements/r1/doc.md", line=i)
+        for i in range(1, 3)
+    ]
+    ts = GitTimestamp(first_commit_at=last_commit, last_commit_at=last_commit, source="git_log")
+    agg = _make_aggregator(
+        [file],
+        indexed_by={"context/team/g.md": ["context/INDEX.md"]},
+        references=refs,
+        git_timestamps={"requirements/r1/doc.md": ts},
+        now=now,
+    )
+    summaries = agg.aggregate()
+    assert summaries[0].status == KnowledgeStatus.ACTIVE
+
+
+def test_tc8_active_applied_but_ref_insufficient() -> None:
+    """TC-8：indexed=True, ref=1, applied=1, last_ref=10天前 → active（applied有但ref不足3）。"""
+    now = datetime(2026, 5, 20, tzinfo=timezone.utc)
+    file = _make_file("context/team/h.md")
+    last_commit = datetime(2026, 5, 10, tzinfo=timezone.utc)  # 10天前
+    ref = _make_ref("context/team/h.md", source="requirements/r1/doc.md", line=1)
+    applied = [_make_applied(ref)]
+    ts = GitTimestamp(first_commit_at=last_commit, last_commit_at=last_commit, source="git_log")
+    agg = _make_aggregator(
+        [file],
+        indexed_by={"context/team/h.md": ["context/INDEX.md"]},
+        references=[ref],
+        applied=applied,
+        git_timestamps={"requirements/r1/doc.md": ts},
+        now=now,
+    )
+    summaries = agg.aggregate()
+    assert summaries[0].status == KnowledgeStatus.ACTIVE
+
+
+# ---------------------------------------------------------------------------
+# _compute_score 子项边界测试
+# ---------------------------------------------------------------------------
+
+
+def test_score_indexed_zero_and_two() -> None:
+    """indexed=False → indexed_score=0；indexed=True → indexed_score=2。"""
+    now = datetime(2026, 5, 20, tzinfo=timezone.utc)
+    agg = _make_aggregator([], now=now)
+    s_false = {"indexed": False, "reference_count": 0, "applied_signal_count": 0, "last_referenced_at": None}
+    s_true = {"indexed": True, "reference_count": 0, "applied_signal_count": 0, "last_referenced_at": None}
+    assert agg._compute_score(s_false, now) == 0
+    assert agg._compute_score(s_true, now) == 2
+
+
+def test_score_reference_count_cap() -> None:
+    """reference_score = min(count*3, 30)：count=0/1/10/11。"""
+    now = datetime(2026, 5, 20, tzinfo=timezone.utc)
+    agg = _make_aggregator([], now=now)
+    base = {"indexed": False, "applied_signal_count": 0, "last_referenced_at": None}
+    assert agg._compute_score({**base, "reference_count": 0}, now) == 0
+    assert agg._compute_score({**base, "reference_count": 1}, now) == 3
+    assert agg._compute_score({**base, "reference_count": 10}, now) == 30
+    assert agg._compute_score({**base, "reference_count": 11}, now) == 30  # cap
+
+
+def test_score_applied_signal_count_cap() -> None:
+    """applied_score = min(count*8, 40)：count=0/1/5/6。"""
+    now = datetime(2026, 5, 20, tzinfo=timezone.utc)
+    agg = _make_aggregator([], now=now)
+    base = {"indexed": False, "reference_count": 0, "last_referenced_at": None}
+    assert agg._compute_score({**base, "applied_signal_count": 0}, now) == 0
+    assert agg._compute_score({**base, "applied_signal_count": 1}, now) == 8
+    assert agg._compute_score({**base, "applied_signal_count": 5}, now) == 40
+    assert agg._compute_score({**base, "applied_signal_count": 6}, now) == 40  # cap
+
+
+def test_score_recency_boundaries() -> None:
+    """recency_score 边界：None/30天/31天/90天/91天 → 0/10/5/5/0。"""
+    now = datetime(2026, 5, 20, tzinfo=timezone.utc)
+    agg = _make_aggregator([], now=now)
+    base = {"indexed": False, "reference_count": 0, "applied_signal_count": 0}
+
+    # last_referenced_at = None → 0
+    assert agg._compute_score({**base, "last_referenced_at": None}, now) == 0
+
+    # 30天前（刚好 <= 30） → 10
+    ref_30d = datetime(2026, 4, 20, tzinfo=timezone.utc)  # 30天前
+    assert agg._compute_score({**base, "last_referenced_at": ref_30d}, now) == 10
+
+    # 31天前（> 30，<= 90） → 5
+    ref_31d = datetime(2026, 4, 19, tzinfo=timezone.utc)  # 31天前
+    assert agg._compute_score({**base, "last_referenced_at": ref_31d}, now) == 5
+
+    # 90天前（刚好 <= 90） → 5
+    ref_90d = datetime(2026, 2, 19, tzinfo=timezone.utc)  # 90天前
+    assert agg._compute_score({**base, "last_referenced_at": ref_90d}, now) == 5
+
+    # 91天前（> 90） → 0
+    ref_91d = datetime(2026, 2, 18, tzinfo=timezone.utc)  # 91天前
+    assert agg._compute_score({**base, "last_referenced_at": ref_91d}, now) == 0
+
+
+def test_score_max_all_caps() -> None:
+    """四子项全满时总分 = 82。"""
+    now = datetime(2026, 5, 20, tzinfo=timezone.utc)
+    agg = _make_aggregator([], now=now)
+    ref_1d = datetime(2026, 5, 19, tzinfo=timezone.utc)
+    s = {
+        "indexed": True,
+        "reference_count": 11,  # reference_score = 30（cap）
+        "applied_signal_count": 6,  # applied_score = 40（cap）
+        "last_referenced_at": ref_1d,  # recency = 10（30D）
+    }
+    assert agg._compute_score(s, now) == 82
+
+
+# ---------------------------------------------------------------------------
+# aggregate() 整链路冒烟测试
+# ---------------------------------------------------------------------------
+
+
+def test_aggregate_full_pipeline() -> None:
+    """整链路冒烟：2个文件，验证长度/字段串联/时间戳/score范围/排序。"""
+    now = datetime(2026, 5, 20, tzinfo=timezone.utc)
+
+    file_a = _make_file("context/team/a.md")
+    file_b = _make_file("context/team/b.md")
+
+    # a 被 INDEX 挂载
+    indexed_by = {"context/team/a.md": ["context/INDEX.md"]}
+
+    # a 有 2 条引用（来自不同文件）
+    ref_a1 = _make_ref("context/team/a.md", source="requirements/r1/doc1.md", line=5)
+    ref_a2 = _make_ref("context/team/a.md", source="requirements/r2/doc2.md", line=10)
+    # a 有 1 条 applied
+    applied_a = _make_applied(ref_a1)
+
+    # b 无引用、无 INDEX
+    ts_r1 = GitTimestamp(
+        first_commit_at=datetime(2026, 3, 1, tzinfo=timezone.utc),
+        last_commit_at=datetime(2026, 5, 10, tzinfo=timezone.utc),
+        source="git_log",
+    )
+    ts_r2 = GitTimestamp(
+        first_commit_at=datetime(2026, 2, 1, tzinfo=timezone.utc),
+        last_commit_at=datetime(2026, 5, 15, tzinfo=timezone.utc),
+        source="git_log",
+    )
+    ts_a = GitTimestamp(
+        first_commit_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        last_commit_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
+        source="git_log",
+    )
+
+    agg = UsageAggregator(
+        inventory=[file_a, file_b],
+        index_result=_make_index_result(indexed_by=indexed_by),
+        references=[ref_a1, ref_a2],
+        applied=[applied_a],
+        git_timestamps={
+            "requirements/r1/doc1.md": ts_r1,
+            "requirements/r2/doc2.md": ts_r2,
+            "context/team/a.md": ts_a,
+        },
+        now=now,
+    )
+    summaries = agg.aggregate()
+
+    # 输出长度 == len(inventory)
+    assert len(summaries) == 2
+
+    # 找到各 summary
+    summary_a = next(s for s in summaries if s.path == "context/team/a.md")
+    summary_b = next(s for s in summaries if s.path == "context/team/b.md")
+
+    # a 字段验证
+    assert summary_a.indexed is True
+    assert summary_a.index_paths == ["context/INDEX.md"]
+    assert summary_a.reference_count == 2
+    assert summary_a.applied_signal_count == 1
+
+    # last_referenced_at = max(ts_r1.last, ts_r2.last) = 2026-05-15
+    assert summary_a.last_referenced_at == datetime(2026, 5, 15, tzinfo=timezone.utc)
+    # first_referenced_at = min(ts_r1.first, ts_r2.first) = 2026-02-01
+    assert summary_a.first_referenced_at == datetime(2026, 2, 1, tzinfo=timezone.utc)
+
+    # last_modified_at 来自 git_timestamps
+    assert summary_a.last_modified_at == datetime(2026, 5, 18, tzinfo=timezone.utc)
+    assert summary_a.last_modified_at_source == "git_log"
+
+    # score 在 [0, 82]
+    assert 0 <= summary_a.score <= 82
+    assert 0 <= summary_b.score <= 82
+
+    # reference_evidences 按 (source, line) 升序
+    assert summary_a.reference_evidences == sorted(
+        [ref_a1, ref_a2], key=lambda e: (e.source, e.line)
+    )
+    # applied_evidences 非空
+    assert len(summary_a.applied_evidences) == 1
+
+    # b 是 orphan
+    assert summary_b.status == KnowledgeStatus.ORPHAN
+
+    # 按 score 降序排列（a 分高应在前）
+    assert summaries[0].score >= summaries[1].score
+
+
+def test_aggregate_last_modified_fallback_fs_mtime() -> None:
+    """git_timestamps 无该文件条目时，last_modified_at 回退到 fs_mtime。"""
+    now = datetime(2026, 5, 20, tzinfo=timezone.utc)
+    fs_mtime = datetime(2026, 3, 15, tzinfo=timezone.utc)
+    file = KnowledgeFile(
+        path=Path("/fake/context/team/z.md"),
+        rel_path="context/team/z.md",
+        kind="team",
+        size_bytes=50,
+        fs_mtime=fs_mtime,
+    )
+    agg = _make_aggregator([file], git_timestamps={}, now=now)
+    summaries = agg.aggregate()
+    assert summaries[0].last_modified_at == fs_mtime
+    assert summaries[0].last_modified_at_source == "fs_mtime"
+
+
+def test_aggregate_output_length_equals_inventory() -> None:
+    """输出长度恒等于 inventory 长度（含空 inventory）。"""
+    now = datetime(2026, 5, 20, tzinfo=timezone.utc)
+    agg_empty = _make_aggregator([], now=now)
+    assert agg_empty.aggregate() == []
+
+    files = [_make_file(f"context/team/f{i}.md") for i in range(5)]
+    agg = _make_aggregator(files, now=now)
+    assert len(agg.aggregate()) == 5
+
+
+# ---------------------------------------------------------------------------
+# now 注入测试：同一数据 + 不同 now → recency_score 不同
+# ---------------------------------------------------------------------------
+
+
+def test_aggregate_now_injection_changes_recency() -> None:
+    """now 注入：同一 last_referenced_at，传不同 now，recency_score 不同。"""
+    file = _make_file("context/team/x.md")
+    last_commit = datetime(2026, 4, 20, tzinfo=timezone.utc)  # 固定引用时间
+
+    ref = _make_ref("context/team/x.md", source="requirements/r1/doc.md", line=1)
+    ts_ref = GitTimestamp(
+        first_commit_at=last_commit,
+        last_commit_at=last_commit,
+        source="git_log",
+    )
+
+    def get_score(now: datetime) -> int:
+        agg = UsageAggregator(
+            inventory=[file],
+            index_result=_make_index_result(),
+            references=[ref],
+            applied=[],
+            git_timestamps={"requirements/r1/doc.md": ts_ref},
+            now=now,
+        )
+        return agg.aggregate()[0].score
+
+    # now = 2026-05-20 → delta = 30天 → recency=10
+    score_30d = get_score(datetime(2026, 5, 20, tzinfo=timezone.utc))
+    # now = 2026-06-20 → delta = 61天 → recency=5
+    score_61d = get_score(datetime(2026, 6, 20, tzinfo=timezone.utc))
+    # now = 2026-07-21 → delta = 92天 → recency=0
+    score_92d = get_score(datetime(2026, 7, 21, tzinfo=timezone.utc))
+
+    assert score_30d > score_61d > score_92d
