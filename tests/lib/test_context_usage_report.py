@@ -1443,3 +1443,293 @@ def test_renderer_markdown_empty_warnings_no_section() -> None:
     renderer = _make_renderer()
     md = renderer.render_markdown([], [])
     assert "## Warnings" not in md
+
+
+# ---------------------------------------------------------------------------
+# F-011 · CLI 入口：main() + argparse + 6 档退出码
+# 接口来源：detailed-design.md §CLI 入口 / §CLI Arguments / §异常处理表
+# ---------------------------------------------------------------------------
+
+from context_usage_report import main, _parse_args, _parse_since
+
+
+def test_parse_since_formats() -> None:
+    """_parse_since 解析各种时间单位格式。"""
+    assert _parse_since("90d") == 90
+    assert _parse_since("2w") == 14
+    assert _parse_since("3m") == 90
+    assert _parse_since("1d") == 1
+    assert _parse_since("1w") == 7
+    assert _parse_since("1m") == 30
+
+
+def test_parse_since_invalid_format() -> None:
+    """_parse_since 非法格式抛 ValueError。"""
+    with pytest.raises(ValueError, match="invalid --since format"):
+        _parse_since("abc")
+    with pytest.raises(ValueError, match="invalid --since format"):
+        _parse_since("90")
+    with pytest.raises(ValueError, match="invalid --since format"):
+        _parse_since("d90")
+
+
+def test_argparse_help() -> None:
+    """--help 不抛异常（argparse 处理）。"""
+    # argparse 的 --help 会 raise SystemExit(0)
+    with pytest.raises(SystemExit) as exc_info:
+        _parse_args(["--help"])
+    assert exc_info.value.code == 0
+
+
+def test_argparse_defaults(tmp_path: Path) -> None:
+    """默认参数值符合设计。"""
+    # 因为 common.REPO_ROOT 是绝对路径，直接检查参数类型而不是精确值
+    args = _parse_args([])
+    assert args.context_dir.is_absolute()
+    assert args.requirements_dir.is_absolute()
+    assert args.output.is_absolute()
+    assert args.json_output.is_absolute()
+    assert args.since == "90d"
+    assert args.project is None
+    assert args.only_experience is False
+    assert args.format == "both"
+    assert args.fail_on_broken_index is False
+    assert args.fail_on_orphan is False
+
+
+def test_argparse_custom_values(tmp_path: Path) -> None:
+    """自定义参数值被正确解析。"""
+    ctx_dir = tmp_path / "ctx"
+    ctx_dir.mkdir()
+    req_dir = tmp_path / "req"
+    req_dir.mkdir()
+
+    args = _parse_args(
+        [
+            "--context-dir",
+            str(ctx_dir),
+            "--requirements-dir",
+            str(req_dir),
+            "--since",
+            "30d",
+            "--project",
+            "myproj",
+            "--only-experience",
+            "--format",
+            "json",
+            "--fail-on-broken-index",
+            "--fail-on-orphan",
+        ]
+    )
+    assert args.context_dir == ctx_dir
+    assert args.requirements_dir == req_dir
+    assert args.since == "30d"
+    assert args.project == "myproj"
+    assert args.only_experience is True
+    assert args.format == "json"
+    assert args.fail_on_broken_index is True
+    assert args.fail_on_orphan is True
+
+
+def test_main_exit_0_success(tmp_path: Path) -> None:
+    """main 成功运行返回 exit 0。"""
+    # 构造最小可运行的 context / requirements 目录
+    ctx_dir = tmp_path / "context"
+    ctx_dir.mkdir()
+    (ctx_dir / "team").mkdir()
+    (ctx_dir / "team" / "foo.md").write_text("# foo\n", encoding="utf-8")
+
+    req_dir = tmp_path / "requirements"
+    req_dir.mkdir()
+
+    output = tmp_path / "reports" / "report.md"
+    json_output = tmp_path / "reports" / "report.json"
+
+    exit_code = main(
+        [
+            "--context-dir",
+            str(ctx_dir),
+            "--requirements-dir",
+            str(req_dir),
+            "--output",
+            str(output),
+            "--json-output",
+            str(json_output),
+            "--repo-root",
+            str(tmp_path),
+            "--format",
+            "both",
+        ]
+    )
+
+    assert exit_code == 0
+    assert output.exists()
+    assert json_output.exists()
+
+
+def test_main_exit_2_context_dir_not_found(tmp_path: Path, capsys) -> None:
+    """main 返回 exit 2 当 --context-dir 不存在，stderr 含 ERROR 信息。"""
+    req_dir = tmp_path / "requirements"
+    req_dir.mkdir()
+
+    exit_code = main(
+        [
+            "--context-dir",
+            str(tmp_path / "nonexistent"),
+            "--requirements-dir",
+            str(req_dir),
+            "--repo-root",
+            str(tmp_path),
+        ]
+    )
+
+    assert exit_code == 2
+    captured = capsys.readouterr()
+    assert "ERROR" in captured.err
+    assert "context-dir" in captured.err.lower()
+
+
+def test_main_exit_2_requirements_dir_not_found(tmp_path: Path, capsys) -> None:
+    """main 返回 exit 2 当 --requirements-dir 不存在，stderr 含 ERROR 信息。"""
+    ctx_dir = tmp_path / "context"
+    ctx_dir.mkdir()
+
+    exit_code = main(
+        [
+            "--context-dir",
+            str(ctx_dir),
+            "--requirements-dir",
+            str(tmp_path / "nonexistent"),
+            "--repo-root",
+            str(tmp_path),
+        ]
+    )
+
+    assert exit_code == 2
+    captured = capsys.readouterr()
+    assert "ERROR" in captured.err
+    assert "requirements-dir" in captured.err.lower()
+
+
+def test_main_exit_5_write_failure(tmp_path: Path, capsys) -> None:
+    """main 返回 exit 5 当报告写入失败，stderr 含 ERROR 信息。"""
+    ctx_dir = tmp_path / "context"
+    ctx_dir.mkdir()
+    (ctx_dir / "team").mkdir()
+    (ctx_dir / "team" / "foo.md").write_text("# foo\n", encoding="utf-8")
+
+    req_dir = tmp_path / "requirements"
+    req_dir.mkdir()
+
+    # mock ReportRenderer.write 抛 OSError
+    from context_usage_report import ReportRenderer
+
+    @staticmethod
+    def mock_write_error(*args, **kwargs):
+        raise OSError("mock write failure")
+
+    with patch.object(ReportRenderer, "write", mock_write_error):
+        exit_code = main(
+            [
+                "--context-dir",
+                str(ctx_dir),
+                "--requirements-dir",
+                str(req_dir),
+                "--repo-root",
+                str(tmp_path),
+            ]
+        )
+
+    assert exit_code == 5
+    captured = capsys.readouterr()
+    assert "ERROR" in captured.err
+    assert "失败" in captured.err or "failure" in captured.err.lower()
+
+
+def test_main_exit_3_fail_on_broken_index(tmp_path: Path, capsys) -> None:
+    """main 返回 exit 3 当 --fail-on-broken-index 且检出断链。"""
+    ctx_dir = tmp_path / "context"
+    ctx_dir.mkdir()
+    (ctx_dir / "team").mkdir()
+    (ctx_dir / "team" / "INDEX.md").write_text(
+        "# Index\n\n[broken link](nonexistent.md)\n", encoding="utf-8"
+    )
+    (ctx_dir / "team" / "foo.md").write_text("# foo\n", encoding="utf-8")
+
+    req_dir = tmp_path / "requirements"
+    req_dir.mkdir()
+
+    exit_code = main(
+        [
+            "--context-dir",
+            str(ctx_dir),
+            "--requirements-dir",
+            str(req_dir),
+            "--repo-root",
+            str(tmp_path),
+            "--fail-on-broken-index",
+        ]
+    )
+
+    assert exit_code == 3
+    captured = capsys.readouterr()
+    assert "ERROR" in captured.err
+    assert "BROKEN_LINKS_DETECTED" in captured.err or "断链" in captured.err
+
+
+def test_main_exit_4_fail_on_orphan(tmp_path: Path, capsys) -> None:
+    """main 返回 exit 4 当 --fail-on-orphan 且检出孤岛文件。"""
+    ctx_dir = tmp_path / "context"
+    ctx_dir.mkdir()
+    (ctx_dir / "team").mkdir()
+    # 创建没有被 INDEX 引用的文件
+    (ctx_dir / "team" / "orphan.md").write_text("# orphan\n", encoding="utf-8")
+
+    req_dir = tmp_path / "requirements"
+    req_dir.mkdir()
+
+    exit_code = main(
+        [
+            "--context-dir",
+            str(ctx_dir),
+            "--requirements-dir",
+            str(req_dir),
+            "--repo-root",
+            str(tmp_path),
+            "--fail-on-orphan",
+        ]
+    )
+
+    assert exit_code == 4
+    captured = capsys.readouterr()
+    assert "ERROR" in captured.err
+    assert "ORPHANS_DETECTED" in captured.err or "孤岛" in captured.err
+
+
+def test_main_stdout_summary(tmp_path: Path, capsys) -> None:
+    """main 成功时 stdout 含总数、状态计数、warnings 行。"""
+    ctx_dir = tmp_path / "context"
+    ctx_dir.mkdir()
+    (ctx_dir / "team").mkdir()
+    (ctx_dir / "team" / "foo.md").write_text("# foo\n", encoding="utf-8")
+    (ctx_dir / "team" / "bar.md").write_text("# bar\n", encoding="utf-8")
+
+    req_dir = tmp_path / "requirements"
+    req_dir.mkdir()
+
+    main(
+        [
+            "--context-dir",
+            str(ctx_dir),
+            "--requirements-dir",
+            str(req_dir),
+            "--repo-root",
+            str(tmp_path),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    # stdout 应含总数行
+    assert "总数:" in captured.out or "total:" in captured.out.lower()
+    # 至少有一个状态计数
+    assert any(status in captured.out for status in ["active", "orphan", "needs_review"])

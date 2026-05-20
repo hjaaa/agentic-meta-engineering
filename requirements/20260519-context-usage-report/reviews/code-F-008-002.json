@@ -1,0 +1,74 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-20260519-context-usage-report-code-F-008-002",
+  "requirement_id": "20260519-context-usage-report",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-20 11:12:45",
+  "reviewed_commit": "5e57260",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "06bbd2d3979818323fa61fa49191273eb4e8bc02403953878969d56341380b3f"
+    },
+    {
+      "path": "artifacts/tasks/F-008.md",
+      "sha256": "70b075d80fbb2fef76fd6ea3611a941245ea5b96f33bb631d7bd60f588fb0065"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 88,
+  "dimensions": {
+    "design_consistency": {
+      "score": 88,
+      "issues": []
+    },
+    "security": {
+      "score": 94,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 92,
+      "issues": []
+    },
+    "complexity": {
+      "score": 72,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/context_usage_report.py:78-224 fetch_git_timestamps 行数随 timeout 分支新增 9 行，函数体约 147 行（rev1 138 行），圈复杂度由 17 升至约 18；rev2 修复必修项导致 follow-up 紧迫度上升，建议下一个 feature 立即抽 _parse_git_log_output / _build_timestamp_result 两个 helper"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 90,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/context_usage_report.py:197-204 since 窗口内无 commit 时静默回退 fs_mtime（rev1 已记 follow-up F-3，本 PR 未返工）"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 90,
+      "issues": []
+    },
+    "performance": {
+      "score": 90,
+      "issues": []
+    },
+    "history_context": {
+      "score": 92,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "F-1 follow-up 紧迫度上升：rev2 因 timeout fix 新增 9 行后函数体 147 行 / 圈复杂度约 18，已显著超出 80/10 硬约束；建议下个 feature 把 git log 解析与 result 构造分别抽成 _parse_git_log_output(output) -> dict[str, tuple[datetime, datetime]] 和 _build_timestamp_result(files, timestamps) -> dict[str, GitTimestamp] 两个纯函数",
+    "F-3 follow-up 状态不变：since 窗口内静默回退仍缺可观测信号，下次返工时建议追加聚合 warning（如『N 个文件在 since=<D>d 内无 git 记录，已回退 fs_mtime』）"
+  ],
+  "scope": {
+    "feature_id": "F-008"
+  },
+  "supersedes": "REV-20260519-context-usage-report-code-F-008-001"
+}

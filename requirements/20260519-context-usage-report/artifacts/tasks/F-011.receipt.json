@@ -1,0 +1,16 @@
+{
+  "feature_id": "F-011",
+  "schema_version": "1.0",
+  "touches_violations": [
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/.worktrees/feat-req-20260519-context-usage-report/tests/lib/test_context_usage_report.py",
+      "ts": "2026-05-20T06:10:46+00:00",
+      "tool": "Edit"
+    },
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/.worktrees/feat-req-20260519-context-usage-report/tests/lib/test_context_usage_report.py",
+      "ts": "2026-05-20T06:12:46+00:00",
+      "tool": "Edit"
+    }
+  ]
+}

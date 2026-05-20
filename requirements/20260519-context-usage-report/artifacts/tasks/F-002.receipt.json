@@ -1,0 +1,10 @@
+{
+  "feature_id": "F-002",
+  "status": "DONE",
+  "commit": "c6261eb",
+  "review_report": "requirements/20260519-context-usage-report/artifacts/review-F-002-20260519.md",
+  "review_conclusion": "looks_clean",
+  "touches_violations": [],
+  "post_dev_gate": "passed",
+  "completed_at": "2026-05-19T09:18:00Z"
+}

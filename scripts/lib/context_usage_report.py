@@ -1502,3 +1502,334 @@ class ReportRenderer:
         tmp_path = output_path.with_suffix(output_path.suffix + ".tmp")
         tmp_path.write_text(content, encoding="utf-8")
         os.replace(tmp_path, output_path)
+
+
+# ---------------------------------------------------------------------------
+# F-011 · CLI 入口：main() + argparse + 6 档退出码
+# 接口/数据结构来源：detailed-design.md §CLI 入口 / §CLI Arguments / §异常处理表
+# ---------------------------------------------------------------------------
+
+import argparse
+
+
+def _parse_since(since: str) -> int:
+    r"""解析 --since 字符串为天数。
+
+    格式：`\d+(d|w|m)$`。例：
+      - "90d" → 90
+      - "2w" → 14
+      - "3m" → 90
+      - "abc" → ValueError
+
+    Args:
+        since: 时间跨度字符串
+
+    Returns:
+        天数
+
+    Raises:
+        ValueError: 格式非法
+    """
+    match = re.match(r"^(\d+)([dwm])$", since)
+    if not match:
+        raise ValueError(f"invalid --since format: {since}, expected \\d+(d|w|m)")
+
+    count = int(match.group(1))
+    unit = match.group(2)
+
+    if unit == "d":
+        return count
+    elif unit == "w":
+        return count * 7
+    elif unit == "m":
+        return count * 30
+    else:
+        raise ValueError(f"unknown unit: {unit}")
+
+
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """解析 CLI 参数。
+
+    Args:
+        argv: sys.argv[1:] 风格；None 时从 sys.argv 读
+
+    Returns:
+        argparse.Namespace，含所有参数
+
+    Raises:
+        SystemExit: argparse 自动处理（--help / 格式错误）
+    """
+    from common import REPO_ROOT
+
+    parser = argparse.ArgumentParser(
+        prog="context_usage_report",
+        description="生成 context/** 知识利用率统计报告",
+    )
+
+    parser.add_argument(
+        "--context-dir",
+        type=Path,
+        default=REPO_ROOT / "context",
+        help="context 目录路径（默认 REPO_ROOT/context）",
+    )
+    parser.add_argument(
+        "--requirements-dir",
+        type=Path,
+        default=REPO_ROOT / "requirements",
+        help="requirements 目录路径（默认 REPO_ROOT/requirements）",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=REPO_ROOT / "reports" / "context-usage.md",
+        help="Markdown 报告输出路径（默认 REPO_ROOT/reports/context-usage.md）",
+    )
+    parser.add_argument(
+        "--json-output",
+        type=Path,
+        default=REPO_ROOT / "reports" / "context-usage.json",
+        help="JSON 报告输出路径（默认 REPO_ROOT/reports/context-usage.json）",
+    )
+    parser.add_argument(
+        "--since",
+        type=str,
+        default="90d",
+        help="查询范围（默认 90d）；格式 \\d+(d|w|m)，例 90d / 2w / 3m",
+    )
+    parser.add_argument(
+        "--project",
+        type=str,
+        default=None,
+        help="过滤 context/project/<X>/；若不指定则不过滤",
+    )
+    parser.add_argument(
+        "--only-experience",
+        action="store_true",
+        help="仅统计 context/team/experience/** 下的文件",
+    )
+    parser.add_argument(
+        "--format",
+        type=str,
+        choices=["md", "json", "both"],
+        default="both",
+        help="报告格式（默认 both）",
+    )
+    parser.add_argument(
+        "--fail-on-broken-index",
+        action="store_true",
+        help="若检出 INDEX 断链则 exit 3",
+    )
+    parser.add_argument(
+        "--fail-on-orphan",
+        action="store_true",
+        help="若检出孤岛文件则 exit 4",
+    )
+    parser.add_argument(
+        "--repo-root",
+        type=Path,
+        default=REPO_ROOT,
+        help="仓库根（测试注入）",
+    )
+
+    return parser.parse_args(argv)
+
+
+def _run(args: argparse.Namespace) -> int:
+    """执行报告生成逻辑（main 调度分离）。
+
+    返回 exit code；所有异常由 main 的 try/except 捕获。
+
+    Args:
+        args: 已解析的参数
+
+    Returns:
+        exit code（0-5）
+    """
+    # 1. 校验输入目录
+    if not args.context_dir.is_dir():
+        print(f"ERROR: context-dir 不存在或非目录: {args.context_dir}", file=sys.stderr)
+        return 2
+
+    if not args.requirements_dir.is_dir():
+        print(
+            f"ERROR: requirements-dir 不存在或非目录: {args.requirements_dir}",
+            file=sys.stderr,
+        )
+        return 2
+
+    # 2. 解析 --since
+    try:
+        since_days = _parse_since(args.since)
+    except ValueError as e:
+        print(f"ERROR: 无效的 --since 参数: {e}", file=sys.stderr)
+        return 1
+
+    warnings: list[str] = []
+
+    # 3. 扫描 context
+    inv = ContextInventory(
+        context_dir=args.context_dir,
+        ignore_patterns=["**/draft/**", "**/INDEX.md"],
+        repo_root=args.repo_root,
+    )
+    files = inv.scan()
+
+    # 4. 按 --project / --only-experience 过滤
+    if args.only_experience:
+        files = [f for f in files if "experience" in f.rel_path]
+
+    if args.project:
+        prefix = f"context/project/{args.project}/"
+        files = [f for f in files if f.rel_path.startswith(prefix)]
+
+    # 5. 构建 IndexGraph
+    index_graph = IndexGraph(
+        context_dir=args.context_dir,
+        repo_root=args.repo_root,
+    )
+    graph_result = index_graph.build(files)
+
+    # 6. 扫描引用证据
+    scanner = EvidenceScanner(
+        requirements_dir=args.requirements_dir,
+        context_files={f.rel_path for f in files},
+        repo_root=args.repo_root,
+    )
+    evidences = scanner.scan()
+    warnings.extend(scanner.warnings)
+
+    # 7. 分类高价值证据
+    # 先收集 reference source 文件内容
+    file_cache: dict[Path, str] = {}
+    for evidence in evidences:
+        src_path = args.requirements_dir / evidence.source
+        if src_path not in file_cache and src_path.is_file():
+            try:
+                file_cache[src_path] = src_path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError) as e:
+                warnings.append(f"读取 {evidence.source} 失败: {e}")
+
+    classifier = AppliedSignalClassifier()
+    applied_evidences = classifier.classify(evidences, file_cache)
+
+    # 8. 获取 git 时间戳
+    # 合并 context files + reference source files
+    all_files_for_git: list[KnowledgeFile] = files.copy()
+    reference_source_paths: set[str] = set()
+    for evidence in evidences:
+        reference_source_paths.add(evidence.source)
+
+    # 包装 reference source 为 KnowledgeFile-like（仅用于 git 时间戳）
+    for src_rel in reference_source_paths:
+        src_abs = args.requirements_dir / src_rel
+        if src_abs.is_file():
+            try:
+                kf = KnowledgeFile(
+                    path=src_abs,
+                    rel_path=src_rel,
+                    kind="team",
+                    size_bytes=src_abs.stat().st_size,
+                    fs_mtime=datetime.fromtimestamp(
+                        src_abs.stat().st_mtime, tz=timezone.utc
+                    ).replace(microsecond=0),
+                )
+                all_files_for_git.append(kf)
+            except OSError as e:
+                warnings.append(f"读取文件元数据 {src_rel} 失败: {e}")
+
+    timestamps, git_warnings = fetch_git_timestamps(
+        all_files_for_git,
+        since_days,
+        repo_root=args.repo_root,
+    )
+    warnings.extend(git_warnings)
+
+    # 9. 聚合使用摘要
+    aggregator = UsageAggregator(
+        inventory=files,
+        index_result=graph_result,
+        references=evidences,
+        applied=applied_evidences,
+        git_timestamps=timestamps,
+        now=datetime.now(tz=timezone.utc),
+    )
+    summaries = aggregator.aggregate()
+
+    # 10. 生成报告
+    renderer = ReportRenderer(
+        config={
+            "context_dir": str(args.context_dir),
+            "requirements_dir": str(args.requirements_dir),
+            "since_days": since_days,
+            "high_value_reference_min": 3,
+            "stale_threshold_days": 90,
+        },
+        broken_links_count=len(graph_result.broken_links),
+        orphans_count=len(graph_result.orphans),
+        now=datetime.now(tz=timezone.utc),
+    )
+
+    # 11. 写入报告
+    try:
+        if args.format in ("md", "both"):
+            md_content = renderer.render_markdown(summaries, warnings)
+            renderer.write(md_content, args.output)
+
+        if args.format in ("json", "both"):
+            json_content = renderer.render_json(summaries, warnings)
+            renderer.write(json_content, args.json_output)
+    except OSError as e:
+        print(f"ERROR: 写报告失败: {e}", file=sys.stderr)
+        return 5
+
+    # 12. 输出摘要到 stdout
+    total = len(summaries)
+    status_counts = {}
+    for s in summaries:
+        status = s.status.value if isinstance(s.status, KnowledgeStatus) else str(s.status)
+        status_counts[status] = status_counts.get(status, 0) + 1
+
+    print(f"总数: {total}", file=sys.stdout)
+    for status in sorted(status_counts.keys()):
+        print(f"  {status}: {status_counts[status]}", file=sys.stdout)
+    if warnings:
+        print(f"Warnings: {len(warnings)}", file=sys.stdout)
+
+    # 13. 检查 --fail-on-broken-index / --fail-on-orphan
+    if args.fail_on_broken_index and graph_result.broken_links:
+        print(
+            f"ERROR: BROKEN_LINKS_DETECTED ({len(graph_result.broken_links)} 条)",
+            file=sys.stderr,
+        )
+        return 3
+
+    if args.fail_on_orphan and graph_result.orphans:
+        print(
+            f"ERROR: ORPHANS_DETECTED ({len(graph_result.orphans)} 个文件)",
+            file=sys.stderr,
+        )
+        return 4
+
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI 入口。
+
+    Args:
+        argv: sys.argv[1:] 风格参数列表；None 时用 sys.argv[1:]
+
+    Returns:
+        进程退出码（0-5）
+    """
+    try:
+        args = _parse_args(argv)
+        return _run(args)
+    except SystemExit:
+        # argparse 自动处理 --help / 错误参数，返回 exit code 2
+        # 设计中 "exit 1：argparse 自动"，让 argparse 行为保持原样
+        raise
+
+
+if __name__ == "__main__":
+    sys.exit(main())
