@@ -1823,3 +1823,190 @@ def test_main_render_and_write_half_write_notice(tmp_path: Path, capsys) -> None
     # M2 半写告知
     assert "WARN 部分写入" in captured.err
     assert "md 已成功" in captured.err
+
+
+# ---------------------------------------------------------------------------
+# F-013 · 端到端 fixture 仓库测试 + 1000 文件性能守门
+# ---------------------------------------------------------------------------
+
+import time  # noqa: E402
+
+_FIXTURE_REPO = (
+    Path(__file__).resolve().parents[2]
+    / "tests"
+    / "fixtures"
+    / "context_usage_report"
+)
+
+
+def _run_on_fixture(tmp_path: Path) -> tuple[int, dict]:
+    """在 fixture 仓库上运行 main()，返回 (exit_code, json_data)。
+
+    输出写到 tmp_path/reports/ 避免污染仓库。
+    """
+    from context_usage_report import main as _main  # noqa: PLC0415
+
+    output_md = tmp_path / "reports" / "context-usage.md"
+    output_json = tmp_path / "reports" / "context-usage.json"
+
+    exit_code = _main(
+        [
+            "--context-dir", str(_FIXTURE_REPO / "context"),
+            "--requirements-dir", str(_FIXTURE_REPO / "requirements"),
+            "--output", str(output_md),
+            "--json-output", str(output_json),
+            "--repo-root", str(_FIXTURE_REPO),
+            "--format", "both",
+        ]
+    )
+    json_data: dict = {}
+    if output_json.exists():
+        json_data = json.loads(output_json.read_text(encoding="utf-8"))
+    return exit_code, json_data
+
+
+def test_e2e_fixture_status_counts(tmp_path: Path) -> None:
+    """E2E：在 fixture 仓库上运行 main()，断言各 status 类别计数。
+
+    状态覆盖要求：
+    - orphan ≥ 1（context/team/orphan.md 不在 INDEX、无 requirements 引用）
+    - visible_unused ≥ 1（context/team/glossary.md 在 INDEX、无 requirements 引用）
+    - needs_review ≥ 1（context/team/archived.md 不在 INDEX、有 requirements 引用）
+    - active 或 high_value 各 ≥ 1（有引用的 active 文件）
+    """
+    exit_code, json_data = _run_on_fixture(tmp_path)
+    assert exit_code == 0, f"main() 返回非 0 退出码: {exit_code}"
+
+    by_status = json_data["summary"]["by_status"]
+
+    # 孤岛：orphan.md
+    assert by_status.get("orphan", 0) >= 1, (
+        f"期望 orphan ≥ 1，实际 by_status={by_status}"
+    )
+    # 可见未使用：glossary.md、notes.md
+    assert by_status.get("visible_unused", 0) >= 1, (
+        f"期望 visible_unused ≥ 1，实际 by_status={by_status}"
+    )
+    # 需审查：archived.md
+    assert by_status.get("needs_review", 0) >= 1, (
+        f"期望 needs_review ≥ 1，实际 by_status={by_status}"
+    )
+    # 有使用（active 或 high_value）
+    has_active_or_hv = (
+        by_status.get("active", 0) >= 1
+        or by_status.get("high_value", 0) >= 1
+    )
+    assert has_active_or_hv, (
+        f"期望 active 或 high_value ≥ 1，实际 by_status={by_status}"
+    )
+    # 所有状态之和应等于总文件数
+    total = json_data["summary"]["total"]
+    status_sum = sum(by_status.values())
+    assert status_sum == total, (
+        f"status 计数之和 {status_sum} ≠ 总计 {total}"
+    )
+
+
+def test_e2e_fixture_broken_links_orphans(tmp_path: Path) -> None:
+    """E2E：断言 broken_links ≥ 1 且 orphans ≥ 1。
+
+    - context/INDEX.md 中引用了不存在的 context/team/does-not-exist.md → broken_link
+    - context/team/orphan.md 不在任何 INDEX 中且无 requirements 引用 → orphan
+    """
+    exit_code, json_data = _run_on_fixture(tmp_path)
+    assert exit_code == 0
+
+    broken = json_data["summary"]["broken_links"]
+    orphans = json_data["summary"]["orphans"]
+
+    assert broken >= 1, f"期望 broken_links ≥ 1，实际 {broken}"
+    assert orphans >= 1, f"期望 orphans ≥ 1，实际 {orphans}"
+
+
+def test_e2e_fixture_reference_kinds(tmp_path: Path) -> None:
+    """E2E：断言 4 种引用形式均出现在 JSON 输出的 reference_evidences 中。
+
+    - markdown_link: [团队约定](context/team/conventions.md)
+    - raw_path:      参见 context/team/ai-collab.md 的两条硬规则
+    - source_marker: （来源：context/project/alpha/spec.md）
+    - json_value:    data.json 中 "context/team/conventions.md"
+    """
+    exit_code, json_data = _run_on_fixture(tmp_path)
+    assert exit_code == 0
+
+    kinds_found: set[str] = set()
+    for file_entry in json_data.get("files", []):
+        for ev in file_entry.get("reference_evidences", []):
+            kinds_found.add(ev["kind"])
+
+    required_kinds = {"markdown_link", "raw_path", "source_marker", "json_value"}
+    missing = required_kinds - kinds_found
+    assert not missing, (
+        f"缺少以下引用形式：{missing}；实际发现：{kinds_found}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# F-013 · 1000 文件性能 fixture + CI 守门
+# ---------------------------------------------------------------------------
+
+
+def _build_perf_fixture(tmp_path: Path) -> tuple[Path, Path]:
+    """程序化生成 1000 个 context 文件 + 50 个 requirements 文件到临时目录。
+
+    不 commit 入仓，运行时生成。
+    """
+    context_dir = tmp_path / "context"
+    req_dir = tmp_path / "requirements"
+    context_dir.mkdir()
+    req_dir.mkdir()
+
+    # 建 INDEX.md（列全 1000 个文件）
+    index_lines = ["# INDEX", ""]
+    for i in range(1000):
+        kind = "team" if i % 2 == 0 else "project/alpha"
+        rel = f"context/{kind}/file_{i:04d}.md"
+        sub = context_dir / kind
+        sub.mkdir(parents=True, exist_ok=True)
+        (sub / f"file_{i:04d}.md").write_text(f"# file {i}\n", encoding="utf-8")
+        index_lines.append(f"- [file {i}]({rel})")
+    (context_dir / "INDEX.md").write_text("\n".join(index_lines), encoding="utf-8")
+
+    # 建 50 个 requirements 文件
+    for i in range(50):
+        rd = req_dir / f"REQ-99-{i:03d}"
+        rd.mkdir()
+        (rd / "plan.md").write_text(
+            f"# REQ {i}\n参见 context/team/file_{(i * 20) % 1000:04d}.md\n",
+            encoding="utf-8",
+        )
+
+    return context_dir, req_dir
+
+
+def test_perf_1000_files(tmp_path: Path) -> None:
+    """性能守门：1000 context + 50 requirements → 全流程 < 5.0s。
+
+    程序化生成 fixture（不入仓）；使用 time.perf_counter() 计时。
+    """
+    from context_usage_report import main as _main  # noqa: PLC0415
+
+    context_dir, req_dir = _build_perf_fixture(tmp_path)
+    output_md = tmp_path / "reports" / "perf.md"
+    output_json = tmp_path / "reports" / "perf.json"
+
+    t0 = time.perf_counter()
+    exit_code = _main(
+        [
+            "--context-dir", str(context_dir),
+            "--requirements-dir", str(req_dir),
+            "--output", str(output_md),
+            "--json-output", str(output_json),
+            "--repo-root", str(tmp_path),
+            "--format", "both",
+        ]
+    )
+    elapsed = time.perf_counter() - t0
+
+    assert exit_code == 0, f"main() 返回非 0 退出码: {exit_code}"
+    assert elapsed < 5.0, f"性能不达标：{elapsed:.2f}s > 5.0s"
