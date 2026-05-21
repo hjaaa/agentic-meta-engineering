@@ -322,32 +322,52 @@ def validate(
 
 # ---------- CLI 入口 ----------
 
+def _check_single(task_path: Path, schema) -> int:
+    """校验单个 task.md；返回 exit code（0 OK / 1 数据违规）。"""
+    data = _load_task_frontmatter(task_path)
+    file_label = str(task_path)
+    report = validate(data, schema, file_label)
+    if report.has_errors:
+        report.print_all(file_label)
+        return 1
+    return 0
+
+
 def main() -> int:
-    """CLI 入口：exit 0 OK / exit 1 数据违规 / exit 2 schema 损坏。"""
+    """CLI 入口：exit 0 OK / exit 1 数据违规 / exit 2 schema 损坏 / 参数错。
+
+    支持双模式：
+      - 传入文件路径 → 单文件校验
+      - 传入目录路径 → rglob *.md 批量校验，任一失败聚合 exit 1
+    """
     if len(sys.argv) != 2:
         print(
-            "用法：python3 scripts/lib/check_task_frontmatter.py <task.md 路径>",
+            "用法：python3 scripts/lib/check_task_frontmatter.py <task.md 路径 | tasks/ 目录>",
             file=sys.stderr,
         )
         sys.exit(2)
 
-    task_path = Path(sys.argv[1])
+    target = Path(sys.argv[1])
     try:
         schema = _load_schema()
     except SchemaLoadError as exc:
         print(f"错误：{exc}", file=sys.stderr)
         sys.exit(2)
 
-    # _load_task_frontmatter 失败时内部 exit 1
-    data = _load_task_frontmatter(task_path)
+    if target.is_dir():
+        files = sorted(target.rglob("*.md"))
+        if not files:
+            print(f"⚠️ 目录 {target} 下未发现 *.md，视为通过", file=sys.stderr)
+            return 0
+        agg = 0
+        for f in files:
+            rc = _check_single(f, schema)
+            if rc != 0:
+                agg = rc
+        return agg
 
-    file_label = str(task_path)
-    report = validate(data, schema, file_label)
-
-    if report.has_errors:
-        report.print_all(file_label)
-        return 1
-    return 0
+    # 单文件路径
+    return _check_single(target, schema)
 
 
 if __name__ == "__main__":
