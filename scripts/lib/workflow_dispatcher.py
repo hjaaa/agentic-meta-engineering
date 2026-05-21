@@ -83,11 +83,20 @@ def _build_env(run_state: RunState, run_dir: Path, root: Path) -> dict[str, str]
     short_id = (run_state.run_id or "").removeprefix("REQ-").lower()
     branch_name = f"feat/req-{short_id}"
 
+    # Bug-12：$LOG_DIR 注入（task-list-summary 等节点依赖）
+    log_dir = run_dir / "logs"
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        # 仅日志目录创建失败 → warn but 不阻断；节点 bash 自身写失败会有更清晰错误
+        pass
+
     env: dict[str, str] = {
         "RUN_ID": run_state.run_id or "",
         "RUN_DIR": str(run_dir),
         "META_PATH": str(run_dir / "meta.yaml"),
         "ARTIFACTS_DIR": str(run_dir / "artifacts"),
+        "LOG_DIR": str(log_dir),
         "ARGUMENTS": run_state.arguments or "",
         "BRANCH_NAME": branch_name,
     }
