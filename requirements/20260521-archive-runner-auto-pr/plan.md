@@ -99,3 +99,15 @@
 - **Decision**：选 A——`--force` 只跳 `gh pr view` MERGED 校验，**不**触发场景 1 的"自动 commit + push + 开 PR"流程；archive PR 创建仍走默认路径
 - **Consequences**：异常恢复场景保持轻量；不引入"force 是否要重开 PR"的二阶决策；维持 ARS-1 fail-closed 边界——若用户在 force 路径下也要重开 PR，应手工 `gh pr create` 而非靠 --force
 - **时间**：2026-05-21 14:39:40
+
+### D-007 finalize 子步骤混合失败策略（镜像 ARS-9）
+- **Context**：`--finalize` 内部串接 5 个动作（`os.chdir` / `git pull --ff` / `git branch -D` / `git push --delete` / `git worktree remove --force`），每个失败处置需明确，否则 detail-design 无据可依
+- **Decision**：采用混合策略——前置不可绕过的步骤 fail-closed（chdir + git pull --ff + git branch -D 非 not-found 失败）；清理类后置步骤 best-effort（git push --delete 网络/权限失败 → fail-soft + stderr 打印手工命令；git worktree remove --force 仍失败 → fail-soft + 不写 removed_at）；已不存在路径全部静默 skip 保证幂等
+- **Consequences**：detail-design 可按 ARS-9 表逐项实现；测试需覆盖每个子动作的 happy / not-found / hard-failure 三态；与现有 `_delete_remote_branch` 已删除折叠语义对齐，但「fail-soft 后 stderr 打印手工命令」是 archive_runner 现有代码风格里没有的新模式（无先例），detail-design 需明确与 `_render_summary` 汇总输出的分工避免双重打印
+- **时间**：2026-05-21 15:02:00
+
+### D-008 archive_pr_number 异常路径全 fail-closed（镜像 ARS-10）
+- **Context**：`--finalize` 读 `meta.yaml.archive_pr_number` 后调 `gh pr view` 校验 MERGED；任意失败路径若误判会触发不可逆删除 feat 分支，数据损失不可恢复
+- **Decision**：三路径全 fail-closed exit 1——字段缺失 / 字段=0 / `gh pr view` 失败 都拒绝执行后续删除，分别给定具体 stderr 提示文案（detail-design 拍板）
+- **Consequences**：异常恢复需手工干预（先跑场景 1 完成第一阶段，或手工修正 meta.yaml）；与 ARS-9 的 fail-soft 形成"前置校验严 / 后置清理松"对照——前者保护不可逆数据丢失，后者允许 best-effort
+- **时间**：2026-05-21 15:02:00
