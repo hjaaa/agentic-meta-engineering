@@ -293,7 +293,8 @@ def _dispatch_prompt_node(
         raw_text: str = node["prompt"]
     elif "prompt_file" in node:
         from workflow_loader import _resolve_prompt_file  # Bug-8 workaround: dispatcher/loader 解析逻辑对齐
-        prompt_path = _resolve_prompt_file(node["prompt_file"])
+        # Bug-19 修复：透传 `root`（测试 fixture 注入；生产场景仍回退模块级常量）
+        prompt_path = _resolve_prompt_file(node["prompt_file"], repo_root=root)
         try:
             raw_text = prompt_path.read_text(encoding="utf-8")
         except FileNotFoundError as exc:

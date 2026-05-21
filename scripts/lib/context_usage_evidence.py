@@ -321,6 +321,13 @@ class EvidenceScanner:
                 f"[EvidenceScanner] JSON 解析失败，跳过：{file_path} — {exc}"
             )
             return []
+        except RecursionError:
+            # JSON 解码本身在嵌套过深时即可触发 RecursionError（Python 3.11 默认 1000；
+            # 3.14 较宽松），fail-open 与 _scan_json_values 同语义。
+            self._warnings.append(
+                f"[EvidenceScanner] JSON 嵌套过深，跳过：{source_rel}"
+            )
+            return []
 
         lines = text.splitlines()
         seen: dict[tuple[int, str], ReferenceEvidence] = {}
