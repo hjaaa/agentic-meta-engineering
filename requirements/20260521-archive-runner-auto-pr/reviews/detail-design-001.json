@@ -1,0 +1,77 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-20260521-archive-runner-auto-pr-detail-design-001",
+  "requirement_id": "20260521-archive-runner-auto-pr",
+  "phase": "detail-design",
+  "reviewer": "detail-design-quality-reviewer",
+  "reviewed_at": "2026-05-21 16:34:14",
+  "reviewed_commit": "c914340",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/detailed-design.md",
+      "sha256": "ed1965bc244a39fab0698ce5bdbeef7dee349476c54ec74615d6b2fbb6a2f9b3"
+    },
+    {
+      "path": "artifacts/features.json",
+      "sha256": "76c1465d1ed6d4134b98d7b3320d22d65da92be0ec36d942435d2a449c2d9e3a"
+    },
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "5f6aa872288c2e96b3a40dc88e336380ac84bf11f2b76d7d003a19e89c9c9c85"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 91,
+  "dimensions": {
+    "consistency_with_outline": {
+      "score": 95,
+      "issues": []
+    },
+    "interface_completeness": {
+      "score": 92,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "detailed-design.md:252 finalize_requirement 步骤 9 写 `_delete_remote_branch(strict=False, legacy_resurrect=...)`，但 §3.3 行 308-323 _delete_remote_branch 签名扩展仅新增 legacy_resurrect 一个参数（没有 strict）；§3.1 步骤 9 多写的 strict=False 与 §3.3 签名不一致，建议删除步骤 9 中的 strict=False 形参以避免误导实现者"
+        }
+      ]
+    },
+    "data_model_soundness": {
+      "score": 95,
+      "issues": []
+    },
+    "sequence_correctness": {
+      "score": 90,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "detailed-design.md:603 §10 验收指标写「41 条测试用例骨架（TC-F1-1 ~ TC-F4-6）」，但实际 §5 三个矩阵合计 TC-F1-1~5(5) + TC-F2-1~8(8) + TC-F3-1~18(18) + TC-F4-1~6(6) = 37 条；features.json F-005 description 也按 37 条计；详细设计 §10 与实际矩阵和 features.json 出现数字漂移，建议统一为 37"
+        }
+      ]
+    },
+    "feature_granularity": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "features.json F-005 estimate=3.1 但 description 提到「三个测试文件 37 TC + fixture 含真实 os.chdir + tmp_path + symlink 实测」工作量偏大；同时 F-005 通过 depends_on_features 依赖 F-001/F-002/F-003/F-004/F-007 五个 feature，意味着 F-005 必须等所有功能落地才能并行——3.1 天串行评估是否充裕，建议 task-planning 阶段确认是否需要按 PR-A/PR-B/PR-C 拆分时再次评估单测部分（PR-A 含 test_check_meta + PR-B 含 test_archive + PR-C 含 test_finalize）的 estimate 是否符合实际"
+        }
+      ]
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "建议统一 detailed-design.md §10 测试用例数（41 → 37）与 features.json F-005 description 一致",
+    "建议删除 detailed-design.md §3.1 步骤 9 中 _delete_remote_branch 的 strict=False 形参，与 §3.3 签名扩展保持一致",
+    "F-005 description 中『三个测试文件总计 37 个测试用例（详细设计 §5）』——若后续真按 PR 拆 commit，建议在 description 末追加一行说明三个 test 文件分别归属哪个 PR（PR-A=test_check_meta / PR-B=test_archive_runner / PR-C=test_finalize），加强可追溯"
+  ],
+  "scope": null,
+  "supersedes": null,
+  "features_json_validation": {
+    "valid": true,
+    "issues": [],
+    "enhancement_suggestions": [
+      "7 features 已含 complexity / depends_on_features / touches / interfaces_frozen 四个机读字段，task-context-builder 派发策略可直接吃；模型派发建议：F-001/F-002 = sonnet（medium）/ F-003 = opus（heavy）/ F-004/F-006/F-007 = sonnet（light）/ F-005 = sonnet（medium，测试逻辑机械）"
+    ]
+  }
+}
