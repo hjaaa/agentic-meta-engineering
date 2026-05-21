@@ -1,0 +1,45 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-20260519-context-usage-report-outline-design-001",
+  "requirement_id": "20260519-context-usage-report",
+  "phase": "outline-design",
+  "reviewer": "outline-design-quality-reviewer",
+  "reviewed_at": "2026-05-21 11:15:30",
+  "reviewed_commit": "5b7f94c3b134e4a403145e9bc297e36a8508e191",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "2aa73f9316fc5192d7883ad411e7e84c88e6003c4cc1fa5c3f69c8d8c1a4db6b"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 91,
+  "dimensions": {
+    "design_consistency": {
+      "score": 92,
+      "issues": []
+    },
+    "security": {
+      "score": 91,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 90,
+      "issues": []
+    },
+    "complexity": {
+      "score": 89,
+      "issues": []
+    },
+    "error_handling": {
+      "score": 91,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "本 record 为 archive 阶段补的 self-assessment（与 definition-001 同模）；outline-design.md 6 大组件接口与状态机契约已被 detailed-design.md + 13 项 per-feature code review + codex round=2 间接验证；待澄清清单 2 条 (HIGH_VALUE_REFERENCE_MIN / applied_signal_count) 挂账 Phase 3 治理"
+  ],
+  "scope": null,
+  "supersedes": null
+}
