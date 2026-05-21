@@ -30,10 +30,15 @@ worktree:
     removed_at: ""
 
 # ============ 语义组（definition 阶段补齐，供跨需求检索） ============
-feature_area: ""
-change_type: ""
-affected_modules: []
-tags: []
+feature_area: "lifecycle"
+change_type: "refactor"
+affected_modules:
+  - scripts/lib/archive_runner.py
+  - context/team/engineering-spec/meta-schema.yaml
+  - .claude/skills/managing-requirement-lifecycle/reference/archive-rules.md
+  - .claude/commands/requirement/archive.md
+  - tests/lifecycle/test_archive_runner.py
+tags: ["squash-merge", "single-branch-lifecycle", "archive-automation"]
 
 # ============ 结果组（completed 时才填） ============
 outcome: ""
