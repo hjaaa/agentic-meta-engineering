@@ -1,0 +1,41 @@
+# ============ 流程组（bootstrap 时填） ============
+id: 20260521-archive-runner-auto-pr
+title: archive_runner 自动开归档 PR + 单需求单分支闭环
+phase: definition
+created_at: 2026-05-21 11:37:32
+branch: feat/req-20260521-archive-runner-auto-pr
+base_branch: develop
+project: agentic-meta-engineering
+services: []
+gates_passed: []
+pr_url: ""
+pr_number: 0
+log_layout: split
+
+# ============ worktree 组 ============
+worktree:
+  enabled: true
+  owner: workflow
+  path: .worktrees/feat-req-20260521-archive-runner-auto-pr
+  absolute_path: /Users/richardhuang/learnspace/agentic-meta-engineering/.worktrees/feat-req-20260521-archive-runner-auto-pr
+  branch: feat/req-20260521-archive-runner-auto-pr
+  base_branch: develop
+  created_at: 2026-05-21 11:37:32
+  baseline:
+    command: make gates-validate
+    status: skipped
+    completed_at: ""
+  cleanup:
+    policy: owned-only
+    removed_at: ""
+
+# ============ 语义组（definition 阶段补齐，供跨需求检索） ============
+feature_area: ""
+change_type: ""
+affected_modules: []
+tags: []
+
+# ============ 结果组（completed 时才填） ============
+outcome: ""
+completed_at: ""
+lessons_extracted: false
