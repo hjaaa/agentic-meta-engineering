@@ -3,9 +3,15 @@
 逻辑零改动 —— 沿用 check_sourcing 的三态校验规则（E001/E002/E003/W001/W002/W003），
 仅把旧版 `common.Report` 的多 finding 聚合结果映射为新 `plugins.base.Report`：
 
-  - 任一 ERROR finding → Decision.FAIL，code=R-SOURCING
-  - 仅 WARNING finding → Decision.PASS（severity=warning 由 registry 决定）
-  - 无 finding         → Decision.PASS
+  - 任一 ERROR finding         → Decision.FAIL，code=R-SOURCING
+  - 仅 WARNING finding + strict → Decision.FAIL，code=R-WARNING-ONLY
+  - 仅 WARNING finding + 非strict → Decision.PASS（warnings 透传到 vars，message 提示）
+  - 无 finding                 → Decision.PASS
+
+strict 由 `ctx.cli_flags["strict"]` 传入（runner 的 `--strict` flag）。
+非 strict 默认放行 warning-only 是修复原 docstring 与实现不一致（Bug-18，
+原实现违反 line 8 PASS 语义恒返 FAIL，导致 submit/post-dev 等非 strict 入口
+被 pre-existing W002/W003 卡死）。
 
 F-003：changed_files 过滤双轨清理——pre-commit 时 runner 已通过
 registry.yaml.applies_when.changed_files 过滤；本 plugin 不再 precheck 内重复
@@ -81,7 +87,8 @@ class SourcingGate(Gate):
         if legacy_report.findings():
             print(legacy_report.render())
 
-        return _legacy_to_report(self.id, legacy_report)
+        strict = bool(ctx.cli_flags.get("strict"))
+        return _legacy_to_report(self.id, legacy_report, strict=strict)
 
 
 def _resolve_targets(ctx: GateContext) -> list[Path]:
@@ -143,13 +150,18 @@ def _is_completed_req(artifact_path: Path, req_root: Path) -> bool:
         return False
 
 
-def _legacy_to_report(gate_id: str, legacy: LegacyReport) -> Report:
+def _legacy_to_report(
+    gate_id: str, legacy: LegacyReport, *, strict: bool = False
+) -> Report:
     """把 common.Report 的 findings 列表降维成单条 Report。
 
-    转换规则：
-      - 任一 ERROR finding → Decision.FAIL，code=R-SOURCING
-      - 仅 WARNING finding → Decision.FAIL，code=R-WARNING-ONLY（strict 模式下 has_warning_fail 触发 exit=1）
-      - 无 finding         → Decision.PASS
+    转换规则（Bug-18 修复后）：
+      - 任一 ERROR finding         → Decision.FAIL，code=R-SOURCING
+      - 仅 WARNING finding + strict → Decision.FAIL，code=R-WARNING-ONLY（触发 exit=1）
+      - 仅 WARNING finding + 非strict → Decision.PASS，warnings 透传到 vars
+      - 无 finding                  → Decision.PASS
+
+    strict 由调用方（plugin.run）从 ctx.cli_flags["strict"] 取得。
     """
     findings = legacy.findings()
     errors = [f for f in findings if f[1] == LegacySeverity.ERROR]
@@ -170,15 +182,24 @@ def _legacy_to_report(gate_id: str, legacy: LegacyReport) -> Report:
             },
         )
 
-    # 纯 warning 分支：gate severity=warning，strict 模式下由 audit.calc_exit_code 升级 exit=1
     if warnings:
         first = warnings[0]
+        if strict:
+            return Report(
+                gate_id=gate_id,
+                decision=Decision.FAIL,
+                code="R-WARNING-ONLY",
+                message=f"{first[0]}: {first[2]}: {first[3]}",
+                fix_hint="strict 模式下 warning 视为失败；去掉 --strict 或修复 W001/W002/W003 后重试",
+                vars={"warnings": [list(f) for f in warnings]},
+            )
         return Report(
             gate_id=gate_id,
-            decision=Decision.FAIL,
-            code="R-WARNING-ONLY",
-            message=f"{first[0]}: {first[2]}: {first[3]}",
-            fix_hint="该 gate 仅含 warning；strict 模式下视为失败",
+            decision=Decision.PASS,
+            message=(
+                f"{len(warnings)} warning(s) ignored (non-strict); "
+                f"first: {first[0]}: {first[2]}: {first[3]}"
+            ),
             vars={"warnings": [list(f) for f in warnings]},
         )
 

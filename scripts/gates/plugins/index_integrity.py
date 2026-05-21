@@ -85,17 +85,20 @@ class IndexIntegrityGate(Gate):
         if legacy_report.findings():
             print(legacy_report.render())
 
-        return _legacy_to_report(self.id, legacy_report)
+        strict = bool(ctx.cli_flags.get("strict"))
+        return _legacy_to_report(self.id, legacy_report, strict=strict)
 
 
-def _legacy_to_report(gate_id: str, legacy: LegacyReport) -> Report:
+def _legacy_to_report(
+    gate_id: str, legacy: LegacyReport, *, strict: bool = False
+) -> Report:
     """把 common.Report 的 findings 列表降维成单条 Report。
 
-    转换规则：
+    转换规则（Bug-18 同模式修复）：
       - 任一 ERROR finding（broken link）→ Decision.FAIL，code=R-INDEX
-      - 仅 WARNING finding              → Decision.FAIL，code=R-WARNING-ONLY
-        （gate severity=warning，strict 模式下 has_warning_fail 触发 exit=1）
-      - 无 finding                      → Decision.PASS
+      - 仅 WARNING + strict              → Decision.FAIL，code=R-WARNING-ONLY
+      - 仅 WARNING + 非strict            → Decision.PASS，warnings 透传到 vars
+      - 无 finding                       → Decision.PASS
     """
     findings = legacy.findings()
     errors = [f for f in findings if f[1] == LegacySeverity.ERROR]
@@ -116,15 +119,24 @@ def _legacy_to_report(gate_id: str, legacy: LegacyReport) -> Report:
             },
         )
 
-    # 纯 warning 分支：gate severity=warning，strict 模式下由 audit.calc_exit_code 升级 exit=1
     if warnings:
         first = warnings[0]
+        if strict:
+            return Report(
+                gate_id=gate_id,
+                decision=Decision.FAIL,
+                code="R-WARNING-ONLY",
+                message=f"{first[0]}: {first[2]}: {first[3]}",
+                fix_hint="strict 模式下 warning 视为失败；去掉 --strict 或修复 W001/W002/W003 后重试",
+                vars={"warnings": [list(f) for f in warnings]},
+            )
         return Report(
             gate_id=gate_id,
-            decision=Decision.FAIL,
-            code="R-WARNING-ONLY",
-            message=f"{first[0]}: {first[2]}: {first[3]}",
-            fix_hint="该 gate 仅含 warning；strict 模式下视为失败",
+            decision=Decision.PASS,
+            message=(
+                f"{len(warnings)} warning(s) ignored (non-strict); "
+                f"first: {first[0]}: {first[2]}: {first[3]}"
+            ),
             vars={"warnings": [list(f) for f in warnings]},
         )
 
