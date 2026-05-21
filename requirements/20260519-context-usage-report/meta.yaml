@@ -1,6 +1,6 @@
 id: 20260519-context-usage-report
 title: Context 知识利用率统计机制
-phase: testing
+phase: completed
 created_at: 2026-05-19 15:15:31
 branch: feat/req-20260519-context-usage-report
 base_branch: develop
@@ -25,7 +25,7 @@ worktree:
     completed_at: '2026-05-19 15:15:31'
   cleanup:
     policy: owned-only
-    removed_at: ''
+    removed_at: '2026-05-21 11:06:29'
 feature_area: knowledge
 change_type: feature
 affected_modules:
@@ -38,8 +38,8 @@ affected_modules:
 - tests/fixtures/context_usage_report/
 - .gitignore
 tags: []
-outcome: ''
-completed_at: ''
+outcome: shipped
+completed_at: '2026-05-21 11:06:29'
 lessons_extracted: true
 reviews:
   code:
@@ -160,3 +160,4 @@ reviews:
     history:
     - REV-20260519-context-usage-report-detail-design-001
     stale: false
+archived_at: '2026-05-21 11:06:29'

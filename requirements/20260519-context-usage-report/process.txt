@@ -64,3 +64,4 @@
 2026-05-21 10:21:45 [testing] [codex-review-received] verdict=not_passed round=1 reviewer=chatgpt-codex-connector[bot] reviewed_commit=ca52244 findings=2 P1 (scripts/lib/context_usage_report.py:200+:280：EvidenceScanner.source 已是 repo-root-relative，但 caller 又拼 requirements_dir → 双前缀 .../requirements/requirements/.../ 路径不存在 → applied_signal/git_timestamp 整批失效 → high_value 分类与 last_referenced_at 静默错误)
 2026-05-21 10:32:34 [codex-review-triggered] round=1 pr=#84
 2026-05-21 10:45:38 [codex-review-received] verdict=passed round=1
+2026-05-21 11:06:29 [archived] (PR #84 merged at 2026-05-21 11:06:29)
