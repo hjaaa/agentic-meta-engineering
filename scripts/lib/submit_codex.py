@@ -61,6 +61,25 @@ _MAX_CONSECUTIVE_5XX = 3
 _PASS_PHRASE = "Didn't find any" + " major issues."
 
 
+# 2026-05-21 硬约束（submit-rules.md §7.5）：
+# @codex review 触发评论必须显式要求 codex 阅读 PR 正文，
+# 否则 codex 默认只 review diff，遗漏正文中的设计意图 / 验证 / 风险信息。
+# 本常量是唯一事实源，禁止 ad-hoc 拼装；同步更新需走 submit-rules.md + 此常量 + 测试三处。
+CODEX_REVIEW_TRIGGER_BODY = """@codex review
+
+请在 review 前**先完整阅读本 PR 的正文（description）**，包含：
+- 变更摘要：本期 feature/fix 列表与各自 acceptance
+- 影响范围：services / 文件清单
+- 验证方式：单测 / 门禁 / 真机回归结论
+- 风险与回滚：已挂账的 follow-up / known limitations
+- 追溯：需求 → 设计 → 任务 → review 的链路
+
+再结合 diff 给出 review 意见。重点关注：
+1. 实现是否完整覆盖正文中描述的 acceptance 与设计意图
+2. 风险段提到的 follow-up 是否在本 PR 内承担/挂账清晰
+3. 是否存在正文未提及的 silent 行为变更"""
+
+
 # ---------- 内部异常体系（不对外暴露） ----------
 
 
@@ -74,6 +93,20 @@ class GhApi429(Exception):
 
 class GhApiAbort(Exception):
     """连续 5xx 达到阈值，轮询中止。"""
+
+
+class CiNotGreen(Exception):
+    """CI 未全绿（FAILURE/CANCELLED/TIMED_OUT 或未稳定），禁止进入 codex review-loop。
+
+    2026-05-21 引入的硬约束（submit-rules.md §7.5）：codex review 是稀缺成本，
+    必须保证 PR CI 已绿才触发。本异常携带 status ∈ {'failed', 'pending'} 让上层
+    决定 exit code（failed → 1，pending → 0 + warning）。
+    """
+
+    def __init__(self, status: str, problem_checks: list[dict[str, Any]]):
+        self.status = status            # 'failed' | 'pending'
+        self.problem_checks = problem_checks
+        super().__init__(f"CI status={status} problem_checks={len(problem_checks)}")
 
 
 # ---------- 数据类 ----------
@@ -206,12 +239,102 @@ def _calc_round(req_id: str) -> int:
     return max_round + 1
 
 
+def _check_ci_status(pr_number: int) -> tuple[str, list[dict[str, Any]]]:
+    """查 PR 当前 CI 状态（submit-rules.md §7.5 硬约束的 1 次性 precheck）。
+
+    返回 (status, problem_checks)：
+      - status='success': 所有 check 已 COMPLETED 且 conclusion ∈ {SUCCESS, NEUTRAL, SKIPPED}
+      - status='failed' : 任一 check conclusion ∈ {FAILURE, CANCELLED, TIMED_OUT}
+      - status='pending': 任一 check status != COMPLETED（含 PENDING / IN_PROGRESS / QUEUED）
+
+    gh 命令失败 / JSON 解析失败 / 0 个 check → 视为 pending（保守策略，
+    让上层走"未稳定"分支以 exit 0 + warning 兜底，避免静默通过）。
+
+    本函数是无副作用 IO 查询；不写 process.txt / 不抛 SystemExit。
+    """
+    try:
+        proc = subprocess.run(
+            ["gh", "pr", "checks", str(pr_number), "--json", "name,status,conclusion,bucket"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=_SUBPROC_TIMEOUT_SEC,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return "pending", []
+    if proc.returncode != 0:
+        return "pending", []
+    try:
+        checks = json.loads(proc.stdout or "[]")
+    except json.JSONDecodeError:
+        return "pending", []
+    if not isinstance(checks, list) or not checks:
+        return "pending", []
+
+    failed_concl = {"FAILURE", "CANCELLED", "TIMED_OUT"}
+    failed = [
+        c for c in checks
+        if (c.get("conclusion") or "").upper() in failed_concl
+    ]
+    if failed:
+        return "failed", failed
+    pending = [
+        c for c in checks
+        if (c.get("status") or "").upper() != "COMPLETED"
+    ]
+    if pending:
+        return "pending", pending
+    return "success", []
+
+
+def _precheck_ci_or_exit(pr_number: int, req_id: str) -> None:
+    """codex review-loop 前置：CI 必须全绿（submit-rules.md §7.5 硬约束）。
+
+    - status='failed'  → stderr 详情 + process.txt [codex-skipped reason=ci-failed] + SystemExit(1)
+    - status='pending' → stderr 详情 + process.txt [codex-skipped reason=ci-pending] + SystemExit(0)
+    - status='success' → 静默通过
+
+    为什么是 SystemExit 而非返回值：codex review 是稀缺成本（注意力 + bot 配额），
+    fail-closed 阻断比放行 + 让 reviewer 收无效噪声更便宜。
+    """
+    status, problem_checks = _check_ci_status(pr_number)
+    if status == "success":
+        return
+    detail = "\n".join(
+        f"  - {c.get('name', '?')}: status={c.get('status', '?')}"
+        f" conclusion={c.get('conclusion', '?')}"
+        for c in problem_checks
+    )
+    if status == "failed":
+        print(
+            f"❌ CI failed for pr=#{pr_number}; codex review skipped.\n{detail}\n"
+            f"Run `gh pr checks {pr_number}` to inspect, fix CI then re-run /requirement:submit.",
+            file=sys.stderr,
+        )
+        _append_process_event(
+            req_id,
+            f"[codex-skipped] reason=ci-failed pr=#{pr_number} checks={len(problem_checks)}",
+        )
+        raise SystemExit(1)
+    # status == "pending"
+    print(
+        f"⚠️ CI not stable for pr=#{pr_number}; codex review skipped (precheck guard).\n{detail}\n"
+        f"Re-run /requirement:submit after CI checks complete.",
+        file=sys.stderr,
+    )
+    _append_process_event(
+        req_id,
+        f"[codex-skipped] reason=ci-pending pr=#{pr_number} checks={len(problem_checks)}",
+    )
+    raise SystemExit(0)
+
+
 def _trigger_codex_comment(
     pr_number: int,
     req_id: str,
     round_n: int,
     *,
-    body: str = "@codex review",
+    body: str = CODEX_REVIEW_TRIGGER_BODY,
 ) -> str:
     """发 `@codex review` 评论；失败 exit 1，返回触发时刻 ISO8601。
 
@@ -349,22 +472,23 @@ def _git_log_diff_since(prev_sha: str) -> Optional[tuple[str, str]]:
 def _build_codex_comment_body(pr_number: int) -> str:
     """组装 @codex review 评论正文。
 
-    策略（2026-05 改造）：
-    - 上轮锚点不再读本地 round-N.md（已废）；改通过 `_latest_codex_reviewed_commit`
-      拉 PR 上 codex bot 最近一次 review 的 commit_id 作为 diff 起点
-    - 命中起点 → 附「Changes since last codex review（log + diff stat）」段
-      用户能看到「本次 push 改了哪些文件 + 提交说明了什么」，codex 能针对性复评
-    - 未命中（首次 review / 拉 API 失败）→ plain `@codex review` 兜底
+    策略（2026-05-21 修订）：
+    - **基础体（必含）**：`CODEX_REVIEW_TRIGGER_BODY`——固定模板，含「先读 PR 正文」
+      硬约束指令（submit-rules.md §7.5 唯一事实源）
+    - **增量段（round_n≥2 时附加）**：通过 `_latest_codex_reviewed_commit` 拉 PR 上
+      codex bot 最近一次 review 的 commit_id 作为 diff 起点；命中则附「Changes since
+      last codex review」段（log + diff stat）让 codex 针对性复评
+    - 未命中（首次 review / 拉 API 失败）→ 仅返回基础体
 
-    评论体超过 _COMMENT_BODY_BUDGET 时截断 diff stat，保留 log 完整。
+    评论体超过 _COMMENT_BODY_BUDGET 时截断 diff stat，保留 log 完整。基础体永不截断。
     """
-    plain = "@codex review"
+    base = CODEX_REVIEW_TRIGGER_BODY
     prev_sha = _latest_codex_reviewed_commit(pr_number)
     if not prev_sha:
-        return plain
+        return base
     pair = _git_log_diff_since(prev_sha)
     if pair is None:
-        return plain
+        return base
     log_out, diff_out = pair
 
     head_short = _current_head_sha() or "HEAD"
@@ -378,21 +502,21 @@ def _build_codex_comment_body(pr_number: int) -> str:
     log_section = f"### Commits\n```\n{log_out or '(no new commits)'}\n```"
     diff_section = f"### Files changed (diff stat)\n```\n{diff_out or '(no diff)'}\n```"
 
-    body = f"{plain}\n\n{header}\n\n{intro}\n\n{log_section}\n\n{diff_section}"
+    body = f"{base}\n\n{header}\n\n{intro}\n\n{log_section}\n\n{diff_section}"
     if len(body) <= _COMMENT_BODY_BUDGET:
         return body
-    # 超额：截 diff stat，给 log 让位（commits 一行能读出意图）
+    # 超额：截 diff stat，给 log + base 让位（base 是硬约束不能动）
     available = (
         _COMMENT_BODY_BUDGET
-        - len(plain) - len(header) - len(intro) - len(log_section) - 100
+        - len(base) - len(header) - len(intro) - len(log_section) - 100
     )
     if available > 200:
         truncated = diff_out[:available] + "\n... (truncated, see PR Files Changed tab)"
         diff_section = f"### Files changed (diff stat)\n```\n{truncated}\n```"
-        return f"{plain}\n\n{header}\n\n{intro}\n\n{log_section}\n\n{diff_section}"
-    # 极端情况（log 也很大）：只发 plain + header + intro，给 codex 一个起点
+        return f"{base}\n\n{header}\n\n{intro}\n\n{log_section}\n\n{diff_section}"
+    # 极端情况（log 也很大）：只发 base + header + intro，给 codex 一个起点
     return (
-        f"{plain}\n\n{header}\n\n{intro}\n\n"
+        f"{base}\n\n{header}\n\n{intro}\n\n"
         "_(变更过大无法内嵌 stat，请直接看 PR Files Changed)_"
     )
 
@@ -781,9 +905,15 @@ def submit_with_codex(
     round_num = _calc_round(req_id)
 
     print(
-        f"[submit_codex] req={req_id} pr=#{pr_number} round={round_num} 触发 @codex review",
+        f"[submit_codex] req={req_id} pr=#{pr_number} round={round_num} 准备触发 @codex review",
         file=sys.stderr,
     )
+
+    # 2026-05-21 硬约束（submit-rules.md §7.5）：codex review-loop 前置必须 CI 全绿。
+    # 即使上游 submit Skill 已在 step 11 等过 CI，此处仍 1 次性 precheck 作为 defense-in-depth：
+    # - 防止 submit_codex 被 CLI 直接调用绕过 step 11
+    # - 防止 step 11 CI 通过后到 codex 提交前出现新 push 让 CI 变红
+    _precheck_ci_or_exit(pr_number, req_id)
 
     # 若 PR 上已有 codex 历史 review，则为 codex 拼增量摘要：log + diff stat since
     # 上轮 review 的 commit_id（_latest_codex_reviewed_commit 反查）

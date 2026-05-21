@@ -81,8 +81,14 @@ def _make_meta(
 
 @pytest.fixture
 def fake_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """把 submit_codex 的 REQUIREMENTS_DIR 重定向到 tmp_path，避免改动真实仓库。"""
+    """把 submit_codex 的 REQUIREMENTS_DIR 重定向到 tmp_path，避免改动真实仓库。
+
+    同时默认 stub `_check_ci_status` 返回 ('success', [])，让 CI precheck（submit-rules.md §7.5
+    硬约束）在大多数 e2e mock 测试中自动放行；专门测 CI precheck 行为的用例可在测试体内
+    覆盖此 stub。
+    """
     monkeypatch.setattr(submit_codex, "REQUIREMENTS_DIR", tmp_path)
+    monkeypatch.setattr(submit_codex, "_check_ci_status", lambda _pr: ("success", []))
     return tmp_path
 
 
@@ -674,13 +680,17 @@ def test_parse_jsonl_reviews_handles_paginated_jsonl() -> None:
 # ---------- review-loop 增量摘要（2026-05 改造：锚点改从 PR reviews API 反查） ----------
 
 
-def test_build_codex_comment_body_no_prior_codex_review_is_plain(
+def test_build_codex_comment_body_no_prior_codex_review_is_base_template(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """PR 上没有 codex bot 历史 review → body 必须是 plain `@codex review`。"""
+    """PR 上没有 codex bot 历史 review → body = `CODEX_REVIEW_TRIGGER_BODY`（基础模板，含 PR 正文阅读硬约束）。"""
     monkeypatch.setattr(submit_codex, "_gh_pr_reviews", lambda _pr: [])
     body = _build_codex_comment_body(pr_number=42)
-    assert body == "@codex review"
+    assert body == submit_codex.CODEX_REVIEW_TRIGGER_BODY
+    # 关键内容断言（即使模板将来文本微调也守住硬约束语义）
+    assert "@codex review" in body
+    assert "完整阅读本 PR 的正文" in body
+    assert "变更摘要" in body and "影响范围" in body and "验证方式" in body
 
 
 def test_build_codex_comment_body_includes_diff_summary_for_repeat(
@@ -729,7 +739,9 @@ def test_build_codex_comment_body_includes_diff_summary_for_repeat(
     monkeypatch.setattr(submit_codex.subprocess, "run", _mock_run)
 
     body = _build_codex_comment_body(pr_number=42)
-    assert body.startswith("@codex review\n\n")
+    # 基础体（CODEX_REVIEW_TRIGGER_BODY）必须永远在前
+    assert body.startswith(submit_codex.CODEX_REVIEW_TRIGGER_BODY + "\n\n")
+    assert "完整阅读本 PR 的正文" in body  # 硬约束指令
     assert "Changes since last codex review" in body
     assert "abc1234567" in body and "def5678" in body
     assert "本次 push 自上轮 codex review 以来的改动" in body  # intro 提示
@@ -740,13 +752,14 @@ def test_build_codex_comment_body_includes_diff_summary_for_repeat(
 def test_build_codex_comment_body_falls_back_when_api_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """_gh_pr_reviews 抛 GhApi5xx → 兜底 plain，不抛。"""
+    """_gh_pr_reviews 抛 GhApi5xx → 兜底基础模板（仍含 PR 正文阅读硬约束），不抛。"""
     def _raise(_pr):
         raise GhApi5xx("simulated 502")
 
     monkeypatch.setattr(submit_codex, "_gh_pr_reviews", _raise)
     body = _build_codex_comment_body(pr_number=42)
-    assert body == "@codex review"
+    assert body == submit_codex.CODEX_REVIEW_TRIGGER_BODY
+    assert "完整阅读本 PR 的正文" in body
 
 
 def test_build_codex_comment_body_falls_back_when_git_fails(
@@ -772,7 +785,8 @@ def test_build_codex_comment_body_falls_back_when_git_fails(
 
     monkeypatch.setattr(submit_codex.subprocess, "run", _mock_run)
     body = _build_codex_comment_body(pr_number=42)
-    assert body == "@codex review"
+    assert body == submit_codex.CODEX_REVIEW_TRIGGER_BODY
+    assert "完整阅读本 PR 的正文" in body
 
 
 def test_latest_codex_reviewed_commit_picks_newest_by_submitted_at(
@@ -1013,3 +1027,201 @@ def test_normalize_issue_comment_preserves_user_and_body() -> None:
     assert out["user"]["login"] == "x[bot]"
     assert out["body"] == "Didn't find any major issues."
     assert out["_kind"] == "comment"
+
+
+# ===========================================================================
+# 2026-05-21 硬约束（submit-rules.md §7.5）：CI precheck + 触发模板
+# ===========================================================================
+
+
+def _make_ci_proc(rc: int, stdout: str, stderr: str = ""):
+    """构造 _check_ci_status 子进程返回值的 SimpleNamespace 模拟。"""
+    from types import SimpleNamespace
+    return SimpleNamespace(returncode=rc, stdout=stdout, stderr=stderr)
+
+
+def test_check_ci_status_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    """所有 check status=COMPLETED + conclusion=SUCCESS → ('success', [])."""
+    checks = [
+        {"name": "build", "status": "COMPLETED", "conclusion": "SUCCESS"},
+        {"name": "test", "status": "COMPLETED", "conclusion": "NEUTRAL"},
+        {"name": "lint", "status": "COMPLETED", "conclusion": "SKIPPED"},
+    ]
+    import json as _json
+    monkeypatch.setattr(
+        submit_codex.subprocess,
+        "run",
+        lambda *_args, **_kw: _make_ci_proc(0, _json.dumps(checks)),
+    )
+    status, problem = submit_codex._check_ci_status(pr_number=42)
+    assert status == "success"
+    assert problem == []
+
+
+def test_check_ci_status_failed_on_failure_conclusion(monkeypatch: pytest.MonkeyPatch) -> None:
+    """任一 check conclusion=FAILURE/CANCELLED/TIMED_OUT → ('failed', [那些])."""
+    checks = [
+        {"name": "build", "status": "COMPLETED", "conclusion": "SUCCESS"},
+        {"name": "quality-check", "status": "COMPLETED", "conclusion": "FAILURE"},
+        {"name": "deploy-preview", "status": "COMPLETED", "conclusion": "CANCELLED"},
+    ]
+    import json as _json
+    monkeypatch.setattr(
+        submit_codex.subprocess,
+        "run",
+        lambda *_args, **_kw: _make_ci_proc(0, _json.dumps(checks)),
+    )
+    status, problem = submit_codex._check_ci_status(pr_number=42)
+    assert status == "failed"
+    assert {c["name"] for c in problem} == {"quality-check", "deploy-preview"}
+
+
+def test_check_ci_status_pending_when_incomplete(monkeypatch: pytest.MonkeyPatch) -> None:
+    """任一 check status=IN_PROGRESS/QUEUED → ('pending', [那些])."""
+    checks = [
+        {"name": "build", "status": "COMPLETED", "conclusion": "SUCCESS"},
+        {"name": "test", "status": "IN_PROGRESS", "conclusion": None},
+    ]
+    import json as _json
+    monkeypatch.setattr(
+        submit_codex.subprocess,
+        "run",
+        lambda *_args, **_kw: _make_ci_proc(0, _json.dumps(checks)),
+    )
+    status, problem = submit_codex._check_ci_status(pr_number=42)
+    assert status == "pending"
+    assert [c["name"] for c in problem] == ["test"]
+
+
+def test_check_ci_status_gh_failure_treated_as_pending(monkeypatch: pytest.MonkeyPatch) -> None:
+    """gh 命令 rc!=0 → ('pending', [])（保守，让上层走 fail-closed 兜底）。"""
+    monkeypatch.setattr(
+        submit_codex.subprocess,
+        "run",
+        lambda *_args, **_kw: _make_ci_proc(1, "", "auth required"),
+    )
+    status, problem = submit_codex._check_ci_status(pr_number=42)
+    assert status == "pending"
+    assert problem == []
+
+
+def test_check_ci_status_empty_checks_treated_as_pending(monkeypatch: pytest.MonkeyPatch) -> None:
+    """0 个 check（PR 无 CI 配置或 actions 尚未触发）→ ('pending', [])."""
+    monkeypatch.setattr(
+        submit_codex.subprocess,
+        "run",
+        lambda *_args, **_kw: _make_ci_proc(0, "[]"),
+    )
+    status, problem = submit_codex._check_ci_status(pr_number=42)
+    assert status == "pending"
+
+
+def test_precheck_ci_or_exit_success_passes_silently(
+    fake_repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """status='success' → 不抛 + 不写 process.txt。"""
+    req_id = "REQ-2099-007"
+    _make_meta(fake_repo, req_id=req_id, pr_number=42)
+    monkeypatch.setattr(submit_codex, "_check_ci_status", lambda _pr: ("success", []))
+
+    # 应不抛
+    submit_codex._precheck_ci_or_exit(pr_number=42, req_id=req_id)
+
+    captured = capsys.readouterr()
+    assert captured.err == ""
+    # process.txt 不应被写入
+    process_txt = fake_repo / req_id / "process.txt"
+    assert (not process_txt.exists()) or "[codex-skipped]" not in process_txt.read_text()
+
+
+def test_precheck_ci_or_exit_failed_exits_1_with_event(
+    fake_repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """status='failed' → SystemExit(1) + stderr 详情 + process.txt [codex-skipped reason=ci-failed]。"""
+    req_id = "REQ-2099-007"
+    _make_meta(fake_repo, req_id=req_id, pr_number=42)
+    problem = [{"name": "quality-check", "status": "COMPLETED", "conclusion": "FAILURE"}]
+    monkeypatch.setattr(submit_codex, "_check_ci_status", lambda _pr: ("failed", problem))
+
+    with pytest.raises(SystemExit) as exc_info:
+        submit_codex._precheck_ci_or_exit(pr_number=42, req_id=req_id)
+    assert exc_info.value.code == 1
+
+    captured = capsys.readouterr()
+    assert "CI failed" in captured.err
+    assert "quality-check" in captured.err
+    assert "FAILURE" in captured.err
+
+    process_txt = fake_repo / req_id / "process.txt"
+    assert process_txt.exists()
+    line = process_txt.read_text()
+    assert "[codex-skipped]" in line
+    assert "reason=ci-failed" in line
+    assert "pr=#42" in line
+
+
+def test_precheck_ci_or_exit_pending_exits_0_with_warning(
+    fake_repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    """status='pending' → SystemExit(0) + stderr ⚠️ 警告 + process.txt [codex-skipped reason=ci-pending]。"""
+    req_id = "REQ-2099-007"
+    _make_meta(fake_repo, req_id=req_id, pr_number=42)
+    problem = [{"name": "test", "status": "IN_PROGRESS", "conclusion": None}]
+    monkeypatch.setattr(submit_codex, "_check_ci_status", lambda _pr: ("pending", problem))
+
+    with pytest.raises(SystemExit) as exc_info:
+        submit_codex._precheck_ci_or_exit(pr_number=42, req_id=req_id)
+    assert exc_info.value.code == 0
+
+    captured = capsys.readouterr()
+    assert "CI not stable" in captured.err or "⚠️" in captured.err
+    assert "test" in captured.err
+
+    process_txt = fake_repo / req_id / "process.txt"
+    line = process_txt.read_text()
+    assert "[codex-skipped]" in line
+    assert "reason=ci-pending" in line
+
+
+def test_submit_with_codex_blocks_on_ci_failed(
+    fake_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """submit_with_codex 在 CI failed 时 fail-closed：不发 @codex review，不进 poll。"""
+    req_id = "REQ-2099-007"
+    _make_meta(fake_repo, req_id=req_id, pr_number=42)
+    # 覆盖 fake_repo 默认的 success stub
+    problem = [{"name": "quality-check", "status": "COMPLETED", "conclusion": "FAILURE"}]
+    monkeypatch.setattr(submit_codex, "_check_ci_status", lambda _pr: ("failed", problem))
+
+    trigger_called = []
+    poll_called = []
+    monkeypatch.setattr(
+        submit_codex,
+        "_trigger_codex_comment",
+        lambda *a, **kw: (trigger_called.append((a, kw)) or "2026-05-21T09:00:00+08:00"),
+    )
+    monkeypatch.setattr(
+        submit_codex,
+        "_poll_codex",
+        lambda *a, **kw: (poll_called.append(1) or None),
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        submit_with_codex(req_id, poll_interval_sec=1, timeout_sec=10)
+    assert exc_info.value.code == 1
+    assert trigger_called == []  # @codex review 没发
+    assert poll_called == []     # poll 没跑
+
+
+def test_codex_review_trigger_body_constant_includes_pr_body_instruction() -> None:
+    """CODEX_REVIEW_TRIGGER_BODY 必须包含「先读 PR 正文」硬约束指令（2026-05-21 §7.5）。"""
+    body = submit_codex.CODEX_REVIEW_TRIGGER_BODY
+    assert body.startswith("@codex review")
+    assert "完整阅读本 PR 的正文" in body
+    # 5 个必读 section 关键词都要在
+    for section in ("变更摘要", "影响范围", "验证方式", "风险与回滚", "追溯"):
+        assert section in body, f"trigger 模板缺关键 section: {section}"
+    # 3 条 review 重点
+    assert "acceptance" in body
+    assert "follow-up" in body
+    assert "silent" in body

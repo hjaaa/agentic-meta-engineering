@@ -139,7 +139,19 @@ gh pr checks <num> --json name,status,conclusion,bucket
 | 任一 FAILURE / CANCELLED / TIMED_OUT | exit 1，stderr 列出失败 check 名 + `gh run view <runId> --log-failed` 提示；**不**继续 codex；process.txt 追加 `[ci-failed]` 事件 |
 | 全部 NEUTRAL / SKIPPED | 视为通过（无错误信号），警告并放行 |
 | 总超时未稳定 | exit 0，stderr `⚠️ CI did not stabilize within <timeout>s`；process.txt 追加 `[ci-timeout]` 事件；**不**继续 codex（避免对未知质量 PR 触发 review） |
-| `--no-ci-wait` 传入 | 跳过整个 step 11，直接进入 codex / step 12（不推荐，仅用于已知 CI 配置缺失的边角场景） |
+| `--no-ci-wait` 传入 | 跳过 step 11 的 CI 等待**但仍要求 codex 进入前 CI 状态为 SUCCESS**（codex 仍走 §7.5；CI 红或未跑时 `--no-ci-wait` 不放行 codex，等同 CI failed 路径 exit 1）；仅用于已知 CI 配置缺失场景以加速终态反馈 |
+
+**硬约束（2026-05-21 强化）**：
+
+> Codex review-loop 的前置条件是 **PR CI 已全绿**（或 NEUTRAL/SKIPPED）。
+> 无论传不传 `--no-ci-wait`，**进入 §7.5 状态机前 runner 必须显式查询 `gh pr checks <num>` 一次**：
+> - 任一 check `conclusion=FAILURE/CANCELLED/TIMED_OUT` → 拒绝进入 codex，exit 1
+> - 任一 check `status != COMPLETED` 且未传 `--no-ci-wait` → 进入轮询等待
+> - 任一 check `status != COMPLETED` 且传了 `--no-ci-wait` → 视为"未稳定"，拒绝进入 codex，exit 0 + warning
+>
+> 这条约束的存在理由：codex review 是稀缺成本（每次都消耗注意力 + bot 配额），
+> 对 CI 都跑不绿的 PR 触发 review 等于把 reviewer 拉进无效会话。`--no-ci-wait` 的
+> 设计意图是"我已经在 GitHub Web 端确认 CI 绿了，跳过本地等待"，不是"无视 CI 强冲"。
 
 **process.txt 事件**：
 
@@ -213,8 +225,12 @@ CLI 追加 `--codex`**，进入 codex review-loop。仅当用户显式传 `--no-
 ### 状态机骨架
 
 ```
-[idle] --submit --codex--> [pr-opened/updated]
-[pr-opened/updated] --post @codex review--> [poll-loop]
+[idle] --submit --codex--> [ci-precheck]
+[ci-precheck] --all SUCCESS / NEUTRAL / SKIPPED--> [pr-opened/updated]
+[ci-precheck] --any FAILURE--> exit 1 (stderr ❌ CI failed; codex skipped)
+[ci-precheck] --pending + --no-ci-wait--> exit 0 (stderr ⚠️ CI not stable; codex skipped)
+[ci-precheck] --pending + 无 --no-ci-wait--> [ci-wait-loop] → [pr-opened/updated]
+[pr-opened/updated] --post @codex review (含 PR body 阅读指令)--> [poll-loop]
 [poll-loop] --hit codex review--> [judge body]
 [poll-loop] --elapsed > timeout--> [judge body verdict=timeout]
 [poll-loop] --gh 429--> [judge body verdict=timeout]
@@ -225,6 +241,36 @@ CLI 追加 `--codex`**，进入 codex review-loop。仅当用户显式传 `--no-
 [done] --verdict=timeout--> exit 0 (stderr ⚠️ codex review TIMEOUT)
 [error-exit-1] --> exit 1 (stderr ❌ gh api repeated 5xx during poll; aborting)
 ```
+
+### @codex review 触发评论模板（2026-05-21 新增硬约束）
+
+**禁止** 只发裸的 `@codex review`。每次触发评论必须显式要求 codex 阅读 PR 正文，
+否则 codex 默认只 review diff，遗漏正文中的"变更摘要 / 影响范围 / 风险与回滚 /
+验证方式 / 追溯"等关键设计信息，导致 review 视角片面化。
+
+固定模板（`scripts/lib/submit_codex.py` 维护为常量 `CODEX_REVIEW_TRIGGER_BODY`）：
+
+```
+@codex review
+
+请在 review 前**先完整阅读本 PR 的正文（description）**，包含：
+- 变更摘要：本期 feature/fix 列表与各自 acceptance
+- 影响范围：services / 文件清单
+- 验证方式：单测 / 门禁 / 真机回归结论
+- 风险与回滚：已挂账的 follow-up / known limitations
+- 追溯：需求 → 设计 → 任务 → review 的链路
+
+再结合 diff 给出 review 意见。重点关注：
+1. 实现是否完整覆盖正文中描述的 acceptance 与设计意图
+2. 风险段提到的 follow-up 是否在本 PR 内承担/挂账清晰
+3. 是否存在正文未提及的 silent 行为变更
+```
+
+实施要求：
+
+- 每次 `submit_with_codex` 调用都使用同一模板字符串（grep 唯一点：`CODEX_REVIEW_TRIGGER_BODY` 常量定义）
+- 模板不接受 ad-hoc 拼装（即使是同一开发者多次重跑）；语言版本只一份
+- 模板更新需同步本规范文档 + 常量定义 + e2e 测试三处
 
 review 全文留存于 GitHub PR review comments（`gh pr view <num> --comments` 可查），
 本地仅记录一行 `[codex-review-received] verdict=<v> round=<N>` 到 `process.txt`。
