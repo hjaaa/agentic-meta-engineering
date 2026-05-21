@@ -10,3 +10,5 @@
 2026-05-21 16:43:13 [phase-transition] task-planning → development（11 gates 全过；7 task.md 拆分完成：F-001~F-007 全部 frontmatter schema valid，touches 字段就位供 touches_guard 解析；依赖图 F-004 顶层 → F-001 → F-002 → F-003 → {F-006, F-007, F-005}；F-005 等所有功能落地最后跑测试）
 2026-05-21 16:53:06 [save] F-004 派发返回 DONE（清理后）@7a89c8c（subagent model=sonnet）：meta-schema.yaml + check_meta.py + meta.yaml.tmpl 三 touches 内文件完成；touches_violations=[] + concerns=[]；status: pending → in-progress；post-dev gate exit=0（W002/W003 历史 warning）
 2026-05-21 17:13:39 [review:approved] F-004 review-20260521-170215.md looks_clean（0 critical/0 major/0 minor required）；用户软确认 → status=done；dispatch lock 已释放（current_feature=null）；3 文件 +67-0：meta-schema.yaml / check_meta.py / meta.yaml.tmpl
+2026-05-21 17:16:29 [save] F-004 端到端首次跑通（dispatch→cleanup→post-dev gate→review→done）；7 features 完成 1/7（F-004 done）；下一个待派 F-001 archive 主流程改造（depends_on=[F-004]✓ / complexity=medium / sonnet）
+2026-05-21 17:26:21 [save] F-001 派发返回 DONE（subagent model=sonnet）@a0981a7：3 commit + receipt.json 写完；touches_violations=[] + concerns=[]；status: pending → in-progress；改动 scripts/lib/archive_runner.py +141-21
