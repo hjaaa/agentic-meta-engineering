@@ -50,6 +50,10 @@
 - [`dispatch-precheck-task-status-flip-after-agent-call.md`](dispatch-precheck-task-status-flip-after-agent-call.md) — 派 subagent 时 task.md.status 翻 in-progress 必须在调 Agent 工具之后；提前翻被 hook B-1 拦下 BLOCKED
 - [`multi-stage-order-constraints-doc.md`](multi-stage-order-constraints-doc.md) — 多阶段流程的顺序约束必须以累积清单格式注释（来源 + 依赖关系）；每修一轮约束就破另一轮的反模式由此终结
 - [`cli-explicit-input-normalize-fail-fast.md`](cli-explicit-input-normalize-fail-fast.md) — CLI 显式输入必须在入口 normalize（友好预处理）+ 校验失败 fail-fast；不能跳到下游 git/subprocess 层才报错
+- [`per-feature-review-misses-cross-component-contracts.md`](per-feature-review-misses-cross-component-contracts.md) — per-feature code review 看不到跨组件契约（路径前缀 / schema / 命名）；codex 一次 review 抓 2 P1 双前缀 path bug，13 个 per-feature reviewer 全 missed
+- [`codex-review-precondition-ci-green-and-pr-body-instruction.md`](codex-review-precondition-ci-green-and-pr-body-instruction.md) — codex review-loop 两条流程层硬约束：触发前必查 CI 全绿（FAILURE 拒进 / pending fail-closed）+ 触发评论必含 5 段 PR 正文阅读指令（避免 codex 默认只看 diff）
+- [`id-format-evolution-needs-regex-audit.md`](id-format-evolution-needs-regex-audit.md) — 标识符命名格式演进时（如 `REQ-YYYY-NNN` → `YYYYMMDD-<slug>`），需 grep 全仓审计散落 regex；Bug-21（workspace_clean）+ Bug-22（W002 豁免）同期复发同款盲区
+- [`module-level-path-constant-blocks-fixture-injection.md`](module-level-path-constant-blocks-fixture-injection.md) — Python 模块级 `_CONST = REPO_ROOT / "..."` 在 import 时冻结路径，阻碍 pytest tmp_path 注入；修法 = 函数签名加 `repo_root: Path | None = None`，缺省回退模块级常量
 
 ## 什么值得沉淀
 
