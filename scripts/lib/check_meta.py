@@ -167,6 +167,41 @@ def _check_archived_at_state_machine(meta: dict[str, Any], report: Report, file_
         )
 
 
+def _check_archive_pr_number_state_machine(meta: dict[str, Any], report: Report, file_label: str) -> None:
+    """archive_pr_number 状态机：仅 phase!=completed 时禁止 archive_pr_number>0。
+
+    约束：
+      - archive_pr_number 缺失或为 0 时，任何 phase 都合法
+      - archive_pr_number > 0 时，phase 必须为 completed
+      - 非法类型（如字符串）int() 转换失败时 fallback 当 0（宽松处理，同 _check_archived_at_state_machine 风格）
+
+    状态机表格：
+      | phase         | archive_pr_number | 结果 |
+      |---------------|-------------------|------|
+      | != completed  | 0 / 缺失          | PASS |
+      | != completed  | > 0               | FAIL |
+      | == completed  | 0 / 缺失          | PASS |
+      | == completed  | > 0               | PASS |
+    """
+    raw = meta.get("archive_pr_number", 0)
+    phase = meta.get("phase", "")
+
+    # 类型 fallback：非法类型当 0 处理（宽松，不掩盖合法使用）
+    try:
+        pr_number = int(raw)
+    except (TypeError, ValueError):
+        pr_number = 0
+
+    if pr_number > 0 and phase != "completed":
+        report.add(
+            file_label,
+            Severity.ERROR,
+            "state-machine",
+            f"archive_pr_number={pr_number} 但 phase={phase!r}，"
+            "archive_pr_number>0 仅允许在 phase=completed 时出现",
+        )
+
+
 def _check_project_scoped_enums(meta: dict[str, Any], schema: dict[str, Any], report: Report, file_label: str) -> None:
     """feature_area 必须在 context/project/<project>/areas.yaml 白名单内。
 
@@ -232,6 +267,7 @@ def check_one(meta_path: Path, schema: dict[str, Any], report: Report) -> None:
     _check_format(meta, schema, report, file_label)
     _check_conditional(meta, schema, report, file_label)
     _check_archived_at_state_machine(meta, report, file_label)
+    _check_archive_pr_number_state_machine(meta, report, file_label)
     _check_project_scoped_enums(meta, schema, report, file_label)
 
 
