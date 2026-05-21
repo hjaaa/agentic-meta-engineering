@@ -44,8 +44,23 @@ def _render_status(run_state: RunState, run_dir: Path, indent: int = 0) -> str:
         f"{prefix}state:        {run_state.state}",
         f"{prefix}current_node: {run_state.current_node or '(none)'}",
     ]
-    completed = list(run_state.node_outputs.keys())
-    lines.append(f"{prefix}completed ({len(completed)}): {', '.join(completed) or '(none)'}")
+    # Bug-6：按节点 state 分桶为 completed / failed / running 三段
+    done_ids, failed_ids = _compute_terminal_ids(run_state.node_outputs)
+    running_ids = [
+        nid for nid, entry in run_state.node_outputs.items()
+        if (entry or {}).get("state") not in {*SUCCESS_TERMINAL, "failed"}
+    ]
+    # 保持声明顺序输出（Python 3.7+ dict 维持插入序），便于 grep 反查时序
+    completed_sorted = [nid for nid in run_state.node_outputs if nid in done_ids]
+    failed_sorted = [nid for nid in run_state.node_outputs if nid in failed_ids]
+    lines.append(
+        f"{prefix}completed ({len(completed_sorted)}): "
+        f"{', '.join(completed_sorted) or '(none)'}"
+    )
+    if failed_sorted:
+        lines.append(f"{prefix}failed ({len(failed_sorted)}): {', '.join(failed_sorted)}")
+    if running_ids:
+        lines.append(f"{prefix}running ({len(running_ids)}): {', '.join(running_ids)}")
 
     if run_state.pending_approval:
         lines.append(f"{prefix}pending_approval: {run_state.pending_approval}")
