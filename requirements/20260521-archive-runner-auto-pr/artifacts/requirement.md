@@ -109,7 +109,7 @@ PR #83（20260519-remove-human-signoff）与 PR #85（20260519-context-usage-rep
 | ARS-5：归档 PR codex 策略 | A. 强制跳 `--no-codex` / B. 默认走 codex / C. 用户选 | **A** | 本期前置对话用户决定；纯 metadata 变更不值得耗费 codex 注意力配额 |
 | ARS-6：归档 PR rebase 策略 | A. `--skip-rebase` / B. 默认 rebase | **A** | 沉淀经验 `squash-merged-branch-cannot-be-rebased.md` 明示——feat 被 squash-merged 后再 rebase 必撞冲突（来源：context/team/experience/squash-merged-branch-cannot-be-rebased.md） |
 | ARS-7：finalize 状态源 | A. meta.yaml.archive_pr_number / B. 扫远程同分支最近 PR | **A** | 本期前置对话用户决定；schema 显式化优于依赖外部状态推断 |
-| ARS-8：worktree cleanup 时机 | A. pre-archive（现状）/ B. `--finalize` 与本地 feat 删除同步 / C. 完全不动 | **B** | 本期 2026-05-21 对话补充确定；归档 PR 期间 reviewer 可能在 worktree 内迭代提交，提前删会自删脚下文件；finalize 内部 `os.chdir(主仓根)` 替代原第 3 条「cwd ≡ 主仓根」保护（来源：scripts/lib/archive_runner.py:695-696 已具备 resolve_main_repo_root 能力） |
+| ARS-8：worktree cleanup 时机 | A. pre-archive（现状）/ B. `--finalize` 与本地 feat 删除同步 / C. 完全不动 | **B** | 本期 2026-05-21 对话补充确定；归档 PR 期间 reviewer 可能在 worktree 内迭代提交，提前删会自删脚下文件；finalize 内部 `os.chdir(主仓根)` 替代原第 3 条「cwd ≡ 主仓根」保护（来源：scripts/lib/archive_runner.py:695）`resolve_main_repo_root` 调用点已就绪 |
 
 ## 待澄清清单
 
