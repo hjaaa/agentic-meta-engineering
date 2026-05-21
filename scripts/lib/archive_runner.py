@@ -38,6 +38,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -63,6 +64,13 @@ _SUBPROC_TIMEOUT_SEC = 30
 # 受保护的长寿命分支白名单（本地+远程对称）——任何情况下都不允许 archive 删除
 # 即便 meta.base_branch 为空 / 漂移，命中本集合也直接 fail-closed（codex round-5 P1 F-10）
 _PROTECTED_BRANCHES = frozenset({"main", "master", "develop"})
+
+# archive commit message 幂等检测正则工厂（模块级命名，便于测试 mock）
+# 用法：ARCHIVE_COMMIT_RE(req_id).match(subject)
+def ARCHIVE_COMMIT_RE(req_id: str) -> re.Pattern:  # noqa: N802 — 保持大写以便 mock
+    """返回匹配 `archive(<req_id>): metadata` 的编译正则。"""
+    return re.compile(rf"^archive\({re.escape(req_id)}\): metadata$")
+
 
 logger = logging.getLogger(__name__)
 
@@ -490,6 +498,111 @@ def _run_experience(
     result.experience = "yes"
 
 
+def _commit_archive_metadata(req_id: str, result: ArchiveResult) -> None:  # noqa: ARG001
+    """阶段 1 step 6：提交 requirements/<req_id>/ 及经验类白名单文件（幂等）。
+
+    幂等检测：HEAD commit subject 命中 ARCHIVE_COMMIT_RE(req_id) → 跳过整步。
+    非白名单 dirty 文件 → abort R-ARCHIVE-CONTEXT-DIRTY（fail-closed）。
+    git commit 失败 → abort R-ARCHIVE-COMMIT-FAILED。
+    """
+    # 幂等：HEAD commit message 命中正则则跳过
+    head_subject = _run(["git", "log", "-1", "--format=%s"], cwd=REPO_ROOT)
+    if head_subject.returncode == 0 and ARCHIVE_COMMIT_RE(req_id).match(
+        (head_subject.stdout or "").strip()
+    ):
+        logger.info("commit_archive_metadata: skipped (idempotent) req_id=%s", req_id)
+        return
+
+    # 用 git status --porcelain 列出 dirty 文件，按白名单分类
+    status_result = _run(["git", "status", "--porcelain"], cwd=REPO_ROOT)
+    if status_result.returncode != 0:
+        _abort(
+            "R-ARCHIVE-CONTEXT-DIRTY",
+            f"git status 调用失败: {status_result.stderr.strip()}",
+            req_id,
+        )
+
+    raw_lines = (status_result.stdout or "").splitlines()
+
+    # 检查非白名单 dirty
+    non_whitelisted = _filter_dirty_lines_by_whitelist(raw_lines, req_id)
+    if non_whitelisted:
+        _abort(
+            "R-ARCHIVE-CONTEXT-DIRTY",
+            f"存在非白名单 dirty 文件，请先 commit 再 archive（首条: {non_whitelisted[0]}）",
+            req_id,
+        )
+
+    # 按白名单逐个 add（避免 git add <不存在路径> 报错）
+    to_add: list[str] = []
+    for line in raw_lines:
+        if not line:
+            continue
+        raw_path = line[3:].strip()
+        if " -> " in raw_path:
+            raw_path = raw_path.split(" -> ")[-1].strip()
+        if _is_whitelist_path(raw_path, req_id):
+            to_add.append(raw_path)
+
+    if not to_add:
+        logger.info("commit_archive_metadata: nothing to add req_id=%s", req_id)
+        return
+
+    for path in to_add:
+        add_proc = _run(["git", "add", path], cwd=REPO_ROOT)
+        if add_proc.returncode != 0:
+            _abort(
+                "R-ARCHIVE-COMMIT-FAILED",
+                f"git add {path!r} 失败: {add_proc.stderr.strip()}",
+                req_id,
+            )
+
+    commit_msg = f"archive({req_id}): metadata"
+    commit_proc = _run(["git", "commit", "-m", commit_msg], cwd=REPO_ROOT)
+    if commit_proc.returncode != 0:
+        _abort(
+            "R-ARCHIVE-COMMIT-FAILED",
+            f"git commit 失败: {commit_proc.stderr.strip() or commit_proc.stdout.strip()}",
+            req_id,
+        )
+    logger.info("commit_archive_metadata: committed req_id=%s", req_id)
+
+
+def _push_feat_branch(meta: dict[str, Any], req_id: str, result: ArchiveResult) -> None:  # noqa: ARG001
+    """阶段 1 step 7：推送 feat 分支到 origin（幂等，不带 --force）。
+
+    幂等检测：HEAD == origin/<branch> → 跳过。
+    push 失败 → abort R-ARCHIVE-PUSH-FAILED。
+    """
+    branch = (meta.get("branch") or "").strip()
+    if not branch:
+        _abort("R-ARCHIVE-PUSH-FAILED", "meta.branch 缺失", req_id)
+
+    local_sha_proc = _run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT)
+    if local_sha_proc.returncode != 0:
+        _abort(
+            "R-ARCHIVE-PUSH-FAILED",
+            f"git rev-parse HEAD 失败: {local_sha_proc.stderr.strip()}",
+            req_id,
+        )
+    local_sha = local_sha_proc.stdout.strip()
+
+    remote_sha_proc = _run(["git", "rev-parse", f"origin/{branch}"], cwd=REPO_ROOT)
+    if remote_sha_proc.returncode == 0 and remote_sha_proc.stdout.strip() == local_sha:
+        logger.info("push skipped: HEAD == origin/%s req_id=%s", branch, req_id)
+        return
+
+    push_proc = _run(["git", "push", "origin", branch], cwd=REPO_ROOT)
+    if push_proc.returncode != 0:
+        stderr = (push_proc.stderr or push_proc.stdout or "").strip()
+        _abort(
+            "R-ARCHIVE-PUSH-FAILED",
+            f"git push origin {branch} 失败: {stderr}",
+            req_id,
+        )
+    logger.info("push_feat_branch: pushed origin/%s req_id=%s", branch, req_id)
+
+
 def _delete_local_branch(
     branch: str,
     base_branch: str,
@@ -869,27 +982,13 @@ def archive_requirement(
         result=result,
     )
 
-    branch = (meta.get("branch") or "").strip()
-    base_branch = (meta.get("base_branch") or "").strip()
-    # 2026-05-12 spec 修订：删除顺序改 远程 → 本地，让"删本地分支"成为整个 archive 的
-    # 最后操作（本地删需要先 git switch <base_branch>，远程删不需要切走）。这样
-    # archive 所有 bookkeeping 操作都在原 feat 分支上进行，最后才离开 feat。
-    _delete_remote_branch(
-        branch,
-        base_branch,
-        keep_branch=keep_branch,
-        yes_remote=yes_remote_branch,
-        callback=prompts_callback,
-        result=result,
-    )
-    _delete_local_branch(
-        branch,
-        base_branch,
-        keep_branch=keep_branch,
-        yes_local=yes_local_branch,
-        callback=prompts_callback,
-        result=result,
-    )
+    # —— 阶段 1 step 6/7：commit metadata + push feat branch ——
+    # 三件套（_cleanup_worktree_before_archive / _delete_remote_branch /
+    # _delete_local_branch）的调用已移除；函数定义保留供 F-003 finalize_requirement 复用。
+    # keep_branch / yes_local_branch / yes_remote_branch 三 flag 保留参数签名（CLI
+    # parser 仍有），在 F-003 接管后重新使用。
+    _commit_archive_metadata(req_id, result)
+    _push_feat_branch(meta, req_id, result)
 
     print(_render_summary(result))
     return result
