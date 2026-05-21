@@ -1,0 +1,1 @@
+2026-05-21 14:19:45 [save] definition: 补 ARS-8 / D-003 — worktree cleanup 时机从 pre-archive 推迟到 --finalize（合并进 F-003），第 3 条保护改为 chdir 主仓根再删

@@ -11,7 +11,7 @@ refs-requirement: true
 
 需求归档（phase: testing → completed）当前流程存在结构性断点：
 
-`archive_runner` 第一阶段执行后留下三个副作用：删远程 feat 分支 / 把 `phase=completed` 等元信息变更**留在 working tree 不 commit** / 退出（来源：scripts/lib/archive_runner.py）。主仓 `develop` 被 protect-branch hook + auto-mode classifier 双重拦截 direct commit（来源：CLAUDE.md）。结果：用户被迫切到新 chore 分支 + 手工 commit + 手工 push + 手工 `gh pr create`，5 步 git 操作只为完成 metadata-only 收尾。
+`archive_runner` 第一阶段执行后留下三个副作用：删远程 feat 分支 / 把 `phase=completed` 等元信息变更**留在 working tree 不 commit** / 退出（来源：scripts/lib/archive_runner.py）。主仓 `develop` 被 protect-branch hook 拦 Edit/Write（来源：context/team/git-workflow.md）+ auto-mode classifier 拦 direct commit（来源：CLAUDE.md），所有 `feat/* / chore/* / feature/*` 必须经 PR 合入 develop。结果：用户被迫切到新 chore 分支 + 手工 commit + 手工 push + 手工 `gh pr create`，5 步 git 操作只为完成 metadata-only 收尾。
 
 PR #83（20260519-remove-human-signoff）与 PR #85（20260519-context-usage-report）两次实践证实这是**系统性断点**而非孤例（来源：requirements/20260519-remove-human-signoff/meta.yaml）（来源：requirements/20260519-context-usage-report/meta.yaml）。流程文档（来源：.claude/skills/managing-requirement-lifecycle/reference/archive-rules.md）描述的「3 问串行 + 删本地+远程分支」与工具实现一致，但**没有把"开归档 PR"这一步封装进工具**——这是当前的关键缺口。
 
@@ -50,9 +50,12 @@ PR #83（20260519-remove-human-signoff）与 PR #85（20260519-context-usage-rep
 - **主流程**：
   1. 用户触发 `archive_runner --finalize <req-id>` 或 `/requirement:archive --finalize`
   2. 工具读 `meta.yaml.archive_pr_number` → `gh pr view` 验证 state==MERGED
-  3. 工具问一问「确认删除本地+远程 `feat/req-<id>`？Y/N」（默认 N；`--yes-finalize` 跳问）
-  4. 用户确认后工具执行：切到 develop → `git pull --ff` → `git branch -D feat/...` → `git push origin --delete feat/...`
-- **期望结果**：本地 + 远程 feat 分支全清，需求生命周期闭环
+  3. 工具问一问「确认删除本地+远程 `feat/req-<id>` + 本地 worktree（若有）？Y/N」（默认 N；`--yes-finalize` 跳问）
+  4. 用户确认后工具执行：
+     1. 若 cwd 在 owned worktree 内，先 `os.chdir(主仓根)`（复用 `worktree_manager.resolve_main_repo_root`）
+     2. 切 develop → `git pull --ff` → `git branch -D feat/...` → `git push origin --delete feat/...`
+     3. **新增**：清理 owned worktree——`worktree.owner == workflow` 且 `worktree.path` 命中 `.worktrees/` 白名单时执行 `git worktree remove --force <path>` 并写 `meta.yaml.worktree.cleanup.removed_at`；path 不存在或 worktree 已被外部清理时静默 skip（与现有 `_check_git_status_clean` 对不存在 worktree 的处理一致——来源：scripts/lib/archive_runner.py:204-206）
+- **期望结果**：本地 + 远程 feat 分支 + 本地 owned worktree 全清，需求生命周期闭环
 
 ### 场景 3：老需求兼容（legacy resurrect）
 
@@ -86,8 +89,9 @@ PR #83（20260519-remove-human-signoff）与 PR #85（20260519-context-usage-rep
   - 归档 PR body 模板（含 ⚠️ 警告头 + 主 PR 引用 + meta 字段差异列表）
   - `context/team/engineering-spec/meta-schema.yaml` 加 `archive_pr_number: int (>=0, default 0)` 字段
   - `check_meta.py` 兼容历史 meta 缺该字段（不挂 schema 检）
-  - 单元测试 + e2e fake-repo 流程（覆盖 4 个场景 + 边界）
-  - 文档同步：`archive-rules.md` + `.claude/commands/requirement/archive.md`
+  - **worktree cleanup 时机迁移**：从 `_cleanup_worktree_before_archive`（pre-archive，archive_runner.py:683）挪到 `--finalize` 子命令内部；保留三重保护中的 owner=workflow + `.worktrees/` 前缀两条；第 3 条「cwd ≡ 主仓根」改为「finalize 内部先 `os.chdir(主仓根)` 再 cleanup」（否则用户在 worktree 内跑 finalize 永远清不掉）
+  - 单元测试 + e2e fake-repo 流程（覆盖 4 个场景 + 边界，含 worktree 不存在 / cwd 在 worktree 内 / cwd 已在主仓根三种 finalize 路径）
+  - 文档同步：`archive-rules.md` + `.claude/commands/requirement/archive.md`（重点更新「worktree cleanup 三重保护」一节的时机描述）
 - **不包含**：
   - PR merge 策略改造（squash 保持，不切 `--merge`）—— 详见 C-1 强约束
   - `--force` 范围扩展—— 详见本期决定 ARS-3
@@ -105,6 +109,7 @@ PR #83（20260519-remove-human-signoff）与 PR #85（20260519-context-usage-rep
 | ARS-5：归档 PR codex 策略 | A. 强制跳 `--no-codex` / B. 默认走 codex / C. 用户选 | **A** | 本期前置对话用户决定；纯 metadata 变更不值得耗费 codex 注意力配额 |
 | ARS-6：归档 PR rebase 策略 | A. `--skip-rebase` / B. 默认 rebase | **A** | 沉淀经验 `squash-merged-branch-cannot-be-rebased.md` 明示——feat 被 squash-merged 后再 rebase 必撞冲突（来源：context/team/experience/squash-merged-branch-cannot-be-rebased.md） |
 | ARS-7：finalize 状态源 | A. meta.yaml.archive_pr_number / B. 扫远程同分支最近 PR | **A** | 本期前置对话用户决定；schema 显式化优于依赖外部状态推断 |
+| ARS-8：worktree cleanup 时机 | A. pre-archive（现状）/ B. `--finalize` 与本地 feat 删除同步 / C. 完全不动 | **B** | 本期 2026-05-21 对话补充确定；归档 PR 期间 reviewer 可能在 worktree 内迭代提交，提前删会自删脚下文件；finalize 内部 `os.chdir(主仓根)` 替代原第 3 条「cwd ≡ 主仓根」保护（来源：scripts/lib/archive_runner.py:695-696 已具备 resolve_main_repo_root 能力） |
 
 ## 待澄清清单
 
@@ -112,6 +117,6 @@ PR #83（20260519-remove-human-signoff）与 PR #85（20260519-context-usage-rep
 >
 > 下表 enumeration 与下文 `[` 待用户确认 `]` / `[` 待补充 `]` 标记一一对应（数量必须相等，否则触发 W003）。
 
-- 条目 1：[待用户确认] develop direct commit 是否允许。**内容**：本期改造假设 develop 是 protected branch（不接受 direct commit），所有归档元信息必须经 PR；若允许 direct commit 则 archive_runner 可大幅简化。**依据**：本期对话 PR #85 chore 分支创建过程被 auto-mode classifier 拦截。**风险**：若文档允许 direct commit，本期设计会过度复杂。**验证时机**：阶段 3 tech-research 跑 git-workflow.md grep 校验。
+- ~~条目 1：[待用户确认] develop direct commit 是否允许~~ **已确认（2026-05-21）**：`context/team/git-workflow.md:24` 明示 `develop` 行「Hook 拦截 Edit/Write = ✅」，且 `feat/req-* / feature/* / chore/* / hotfix/* / release/*` 全部经 PR 合入 develop（git-workflow.md:25-28 + :88 squash merge 约定）。结论：本期设计前提成立，archive_runner 必须经 PR。
 - 条目 2：[待补充] archive PR body ⚠️ 警告头文案。**内容**：`⚠️ **本 PR 仅归档元信息变更**（meta.yaml + process.txt）。任何代码改动请关闭本 PR 并开 feat PR。本 PR 跳过 codex review-loop。`。**依据**：本期 ARS-5（跳 codex）+ 防御"用户在 feat 分支误加代码"的安全模型考量。**风险**：文案过短可能被 reviewer 略过；过长则模板复杂度上升。**验证时机**：阶段 5 detail-design 拍板最终文案，testing 阶段真机生成一份归档 PR body 截图对照。
 - 条目 3：[待补充] archive_pr_number jsonschema 表达式。**内容**：`archive_pr_number: { type: integer, minimum: 0, default: 0 }`，与现有 `pr_number` 字段同模。**依据**：复用现有 schema 风格（来源：context/team/engineering-spec/meta-schema.yaml）。**风险**：历史 meta.yaml（PR #83 之前）缺该字段，check_meta.py 在 strict 模式可能挂——需 backward-compat 测试。**验证时机**：阶段 5 detail-design 跑 check_meta.py against 历史所有 meta.yaml，确认 0 fail。

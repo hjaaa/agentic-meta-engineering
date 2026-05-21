@@ -36,7 +36,7 @@
 |---|---|
 | F-001 | archive_runner 第一阶段重构（写元信息 → 切 feat → commit） |
 | F-002 | archive PR 自动创建（gh pr create + body 模板） |
-| F-003 | archive_runner  二阶段（读 archive_pr_number → 检 merged → 删本地+远程 feat） |
+| F-003 | archive_runner --finalize 二阶段（读 archive_pr_number → 检 merged → 删本地+远程 feat + cleanup 本地 owned worktree，内部 chdir 主仓根） |
 | F-004 | meta-schema 加  字段 |
 | F-005 | 单元测试 + e2e fake-repo 流程 |
 | F-006 | skill / command 文档同步（archive-rules.md + archive.md） |
@@ -75,3 +75,9 @@
 - **Decision**： 第二阶段：检测 archive_pr_number 对应 PR 状态为 merged 后才删本地+远程 feat
 - **Consequences**：feat 分支生命周期延长到归档 PR merged；需 meta-schema 新增 archive_pr_number 字段
 - **时间**：2026-05-21 11:37:32
+
+### D-003 worktree cleanup 时机推迟到 --finalize（合并进 F-003）
+- **Context**：现有 `_cleanup_worktree_before_archive`（archive_runner.py:683）在 pre-archive 即清理 worktree，与本期"在 feat 分支自动 commit/push + 开归档 PR + 等待 reviewer 迭代"的新流程冲突——若提前删 worktree，归档 PR 期间 reviewer 想在 worktree 内改文档/补 commit 会失败
+- **Decision**：worktree cleanup 从 pre-archive 移到 `--finalize` 子命令内部，与本地+远程 feat 分支删除同步；保留三重保护中的 owner=workflow + `.worktrees/` 前缀两条；第 3 条「cwd ≡ 主仓根」改为「finalize 内部先 `os.chdir(主仓根)`（复用 worktree_manager.resolve_main_repo_root，archive_runner.py:695-696 已具备此能力）再 cleanup」
+- **Consequences**：worktree 生命周期延长到归档 PR merged + finalize；用户在 worktree 内跑 finalize 不再被第 3 条保护卡死；老需求 / worktree 已被外部清理的场景静默 skip（与 archive_runner.py:204-206 处理一致）；测试用例需覆盖 finalize 三种 cwd 路径（worktree 内 / 主仓根 / worktree 已不存在）
+- **时间**：2026-05-21 14:19:45
