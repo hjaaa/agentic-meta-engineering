@@ -154,6 +154,31 @@ def _now_shanghai_str() -> str:
 # 模板渲染：meta.yaml / plan.md
 # ============================================================================
 
+def _infer_default_project() -> str:
+    """bootstrap 时推断 meta.yaml.project 字段（Bug-2）。
+
+    规则：
+      - context/project/<X>/ 单个目录 → 返回 <X>
+      - 多目录 → 返回首个（按名排序）+ warning（用户后续可手工改 meta.yaml）
+      - 零目录 → 返回空（保留旧行为，后续 check_meta 在 bootstrap 阶段已放宽）
+    """
+    project_root = REPO_ROOT / "context" / "project"
+    if not project_root.is_dir():
+        return ""
+    candidates = sorted(
+        p.name for p in project_root.iterdir() if p.is_dir() and not p.name.startswith(".")
+    )
+    if not candidates:
+        return ""
+    if len(candidates) == 1:
+        return candidates[0]
+    logging.warning(
+        "_infer_default_project: 发现多个 project (%s)，默认取首个 %s；如需切换请手工编辑 meta.yaml",
+        candidates, candidates[0],
+    )
+    return candidates[0]
+
+
 def _render_meta_yaml(
     req_id: str,
     title: str,
@@ -228,7 +253,7 @@ def _render_meta_yaml(
         "__CREATED_AT__": _now_shanghai_str(),
         "__BRANCH__": branch,
         "__BASE_BRANCH__": base_branch_resolved,
-        "__PROJECT__": "",
+        "__PROJECT__": _infer_default_project(),
         "__WT_ENABLED__": wt_enabled,
         "__WT_OWNER__": wt_owner,
         "__WT_PATH__": wt_path,
