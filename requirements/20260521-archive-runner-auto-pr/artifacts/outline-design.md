@@ -66,7 +66,8 @@ archive_runner 从「一次性 5 步」改造为「双阶段闭环」：
 | F-002 | code + template | `_create_archive_pr()` 新函数 + `.claude/skills/managing-requirement-lifecycle/templates/archive-pr-body.md.tmpl` | gh pr create 调用 + body 模板 + gh pr list idempotent + 写 archive_pr_number + archive_pr_url | F-001 |
 | F-003 | code | `finalize_requirement()` 新函数 + CLI `--finalize` subcommand | 6 步执行链；D-005 合并问询 + 5 flag；D-007 fail-closed/soft 分层；D-008 三路径 fail-closed；worktree cleanup 搬迁；manual_recovery_commands 字段填充 | F-002 |
 | F-004 | schema + code | `context/team/engineering-spec/meta-schema.yaml` + `scripts/lib/check_meta.py` | optional_fields 加 archive_pr_number + fields 段新字段 + `_check_archive_pr_number_state_machine`（对照 _check_archived_at_state_machine，来源：scripts/lib/check_meta.py:150） | none |
-| F-005 | test | `tests/lifecycle/test_archive_runner.py` + `tests/lifecycle/test_finalize.py`（新） | step 6/7/8 idempotent 单测；finalize 三 cwd 路径；--force / --keep-* / --legacy-resurrect-remote 组合 e2e；commit prefix 识别正则 | F-001 ~ F-004 |
+| F-005a | test | `tests/lifecycle/test_archive_runner.py` | archive 阶段 1 step 6/7/8 idempotent 单测；commit prefix 识别正则；gh pr list / gh pr create mock | F-001 + F-002 |
+| F-005b | test | `tests/lifecycle/test_finalize.py`（新） | finalize 三 cwd 路径 e2e；--force / --keep-local-branch / --keep-remote-branch / --keep-worktree / --legacy-resurrect-remote 组合矩阵；manual_recovery_commands 路径覆盖 | F-003 + F-007 |
 | F-006 | doc | `.claude/skills/managing-requirement-lifecycle/reference/archive-rules.md` + `.claude/commands/requirement/archive.md` | 双阶段流程语义；三重保护移到 finalize；--finalize / --keep-* flag 文档；commit prefix 约定 | F-003 |
 | F-007 | code | `finalize_requirement()` 内 git push --delete 分支 | --legacy-resurrect-remote flag：远程 not-found 视为 already-deleted；现有 `_delete_remote_branch` 已折叠 "remote ref does not exist" → already-deleted（来源：scripts/lib/archive_runner.py:607），本期复用 + 加 flag 显式声明 | F-003 |
 
@@ -76,9 +77,10 @@ archive_runner 从「一次性 5 步」改造为「双阶段闭环」：
 F-004 (schema)
   └─→ F-001 (archive 主流程)
         └─→ F-002 (PR 创建)
+              ├─→ F-005a (archive 阶段 1 单测, 与 F-001/F-002 同 PR)
               └─→ F-003 (finalize 子命令)
-                    └─→ F-007 (老需求兜底, 与 F-003 同 PR)
-                    └─→ F-005 (e2e, 与 F-003 同 PR)
+                    ├─→ F-007 (老需求兜底, 与 F-003 同 PR)
+                    └─→ F-005b (finalize e2e, 与 F-003 同 PR)
 
   F-006 (文档) 与主链解耦, 可并行
 ```
@@ -92,7 +94,7 @@ F-004 (schema)
 - 候选 C：手工恢复（仅改 stderr 文案 + 用户 git reset）
 - 候选 D：重排顺序（先 PR 后落 meta）
 - **决策**：候选 A
-- 理由：用户负担为 0；step 6-9 idempotent 检查复杂度可控（commit prefix 正则 + HEAD 对比 + gh pr list）；候选 C 撞 protect-branch hook（meta.phase 已 completed 手工回滚被拦）；详 tech-research §P0 待澄清 #1 关闭决议（来源：requirements/20260521-archive-runner-auto-pr/artifacts/tech-research.md:267）
+- 理由：用户负担为 0；step 6-9 idempotent 检查复杂度可控（commit prefix 正则 + HEAD 对比 + gh pr list）；候选 C 用户负担非零（git reset 手工步骤无法自动化）+ 出错率高（用户判断 step 几失败需读 stderr）+ 不可标准化测试（手工恢复路径分叉太多）；详 tech-research §P0 待澄清 #1 关闭决议（来源：requirements/20260521-archive-runner-auto-pr/artifacts/tech-research.md:267）
 
 ### 选型 2：fail-soft 步骤的恢复命令分发通道
 
@@ -124,7 +126,7 @@ F-004 (schema)
 - 候选 B：`chore(archive): <req_id> metadata`（符合现有 chore 风格）
 - 候选 C：`archive(<req_id>): metadata #<archive_pr_number>`（含 PR number）
 - **决策**：候选 A
-- 理由：git log 看 archive 历史时 req_id 一目了然；idempotent 检查正则简单（`^archive\(<req_id>\):`）；候选 B 与现有 `chore(phase-transition): xxx`（git log 历史）风格相近但 idempotent 匹配要跨 chore/feat 后缀复杂；候选 C 在 commit 时 archive_pr_number 还未生成（commit 早于 gh pr create），顺序冲突
+- 理由：git log 看 archive 历史时 req_id 一目了然；idempotent 检查正则简单（`^archive\(<req_id>\):`）；候选 B 与现有 `chore(phase-transition): xxx`（git log 历史）风格相近但 idempotent 匹配要跨 chore/feat 后缀复杂；候选 C 在 commit 时 archive_pr_number 还未生成（commit 早于 gh pr create），顺序冲突——更本质问题是 idempotent 重跑时 commit message 已含 number 但 meta 仍为 0 的场景下，第二次跑需 `git commit --amend` 修订 commit message，破坏 idempotent 简单性（每步只 check + skip，不修订历史）
 
 ## 4. 关键流程
 
@@ -284,8 +286,10 @@ fields:
 | PR | Features | 依赖 | 工作量 | 关键风险 |
 |---|---|---|---|---|
 | **PR-A** | F-004 + F-006 | 无 | ~1.7 天 | check_meta 状态机回归测试需覆盖 4 场景 |
-| **PR-B** | F-001 + F-002 | PR-A 字段 | ~3.8 天 | R-T02 _precheck_dirty 白名单 / R-T04 gh pr create 失败但 PR 已建 |
-| **PR-C** | F-003 + F-005 + F-007 | PR-B 主流程稳定 | ~6.6 天 | R-T03 finalize 三 cwd 路径 / R-S01 --force 误删 |
+| **PR-B** | F-001 + F-002 + F-005a | PR-A 字段 | ~4.6 天 | R-T02 _precheck_dirty 白名单 / R-T04 gh pr create 失败但 PR 已建 |
+| **PR-C** | F-003 + F-005b + F-007 | PR-B 主流程稳定 | ~5.8 天 | R-T03 finalize 三 cwd 路径 / R-S01 --force 误删 |
+
+**F-007 归 PR-C（supersedes tech-research §PR 拆分建议）**：tech-research §PR 拆分建议（来源：requirements/20260521-archive-runner-auto-pr/artifacts/tech-research.md:245）把 F-007 放 PR-B；outline-design 阶段评审后改归 PR-C，理由：F-007 的代码改动点（`_delete_remote_branch` 内的 `--legacy-resurrect-remote` 分支，对照 scripts/lib/archive_runner.py:607）位于 finalize 子命令调用路径，与 F-003 finalize_requirement 紧耦合；放 PR-B 会让 archive 主流程承载 finalize 才用到的兜底逻辑，违反双阶段拓扑的职责边界。同步 F-005 拆分（评审 suggestion 1）让单测随 F-001/F-002 进 PR-B，e2e + 组合矩阵留 PR-C。
 
 **关键路径**：PR-A → PR-B → PR-C 串行（10-14 天区间，来源：requirements/20260521-archive-runner-auto-pr/artifacts/tech-research.md:228）。
 
@@ -307,10 +311,11 @@ fields:
 本阶段新增清单：
 
 - **待澄清 #7**：archive 主流程内 `_commit_archive_metadata` 的 `git add` 范围——是否包括 `requirements/<id>/artifacts/lessons-learned.md`（若 F-005 经验沉淀生成）？detail-design 拍板。
-- **待澄清 #8**：finalize 子命令的 `git pull --ff develop` 在 worktree 内跑时是否需先回到主仓的 develop？现有 `os.chdir(main_repo_root)` 已先于 pull，但 pull 之后立刻 cleanup_worktree 可能让 chdir 路径失效——执行顺序需明确。
+- **待澄清 #8**：`_cleanup_worktree_before_archive` 是否强制要求 cwd ≡ 主仓根（而非 worktree 内子目录）？流程 2 已明示 chdir → pull --ff → cleanup_worktree 顺序，cleanup_worktree 删除 `.worktrees/` 子目录不会影响主仓根 cwd；但 `worktree_manager.cleanup_worktree_if_owned`（来源：scripts/lib/worktree_manager.py:803）签名是否需要新增 `require_main_repo_cwd: bool` 显式保护，detail-design 拍板。
+- **待澄清 #9**：idempotent 重跑场景下 `gh pr list` 返回 OPEN 但 `pr.number != meta.archive_pr_number` 的处置（用户中途手工开 PR 后又跑 archive 的竞态）——fail-closed 让用户手工对账，还是覆盖 meta.archive_pr_number 接受 gh 返回的 number？detail-design 拍板。
 
-## 8. 结构级开放问题
+## 8. 结构级开放问题（本阶段已锁定）
 
-- **AC-A1**：现有 `_delete_local_branch`（来源：scripts/lib/archive_runner.py:430）在 archive 主流程内 fail-soft；finalize 路径要求改 fail-closed。是新建 `_finalize_delete_local_branch` 还是给现有函数加 `strict: bool` 参数？建议后者（避免代码重复，单一事实源），detail-design 拍板。
-- **AC-A2**：`_render_summary` 现有签名 `_render_summary(result: ArchiveResult) -> str`；新增 manual_recovery_commands 段不破坏签名，但 archive 主流程与 finalize 子命令共用同一函数时，"summary 顶部标题行" 是否要区分 stage 1 / stage 2？建议加 `stage: Literal["archive", "finalize"]` 参数，detail-design 落地。
-- **AC-A3**：archive_pr_number 字段在 meta.yaml 中的物理位置——放在 process 组（id/title/phase 旁）还是单独的 archive 组？建议跟在 `pr_url: ""` `pr_number: 0` 后面（同属 PR 类元信息），保持流程组紧凑。
+- **AC-A1（锁定决策）**：现有 `_delete_local_branch`（来源：scripts/lib/archive_runner.py:430）在 archive 主流程内 fail-soft；finalize 路径要求改 fail-closed。**采用方案**：给现有函数加 `strict: bool = False` 参数（archive 调用方传默认 False 保留现有行为；finalize 调用方传 True 触发 fail-closed）——单一事实源、避免代码重复、回归测试覆盖少。
+- **AC-A2（锁定决策）**：`_render_summary` 现有签名 `_render_summary(result: ArchiveResult) -> str`；archive 主流程与 finalize 子命令共用同一函数时 summary 顶部标题行需区分。**采用方案**：加 `stage: Literal["archive", "finalize"] = "archive"` 参数（archive 调用方默认值；finalize 调用方显式传 "finalize"），summary 标题行用 stage 值动态拼接（如 `✅ <req_id> archived` vs `✅ <req_id> finalized`）。
+- **AC-A3**：archive_pr_number 字段在 meta.yaml 中的物理位置——放在 process 组（id/title/phase 旁）还是单独的 archive 组？建议跟在 `pr_url: ""` `pr_number: 0` 后面（同属 PR 类元信息），保持流程组紧凑。detail-design 阶段确认字段在 templates/meta.yaml.tmpl 的位置。
