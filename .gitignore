@@ -45,3 +45,6 @@ scripts/gates/audit/*
 
 # 上下文知识利用率报告（F-011 生成的运行态产物）
 reports/
+
+# superpowers plugin temp plans (out of repo scope)
+docs/superpowers/
