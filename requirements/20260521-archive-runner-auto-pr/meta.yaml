@@ -47,12 +47,13 @@ completed_at: ""
 lessons_extracted: false
 reviews:
   definition:
-    latest: REV-20260521-archive-runner-auto-pr-definition-001
+    latest: REV-20260521-archive-runner-auto-pr-definition-002
     conclusion: looks_clean
-    reviewed_commit: 627266f
+    reviewed_commit: b0f4762
     artifact_hashes:
       artifacts/requirement.md: 
-        e00b8eae1ef44be89579fc18d988c021545965d9cb98fd935f61c3cb42142709
+        d18316680202f0ab2b7fa3380507e0f3b9ba29f1288528ef79b2f751a74f1879
     history:
       - REV-20260521-archive-runner-auto-pr-definition-001
+      - REV-20260521-archive-runner-auto-pr-definition-002
     stale: false
