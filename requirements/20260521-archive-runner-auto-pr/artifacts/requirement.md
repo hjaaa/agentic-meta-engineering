@@ -93,7 +93,7 @@ PR #83（20260519-remove-human-signoff）与 PR #85（20260519-context-usage-rep
   - 单元测试 + e2e fake-repo 流程（覆盖 4 个场景 + 边界，含 worktree 不存在 / cwd 在 worktree 内 / cwd 已在主仓根三种 finalize 路径）
   - 文档同步：`archive-rules.md` + `.claude/commands/requirement/archive.md`（重点更新「worktree cleanup 三重保护」一节的时机描述）
 - **不包含**：
-  - PR merge 策略改造（squash 保持，不切 `--merge`）—— 详见 C-1 强约束
+  - PR merge 策略改造：本期保持 squash merge 不切 `--merge`（沿用现有团队约定，来源：context/team/git-workflow.md:116-118）
   - `--force` 范围扩展—— 详见本期决定 ARS-3
   - 自动开归档 PR 后的等待/轮询 merge 状态（首次调即返回；merged 检测留给 `--finalize`）—— 避免 archive_runner 演变成长尾轮询工具
   - 主 PR (feat) 的归档准备工作前移——本期不在 PR submit 阶段提前写 phase=completed
@@ -110,6 +110,8 @@ PR #83（20260519-remove-human-signoff）与 PR #85（20260519-context-usage-rep
 | ARS-6：归档 PR rebase 策略 | A. `--skip-rebase` / B. 默认 rebase | **A** | 沉淀经验 `squash-merged-branch-cannot-be-rebased.md` 明示——feat 被 squash-merged 后再 rebase 必撞冲突（来源：context/team/experience/squash-merged-branch-cannot-be-rebased.md） |
 | ARS-7：finalize 状态源 | A. meta.yaml.archive_pr_number / B. 扫远程同分支最近 PR | **A** | 本期前置对话用户决定；schema 显式化优于依赖外部状态推断 |
 | ARS-8：worktree cleanup 时机 | A. pre-archive（现状）/ B. `--finalize` 与本地 feat 删除同步 / C. 完全不动 | **B** | 本期 2026-05-21 对话补充确定；归档 PR 期间 reviewer 可能在 worktree 内迭代提交，提前删会自删脚下文件；finalize 内部 `os.chdir(主仓根)` 替代原第 3 条「cwd ≡ 主仓根」保护（来源：scripts/lib/archive_runner.py:695）`resolve_main_repo_root` 调用点已就绪 |
+| ARS-9：finalize 子步骤失败策略基线 | A. 全部 fail-closed exit 1 / B. 全 best-effort 末尾汇总 / C. 混合（关键步 fail-closed + 次要步 fail-soft） | **C** | 2026-05-21 review F-004 补充确定；具体映射：`os.chdir(主仓根)` / `git pull --ff` 失败 → fail-closed exit 1（防止脏操作）；`git branch -D` / `git push --delete` 远程已不存在 → 静默 skip（与现有 `_delete_remote_branch` 已删除折叠语义对齐）；`git push --delete` 网络/权限失败 → fail-soft + stderr 打印手工命令；`git worktree remove --force` 仍失败 → fail-soft + stderr 输出 `[WORKTREE_REMOVE_FAILED]` + 不写 `worktree.cleanup.removed_at`；具体退出码 / stderr 文案模板留待 detail-design 拍板 |
+| ARS-10：archive_pr_number 异常路径处置 | A. 全 fail-closed exit 1 / B. 静默 skip 走异常路径 / C. 提示用户手工选择 | **A** | 2026-05-21 review F-005 补充确定；防止"未实际 merged 即删 feat 分支"的不可逆数据丢失。三路径具体处置：① `archive_pr_number` 字段缺失（老 meta 兼容）→ exit 1 + 提示「meta.yaml 缺字段，先跑 archive 第一阶段」；② `archive_pr_number=0`（场景 1 中途失败留下的默认值）→ exit 1 + 提示「PR 未创建，重跑 archive 完成第一阶段」；③ `gh pr view` 失败（gh 未登录 / 网络 / PR 已删）→ exit 1 + trim gh stderr 单行回显（不打印 Python traceback）+ 提示手工检查 PR 状态后重跑 |
 
 ## 待澄清清单
 
@@ -117,6 +119,7 @@ PR #83（20260519-remove-human-signoff）与 PR #85（20260519-context-usage-rep
 >
 > 下表 enumeration 与下文 `[` 待用户确认 `]` / `[` 待补充 `]` 标记一一对应（数量必须相等，否则触发 W003）。
 
-- ~~条目 1：[待用户确认] develop direct commit 是否允许~~ **已确认（2026-05-21）**：`context/team/git-workflow.md:24` 明示 `develop` 行「Hook 拦截 Edit/Write = ✅」，且 `feat/req-* / feature/* / chore/* / hotfix/* / release/*` 全部经 PR 合入 develop（git-workflow.md:25-28 + :88 squash merge 约定）。结论：本期设计前提成立，archive_runner 必须经 PR。
-- 条目 2：[待补充] archive PR body ⚠️ 警告头文案。**内容**：`⚠️ **本 PR 仅归档元信息变更**（meta.yaml + process.txt）。任何代码改动请关闭本 PR 并开 feat PR。本 PR 跳过 codex review-loop。`。**依据**：本期 ARS-5（跳 codex）+ 防御"用户在 feat 分支误加代码"的安全模型考量。**风险**：文案过短可能被 reviewer 略过；过长则模板复杂度上升。**验证时机**：阶段 5 detail-design 拍板最终文案，testing 阶段真机生成一份归档 PR body 截图对照。
-- 条目 3：[待补充] archive_pr_number jsonschema 表达式。**内容**：`archive_pr_number: { type: integer, minimum: 0, default: 0 }`，与现有 `pr_number` 字段同模。**依据**：复用现有 schema 风格（来源：context/team/engineering-spec/meta-schema.yaml）。**风险**：历史 meta.yaml（PR #83 之前）缺该字段，check_meta.py 在 strict 模式可能挂——需 backward-compat 测试。**验证时机**：阶段 5 detail-design 跑 check_meta.py against 历史所有 meta.yaml，确认 0 fail。
+> 已解决（不计入 enumeration）：条目 1（develop direct commit 是否允许）已于 2026-05-21 由 `context/team/git-workflow.md:24-28` 明示 develop 行 hook 拦截 + 各 feat/chore/release 必须经 PR 合入 develop 确认；本期设计前提成立，archive_runner 必须经 PR。
+
+- 条目 1：[待补充] archive PR body ⚠️ 警告头文案。**内容**：`⚠️ **本 PR 仅归档元信息变更**（meta.yaml + process.txt）。任何代码改动请关闭本 PR 并开 feat PR。本 PR 跳过 codex review-loop。`。**依据**：本期 ARS-5（跳 codex）+ 防御"用户在 feat 分支误加代码"的安全模型考量。**风险**：文案过短可能被 reviewer 略过；过长则模板复杂度上升。**验证时机**：阶段 5 detail-design 拍板最终文案，testing 阶段真机生成一份归档 PR body 截图对照。
+- 条目 2：[待补充] archive_pr_number jsonschema 表达式。**内容**：`archive_pr_number: { type: integer, minimum: 0, default: 0 }`，与现有 `pr_number` 字段同模。**依据**：复用现有 schema 风格（来源：context/team/engineering-spec/meta-schema.yaml）。**风险**：历史 meta.yaml（PR #83 之前）缺该字段，check_meta.py 在 strict 模式可能挂——需 backward-compat 测试。**验证时机**：阶段 5 detail-design 跑 check_meta.py against 历史所有 meta.yaml，确认 0 fail。

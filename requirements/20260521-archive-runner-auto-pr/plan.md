@@ -81,3 +81,21 @@
 - **Decision**：worktree cleanup 从 pre-archive 移到 `--finalize` 子命令内部，与本地+远程 feat 分支删除同步；保留三重保护中的 owner=workflow + `.worktrees/` 前缀两条；第 3 条「cwd ≡ 主仓根」改为「finalize 内部先 `os.chdir(主仓根)`（复用 `worktree_manager.resolve_main_repo_root`，archive_runner.py:695 已具备此能力）再 cleanup」；同时把 `meta.yaml.worktree.cleanup.removed_at` 字段的写入从 pre-archive 一并搬到 finalize
 - **Consequences**：worktree 生命周期延长到归档 PR merged + finalize；用户在 worktree 内跑 finalize 不再被第 3 条保护卡死；老需求 / worktree 已被外部清理的场景静默 skip（与 archive_runner.py:204 处理一致）；测试用例需覆盖 finalize 三种 cwd 路径（worktree 内 / 主仓根 / worktree 已不存在）
 - **时间**：2026-05-21 14:19:45
+
+### D-004 归档 PR 创建失败 fail-closed exit 1 + 保留 working tree（镜像 ARS-1）
+- **Context**：场景 1 步骤 4-5 在 feat 分支 commit + push + `gh pr create`，第 5 步失败（gh 未登录 / 远程分支保护规则拒推 / 网络异常等）有 3 种处置：A. fail-closed exit 1 + 保留 commit；B. 全回滚（撤销 commit + push）；C. 静默不开 PR
+- **Decision**：选 A——`archive_runner` 检测 `gh pr create` 失败时 exit 1，**保留 feat 分支上已 commit 的归档元信息**，stderr 打印失败原因 + 提示用户手工 `gh pr create --base develop --head feat/req-<id> --no-codex --skip-rebase`
+- **Consequences**：实现最简单，失败可见；用户手恢复成本最低；副作用是 feat 分支上会有"半完成的归档 commit"残留，需文档约定下次重跑前先 `git reset --soft HEAD~1` 撤回（或允许 archive_runner 第二次调时 idempotent 跳过 commit 步骤——detail-design 拍板）
+- **时间**：2026-05-21 14:39:40
+
+### D-005 finalize 默认询问 + `--yes-finalize` 跳问（镜像 ARS-2）
+- **Context**：`--finalize` 要删本地+远程 feat 分支 + worktree，属于不可逆操作；与现有 `archive` 三问串行风格保持一致
+- **Decision**：finalize 默认问一问「确认删除本地+远程 feat/req-<id> + 本地 worktree？Y/N」（默认 N）；用户传 `--yes-finalize` 时跳过询问直接执行
+- **Consequences**：防止误调直接清掉分支；CI 等非交互环境需显式传 `--yes-finalize` 才能 unblock，避免 prompt 卡死
+- **时间**：2026-05-21 14:39:40
+
+### D-006 `--force` 仅跳 merged 检查，不自动开 PR（镜像 ARS-3）
+- **Context**：`--force` 是异常恢复场景（如归档 PR 被手工 closed 后想清理，或老需求无 archive_pr_number 时手工触发 finalize）；范围有两种选项：A. 仅跳 merged 检查；B. 也自动开 PR
+- **Decision**：选 A——`--force` 只跳 `gh pr view` MERGED 校验，**不**触发场景 1 的"自动 commit + push + 开 PR"流程；archive PR 创建仍走默认路径
+- **Consequences**：异常恢复场景保持轻量；不引入"force 是否要重开 PR"的二阶决策；维持 ARS-1 fail-closed 边界——若用户在 force 路径下也要重开 PR，应手工 `gh pr create` 而非靠 --force
+- **时间**：2026-05-21 14:39:40
