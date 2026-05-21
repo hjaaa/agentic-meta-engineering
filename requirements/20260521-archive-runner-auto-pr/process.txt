@@ -3,3 +3,4 @@
 2026-05-21 15:04:29 [save] tech-research 入口：definition 阶段 2 轮 review 修 13 finding 后 looks_clean，11 gates 全过，下一步技术可行性评估
 2026-05-21 15:11:15 [save] log_process.py CLI 冒烟自测：tag 白名单 + Asia/Shanghai now 已封装
 2026-05-21 15:45:15 [phase-transition] tech-research → outline-design（11 gates 全过：META-SCHEMA / INDEX-INTEGRITY / SOURCING / PLAN-FRESHNESS / WORKSPACE-CLEAN / REVIEW-VERDICT / FEATURES-SCHEMA / TASK-FRONTMATTER / POST-DEV-RECEIPT / TRACEABILITY / TOUCHES-VIOLATION；2 warnings 非阻断：W002 R-S01 数字断言 + W003 plan.md scope 子条目缺口；tech-research.md 写完 8 决策可行性评估 + 3 P0 待澄清全关闭 + 12.1 天工作量估算）
+2026-05-21 16:00:06 [phase-transition] outline-design → detail-design（11 gates 全过；review verdict REV-...-outline-design-002 looks_clean score=87@7088dac；round-1 needs_attention score=78 修 2 required + 5 suggestions 后 round-2 通过；outline-design.md 完成双阶段拓扑 + 7 features + 5 选型 + 3 流程图 + ArchiveResult 扩展 + PR-A/B/C 拆分）
