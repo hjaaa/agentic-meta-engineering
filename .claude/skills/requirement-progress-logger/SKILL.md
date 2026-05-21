@@ -16,35 +16,43 @@ description: 追加语义事件到 requirements/<id>/process.txt（追加式）�
 
 ## 核心流程
 
-1. **定位 `requirements/<id>/process.txt`**：
+1. **定位需求 ID**：
    - 从 meta.yaml 的 branch 匹配当前分支
-   - 或从上下文中的需求 ID
+   - 或从上下文中已有的需求 ID
 
-2. **取时间戳 = 写入当下东八区 now**（不是"事件计划发生时"）
-   - 格式：`YYYY-MM-DD HH:MM:SS`，时区 Asia/Shanghai（详见 `context/team/engineering-spec/time-format.md`）
-   - 保证行序与时序一致（必须 append 瞬间取 now）
-   - 推荐命令：`TZ=Asia/Shanghai date +"%Y-%m-%d %H:%M:%S"`
+2. **通过 CLI 写入**（**唯一允许的写入方式**，禁止直接 `printf >> process.txt`）：
+   ```bash
+   python3 scripts/lib/log_process.py \
+     --req <REQ-ID> \
+     --tag <tag> \
+     "<事件描述>"
+   ```
+   CLI 内部负责：
+   - 取写入瞬间的 Asia/Shanghai now 作为时间戳（`datetime.now(_CST)`，与 archive_runner / submit_codex 同源 `_CST = timezone(timedelta(hours=8))`，详见 `context/team/engineering-spec/time-format.md`）
+   - 校验 tag 是否在白名单（见下表）
+   - 校验消息体非空 + strip CR/LF 防多行注入
+   - 以 `"a"` 模式 append 写入 `requirements/<REQ-ID>/process.txt`，**绝不覆盖**
 
-3. **格式化日志行**：
-   ```
-   YYYY-MM-DD HH:MM:SS [phase] 事件描述
-   ```
-   例：
-   ```
-   2026-04-20 19:02:08 [review:needs_revision] requirement-quality-reviewer 3 条 major
-   2026-04-20 19:16:00 [phase-transition] definition → tech-research
-   ```
+3. **示例**：
+   ```bash
+   python3 scripts/lib/log_process.py --req REQ-2026-001 \
+     --tag review:needs_revision "requirement-quality-reviewer 3 条 major"
+   # → 2026-04-20 19:02:08 [review:needs_revision] requirement-quality-reviewer 3 条 major
 
-4. **追加到文件末尾**（**绝不覆盖**）
+   python3 scripts/lib/log_process.py --req REQ-2026-001 \
+     --tag phase-transition "definition → tech-research"
+   # → 2026-04-20 19:16:00 [phase-transition] definition → tech-research
+   ```
 
 ## 硬约束
 
-- ❌ 禁止覆盖写入（只能 `>>` append）
-- ❌ 禁止缺时间戳
-- ❌ 禁止使用其他时区或其他格式（格式见 `context/team/engineering-spec/time-format.md`）
-- ❌ 禁止预先计算时间戳再写入（必须在 append 那一刻取 now，消除时序倒流）
-- ✅ `phase` 字段必须与 `meta.yaml.phase` 一致（阶段切换时单次例外：写 `phase-transition`）
-- ✅ 每行一条事件，事件描述 < 100 字符
+- ❌ 禁止直接 `printf >> process.txt` / `echo >> process.txt` / Edit 工具改 process.txt——所有写入必须经 `scripts/lib/log_process.py` CLI
+  - 例外：脚本侧已有自己的 `_append_process_event` 实现（archive_runner / submit_codex / code_review_routing），保持现状不变；它们共享同一 `_CST` 时区常量
+- ❌ 禁止覆盖写入（CLI 内部用 `"a"` 模式，调用方不必关心）
+- ❌ 禁止预先计算时间戳再写入（CLI 强制 append 瞬间取 now，消除时序倒流）
+- ❌ 禁止使用白名单外的 tag（CLI 用正则校验，不符合直接 exit 1）
+- ✅ `tag` 含语义即与 `meta.yaml.phase` 对齐由调用方负责（CLI 不校验语义一致性，只校验枚举值）
+- ✅ 每行一条事件；事件描述建议 < 200 字符（CLI 不强制，但 tail 可读性优先）
 
 ## 事件标签白名单
 
