@@ -242,19 +242,23 @@ def _calc_round(req_id: str) -> int:
 def _check_ci_status(pr_number: int) -> tuple[str, list[dict[str, Any]]]:
     """查 PR 当前 CI 状态（submit-rules.md §7.5 硬约束的 1 次性 precheck）。
 
-    返回 (status, problem_checks)：
-      - status='success': 所有 check 已 COMPLETED 且 conclusion ∈ {SUCCESS, NEUTRAL, SKIPPED}
-      - status='failed' : 任一 check conclusion ∈ {FAILURE, CANCELLED, TIMED_OUT}
-      - status='pending': 任一 check status != COMPLETED（含 PENDING / IN_PROGRESS / QUEUED）
+    使用 `gh pr checks --json name,state,bucket,workflow`：
+      - `state`：SUCCESS / FAILURE / CANCELLED / TIMED_OUT / PENDING / IN_PROGRESS / QUEUED / NEUTRAL / SKIPPED
+      - `bucket`：pass / fail / pending / skipping（gh 自己的归类）
 
-    gh 命令失败 / JSON 解析失败 / 0 个 check → 视为 pending（保守策略，
-    让上层走"未稳定"分支以 exit 0 + warning 兜底，避免静默通过）。
+    返回 (status, problem_checks)：
+      - status='success': 所有 check state ∈ {SUCCESS, NEUTRAL, SKIPPED}（或 bucket ∈ {pass, skipping}）
+      - status='failed' : 任一 check state ∈ {FAILURE, CANCELLED, TIMED_OUT}（或 bucket=fail）
+      - status='pending': 任一 check 既不属于 success 也不属于 failed（state=PENDING/IN_PROGRESS/QUEUED 或 bucket=pending）
+
+    gh 命令失败 / JSON 解析失败 / 0 个 check → 视为 pending（保守策略，让上层走
+    "未稳定"分支以 exit 0 + warning 兜底，避免静默通过）。
 
     本函数是无副作用 IO 查询；不写 process.txt / 不抛 SystemExit。
     """
     try:
         proc = subprocess.run(
-            ["gh", "pr", "checks", str(pr_number), "--json", "name,status,conclusion,bucket"],
+            ["gh", "pr", "checks", str(pr_number), "--json", "name,state,bucket,workflow"],
             capture_output=True,
             text=True,
             check=False,
@@ -271,16 +275,21 @@ def _check_ci_status(pr_number: int) -> tuple[str, list[dict[str, Any]]]:
     if not isinstance(checks, list) or not checks:
         return "pending", []
 
-    failed_concl = {"FAILURE", "CANCELLED", "TIMED_OUT"}
+    failed_states = {"FAILURE", "CANCELLED", "TIMED_OUT"}
+    success_states = {"SUCCESS", "NEUTRAL", "SKIPPED"}
+
     failed = [
         c for c in checks
-        if (c.get("conclusion") or "").upper() in failed_concl
+        if (c.get("state") or "").upper() in failed_states
+        or (c.get("bucket") or "").lower() == "fail"
     ]
     if failed:
         return "failed", failed
+
     pending = [
         c for c in checks
-        if (c.get("status") or "").upper() != "COMPLETED"
+        if (c.get("state") or "").upper() not in success_states
+        and (c.get("bucket") or "").lower() not in ("pass", "skipping")
     ]
     if pending:
         return "pending", pending
@@ -301,8 +310,8 @@ def _precheck_ci_or_exit(pr_number: int, req_id: str) -> None:
     if status == "success":
         return
     detail = "\n".join(
-        f"  - {c.get('name', '?')}: status={c.get('status', '?')}"
-        f" conclusion={c.get('conclusion', '?')}"
+        f"  - {c.get('name', '?')}: state={c.get('state', '?')}"
+        f" bucket={c.get('bucket', '?')}"
         for c in problem_checks
     )
     if status == "failed":

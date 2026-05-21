@@ -1041,11 +1041,11 @@ def _make_ci_proc(rc: int, stdout: str, stderr: str = ""):
 
 
 def test_check_ci_status_success(monkeypatch: pytest.MonkeyPatch) -> None:
-    """所有 check status=COMPLETED + conclusion=SUCCESS → ('success', [])."""
+    """所有 check state ∈ {SUCCESS, NEUTRAL, SKIPPED} → ('success', [])."""
     checks = [
-        {"name": "build", "status": "COMPLETED", "conclusion": "SUCCESS"},
-        {"name": "test", "status": "COMPLETED", "conclusion": "NEUTRAL"},
-        {"name": "lint", "status": "COMPLETED", "conclusion": "SKIPPED"},
+        {"name": "build", "state": "SUCCESS", "bucket": "pass"},
+        {"name": "test", "state": "NEUTRAL", "bucket": "pass"},
+        {"name": "lint", "state": "SKIPPED", "bucket": "skipping"},
     ]
     import json as _json
     monkeypatch.setattr(
@@ -1058,12 +1058,12 @@ def test_check_ci_status_success(monkeypatch: pytest.MonkeyPatch) -> None:
     assert problem == []
 
 
-def test_check_ci_status_failed_on_failure_conclusion(monkeypatch: pytest.MonkeyPatch) -> None:
-    """任一 check conclusion=FAILURE/CANCELLED/TIMED_OUT → ('failed', [那些])."""
+def test_check_ci_status_failed_on_failure_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    """任一 check state ∈ {FAILURE, CANCELLED, TIMED_OUT} → ('failed', [那些])."""
     checks = [
-        {"name": "build", "status": "COMPLETED", "conclusion": "SUCCESS"},
-        {"name": "quality-check", "status": "COMPLETED", "conclusion": "FAILURE"},
-        {"name": "deploy-preview", "status": "COMPLETED", "conclusion": "CANCELLED"},
+        {"name": "build", "state": "SUCCESS", "bucket": "pass"},
+        {"name": "quality-check", "state": "FAILURE", "bucket": "fail"},
+        {"name": "deploy-preview", "state": "CANCELLED", "bucket": "fail"},
     ]
     import json as _json
     monkeypatch.setattr(
@@ -1077,10 +1077,10 @@ def test_check_ci_status_failed_on_failure_conclusion(monkeypatch: pytest.Monkey
 
 
 def test_check_ci_status_pending_when_incomplete(monkeypatch: pytest.MonkeyPatch) -> None:
-    """任一 check status=IN_PROGRESS/QUEUED → ('pending', [那些])."""
+    """任一 check state ∈ {PENDING/IN_PROGRESS/QUEUED} → ('pending', [那些])."""
     checks = [
-        {"name": "build", "status": "COMPLETED", "conclusion": "SUCCESS"},
-        {"name": "test", "status": "IN_PROGRESS", "conclusion": None},
+        {"name": "build", "state": "SUCCESS", "bucket": "pass"},
+        {"name": "test", "state": "IN_PROGRESS", "bucket": "pending"},
     ]
     import json as _json
     monkeypatch.setattr(
@@ -1140,7 +1140,7 @@ def test_precheck_ci_or_exit_failed_exits_1_with_event(
     """status='failed' → SystemExit(1) + stderr 详情 + process.txt [codex-skipped reason=ci-failed]。"""
     req_id = "REQ-2099-007"
     _make_meta(fake_repo, req_id=req_id, pr_number=42)
-    problem = [{"name": "quality-check", "status": "COMPLETED", "conclusion": "FAILURE"}]
+    problem = [{"name": "quality-check", "state": "FAILURE", "bucket": "fail"}]
     monkeypatch.setattr(submit_codex, "_check_ci_status", lambda _pr: ("failed", problem))
 
     with pytest.raises(SystemExit) as exc_info:
@@ -1150,7 +1150,7 @@ def test_precheck_ci_or_exit_failed_exits_1_with_event(
     captured = capsys.readouterr()
     assert "CI failed" in captured.err
     assert "quality-check" in captured.err
-    assert "FAILURE" in captured.err
+    assert "FAILURE" in captured.err  # state 字段值原样渲染
 
     process_txt = fake_repo / req_id / "process.txt"
     assert process_txt.exists()
@@ -1166,7 +1166,7 @@ def test_precheck_ci_or_exit_pending_exits_0_with_warning(
     """status='pending' → SystemExit(0) + stderr ⚠️ 警告 + process.txt [codex-skipped reason=ci-pending]。"""
     req_id = "REQ-2099-007"
     _make_meta(fake_repo, req_id=req_id, pr_number=42)
-    problem = [{"name": "test", "status": "IN_PROGRESS", "conclusion": None}]
+    problem = [{"name": "test", "state": "IN_PROGRESS", "bucket": "pending"}]
     monkeypatch.setattr(submit_codex, "_check_ci_status", lambda _pr: ("pending", problem))
 
     with pytest.raises(SystemExit) as exc_info:
@@ -1190,7 +1190,7 @@ def test_submit_with_codex_blocks_on_ci_failed(
     req_id = "REQ-2099-007"
     _make_meta(fake_repo, req_id=req_id, pr_number=42)
     # 覆盖 fake_repo 默认的 success stub
-    problem = [{"name": "quality-check", "status": "COMPLETED", "conclusion": "FAILURE"}]
+    problem = [{"name": "quality-check", "state": "FAILURE", "bucket": "fail"}]
     monkeypatch.setattr(submit_codex, "_check_ci_status", lambda _pr: ("failed", problem))
 
     trigger_called = []
