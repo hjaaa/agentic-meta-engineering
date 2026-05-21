@@ -185,7 +185,7 @@ CLI 入口 contract（详见技术选型 §CLI）。
 
 ### CLI 入参 schema
 
-> 阶段 4 只给字段表与默认值；具体类型签名与互斥规则阶段 5 落 features.json。
+> 阶段 4 只给字段表与默认值；具体类型签名与互斥规则阶段 5 落 features.json（来源：context/team/engineering-spec/iteration-sop.md）。
 
 | 参数 | 默认 | 说明 |
 |---|---|---|
@@ -329,5 +329,9 @@ sequenceDiagram
 ## 待澄清清单
 
 > 与「## 待确认 / 待补充」语义等价；保留本节是为满足 `check_sourcing.py` W001 / W003 校验项（regex 只认 `待澄清清单`）。详见 notes.md Bug-4。
+>
+> 下表 enumeration 与上文「待确认 / 待补充」表条目一一对应（数量必须相等，
+> 否则触发 W003）。每条详细的内容/依据/风险/验证时机见上文表内。
 
-见上文「待确认 / 待补充」表的所有条目。
+- `high_value` 阈值 `reference_count >= 3` 是否合理（条目 1）
+- `applied_signal_count` 上限是否需要硬封 40（条目 2）

@@ -778,9 +778,9 @@ flowchart TD
 
 ### 日志策略
 
-- **不引入 logging 框架**：用 `print` to stderr 输出 warning / error 行，便于 CI 直接 grep；正常摘要走 stdout
+- **不引入 logging 框架**：用 `print` to stderr 输出 warning / error 行，便于 CI 直接 grep；正常摘要走 stdout（来源：requirements/20260519-context-usage-report/artifacts/requirement.md:70）
 - **行格式**：`<LEVEL> <message>`，例：`WARN reviews/foo.json: json.loads failed`
-- **不打印任何敏感信息**：本工具仅读 markdown / json，无密钥 / token，但 warning 中不要包含完整 file 内容片段（最多前 80 字符）
+- **不打印任何敏感信息**：本工具仅读 markdown / json，无密钥 / token，但 warning 中不要包含完整 file 内容片段（最多前 80 字符；来源：context/team/engineering-spec/design-guidance/context-engineering.md）
 - **CI 集成**：`--fail-on-*` 标志触发非零退出码时，CI 通过 grep `BROKEN_LINKS_DETECTED` / `ORPHANS_DETECTED` 在 PR 中渲染评论
 
 ### 安全模型
@@ -950,5 +950,10 @@ def _classify_status(self, s: dict, now: datetime) -> KnowledgeStatus:
 ## 待澄清清单
 
 > 与「## 待确认 / 待补充」语义等价；保留本节是为满足 `check_sourcing.py` W001 / W003 校验项（regex 只认 `待澄清清单`）。详见 notes.md Bug-4。
+>
+> 下表 enumeration 与上文「待确认 / 待补充」表条目一一对应（数量必须相等，
+> 否则触发 W003）。每条详细的内容/依据/风险/验证时机见上文表内。
 
-见上文「待确认 / 待补充」表的所有条目。
+- `HIGH_VALUE_REFERENCE_MIN = 3` 阈值（条目 1）
+- JSON schema URL 占位（条目 2）
+- 是否保留原始 applied_signal_count（条目 3）
