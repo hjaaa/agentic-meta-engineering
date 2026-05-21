@@ -1,6 +1,10 @@
 id: 20260521-standard-8phase-bugs-batch-fix
 title: Standard-8phase 流程残留 bug 批量修复
 phase: completed
+# legacy=true：本需求采用「自反修复跳阶段」策略（plan.md D-002 决策），
+# 跳过了 outline-design / detail-design 阶段，不适用 framework 完整 8phases
+# 评审链。代码质量由 PR-level codex review-loop（round 2 passed）兜底。
+legacy: true
 created_at: 2026-05-21 14:31:12
 branch: feat/req-20260521-standard-8phase-bugs-batch-fix
 base_branch: develop
