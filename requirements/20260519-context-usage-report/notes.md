@@ -228,6 +228,83 @@
 
 ---
 
+### Bug-20：`standard-8phase.yaml` 的 `pr-submit` bash 节点引用 3 个未注入的 env 变量（`PR_TITLE` / `PR_BODY_FILE` / `BASE_BRANCH`）→ 非交互 `gh pr create` 必败
+
+**触发**：testing 阶段 `test-final-confirm` approved 后 main loop 推进到 `pr-submit`，第 1 次执行 `git push` 成功但 `gh pr create --title "$PR_TITLE" --body-file "$PR_BODY_FILE" --base "$BASE_BRANCH"` 报错 → `node_failed` + `node_retried` (fail_count=1/max_retries=3)。
+
+**现象**：
+
+```
+remote: ... [new branch] feat/req-20260519-context-usage-report -> feat/req-20260519-context-usage-report
+must provide `--title` and `--body` (or `--fill` or `fill-first` or `--fillverbose`) when not running interactively
+
+Usage:  gh pr create [flags]
+...
+```
+
+`$PR_TITLE` / `$PR_BODY_FILE` 在 bash 节点的 env 中是空字符串，导致 `gh pr create` 实际接到 `--title "" --body-file ""`，被 gh CLI 当作 "未提供" → 切回交互模式 → 非 tty 拒绝。
+
+**根因**：
+
+- `scripts/lib/workflow_dispatcher.py` 的 bash 节点 env 构建（`_build_env_and_state` 链路）只注入 workflow-loader 已知的 `$RUN_ID` / `$BRANCH_NAME` / `$META_PATH` / `$ARTIFACTS_DIR` 等通用变量。
+- `PR_TITLE` / `PR_BODY_FILE` / `BASE_BRANCH` / `DRAFT_FLAG` 在 `scripts/lib/` 全仓 grep 0 个 producer。
+- `.claude/workflows/requirement/standard-8phase.yaml:676-690` 的 `pr-submit` 节点 yaml 是"先写消费方再补 producer"的半成品：bash 命令引用了从未实现的环境变量。
+- 与之对照，`.claude/skills/managing-requirement-lifecycle/reference/submit-rules.md` 描述的 `/requirement:submit` 流程才是完整路径——含 PR 正文模板渲染（`templates/pr-body.md.tmpl` 占位符 8 个）+ title 推断（features.type 聚合）+ gates 链 + codex review-loop。
+
+**影响面**：
+
+- 所有走完整 8-phase workflow 到 testing 末端的需求，`pr-submit` 节点 100% 必败 → 触发 max_retries=3 重试全失败 → 节点 abort → 整个 workflow run 卡死。
+- 已合并的历史需求（REQ-2026-010 / 011 / 013 / 014 / 20260519-remove-human-signoff）均**走 `/requirement:submit` 手动 / skill 路径**，绕过了这个 yaml 节点 → 该 bug 一直没暴露。
+
+**workaround**（本需求用）：
+
+1. 在 worktree 内由 main agent 直接调 `/requirement:submit --codex`（canonical 路径），完成 PR 创建 + meta.yaml.pr_url 回写。
+2. 用 `python3 scripts/lib/save_node_result.py --run 20260519-context-usage-report --node pr-submit --kind skill_result --output '{"pr_url": "<URL>"}'` 把 `pr-submit` 节点手动标完成，让 workflow main loop 跳过它推进到 `pr-merged-gate`。
+
+**根治建议**（挂账独立 tech-debt 需求）：二选一——
+
+1. **删 yaml 节点 → 用 skill 替代**：把 `pr-submit` 改成 `skill: requirement-submit`（语义对齐 ai-collaboration 三层架构"yaml 编排 / skill 工具 / agent 执行"）。最干净，符合复利工程"工具封装知识"原则。
+2. **补 env producer**：在 `workflow_dispatcher.py` 给 `pr-submit` 节点专门注入 `PR_TITLE` (从 features.json 聚合 + meta.yaml.title) / `PR_BODY_FILE`（渲染 `templates/pr-body.md.tmpl` 到临时文件）/ `BASE_BRANCH`（解析 `meta.yaml.base_branch || origin/develop || main`）/ `DRAFT_FLAG`。代码量大、复用度低，不推荐。
+
+修法 1 是正解。修复时把 `pr-merged-gate` 的 `$pr-submit.output.pr_url` 引用同步改成 `$requirement-submit.output.pr_url`。
+
+---
+
+### Bug-19：`_resolve_prompt_file` 用模块级 `WORKFLOWS_PROMPTS_DIR` 常量，prompt_file 解析忽略调用方的 repo_root → 测试 fixture 注入失效
+
+**触发**：testing 阶段 `test-runner-execute` 跑 `pytest tests/skills/test_workflow_dispatcher_bash_skill_prompt.py::test_prompt_node_prompt_file_reads_and_renders` 失败（全量 1812 用例中唯一失败用例）。
+
+**现象**：
+
+```
+common.WorkflowError: prompt_file not found:
+  /Users/richardhuang/learnspace/agentic-meta-engineering/.worktrees/feat-req-20260519-context-usage-report/.claude/workflows/prompts/test.md
+```
+
+测试用 `tmp_path` 注入 `prompts/test.md` 作为 prompt_file 源，但 `_dispatch_prompt_node` 拿到的解析结果指向真实仓库根的 `.claude/workflows/prompts/test.md`（不存在）→ `FileNotFoundError` → `WorkflowError`。
+
+**根因**：
+
+- `scripts/lib/workflow_loader.py:117` 在模块 import 时把 `WORKFLOWS_PROMPTS_DIR = REPO_ROOT / ".claude" / "workflows" / "prompts"` 写死成绝对路径。
+- `scripts/lib/workflow_loader.py:713 _resolve_prompt_file(pf_value)` 只接 1 个参数，硬编码用 `WORKFLOWS_PROMPTS_DIR` 拼接 → 测试无法通过 monkeypatch 之外的常规手段注入根目录。
+- `scripts/lib/workflow_dispatcher.py:295` 调用处 `_dispatch_prompt_node(node, run_state, env, run_dir, root, jsonl_path)` 拿到了 `root` 参数但**没有把它传给 `_resolve_prompt_file`**——典型 API 签名缺失。
+
+**影响面**：
+
+- 仅影响单元测试可注入性，**生产路径不受影响**（生产场景 `REPO_ROOT` 即真实仓库根，二者一致）。
+- 1 个 fail / 1812 全量用例，pre-existing —— 本需求 20260519-context-usage-report 完全未触碰 `workflow_loader.py` / `workflow_dispatcher.py`（diff 集中在 `scripts/lib/context_usage_report.py` + `markdown_links.py` + tests）。
+
+**workaround**：本需求 testing 阶段视为 pre-existing 偏离接受（与 Bug-18 同等处理）；test-final-confirm 节点凭 1799/1812 + 唯一失败为 pre-existing 走 approve。
+
+**根治建议**（挂账独立 tech-debt 需求）：二选一——
+
+1. **改签名**：`_resolve_prompt_file(pf_value, repo_root: Path | None = None)`，默认值时回退到 `REPO_ROOT`；调用方 `_dispatch_prompt_node` 把 `root` 传进去。最小侵入，向后兼容。
+2. **依赖注入**：把 `WORKFLOWS_PROMPTS_DIR` 改成函数 `_workflows_prompts_dir(root: Path)`，所有调用方显式传根；彻底消除模块级 path 常量。改动面更大但更干净。
+
+修法 1 更符合外科手术式修改原则。修复时一并补一条 `tmp_path → repo_root → prompts/` 端到端的 fixture 用例锁住回归。
+
+---
+
 ### Bug-18：post-dev gate 在 GATE-SOURCING 非 strict 模式下也把 R-WARNING-ONLY 升为 exit 1（误报）
 
 **触发**：F-006 完成后跑 `python3 scripts/gates/run.py --trigger=post-dev --req=20260519-context-usage-report`，stdout 显示 `Total: 0 error, 5 warning` 但 exit=1。
