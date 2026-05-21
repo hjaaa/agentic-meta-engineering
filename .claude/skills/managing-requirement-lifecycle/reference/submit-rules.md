@@ -179,20 +179,36 @@ gh pr checks <num> --json name,status,conclusion,bucket
 
 `submit` **不**调用 `traceability-gate-checker`。追溯链是 `development → testing` 的硬门禁，PR 开出时代码可能还在补单测；submit 只要求"已有 review 报告且无 blocker"即可。PR 合并后再由 `/workflow:next [F-012 待落地]` 驱动追溯链校验。
 
-## §7.5 `--codex` 子模式状态机（F-004）
+## §7.5 `--codex` 子模式状态机（F-004，默认翻转 2026-05-21）
+
+**默认行为变更（2026-05-21）**：
+
+`/requirement:submit` 包装层（slash command / SKILL）**默认会向底层 `scripts/lib/submit_codex.py`
+CLI 追加 `--codex`**，进入 codex review-loop。仅当用户显式传 `--no-codex` 时跳过。
+
+> 底层 `submit_codex.py` 的 argparse `--codex` 仍是 opt-in flag（默认 False，CLI 向后兼容）；
+> 默认翻转只发生在 wrapper（包装 skill / command）层。这避免破坏直接调用 Python CLI 的脚本。
+
+**翻转理由**：实践中 codex review-loop 是发现合并前 critical 缺陷的关键防线，多次需求闭环表明
+"忘记 --codex" 是引入 main 后回归的常见根因。默认开启降低人为遗漏成本；用 `--no-codex` 显式
+跳过满足快速迭代 / 本地拒绝 codex 的边角场景。
 
 **前置条件（自 step 11 起强制）**：进入 codex 状态机前必须完成 step 11 CI 等待，且判定为「全部 SUCCESS」或「全部 NEUTRAL/SKIPPED」；CI 失败或超时时禁止进入 codex（避免无效 review 噪声）。
 
 
 ### 参数
 
-| 参数 | 默认 | 语义 |
+| 参数 | 默认（CLI 层 / wrapper 层） | 语义 |
 |---|---|---|
-| `--codex` | false | 启用 codex 单轮 review-loop |
-| `--codex-poll-interval` | 10 | （需 `--codex`）轮询间隔秒数 |
-| `--codex-timeout` | 600 | （需 `--codex`）整轮超时秒数 |
+| `--codex` | CLI: false / wrapper: **true** | 启用 codex 单轮 review-loop。wrapper 默认追加；用户显式传 `--codex` 也接受（幂等） |
+| `--no-codex` | false | wrapper 专用：禁止 wrapper 追加 `--codex` 到底层调用；底层 CLI 不识别此 flag |
+| `--codex-poll-interval` | 10 | 仅 codex 开启时生效（与 `--codex` 同传） |
+| `--codex-timeout` | 600 | 同上 |
 
-参数互斥：`--codex-poll-interval` / `--codex-timeout` 必须与 `--codex` 同传，否则 exit 1 并提示 `requires --codex`；`--draft` 与 `--codex` 可同传。
+参数互斥：
+- `--codex` 与 `--no-codex` 不能同传，否则 wrapper 报错 exit 1（stderr: `mutually exclusive`）
+- `--codex-poll-interval` / `--codex-timeout` 必须与 `--codex` 同传，否则底层 CLI exit 1 并提示 `requires --codex`
+- `--draft` 与 `--codex` 可同传
 
 ### 状态机骨架
 

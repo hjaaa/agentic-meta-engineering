@@ -1,6 +1,6 @@
 ---
-description: 提交当前需求的 PR——自动门禁、推分支、拼正文、开 PR、回写 meta.yaml
-argument-hint: [--draft] [--target <branch>] [--skip-rebase] [--reviewer <user>]... [--force-with-blockers]
+description: 提交当前需求的 PR——自动门禁、推分支、拼正文、开 PR、回写 meta.yaml（默认含 codex review-loop）
+argument-hint: [--draft] [--target <branch>] [--skip-rebase] [--reviewer <user>]... [--force-with-blockers] [--no-codex]
 ---
 
 > [DEPRECATION] /requirement:submit 已纳入 3 月兼容期（截至 2026-08-08）。
@@ -43,11 +43,18 @@ argument-hint: [--draft] [--target <branch>] [--skip-rebase] [--reviewer <user>]
 | `--no-ci-wait` | false | 跳过 PR 开启后的 CI 等待（默认会等所有 check 完成才进入 codex / 收尾） |
 | `--ci-poll-interval` | 15 | CI 状态轮询间隔秒数 |
 | `--ci-timeout` | 600 | CI 等待总超时秒数（超时不阻塞退出，但禁止进入 codex review-loop） |
-| `--codex` | false | 启用 codex 单轮 review-loop（开 PR → CI 绿 → @codex review → 轮询 → verdict 写 process.txt；review 全文仅留存于 GitHub PR comments，不在本地落盘） |
-| `--codex-poll-interval` | 10 | （需 `--codex`）轮询间隔秒数 |
-| `--codex-timeout` | 600 | （需 `--codex`）整轮超时秒数 |
+| `--codex` | **true（默认开启）** | 启用 codex 单轮 review-loop（开 PR → CI 绿 → @codex review → 轮询 → verdict 写 process.txt；review 全文仅留存于 GitHub PR comments，不在本地落盘）。**底层 `submit_codex.py` CLI 默认仍是 opt-in；包装层默认会追加 `--codex` 到底层调用**，除非用户在 `/requirement:submit` 命令行显式传 `--no-codex`。 |
+| `--no-codex` | false | 跳过 codex review-loop（兼容快速迭代 / 已有外部 review 流程的场景）。包装层不会向底层调用追加 `--codex`。 |
+| `--codex-poll-interval` | 10 | 轮询间隔秒数（仅 codex 开启时生效；底层调用仍需 `--codex` 同传作为合法性校验） |
+| `--codex-timeout` | 600 | 整轮超时秒数（同上） |
 
-**参数互斥**：`--codex-poll-interval` / `--codex-timeout` 必须与 `--codex` 同传，否则 exit 1（stderr: `requires --codex`）；`--draft` 与 `--codex` 可同传。
+**参数互斥**：
+- `--codex` 与 `--no-codex` 不能同传，否则报错（互斥）
+- 显式传 `--codex-poll-interval` / `--codex-timeout` 但同时传 `--no-codex` → 视为 `--no-codex` 主导（warning + 忽略 codex 参数）
+
+**为何默认开 codex**：实践中 codex review-loop 是发现合并前 critical 缺陷的关键防线，多次需求闭环表明
+"忘记 --codex" 是引入 main 后回归的常见根因。默认开启降低人为遗漏成本；走快速迭代或本地拒绝 codex 时用
+`--no-codex` 显式关闭。
 
 **`--codex` 异常文案**：
 
