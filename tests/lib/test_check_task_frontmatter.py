@@ -358,3 +358,62 @@ def test_missing_multiple_fields_accumulates_errors(tmp_path, monkeypatch):
     assert "created_at" in errors_text
     assert "updated_at" in errors_text
     assert len(report.errors) >= 3, f"期望至少 3 条错误，实际：{len(report.errors)}"
+
+
+# ---------- 双模 CLI（Bug-10）：目录 vs 单文件 ----------
+
+
+def test_cli_accepts_directory(tmp_path):
+    """传入目录 → rglob *.md 批量校验，全 valid → exit 0"""
+    import subprocess, sys, textwrap
+    repo_root = Path(__file__).resolve().parents[2]
+    cli = repo_root / "scripts" / "lib" / "check_task_frontmatter.py"
+    for n in (1, 2, 3):
+        (tmp_path / f"F-00{n}.md").write_text(textwrap.dedent(f"""
+            ---
+            schema_version: "1.0"
+            feature_id: F-00{n}
+            title: t
+            status: pending
+            complexity: light
+            depends_on: []
+            touches: ["scripts/lib/x.py"]
+            created_at: 2026-05-21T15:00:00
+            updated_at: 2026-05-21T15:00:00
+            ---
+            body
+        """).lstrip(), encoding="utf-8")
+    proc = subprocess.run([sys.executable, str(cli), str(tmp_path)], capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_cli_directory_aggregates_failures(tmp_path):
+    """目录内含一个非法文件 → 聚合 exit 1"""
+    import subprocess, sys, textwrap
+    repo_root = Path(__file__).resolve().parents[2]
+    cli = repo_root / "scripts" / "lib" / "check_task_frontmatter.py"
+    (tmp_path / "F-001.md").write_text(textwrap.dedent("""
+        ---
+        schema_version: "1.0"
+        feature_id: F-001
+        title: t
+        status: pending
+        complexity: light
+        depends_on: []
+        touches: ["scripts/lib/x.py"]
+        created_at: 2026-05-21T15:00:00
+        updated_at: 2026-05-21T15:00:00
+        ---
+    """).lstrip(), encoding="utf-8")
+    (tmp_path / "F-002.md").write_text("---\nfeature_id: not_valid\n---\n", encoding="utf-8")
+    proc = subprocess.run([sys.executable, str(cli), str(tmp_path)], capture_output=True, text=True)
+    assert proc.returncode == 1
+
+
+def test_cli_empty_directory(tmp_path):
+    """目录无 *.md → exit 0（带 warning stderr）"""
+    import subprocess, sys
+    repo_root = Path(__file__).resolve().parents[2]
+    cli = repo_root / "scripts" / "lib" / "check_task_frontmatter.py"
+    proc = subprocess.run([sys.executable, str(cli), str(tmp_path)], capture_output=True, text=True)
+    assert proc.returncode == 0

@@ -212,10 +212,12 @@ class TestArchiveFinalizeNode:
         bash_script = nodes_by_id["archive-finalize"]["bash"]
         assert "completed_at" in bash_script, "archive-finalize bash 必须写 completed_at"
 
-    def test_bash_uses_yq(self, nodes_by_id: dict[str, dict[str, Any]]) -> None:
-        """bash 必须用 yq 写入 meta.yaml（不允许直接 echo 覆盖）。"""
+    def test_bash_uses_meta_set(self, nodes_by_id: dict[str, dict[str, Any]]) -> None:
+        """bash 必须用 meta_set.py 写入 meta.yaml（不允许直接 echo 覆盖；Bug-5 切换 yq → meta_set）。"""
         bash_script = nodes_by_id["archive-finalize"]["bash"]
-        assert "yq" in bash_script, "archive-finalize bash 必须用 yq 写入 meta.yaml"
+        assert "meta_set.py" in bash_script, (
+            "archive-finalize bash 必须用 meta_set.py 写入 meta.yaml"
+        )
 
     def test_depends_on_pr_merged_gate(self, nodes_by_id: dict[str, dict[str, Any]]) -> None:
         """archive-finalize 必须依赖 pr-merged-gate。"""

@@ -1,0 +1,57 @@
+id: 20260521-standard-8phase-bugs-batch-fix
+title: Standard-8phase 流程残留 bug 批量修复
+phase: bootstrap
+created_at: 2026-05-21 14:31:12
+branch: feat/req-20260521-standard-8phase-bugs-batch-fix
+base_branch: develop
+project: agentic-meta-engineering
+services: []
+gates_passed: []
+pr_url: https://github.com/hjaaa/agentic-meta-engineering/pull/86
+pr_number: 86
+log_layout: split
+worktree:
+  enabled: true
+  owner: workflow
+  path: .worktrees/feat-req-20260521-standard-8phase-bugs-batch-fix
+  absolute_path: /Users/richardhuang/learnspace/agentic-meta-engineering/.worktrees/feat-req-20260521-standard-8phase-bugs-batch-fix
+  branch: feat/req-20260521-standard-8phase-bugs-batch-fix
+  base_branch: develop
+  created_at: '2026-05-21 14:31:12'
+  baseline:
+    command: make gates-validate
+    status: passed
+    completed_at: '2026-05-21 14:31:12'
+  cleanup:
+    policy: owned-only
+    removed_at: ''
+feature_area: lifecycle
+change_type: bugfix
+affected_modules:
+- workflow-yaml
+- workflow-dispatcher
+- workflow-loader
+- workflow-rollback-topology
+- workflow-status
+- workflow-run
+- check-task-frontmatter
+- gates-audit
+- feature-task-template
+- cli-scripts
+tags:
+- workflow-engine
+- standard-8phase
+- batch-fix
+outcome: ''
+completed_at: ''
+lessons_extracted: false
+reviews:
+  definition:
+    latest: REV-20260521-standard-8phase-bugs-batch-fix-definition-001
+    conclusion: looks_clean
+    reviewed_commit: e968168
+    artifact_hashes:
+      artifacts/requirement.md: 3808d3bdda7ae76d247af8f058882be13ae7151f98994a3fd08bcc8034cae28c
+    history:
+    - REV-20260521-standard-8phase-bugs-batch-fix-definition-001
+    stale: false

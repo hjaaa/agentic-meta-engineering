@@ -1,0 +1,112 @@
+{
+  "structured": {
+    "title": "Standard-8phase 流程残留 bug 批量修复",
+    "goal": "集中修复 standard-8phase workflow 模板及配套 CLI/gate/loader 在真实使用（REQ-20260519-context-usage-report）中暴露的 14 处 bug，使 8-phase 全流程可不依赖手工 workaround 走通",
+    "roles": [
+      "走 standard-8phase workflow 的需求开发者"
+    ],
+    "scenarios": [
+      {
+        "name": "Bug-2：bootstrap 时 project 字段为空导致 bootstrap-validate 失败",
+        "trigger": "运行 /workflow:run standard-8phase，meta.yaml 写入 project 空字段，紧接着 bootstrap-validate 节点跑 check_meta.py",
+        "expected": "bootstrap 写入的 meta.yaml project 字段非空，或 check_meta.py 在 bootstrap 阶段放宽 project 校验，bootstrap-validate exit=0"
+      },
+      {
+        "name": "Bug-4：「待确认清单」vs「待澄清清单」工具命名冲突",
+        "trigger": "阶段 2 推进时，standard-8phase.yaml req-artifact-check 节点要求 requirement.md 含 待确认清单，而 check_sourcing.py:52 RE_CLARIFY_HEADING 只认 待澄清清单",
+        "expected": "两工具统一为同一章节名，requirement.md 只需一个章节名可同时通过 req-artifact-check 和 check_sourcing.py"
+      },
+      {
+        "name": "Bug-5：phase-transition 节点强依赖未声明的 yq",
+        "trigger": "任意 phase-to-* 节点 bash 调用 yq e ...，系统未安装 yq，bash: yq: command not found，max_retries=3 全失败",
+        "expected": "yq 依赖已在 context/team/tool-chain.md 声明（含安装提示），或所有 yq 调用改为 python3 scripts/lib/meta_set.py，phase-transition 节点 bash exit=0"
+      },
+      {
+        "name": "Bug-6：/workflow:status 把 failed 节点计入 completed",
+        "trigger": "某节点写过 node_failed 且无后续 node_completed，调用 workflow_command_dispatcher.py status，failed 节点出现在 completed 列表",
+        "expected": "status 输出按 completed / failed / running 三桶分别列示，failed 节点仅出现在 failed 列表"
+      },
+      {
+        "name": "Bug-7：phase-to-* 节点引用不存在的 scripts/lib/append_process.py",
+        "trigger": "走 standard-8phase 到任意 phase-to-* 节点，bash 调用 python3 scripts/lib/append_process.py，文件不存在 exit=2",
+        "expected": "append_process.py CLI 存在（参数 <event_line>，写 requirements/<id>/process.txt），或 yaml 改用 echo 追加方案，phase-to-* 节点 bash exit=0"
+      },
+      {
+        "name": "Bug-9：features-json-generate prompt schema 与 check_features.py 期望不一致",
+        "trigger": "阶段 5 features-json-generate 节点按 yaml 内嵌 prompt schema（feat-NNN / acceptance_criteria / estimated_hours / total_features）生成 features.json，下游 detail-design-artifact-check 调 check_features.py 按 features-schema.yaml 校验",
+        "expected": "prompt 与 features-schema.yaml 字段一致（id 正则 ^F-\\d{3}$、字段名 acceptance / estimate_days、顶层 schema_version / requirement_id、complexity 枚举 trivial/light/medium/heavy），AI 按 prompt 生成的 features.json 通过 check_features.py"
+      },
+      {
+        "name": "Bug-10：check_task_frontmatter.py 不支持目录扫描",
+        "trigger": "task-frontmatter-check 节点 args 传 $ARTIFACTS_DIR/tasks/ 目录，check_task_frontmatter.py:325-345 只接受单文件路径，exit=1 Is a directory",
+        "expected": "check_task_frontmatter.py 支持传入目录时 rglob *.md 批量校验并聚合 exit code，task-frontmatter-check 节点 exit=0"
+      },
+      {
+        "name": "Bug-11：feature-task.md.tmpl 缺 schema_version 字段",
+        "trigger": "task-decompose 用 feature-task.md.tmpl 渲染 task.md，task-frontmatter-schema.yaml required_fields 含 schema_version，check_task_frontmatter.py 报「缺必填字段 schema_version」",
+        "expected": "feature-task.md.tmpl 含 schema_version: \"1.0\" 字段，渲染出的 task.md 通过 check_task_frontmatter.py"
+      },
+      {
+        "name": "Bug-12：task-list-summary 使用未注入的 $LOG_DIR",
+        "trigger": "task-list-summary 节点 bash 执行 ls ... | wc -l > $LOG_DIR/task-count.txt，$LOG_DIR 全仓无定义，bash 展开为空，尝试写 /task-count.txt，Read-only file system",
+        "expected": "$LOG_DIR 由 workflow runner 注入或 yaml 改用已有变量，task-count.txt 写入合法路径，节点 exit=0"
+      },
+      {
+        "name": "Bug-13：task-list-summary 引用不存在的 scripts/lib/summarize_tasks.py",
+        "trigger": "task-list-summary 节点调用 python3 scripts/lib/summarize_tasks.py $ARTIFACTS_DIR/tasks/，文件不存在 exit=2",
+        "expected": "summarize_tasks.py CLI 存在（参数 <tasks_dir>，输出 total/by_complexity/by_status 摘要），或 yaml 删除该行改用等价 shell 统计"
+      },
+      {
+        "name": "Bug-18：post-dev gate 非 strict 模式下 R-WARNING-ONLY 误报 exit=1",
+        "trigger": "post-dev gate 跑 check_sourcing.py 非 strict 模式，文件含历史 W002/W003 warning，Total: 0 error, N warning，但 audit.py 按 registry severity=error 判 exit=1",
+        "expected": "非 strict 模式下含 warning 不触发 exit=1（exit=0），或 runner 按 plugin 实际 decision 判定"
+      },
+      {
+        "name": "Bug-19：_resolve_prompt_file 用模块级常量导致测试 fixture 注入失效",
+        "trigger": "pytest tmp_path 注入 prompts/test.md 作为 prompt_file 源，_resolve_prompt_file 硬编码 WORKFLOWS_PROMPTS_DIR 指向真实仓库根，FileNotFoundError → WorkflowError",
+        "expected": "_resolve_prompt_file 接受 repo_root 参数（默认回退 REPO_ROOT），_dispatch_prompt_node 调用时传入 root，pytest fixture 可注入，该单测通过"
+      },
+      {
+        "name": "Bug-20：pr-submit 节点引用未注入的 PR_TITLE / PR_BODY_FILE / BASE_BRANCH",
+        "trigger": "testing 阶段 test-final-confirm approved 后，pr-submit 节点 bash 执行 gh pr create --title \"$PR_TITLE\" --body-file \"$PR_BODY_FILE\"，三变量全仓无 producer 均为空，gh CLI 报「must provide --title and --body」",
+        "expected": "pr-submit 节点改为 skill: requirement-submit 调用（或补全 env producer），gh pr create 执行成功，pr_url 回写 meta.yaml"
+      },
+      {
+        "name": "次生 bug：rollback _find_workflow_yaml 不查 .claude/workflows/<name>.yaml",
+        "trigger": "执行 rollback，run_dir 内无 workflow.yaml 且 1-3 层父目录均无，但 .claude/workflows/requirement/standard-8phase.yaml 存在",
+        "expected": "_find_workflow_yaml 通过 jsonl workflow_started 事件的 workflow_name 字段定位 .claude/workflows/**/<name>.yaml，rollback 正常工作"
+      }
+    ],
+    "constraints": {
+      "performance": null,
+      "compatibility": "修复不得破坏现有 requirements 的 meta.yaml / process.txt / run-state.jsonl 格式；check_sourcing.py 已有历史 requirement 用「待澄清清单」的需同步处理或保持兼容",
+      "security": null
+    },
+    "acceptance_hints": [
+      "新建 standard-8phase 需求后 bootstrap-validate 节点首次执行 exit=0，不需要手工编辑 meta.yaml project 字段",
+      "requirement.md 只用一个章节名可同时通过 req-artifact-check 和 check_sourcing.py",
+      "任意 phase-to-* 节点在 yq 未安装环境执行 exit=0",
+      "/workflow:status 输出中 failed 节点出现在独立 failed 列表，不混入 completed",
+      "走 standard-8phase 到 phase-to-* 节点，bash exit=0（append_process.py 可调用或 echo 方案）",
+      "按修复后 features-json-generate prompt 生成的 features.json 通过 check_features.py",
+      "task-frontmatter-check 节点传目录路径时 exit=0，批量校验 tasks/*.md",
+      "feature-task.md.tmpl 渲染的 task.md 含 schema_version，check_task_frontmatter.py exit=0",
+      "task-list-summary 节点 bash exit=0，task-count.txt 写入合法路径",
+      "summarize_tasks.py 存在且接受 tasks/ 目录参数，或 yaml 删除该行改用等价 shell",
+      "post-dev gate 非 strict 模式下：含历史 warning 不触发 exit=1（Total: 0 error, N warning → exit=0）",
+      "pytest tests/skills/test_workflow_dispatcher_bash_skill_prompt.py::test_prompt_node_prompt_file_reads_and_renders 通过",
+      "pr-submit 节点在 testing done 后可正常创建 PR，gh pr create 收到非空 --title 和 --body",
+      "rollback 在仅有 .claude/workflows/requirement/standard-8phase.yaml 时可正常定位 workflow yaml"
+    ]
+  },
+  "open_questions": [
+    "14 处 bug 是否存在必须先修的阻断链（如 Bug-5 yq 是否阻断所有 phase-transition 导致其他 bug 无法在 workflow 内复现）？是否有明确的修复优先级顺序？",
+    "Bug-4 统一命名选哪侧：改 standard-8phase.yaml（影响面小，推荐）还是改 check_sourcing.py 正则（影响所有历史 requirement）？已有历史 requirement 用「待澄清清单」的迁移方案？",
+    "Bug-5 修复选哪个方案：在 tool-chain.md 声明 yq 并要求手动安装，还是把所有 yq 调用替换为 python3 scripts/lib/meta_set.py？",
+    "Bug-12 $LOG_DIR 落点：注入为 requirements/<id>/logs/ 还是 $ARTIFACTS_DIR/.log/ 还是其他路径？是否需要 ADR 决定？",
+    "Bug-13 选哪个方案：新增 summarize_tasks.py CLI 还是删除 yaml 该行仅保留 ls | wc -l 统计？",
+    "Bug-18 修复范围：只改 gate runner 逻辑（非 strict 不升 exit=1），还是把 GATE-SOURCING 从 post-dev 触发器移除？",
+    "Bug-20 选哪个方案：把 pr-submit 节点改为 skill: requirement-submit（推荐），还是在 workflow_dispatcher.py 补全 env producer？",
+    "次生 bug（rollback _find_workflow_yaml）是否纳入本次修复范围，还是单独立项？"
+  ]
+}

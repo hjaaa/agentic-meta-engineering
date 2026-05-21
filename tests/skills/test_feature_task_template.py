@@ -286,3 +286,29 @@ def _extract_frontmatter_text(content: str) -> str:
             return "\n".join(fm_lines)
         fm_lines.append(line)
     raise ValueError("frontmatter 未找到关闭的 --- 行")
+
+
+# ============================================================
+# TT-006: feature-task.md.tmpl 渲染产物含 schema_version: "1.0"（Bug-11）
+# ============================================================
+
+def test_tt_006_schema_version_present_in_frontmatter():
+    """given_template_when_render_then_frontmatter_contains_schema_version_1_0。
+
+    task-frontmatter-schema.yaml required_fields 含 schema_version；
+    模板必须输出 schema_version: "1.0" 字段以通过 check_task_frontmatter.py。
+    """
+    entry: Dict[str, Any] = {
+        "id": "F-001",
+        "title": "feat",
+        "complexity": "light",
+        "depends_on_features": [],
+        "touches": ["scripts/lib/x.py"],
+    }
+    rendered = _render_task_md(entry)
+    fm = yaml.safe_load(_extract_frontmatter_text(rendered))
+    assert isinstance(fm, dict)
+    assert "schema_version" in fm, "frontmatter 必须含 schema_version"
+    assert str(fm["schema_version"]) == "1.0", (
+        f"schema_version 必须为 '1.0'，实际={fm['schema_version']!r}"
+    )

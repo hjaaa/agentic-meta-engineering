@@ -96,7 +96,7 @@ nodes:
 
       额外校验项：
       - 所有关键信息必须有 [来源：xxx] 或标注 [待确认] / [待补充]
-      - 必含章节：角色与场景 / 验收标准 / 待确认清单
+      - 必含章节：角色与场景 / 验收标准 / 待澄清清单
       - features.json 暂不校验（阶段 5 才生成）
 
       输出严格 JSON。
@@ -138,7 +138,7 @@ nodes:
           expected_exit_code: 0
       must_contain_sections:
         - file: $ARTIFACTS_DIR/requirement.md
-          sections: [角色与场景, 验收标准, 待确认清单]
+          sections: [角色与场景, 验收标准, 待澄清清单]
     depends_on: [req-quality-review]
 
   - id: req-confirm
@@ -182,9 +182,8 @@ nodes:
   - id: phase-to-tech-research
     bash: |
       set -e
-      yq e '.phase = "tech-research"' -i "$META_PATH"
-      yq e '.gates_passed += ["GATE-REQUIREMENT-SIGNOFF"]' -i "$META_PATH"
-      python3 scripts/lib/append_process.py "phase-transition: definition → tech-research"
+      python3 scripts/lib/meta_set.py --path "$META_PATH" --set .phase=tech-research --append .gates_passed=GATE-REQUIREMENT-SIGNOFF
+      python3 scripts/lib/append_process.py --run "$RUN_ID" "phase-transition: definition → tech-research"
     timeout: 30000
     depends_on: [req-confirm]
 
@@ -269,9 +268,8 @@ nodes:
   - id: phase-to-outline-design
     bash: |
       set -e
-      yq e '.phase = "outline-design"' -i "$META_PATH"
-      yq e ".affected_modules = $tech-feasibility-assess.output.affected_modules" -i "$META_PATH"
-      python3 scripts/lib/append_process.py "phase-transition: tech-research → outline-design"
+      python3 scripts/lib/meta_set.py --path "$META_PATH" --set .phase=outline-design --set-json '.affected_modules=$tech-feasibility-assess.output.affected_modules'
+      python3 scripts/lib/append_process.py --run "$RUN_ID" "phase-transition: tech-research → outline-design"
     timeout: 30000
     depends_on: [tech-research-confirm]
 
@@ -346,8 +344,8 @@ nodes:
   - id: phase-to-detail-design
     bash: |
       set -e
-      yq e '.phase = "detail-design"' -i "$META_PATH"
-      python3 scripts/lib/append_process.py "phase-transition: outline-design → detail-design"
+      python3 scripts/lib/meta_set.py --path "$META_PATH" --set .phase=detail-design
+      python3 scripts/lib/append_process.py --run "$RUN_ID" "phase-transition: outline-design → detail-design"
     timeout: 30000
     depends_on: [outline-design-confirm]
 
@@ -365,39 +363,32 @@ nodes:
 
   - id: features-json-generate
     prompt: |
-      基于 $ARTIFACTS_DIR/detailed-design.md 拆分功能点。
+      基于 $ARTIFACTS_DIR/detailed-design.md 拆分功能点，产出 $ARTIFACTS_DIR/features.json。
 
-      产出 $ARTIFACTS_DIR/features.json，schema：
-      {
-        "features": [
-          {
-            "id": "feat-001",
-            "title": "<简短标题>",
-            "description": "<描述>",
-            "module": "<所属模块>",
-            "estimated_hours": <数字>,
-            "depends_on": ["feat-XXX"],
-            "acceptance_criteria": ["..."],
-            "status": "pending"
-          }
-        ],
-        "total_features": <数字>,
-        "total_estimated_hours": <数字>
-      }
+      **schema 唯一事实源**：`context/team/engineering-spec/features-schema.yaml`
+      （生成前请读取该文件，禁止凭记忆/旧示例拼字段）。
+
+      关键字段约束（与 schema 对齐，违反必撞 check_features.py）：
+      - 顶层必填：`schema_version: "1.0"` / `requirement_id: <REQ-ID>` / `features: []`
+      - feature.id：正则 `^F-\d{3}$`（**不是** feat-NNN）
+      - 字段名：`acceptance`（不是 acceptance_criteria）/ `estimate_days`（不是 estimated_hours）
+      - 必填字段：`id` / `title` / `description` / `acceptance` / `complexity` /
+        `interfaces_frozen` / `depends_on` / `depends_on_features` / `modules` / `touches`
+      - `complexity` 枚举：`trivial` / `light` / `medium` / `heavy`（不是 low/medium/high）
+      - 顶层**不需要** `total_features` / `total_estimated_hours`（report 字段自动派生）
 
       规则：
-      - 每个 feature 工作量 0.5-2 天（超出必须拆分）
+      - 每个 feature 工作量对应 `complexity` 而非小时数；trivial≈0.5d / light≈1d / medium≈2d / heavy≈3d+
       - 验收标准对应 requirement.md 的验收条款
-      - 依赖关系不可成环
-      - id 用 feat-NNN 三位数字
+      - 依赖关系不可成环（`depends_on_features` 拓扑序）
+      - `touches` 显式列出该 feature 修改文件，给 touches_guard.py 用
     context: shared
     model: opus[1m]
     output_format:
       type: object
       properties:
-        total_features: { type: integer, minimum: 1 }
-        total_estimated_hours: { type: number }
-      required: [total_features, total_estimated_hours]
+        features_json_path: { type: string }
+      required: [features_json_path]
     depends_on: [detail-design-draft]
 
   - id: detail-design-review
@@ -443,10 +434,6 @@ nodes:
         - 时序图：$detail-design-review.output.sequence_diagram_review
         - features.json：$detail-design-review.output.features_json_review
 
-        ### features.json 摘要
-        - 总 feature 数：$features-json-generate.output.total_features
-        - 总估算工时：$features-json-generate.output.total_estimated_hours h
-
         ### 问题
         $detail-design-review.output.issues
 
@@ -464,8 +451,8 @@ nodes:
   - id: phase-to-task-planning
     bash: |
       set -e
-      yq e '.phase = "task-planning"' -i "$META_PATH"
-      python3 scripts/lib/append_process.py "phase-transition: detail-design → task-planning"
+      python3 scripts/lib/meta_set.py --path "$META_PATH" --set .phase=task-planning
+      python3 scripts/lib/append_process.py --run "$RUN_ID" "phase-transition: detail-design → task-planning"
     timeout: 30000
     depends_on: [detail-design-confirm]
 
@@ -520,8 +507,8 @@ nodes:
   - id: phase-to-development
     bash: |
       set -e
-      yq e '.phase = "development"' -i "$META_PATH"
-      python3 scripts/lib/append_process.py "phase-transition: task-planning → development"
+      python3 scripts/lib/meta_set.py --path "$META_PATH" --set .phase=development
+      python3 scripts/lib/append_process.py --run "$RUN_ID" "phase-transition: task-planning → development"
     timeout: 30000
     depends_on: [task-confirm]
 
@@ -562,8 +549,8 @@ nodes:
   - id: phase-to-testing
     bash: |
       set -e
-      yq e '.phase = "testing"' -i "$META_PATH"
-      python3 scripts/lib/append_process.py "phase-transition: development → testing"
+      python3 scripts/lib/meta_set.py --path "$META_PATH" --set .phase=testing
+      python3 scripts/lib/append_process.py --run "$RUN_ID" "phase-transition: development → testing"
     timeout: 30000
     depends_on: [dev-all-features-done-check]
 
@@ -719,8 +706,13 @@ nodes:
       set -e
       ARCHIVED_AT="$(date '+%Y-%m-%d %H:%M:%S')"
       COMPLETED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-      yq e ".archived_at = \"$ARCHIVED_AT\" | .outcome = \"shipped\" | .phase = \"completed\" | .workflow_status = \"completed\" | .completed_at = \"$COMPLETED_AT\"" -i "$META_PATH"
-      python3 scripts/lib/append_process.py "phase-transition: completed → archived" 2>/dev/null || true
+      python3 scripts/lib/meta_set.py --path "$META_PATH" \
+        --set ".archived_at=$ARCHIVED_AT" \
+        --set ".outcome=shipped" \
+        --set ".phase=completed" \
+        --set ".workflow_status=completed" \
+        --set ".completed_at=$COMPLETED_AT"
+      python3 scripts/lib/append_process.py --run "$RUN_ID" "phase-transition: completed → archived" 2>/dev/null || true
       echo "归档完成；RUN_ID=$RUN_ID"
       echo "建议手动跑：git branch -d $BRANCH_NAME"
     timeout: 30000

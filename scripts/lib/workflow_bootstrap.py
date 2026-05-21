@@ -154,6 +154,36 @@ def _now_shanghai_str() -> str:
 # 模板渲染：meta.yaml / plan.md
 # ============================================================================
 
+def _infer_default_project() -> str:
+    """bootstrap 时推断 meta.yaml.project 字段（Bug-2）。
+
+    规则（codex P2 修订后）：
+      - context/project/<X>/ 单个目录 → 返回 <X>
+      - 多目录 → 返回空 + warning（要求用户显式编辑 meta.yaml；不静默自动选避免
+        多 project 仓库误绑定到字典序首项）
+      - 零目录 → 返回空
+
+    多 project 时返回空让 check_meta 在 bootstrap 阶段已放宽路径通过，
+    并以 warning 提示用户在 definition 阶段离开前手工填 project 字段。
+    """
+    project_root = REPO_ROOT / "context" / "project"
+    if not project_root.is_dir():
+        return ""
+    candidates = sorted(
+        p.name for p in project_root.iterdir() if p.is_dir() and not p.name.startswith(".")
+    )
+    if not candidates:
+        return ""
+    if len(candidates) == 1:
+        return candidates[0]
+    logging.warning(
+        "_infer_default_project: 发现多个 project (%s)，bootstrap 不自动选；"
+        "请在 definition 阶段离开前手工编辑 meta.yaml.project 字段指向目标 project",
+        candidates,
+    )
+    return ""
+
+
 def _render_meta_yaml(
     req_id: str,
     title: str,
@@ -228,7 +258,7 @@ def _render_meta_yaml(
         "__CREATED_AT__": _now_shanghai_str(),
         "__BRANCH__": branch,
         "__BASE_BRANCH__": base_branch_resolved,
-        "__PROJECT__": "",
+        "__PROJECT__": _infer_default_project(),
         "__WT_ENABLED__": wt_enabled,
         "__WT_OWNER__": wt_owner,
         "__WT_PATH__": wt_path,

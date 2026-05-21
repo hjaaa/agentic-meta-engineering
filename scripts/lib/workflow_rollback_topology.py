@@ -30,8 +30,13 @@ from topological_sort import topological_layers  # noqa: E402
 def _find_workflow_yaml(run_dir: Path) -> Path:
     """从 run 目录找到 workflow.yaml。
 
-    查找顺序：run_dir/workflow.yaml → run_dir/../*.yaml（兼容测试 fixture 和真实路径）。
-    找不到则抛 TargetNodeNotFoundError（缺 yaml 等同于节点集合为空）。
+    查找顺序：
+      1. run_dir/workflow.yaml
+      2. run_dir/../workflow.yaml
+      3. 向上最多 3 层
+      4. 次生 bug fallback：从 run_dir/run-state.jsonl 读 workflow_started 事件取
+         workflow_name，然后查 .claude/workflows/**/<workflow_name>.yaml
+    找不到则抛 TargetNodeNotFoundError。
     """
     from workflow_rollback import TargetNodeNotFoundError
 
@@ -50,9 +55,51 @@ def _find_workflow_yaml(run_dir: Path) -> Path:
         c = candidate / "workflow.yaml"
         if c.is_file():
             return c
+    # 次生 bug fallback：从 jsonl 取 workflow_name 再查 .claude/workflows/
+    resolved = _resolve_via_jsonl(run_dir)
+    if resolved is not None:
+        return resolved
     raise TargetNodeNotFoundError(
         f"run_dir {run_dir} 未找到 workflow.yaml；无法校验 to_node"
     )
+
+
+def _resolve_via_jsonl(run_dir: Path) -> Path | None:
+    """从 jsonl workflow_started 事件读 workflow_name，查 .claude/workflows/**/<name>.yaml。
+
+    任何步骤失败 → 返回 None（fail-soft，让上层抛标准错误）。
+    """
+    import json
+
+    jsonl_path = run_dir / "run-state.jsonl"
+    if not jsonl_path.is_file():
+        return None
+    try:
+        with jsonl_path.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    ev = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if ev.get("type") != "workflow_started":
+                    continue
+                name = (ev.get("data") or {}).get("workflow_name", "")
+                if not name:
+                    continue
+                # 拼 .claude/workflows/**/<name>.yaml
+                workflows_root = REPO_ROOT / ".claude" / "workflows"
+                if not workflows_root.is_dir():
+                    return None
+                matches = list(workflows_root.rglob(f"{name}.yaml"))
+                if matches:
+                    return matches[0]
+                return None
+    except OSError:
+        return None
+    return None
 
 
 def _load_nodes(run_dir: Path) -> list[dict[str, Any]]:

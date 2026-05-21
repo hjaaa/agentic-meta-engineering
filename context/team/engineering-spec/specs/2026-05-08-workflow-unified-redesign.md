@@ -444,8 +444,9 @@ nodes: [...]
 - id: phase-transition-to-tech-research
   bash: |
     set -e
-    yq e '.phase = "tech-research"' -i runs/$RUN_ID/meta.yaml
-    yq e '.gates_passed += ["GATE-REQUIREMENT-SIGNOFF"]' -i runs/$RUN_ID/meta.yaml
+    python3 scripts/lib/meta_set.py --path runs/$RUN_ID/meta.yaml \
+      --set .phase=tech-research \
+      --append .gates_passed=GATE-REQUIREMENT-SIGNOFF
   timeout: 30000
   depends_on: [req-signoff]
 ```
