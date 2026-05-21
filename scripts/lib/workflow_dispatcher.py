@@ -17,7 +17,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 # 确保 lib 目录在 sys.path 中（直接运行脚本时使用）
 _LIB_DIR = Path(__file__).resolve().parent
@@ -460,16 +460,17 @@ def _read_last_loop_iteration_outcome(jsonl_path: Path, node_id: str) -> str | N
     return None
 
 
-def _resolve_loop_prompt_text(loop_cfg: dict, node_id: str) -> str:
+def _resolve_loop_prompt_text(loop_cfg: dict, node_id: str, repo_root: Optional[Path] = None) -> str:
     """读取 loop.prompt（inline）或 loop.prompt_file（外置文件）。
 
     Bug-14 修复：interactive loop 节点需要 prompt 文本提供给 Claude。
+    Bug-19 同源修复：repo_root 参数对齐 _dispatch_prompt_node，避免 fixture 注入失效。
     """
     if "prompt" in loop_cfg:
         return loop_cfg["prompt"]
     if "prompt_file" in loop_cfg:
         from workflow_loader import _resolve_prompt_file
-        prompt_path = _resolve_prompt_file(loop_cfg["prompt_file"])
+        prompt_path = _resolve_prompt_file(loop_cfg["prompt_file"], repo_root=repo_root)
         try:
             return prompt_path.read_text(encoding="utf-8")
         except FileNotFoundError as exc:
@@ -490,6 +491,7 @@ def _dispatch_loop_interactive(
     loop_cfg: dict,
     max_iterations: int,
     current_iteration: int,
+    root: Optional[Path] = None,
 ) -> DispatchResult:
     """interactive=true 时的 loop 节点派发（Bug-14 修复主体）。
 
@@ -544,7 +546,7 @@ def _dispatch_loop_interactive(
         return DispatchResult(outcome="loop_done")
 
     # 3) 进入新一轮：渲染 prompt + 写 node_ready + 等 Claude
-    raw_prompt = _resolve_loop_prompt_text(loop_cfg, node_id)
+    raw_prompt = _resolve_loop_prompt_text(loop_cfg, node_id, repo_root=root)
     loop_env = {
         **env,
         "LOOP_ITERATION": str(current_iteration),
@@ -615,6 +617,7 @@ def _dispatch_loop_node(
         return _dispatch_loop_interactive(
             node, env, run_state, jsonl_path,
             node_id, loop_cfg, max_iterations, current_iteration,
+            root=root,
         )
 
     # AC-07：until_bash 优先判定（仅在传入时生效）
