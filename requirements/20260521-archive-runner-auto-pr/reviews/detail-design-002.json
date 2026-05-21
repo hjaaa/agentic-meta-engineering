@@ -1,0 +1,58 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-20260521-archive-runner-auto-pr-detail-design-002",
+  "requirement_id": "20260521-archive-runner-auto-pr",
+  "phase": "detail-design",
+  "reviewer": "detail-design-quality-reviewer",
+  "reviewed_at": "2026-05-21 16:37:30",
+  "reviewed_commit": "6c64c56",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/detailed-design.md",
+      "sha256": "ce01c4722e0b985c30113182a822b92be74b190efceb4934b5034a8624cff84a"
+    },
+    {
+      "path": "artifacts/features.json",
+      "sha256": "0982e3468fb60311a2fff28812faf4e552dcd1651e6fc5f6957bd91b869a2917"
+    },
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "5f6aa872288c2e96b3a40dc88e336380ac84bf11f2b76d7d003a19e89c9c9c85"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 93,
+  "dimensions": {
+    "consistency_with_outline": {
+      "score": 95,
+      "issues": []
+    },
+    "interface_completeness": {
+      "score": 93,
+      "issues": []
+    },
+    "data_model_soundness": {
+      "score": 92,
+      "issues": []
+    },
+    "sequence_correctness": {
+      "score": 93,
+      "issues": []
+    },
+    "feature_granularity": {
+      "score": 92,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "round-1 三条 minor 修订全部到位：(a) §10 验收指标行 603 已校正为 '37 条测试用例骨架（5+8+18+6=37）'，与 §5.1/§5.2/§5.3 三张测试矩阵实算一致；(b) §3.1 步骤 9 行 252 已去除漂移形参，签名收敛为 _delete_remote_branch(legacy_resurrect=...)，与 §3.3 函数签名严格对齐；(c) features.json F-005 description 末段已追加 PR-A/PR-B/PR-C 三测试文件归属说明，与详细设计 §5 PR 归属列一致。supersedes round-1（REV-20260521-archive-runner-auto-pr-detail-design-001）。整体设计仍然 looks_clean。"
+  ],
+  "scope": null,
+  "supersedes": "REV-20260521-archive-runner-auto-pr-detail-design-001",
+  "features_json_validation": {
+    "valid": true,
+    "issues": [],
+    "enhancement_suggestions": []
+  }
+}
