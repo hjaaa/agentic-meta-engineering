@@ -148,16 +148,73 @@ def _run(cmd: list[str], *, cwd: Optional[Path] = None) -> subprocess.CompletedP
 
 def _precheck_phase(meta: dict[str, Any], req_id: str) -> None:
     phase = meta.get("phase", "")
-    if phase not in {"testing", "completed"}:
+    if phase == "testing":
+        return
+    if phase == "completed":
+        # 半完成重跑：archive_pr_number=0 视为允许（兼容历史 + 半完成场景）
+        try:
+            archive_pr_number = int(meta.get("archive_pr_number") or 0)
+        except (TypeError, ValueError):
+            archive_pr_number = 0
+        if archive_pr_number == 0:
+            return
         _abort(
             "R-ARCHIVE-PHASE",
-            f"当前 phase={phase!r}，期望 testing 或 completed",
+            f"phase=completed 且 archive_pr_number={archive_pr_number}（>0），已完成归档；不允许重跑",
             req_id,
         )
+    _abort(
+        "R-ARCHIVE-PHASE",
+        f"当前 phase={phase!r}，期望 testing 或 (completed AND archive_pr_number=0)",
+        req_id,
+    )
+
+
+def _filter_dirty_lines_by_whitelist(lines: list[str], req_id: str) -> list[str]:
+    """从 git status --porcelain 输出行中过滤出非白名单 dirty 路径。
+
+    白名单：
+      - requirements/<req_id>/ 前缀（idempotent 重跑必备）
+      - context/team/experience/（含子目录）
+      - context/project/<*>/experience/（子串匹配 /experience/）
+      - context/INDEX.md
+      - context/team/experience/INDEX.md
+
+    返回剩余非白名单 dirty 路径列表；调用方决定是否 abort。
+    """
+    allowed: list[str] = []
+    for line in lines:
+        if not line:
+            continue
+        # porcelain 格式：XY SP SP path 或 rename 形式 XY SP SP old_path -> new_path
+        raw_path = line[3:].strip()
+        # rename 形式（R  old -> new）取 new
+        if " -> " in raw_path:
+            raw_path = raw_path.split(" -> ")[-1].strip()
+        if _is_whitelist_path(raw_path, req_id):
+            continue
+        allowed.append(raw_path)
+    return allowed
+
+
+def _is_whitelist_path(path: str, req_id: str) -> bool:
+    """判断 path 是否属于 dirty 白名单。"""
+    req_prefix = f"requirements/{req_id}/"
+    if path.startswith(req_prefix) or path == f"requirements/{req_id}":
+        return True
+    if path.startswith("context/team/experience/"):
+        return True
+    if "/experience/" in path and path.startswith("context/"):
+        return True
+    if path == "context/INDEX.md":
+        return True
+    if path == "context/team/experience/INDEX.md":
+        return True
+    return False
 
 
 def _check_git_status_clean(cwd: Path, req_id: str, label: str) -> None:
-    """在指定 cwd 跑 `git status --porcelain`，dirty → SystemExit(1) + 标签化错误信息。"""
+    """在指定 cwd 跑 `git status --porcelain`，非白名单 dirty → SystemExit(1) + 标签化错误信息。"""
     try:
         result = _run(["git", "status", "--porcelain"], cwd=cwd)
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
@@ -169,10 +226,15 @@ def _check_git_status_clean(cwd: Path, req_id: str, label: str) -> None:
             f"{result.stderr.strip() or result.stdout.strip()}",
             req_id,
         )
-    if (result.stdout or "").strip():
+    raw = (result.stdout or "").strip()
+    if not raw:
+        return
+    lines = raw.splitlines()
+    non_whitelisted = _filter_dirty_lines_by_whitelist(lines, req_id)
+    if non_whitelisted:
         _abort(
             "R-ARCHIVE-DIRTY",
-            f"{label} 有未提交改动 ({cwd})；先 commit 再 archive",
+            f"{label} 有未提交改动 ({cwd})；先 commit 再 archive（首条: {non_whitelisted[0]}）",
             req_id,
         )
 
@@ -189,6 +251,7 @@ def _precheck_dirty(meta: dict[str, Any], req_id: str) -> None:
 
     设计：先主仓，再 owned worktree（只在 owner=workflow 时检查；external / legacy
     不强制——它们不归 workflow 管，dirty 也不会被 cleanup_worktree_if_owned 触动）。
+    requirements/<req_id>/ 与 context/ 经验类路径在白名单内，允许 dirty（idempotent 重跑）。
     """
     _check_git_status_clean(REPO_ROOT, req_id, "主仓")
 
