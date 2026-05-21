@@ -96,7 +96,7 @@ nodes:
 
       额外校验项：
       - 所有关键信息必须有 [来源：xxx] 或标注 [待确认] / [待补充]
-      - 必含章节：角色与场景 / 验收标准 / 待确认清单
+      - 必含章节：角色与场景 / 验收标准 / 待澄清清单
       - features.json 暂不校验（阶段 5 才生成）
 
       输出严格 JSON。
@@ -138,7 +138,7 @@ nodes:
           expected_exit_code: 0
       must_contain_sections:
         - file: $ARTIFACTS_DIR/requirement.md
-          sections: [角色与场景, 验收标准, 待确认清单]
+          sections: [角色与场景, 验收标准, 待澄清清单]
     depends_on: [req-quality-review]
 
   - id: req-confirm
