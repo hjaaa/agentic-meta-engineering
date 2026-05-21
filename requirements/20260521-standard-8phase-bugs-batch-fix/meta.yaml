@@ -1,6 +1,6 @@
 id: 20260521-standard-8phase-bugs-batch-fix
 title: Standard-8phase 流程残留 bug 批量修复
-phase: testing
+phase: completed
 created_at: 2026-05-21 14:31:12
 branch: feat/req-20260521-standard-8phase-bugs-batch-fix
 base_branch: develop
@@ -24,7 +24,7 @@ worktree:
     completed_at: '2026-05-21 14:31:12'
   cleanup:
     policy: owned-only
-    removed_at: ''
+    removed_at: '2026-05-21 16:21:31'
 feature_area: lifecycle
 change_type: bugfix
 affected_modules:
@@ -42,8 +42,8 @@ tags:
 - workflow-engine
 - standard-8phase
 - batch-fix
-outcome: ''
-completed_at: ''
+outcome: shipped
+completed_at: '2026-05-21 16:21:31'
 lessons_extracted: true
 reviews:
   definition:
@@ -55,3 +55,4 @@ reviews:
     history:
     - REV-20260521-standard-8phase-bugs-batch-fix-definition-001
     stale: false
+archived_at: '2026-05-21 16:21:31'
