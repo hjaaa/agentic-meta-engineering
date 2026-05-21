@@ -60,14 +60,15 @@ reviews:
       - REV-20260521-archive-runner-auto-pr-definition-002
     stale: false
   outline-design:
-    latest: REV-20260521-archive-runner-auto-pr-outline-design-001
-    conclusion: needs_attention
-    reviewed_commit: 0d05713
+    latest: REV-20260521-archive-runner-auto-pr-outline-design-002
+    conclusion: looks_clean
+    reviewed_commit: 5dbea1e
     artifact_hashes:
       artifacts/outline-design.md: 
-        4544f780595547f33aa888345361e87ab2382787c1241220061bb80463cec1bb
+        5f6aa872288c2e96b3a40dc88e336380ac84bf11f2b76d7d003a19e89c9c9c85
       artifacts/requirement.md: 
         d18316680202f0ab2b7fa3380507e0f3b9ba29f1288528ef79b2f751a74f1879
     history:
       - REV-20260521-archive-runner-auto-pr-outline-design-001
+      - REV-20260521-archive-runner-auto-pr-outline-design-002
     stale: false
