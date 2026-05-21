@@ -40,7 +40,7 @@ import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import yaml
 
@@ -710,13 +710,26 @@ def _validate_prompt_files(
                            f"{owner_label} 引用的文件不存在: {pf_value}")
 
 
-def _resolve_prompt_file(pf_value: str) -> Path:
+def _resolve_prompt_file(pf_value: str, repo_root: Optional[Path] = None) -> Path:
     """把 yaml 内的 prompt_file 字面量解析到绝对路径。
 
-    支持两种写法：
-    - `prompts/foo.md`   → `.claude/workflows/prompts/foo.md`
-    - `foo.md` 或 `bar/foo.md` → `.claude/workflows/prompts/foo.md`（不带 prompts/ 前缀）
+    Bug-19 修复（2026-05-21）：新增可选 `repo_root` 参数支持测试注入；
+    缺省时回退到模块级 `WORKFLOWS_PROMPTS_DIR`（生产场景行为不变）。
+    调用方（如 `workflow_dispatcher._dispatch_prompt_node` 持有 `root: Path`）
+    应显式传入根目录以便 fixture 注入。
+
+    路径解析规则：
+    - **生产**（`repo_root=None`）：剥离 `prompts/` 前缀后拼到模块级 `WORKFLOWS_PROMPTS_DIR`，
+      支持 `prompts/foo.md` 与 `foo.md` 两种写法都解析到 `.claude/workflows/prompts/foo.md`
+    - **测试**（`repo_root=<Path>`）：直接把 `pf_value` 当作相对 `repo_root` 的路径解析，
+      让测试 fixture 用 `tmp_path / "prompts" / "test.md"` 这样的最小布局即可工作
     """
+    if repo_root is not None:
+        # 测试注入模式：保留 pf_value 原样（含 "prompts/" 前缀），相对 repo_root 解析
+        candidate = (repo_root / pf_value).resolve()
+        return candidate
+
+    # 生产模式：剥离 "prompts/" 前缀以兼容两种写法
     cleaned = pf_value
     if cleaned.startswith("prompts/"):
         cleaned = cleaned[len("prompts/"):]

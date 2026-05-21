@@ -55,7 +55,22 @@ def _handle_retry(
     max_retries: int = node.get("max_retries", 3)
 
     if fail_count < max_retries:
-        # 未到重试上限：current_node 保持（下次 continue 自动从该节点重派）
+        # 未到重试上限：写 node_retried 让 rebuild 把 current_node 重新设回该节点
+        # （否则 node_failed 已把 current_node 清成 None；下次 continue 重启会触发
+        # _select_next_dispatch_target 反扫，因失败节点在 _NON_READY_STATES 里被
+        # 永久过滤，最终 next_id=None 命中 _finalize_if_topology_done 的 assert）。
+        append_event(
+            jsonl_path,
+            {
+                "type": "node_retried",
+                "node_id": node_id,
+                "data": {
+                    "fail_count": fail_count,
+                    "max_retries": max_retries,
+                    "error": error or "",
+                },
+            },
+        )
         print(
             f"INFO: 节点 {node_id!r} 失败（第 {fail_count} 次），"
             f"将重试（max_retries={max_retries}）",

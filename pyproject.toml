@@ -1,6 +1,13 @@
 [tool.pytest.ini_options]
 # H-22 fix: 支持 should_xxx_when_yyy 命名规范（与 CLAUDE.md 测试规范对齐）
 python_functions = ["test_*", "should_*"]
+# F-013 follow-up: 注册自定义 pytest mark，消除 PytestUnknownMarkWarning
+# - integration: 需要真实仓库 / git / 网络等外部依赖的集成测试
+# - slow: 单次耗时 > 5s 的测试（如 1000 文件 perf fixture），CI 资源紧张时可 `pytest -m "not slow"` 选择性跳过
+markers = [
+    "integration: marks tests that require real repo / git / external resources",
+    "slow: marks tests as slow (single-run > 5s); skip with -m 'not slow'",
+]
 
 [tool.ruff]
 # F-005：ruff 集成。line-length 全局设置

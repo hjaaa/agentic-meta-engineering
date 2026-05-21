@@ -31,14 +31,26 @@ $LOOP_USER_INPUT
 
 ### 第 1 步：判断是否结束
 
-读取 `$ARTIFACTS_DIR/features.json`：
+`features.json` 自身不含 `status`，feature 完成度记在 `$ARTIFACTS_DIR/tasks/<feature_id>.md` frontmatter 的 `status:` 字段。
+本步骤读取每个 task 文件 frontmatter，统计未 done 的 feature 数：
 
 ```bash
-jq '[.features[] | select(.status == "pending")] | length' $ARTIFACTS_DIR/features.json
+python3 scripts/lib/check_features.py --all-done $ARTIFACTS_DIR/features.json
+# exit=0 → 所有 feature 已 done
+# exit=1 → 仍有 pending / in-progress
 ```
 
-- 如果返回 `0`：所有 feature 已 done，**输出 "ALL_FEATURES_DONE" 并结束本轮**
-- 如果返回 ≥ 1：进入第 2 步
+- 如果 exit=0：所有 feature 已 done，**调下方 Bug-14 闭环命令报告 `outcome=all_done` 后结束本轮**：
+
+  ```bash
+  python3 scripts/lib/save_node_result.py \
+    --run $RUN_ID --node dev-feature-loop \
+    --kind loop_iteration --output '{"outcome":"all_done"}'
+  ```
+
+  写完事件后输出 "ALL_FEATURES_DONE"，下一次 `/workflow:continue` 会写 `loop_completed` + `node_completed` 推进到 testing 阶段。
+
+- 如果 exit=1：进入第 2 步
 
 ### 第 2 步：判断本轮是修订还是新 feature
 
@@ -141,7 +153,17 @@ args:
   status: done
 ```
 
-### 第 9 步：输出本轮总结
+### 第 9 步：报告本轮 outcome 并输出总结
+
+**Bug-14 闭环要求**：本轮 feature 已 done → 必须调 `save_node_result --kind=loop_iteration --output=continue` 让 loop 引擎推进到下一轮。**不调此命令，loop 会永久卡在 awaiting_claude_action**。
+
+```bash
+python3 scripts/lib/save_node_result.py \
+  --run $RUN_ID --node dev-feature-loop \
+  --kind loop_iteration --output '{"outcome":"continue"}'
+```
+
+写入成功后输出总结：
 
 ```
 FEATURE_DONE: feat-XXX
@@ -157,7 +179,7 @@ Code review：approved by judge
 - 无
 ```
 
-引擎拿到此输出后会进入 interactive 卡点，等用户决定下一步。
+下一次 `/workflow:continue` 引擎会读到 `loop_iteration_completed{outcome:continue}` + `loop_counter_advanced`，自动派发下一轮 feature。
 
 ---
 

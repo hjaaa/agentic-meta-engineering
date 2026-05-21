@@ -1,7 +1,8 @@
 """F-003 · TC-F3-3 / TC-F3-4 / TC-F3-5：末端 3 节点结构与逻辑校验。
 
 覆盖：
-- TC-F3-3: pr-submit 节点存在 + 字段结构合法（bash / depends_on / output_format）
+- TC-F3-3: pr-submit 节点存在 + 字段结构合法（Bug-20 修复后由 bash 改为 prompt 节点；
+  由 main agent 调 canonical /requirement:submit）
 - TC-F3-4: pr-merged-gate 节点存在 + approval 子结构合法（gate_message / depends_on）
 - TC-F3-5: archive-finalize 节点存在 + bash 包含归档字段写入 + depends_on 合法
 
@@ -13,11 +14,9 @@ approval 节点不依赖 tty，只做结构断言。
 """
 from __future__ import annotations
 
-import subprocess
 import sys
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -56,43 +55,48 @@ def nodes_by_id(workflow_nodes: list[dict[str, Any]]) -> dict[str, dict[str, Any
 
 
 class TestPrSubmitNode:
-    """TC-F3-3：pr-submit 节点存在 + bash/depends_on/output_format 合法。"""
+    """TC-F3-3：pr-submit 节点存在 + prompt/depends_on/output_format 合法。
+
+    Bug-20 修复后由 bash 节点改为 prompt 节点：bash 引用的 PR_TITLE / PR_BODY_FILE /
+    BASE_BRANCH / DRAFT_FLAG 四个 env 变量从未被 workflow_dispatcher 注入，必败；
+    改为 prompt 节点让 main agent 调 canonical /requirement:submit 完成提交。
+    """
 
     def test_node_exists(self, nodes_by_id: dict[str, dict[str, Any]]) -> None:
         """pr-submit 节点必须存在于 yaml 中。"""
         assert "pr-submit" in nodes_by_id, "pr-submit 节点缺失"
 
-    def test_node_type_is_bash(self, nodes_by_id: dict[str, dict[str, Any]]) -> None:
-        """pr-submit 是 bash 节点。"""
+    def test_node_type_is_prompt(self, nodes_by_id: dict[str, dict[str, Any]]) -> None:
+        """pr-submit 是 prompt 节点（Bug-20 修复后由 bash 改造）。"""
         node = nodes_by_id["pr-submit"]
-        assert "bash" in node, "pr-submit 必须声明 bash 字段"
-        # bash 节点不允许同时有 prompt / skill / agent 等字段
-        for exclusive_field in ("prompt", "prompt_file", "skill", "agent", "approval", "loop"):
+        assert "prompt" in node, "pr-submit 必须声明 prompt 字段"
+        # prompt 节点不允许同时有 bash / skill / agent 等字段
+        for exclusive_field in ("bash", "prompt_file", "skill", "agent", "approval", "loop"):
             assert exclusive_field not in node, (
-                f"pr-submit bash 节点不应含 {exclusive_field!r}"
+                f"pr-submit prompt 节点不应含 {exclusive_field!r}"
             )
 
-    def test_bash_contains_git_push(self, nodes_by_id: dict[str, dict[str, Any]]) -> None:
-        """bash 脚本必须包含 git push 操作。"""
-        bash_script = nodes_by_id["pr-submit"]["bash"]
-        assert "git push" in bash_script, "pr-submit bash 必须含 git push"
+    def test_prompt_invokes_requirement_submit(self, nodes_by_id: dict[str, dict[str, Any]]) -> None:
+        """prompt 内容必须指示 main agent 调 /requirement:submit。"""
+        prompt = nodes_by_id["pr-submit"]["prompt"]
+        assert "/requirement:submit" in prompt, "pr-submit prompt 必须提到 /requirement:submit"
 
-    def test_bash_contains_gh_pr_create(self, nodes_by_id: dict[str, dict[str, Any]]) -> None:
-        """bash 脚本必须包含 gh pr create 操作。"""
-        bash_script = nodes_by_id["pr-submit"]["bash"]
-        assert "gh pr create" in bash_script, "pr-submit bash 必须含 gh pr create"
+    def test_prompt_mentions_codex_default(self, nodes_by_id: dict[str, dict[str, Any]]) -> None:
+        """Fix 3 联动：prompt 应反映 --codex 默认开启 + --no-codex 关闭的语义。"""
+        prompt = nodes_by_id["pr-submit"]["prompt"]
+        assert "--codex" in prompt, "pr-submit prompt 应说明 codex 默认行为"
 
-    def test_bash_writes_pr_url_to_meta(self, nodes_by_id: dict[str, dict[str, Any]]) -> None:
-        """bash 脚本必须把 pr_url 写入 meta.yaml（使用 yq）。"""
-        bash_script = nodes_by_id["pr-submit"]["bash"]
-        assert "pr_url" in bash_script, "pr-submit bash 必须写 pr_url 到 meta.yaml"
-        assert "yq" in bash_script, "pr-submit bash 必须用 yq 写入 meta.yaml"
+    def test_prompt_mentions_save_node_result(self, nodes_by_id: dict[str, dict[str, Any]]) -> None:
+        """prompt 必须指示 main agent 调 save_node_result 写 node_completed 推进 workflow。"""
+        prompt = nodes_by_id["pr-submit"]["prompt"]
+        assert "save_node_result" in prompt, (
+            "pr-submit prompt 必须指示用 save_node_result 写 node_completed"
+        )
+        assert "pr_url" in prompt, "prompt 必须包含 pr_url 字段名"
 
     def test_depends_on_test_final_confirm(self, nodes_by_id: dict[str, dict[str, Any]]) -> None:
-        """pr-submit 必须依赖 test-final-confirm（20260519-remove-human-signoff F-006：
-        原 test-final-signoff 改名为 test-final-confirm；当前 yaml 实际拓扑末端）。"""
+        """pr-submit 必须依赖 test-final-confirm。"""
         node = nodes_by_id["pr-submit"]
-        # depends_on 可能在 loader 展开后才存在，直接读原始字段
         deps = node.get("depends_on", [])
         assert "test-final-confirm" in deps, (
             f"pr-submit 必须 depends_on test-final-confirm，实际: {deps}"
@@ -107,22 +111,13 @@ class TestPrSubmitNode:
         assert "pr_url" in props, "pr-submit.output_format.properties 必须含 pr_url"
         assert props["pr_url"].get("type") == "string", "pr_url 类型必须是 string"
 
-    def test_bash_commands_mocked(self, nodes_by_id: dict[str, dict[str, Any]]) -> None:
-        """模拟 subprocess.run 确认 bash 逻辑不依赖真实外部命令。
-
-        注：本测试只验证 bash 字段是可以被提取并运行时 mock 的，
-        不真实执行 shell 脚本（引擎负责执行）。
-        """
-        bash_script = nodes_by_id["pr-submit"]["bash"]
-        # bash 脚本是字符串，可被引擎/runtime 获取并执行
-        assert isinstance(bash_script, str)
-        assert len(bash_script.strip()) > 0
-
-        # 模拟引擎执行路径：mock subprocess.run
-        with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0, stdout="https://github.com/pr/1")
-            subprocess.run(["bash", "-c", "echo mock"], capture_output=True)
-            assert mock_run.called
+    def test_output_format_required_pr_url(self, nodes_by_id: dict[str, dict[str, Any]]) -> None:
+        """prompt 节点必须把 pr_url 标为 required（main agent 必须返回该字段）。"""
+        node = nodes_by_id["pr-submit"]
+        required = node.get("output_format", {}).get("required", [])
+        assert "pr_url" in required, (
+            f"prompt 节点的 output_format.required 必须含 pr_url，实际: {required}"
+        )
 
 
 # ============================================================================
@@ -273,13 +268,14 @@ def test_terminal_nodes_in_order(workflow_nodes: list[dict[str, Any]]) -> None:
 
 
 def test_pr_submit_node(nodes_by_id: dict[str, dict[str, Any]]) -> None:
-    """Acceptance TC-F3-3 入口：委托给 TestPrSubmitNode 关键断言。"""
+    """Acceptance TC-F3-3 入口：委托给 TestPrSubmitNode 关键断言（Bug-20 修复后语义更新）。"""
     node = nodes_by_id.get("pr-submit")
     assert node is not None, "pr-submit 节点缺失"
-    assert "bash" in node, "pr-submit 必须为 bash 类型"
-    assert "gh pr create" in node["bash"] or "gh pr list" in node["bash"]
-    assert "pr_url" in node["bash"]
-    assert "yq" in node["bash"]
+    assert "prompt" in node, "pr-submit 必须为 prompt 类型（Bug-20 修复后从 bash 改造）"
+    assert "bash" not in node, "pr-submit 不应再有 bash 字段（已迁移到 prompt）"
+    assert "/requirement:submit" in node["prompt"]
+    assert "save_node_result" in node["prompt"]
+    assert "pr_url" in node["prompt"]
 
 
 def test_pr_merged_gate_approval(nodes_by_id: dict[str, dict[str, Any]]) -> None:

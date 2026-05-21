@@ -1,0 +1,126 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-013",
+  "status": "DONE",
+  "commit_sha": "80b8567",
+  "files_changed": [
+    "tests/fixtures/context_usage_report/**",
+    "tests/lib/test_context_usage_report.py",
+    "tests/lib/test_context_usage_inventory.py",
+    "tests/lib/test_context_usage_git_timestamps.py",
+    "tests/lib/test_context_usage_aggregator.py",
+    "tests/lib/test_context_usage_renderer.py",
+    "tests/lib/test_context_usage_e2e.py",
+    "tests/lib/conftest.py",
+    "tests/lib/_context_usage_helpers.py",
+    "tests/lib/test_markdown_links.py",
+    "pyproject.toml"
+  ],
+  "fix_commits": [
+    "3c310a6",
+    "5a04216",
+    "cf66bd7"
+  ],
+  "review_conclusion": "looks_clean_after_fix",
+  "review_report": "artifacts/review-F-013-20260520.md",
+  "test_summary": "773 passed in 20.39s (pytest tests/lib/) + ruff All checks passed + perf 1000 files < 10s (covers git_log main path)",
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "touches_violations": [],
+  "touches_violations_resolved_via_touches_expansion": true,
+  "historical_touches_violations": [
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/.worktrees/feat-req-20260519-context-usage-report/tests/lib/conftest.py",
+      "ts": "2026-05-20T08:19:40+00:00",
+      "tool": "Write"
+    },
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/.worktrees/feat-req-20260519-context-usage-report/tests/lib/test_context_usage_inventory.py",
+      "ts": "2026-05-20T08:20:06+00:00",
+      "tool": "Write"
+    },
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/.worktrees/feat-req-20260519-context-usage-report/tests/lib/test_context_usage_git_timestamps.py",
+      "ts": "2026-05-20T08:20:43+00:00",
+      "tool": "Write"
+    },
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/.worktrees/feat-req-20260519-context-usage-report/tests/lib/test_context_usage_aggregator.py",
+      "ts": "2026-05-20T08:22:08+00:00",
+      "tool": "Write"
+    },
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/.worktrees/feat-req-20260519-context-usage-report/tests/lib/test_context_usage_renderer.py",
+      "ts": "2026-05-20T08:23:17+00:00",
+      "tool": "Write"
+    },
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/.worktrees/feat-req-20260519-context-usage-report/tests/lib/test_context_usage_e2e.py",
+      "ts": "2026-05-20T08:24:11+00:00",
+      "tool": "Write"
+    },
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/.worktrees/feat-req-20260519-context-usage-report/tests/lib/_context_usage_helpers.py",
+      "ts": "2026-05-20T08:24:40+00:00",
+      "tool": "Write"
+    },
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/.worktrees/feat-req-20260519-context-usage-report/tests/lib/conftest.py",
+      "ts": "2026-05-20T08:25:02+00:00",
+      "tool": "Write"
+    },
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/.worktrees/feat-req-20260519-context-usage-report/tests/lib/test_context_usage_aggregator.py",
+      "ts": "2026-05-20T08:25:11+00:00",
+      "tool": "Edit"
+    },
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/.worktrees/feat-req-20260519-context-usage-report/tests/lib/test_context_usage_renderer.py",
+      "ts": "2026-05-20T08:25:16+00:00",
+      "tool": "Edit"
+    },
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/.worktrees/feat-req-20260519-context-usage-report/tests/lib/test_context_usage_e2e.py",
+      "ts": "2026-05-20T08:25:22+00:00",
+      "tool": "Edit"
+    },
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/.worktrees/feat-req-20260519-context-usage-report/tests/lib/test_context_usage_aggregator.py",
+      "ts": "2026-05-20T08:25:55+00:00",
+      "tool": "Edit"
+    },
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/.worktrees/feat-req-20260519-context-usage-report/tests/lib/test_context_usage_renderer.py",
+      "ts": "2026-05-20T08:26:16+00:00",
+      "tool": "Edit"
+    },
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/.worktrees/feat-req-20260519-context-usage-report/tests/lib/test_context_usage_e2e.py",
+      "ts": "2026-05-20T08:26:26+00:00",
+      "tool": "Edit"
+    },
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/.worktrees/feat-req-20260519-context-usage-report/tests/lib/test_context_usage_git_timestamps.py",
+      "ts": "2026-05-20T08:29:35+00:00",
+      "tool": "Edit"
+    },
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/.worktrees/feat-req-20260519-context-usage-report/tests/lib/test_markdown_links.py",
+      "ts": "2026-05-20T08:33:12+00:00",
+      "tool": "Edit"
+    },
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/.worktrees/feat-req-20260519-context-usage-report/pyproject.toml",
+      "ts": "2026-05-20T08:39:38+00:00",
+      "tool": "Edit"
+    },
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/.worktrees/feat-req-20260519-context-usage-report/tests/lib/test_context_usage_e2e.py",
+      "ts": "2026-05-20T08:40:01+00:00",
+      "tool": "Edit"
+    }
+  ],
+  "timestamp": "2026-05-20T16:25:00+08:00",
+  "notes": "review-001 needs_attention(76) → 7 项 fix (commit 3c310a6) + 1 lint clean (commit 5a04216) → review-002 looks_clean(91) supersedes -001 → 3 suggestions fix (commit cf66bd7) → done. touches_violations 由 touches_guard.py 在 subagent 拆 test 文件期间记录（test_context_usage_inventory/_git_timestamps/_aggregator/_renderer/_e2e/_helpers/conftest 等），已通过扩展 task.md touches 字段把这些路径纳入合法范围；保留历史 violations 数组供 audit trail。"
+}

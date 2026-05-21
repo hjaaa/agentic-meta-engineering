@@ -1,0 +1,62 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-20260519-context-usage-report-detail-design-001",
+  "requirement_id": "20260519-context-usage-report",
+  "phase": "detail-design",
+  "reviewer": "detail-design-quality-reviewer",
+  "reviewed_at": "2026-05-21 09:42:37",
+  "reviewed_commit": "1e4fb7086841dacf91153e471844a38474bc89a7",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/detailed-design.md",
+      "sha256": "030169f778e2fba1662f58273b8f48673ef4e675757ba5c5a33eb79aabb29f02"
+    },
+    {
+      "path": "artifacts/features.json",
+      "sha256": "20b418a9c8b32ff350ca66827a23e0fb89b8a9422cda58a0c3cbf4ba6a0ce4b4"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 90,
+  "dimensions": {
+    "design_consistency": {
+      "score": 92,
+      "issues": []
+    },
+    "security": {
+      "score": 90,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 90,
+      "issues": []
+    },
+    "complexity": {
+      "score": 88,
+      "issues": []
+    },
+    "error_handling": {
+      "score": 90,
+      "issues": []
+    },
+    "auxiliary_spec": {
+      "score": 90,
+      "issues": []
+    },
+    "performance": {
+      "score": 90,
+      "issues": []
+    },
+    "history_context": {
+      "score": 90,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "F-002 AC-1 修订（IO adapter wrapper 豁免条款）于 testing 阶段补齐，文档与 testing 验证已闭环",
+    "待澄清清单条目（HIGH_VALUE_REFERENCE_MIN=3 阈值 / JSON schema URL / applied_signal_count 上限）建议在 Phase 3 治理入口落地时统一裁决"
+  ],
+  "scope": null,
+  "supersedes": null
+}

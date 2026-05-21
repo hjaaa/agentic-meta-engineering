@@ -3,16 +3,19 @@
 用途：
   - 校验 requirements/<id>/artifacts/features.json 是否符合
     context/team/engineering-spec/features-schema.yaml 定义的 schema。
+  - 可选 --all-done：校验 tasks/<feature_id>.md frontmatter.status 全为 'done'，
+    用于 workflow 节点 dev-all-features-done-check（standard-8phase.yaml）。
   - GATE-FEATURES-SCHEMA plugin 在 run() 中调用本工具（导入方式），
     CI / 人工也可直接 CLI 调用。
 
 退出码：
-  0 — 校验通过，无 error
-  1 — 数据违规（字段缺失 / 枚举越界 / 格式错误）
-  2 — schema 文件自身损坏（check_features.py 启动时 assert 失败）
+  0 — 校验通过
+  1 — 数据违规（字段缺失 / 枚举越界 / 格式错误），或 --all-done 下存在未完成的 feature
+  2 — schema 文件自身损坏，或 CLI 用法错误
 
 用法：
   python3 scripts/lib/check_features.py <features.json 路径>
+  python3 scripts/lib/check_features.py --all-done <features.json 路径>
 
 双层 schema_version 校验（detailed-design.md §4.1）：
   L1：SCHEMA_PATH 文件顶部 schema_version 必须 == "1.0"（schema 文件布局版本）
@@ -20,6 +23,7 @@
 """
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import sys
@@ -271,15 +275,80 @@ def validate(data: dict[str, Any], schema: dict[str, Any], file_label: str) -> _
     return report
 
 
+# ---------- --all-done 检查（development 阶段收尾门禁） ----------
+
+def _read_task_status(task_file: Path) -> str | None:
+    """读 tasks/<feature_id>.md 顶部 YAML frontmatter，返回 status 值。
+
+    约定（features-schema.yaml 头部说明 / round-005 决议）：
+      status 字段不在 features.json 内，而是放 tasks/<feature_id>.md frontmatter，
+      避免 detail-design 评审 hash 因开发期状态推进而 drift。
+
+    Returns:
+        frontmatter 中 status 字段的值；无 frontmatter / 无 status / 解析失败时返回 None。
+    """
+    try:
+        content = task_file.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    if not content.startswith("---\n"):
+        return None
+    end = content.find("\n---", 4)
+    if end == -1:
+        return None
+    try:
+        fm = yaml.safe_load(content[4:end])
+    except yaml.YAMLError:
+        return None
+    if not isinstance(fm, dict):
+        return None
+    status = fm.get("status")
+    return status if isinstance(status, str) else None
+
+
+def _check_all_features_done(data: dict[str, Any], tasks_dir: Path,
+                              report: _ErrorReport) -> None:
+    """校验 features.json 中每个 feature 的 task 文件 status == 'done'。
+
+    把错误累积到 report；调用方据 report.has_errors 决定 exit code。
+    """
+    if not tasks_dir.is_dir():
+        report.add(f"tasks 目录不存在：{tasks_dir}")
+        return
+
+    features = data.get("features") or []
+    for feature in features:
+        if not isinstance(feature, dict):
+            continue
+        fid = feature.get("id")
+        if not isinstance(fid, str):
+            continue
+        task_file = tasks_dir / f"{fid}.md"
+        if not task_file.exists():
+            report.add(f"feature {fid}：task 文件不存在 {task_file}")
+            continue
+        status = _read_task_status(task_file)
+        if status != "done":
+            report.add(f"feature {fid}：status={status!r}（期望 'done'）")
+
+
 # ---------- CLI 入口 ----------
 
 def main() -> int:
-    """CLI 入口：exit 0 OK / exit 1 数据违规 / exit 2 schema 损坏。"""
-    if len(sys.argv) != 2:
-        print("用法：python3 scripts/lib/check_features.py <features.json 路径>", file=sys.stderr)
-        sys.exit(2)
+    """CLI 入口：exit 0 OK / exit 1 数据违规 / exit 2 schema 损坏或用法错误。"""
+    parser = argparse.ArgumentParser(
+        prog="check_features.py",
+        description="校验 features.json schema；可选 --all-done 检查 tasks/*.md status 全为 'done'。",
+    )
+    parser.add_argument("features_path", help="features.json 路径")
+    parser.add_argument(
+        "--all-done",
+        action="store_true",
+        help="额外校验 tasks/<feature_id>.md frontmatter.status == 'done'",
+    )
+    args = parser.parse_args()  # 用法错误 argparse 自动 exit 2
 
-    features_path = Path(sys.argv[1])
+    features_path = Path(args.features_path)
     try:
         schema = _load_schema()
     except SchemaLoadError as exc:
@@ -289,6 +358,10 @@ def main() -> int:
 
     file_label = str(features_path)
     report = validate(data, schema, file_label)
+
+    if args.all_done:
+        tasks_dir = features_path.parent / "tasks"
+        _check_all_features_done(data, tasks_dir, report)
 
     if report.has_errors:
         report.print_all(file_label)

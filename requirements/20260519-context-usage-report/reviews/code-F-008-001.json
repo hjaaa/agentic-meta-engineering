@@ -1,0 +1,85 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-20260519-context-usage-report-code-F-008-001",
+  "requirement_id": "20260519-context-usage-report",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-20 11:04:29",
+  "reviewed_commit": "ffdc407",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "06bbd2d3979818323fa61fa49191273eb4e8bc02403953878969d56341380b3f"
+    },
+    {
+      "path": "artifacts/tasks/F-008.md",
+      "sha256": "70b075d80fbb2fef76fd6ea3611a941245ea5b96f33bb631d7bd60f588fb0065"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 80,
+  "dimensions": {
+    "design_consistency": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/context_usage_report.py:196-203 since 窗口内无 commit 时静默回退 fs_mtime，未追加 warning；与 detailed-design.md:763 异常表语义未完全对齐（建议补充聚合 warning 或 design 显式声明窗口外为静默回退）"
+        }
+      ]
+    },
+    "security": {
+      "score": 92,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/context_usage_report.py:130-136 subprocess.run 无 timeout 参数；大仓库或 git 卡死时 CLI 会无限阻塞，建议补 timeout=30s + TimeoutExpired catch 走 fs_mtime 回退"
+        }
+      ]
+    },
+    "complexity": {
+      "score": 75,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/context_usage_report.py:78-215 fetch_git_timestamps 共 138 行（含 docstring 与解析注释）超过项目 80 行硬约束；圈复杂度约 17（CLAUDE 阈 10）。源自 git log 输出格式协议适配（commit-header + file-path + exception 三分支），本 PR 不强拆，留 follow-up 在 F-008 后单独抽 _parse_git_log_output / _build_timestamp_result 两个 helper"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/context_usage_report.py:196-203 fs_mtime 回退分支无可观测信号（同 design_consistency 问题，跨维度）"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 88,
+      "issues": []
+    },
+    "performance": {
+      "score": 88,
+      "issues": []
+    },
+    "history_context": {
+      "score": 90,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "concurrency × error_handling 叠加：subprocess 无 timeout + 失败路径仅追加 warning，仓库异常（git 卡死/损坏）会先阻塞再静默 fallback，用户难定位——加 timeout 后建议同时在 stderr 输出『git log timeout，使用 fs_mtime』",
+    "design_consistency × error_handling 一致性缺口：detailed-design.md:763 仅定义 subprocess 失败路径，但 since 窗口内无 commit 也走 fs_mtime——建议要么补 design 表，要么补聚合 warning（如『N 个文件在 since=<D>d 内无 git 记录，已回退 fs_mtime』），二者择一",
+    "complexity follow-up：fetch_git_timestamps 138 行 / 圈复杂度 17，超 80/10 硬约束。本 PR 不返工，留下一个 feature 把『git log 输出解析』抽成 _parse_git_log_output(output: str) -> dict[str, tuple[datetime, datetime]] 与 _build_timestamp_result(files, timestamps) -> dict[str, GitTimestamp] 两个纯函数"
+  ],
+  "scope": {
+    "feature_id": "F-008"
+  },
+  "supersedes": null
+}

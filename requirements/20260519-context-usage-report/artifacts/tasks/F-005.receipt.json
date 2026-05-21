@@ -1,0 +1,11 @@
+{
+  "feature_id": "F-005",
+  "status": "DONE",
+  "commit": "e9c7407",
+  "review_report": "requirements/20260519-context-usage-report/reviews/code-F-005-002.json",
+  "review_conclusion": "looks_clean",
+  "touches_violations": [],
+  "post_dev_gate": "passed",
+  "completed_at": "2026-05-20T00:30:00Z",
+  "schema_version": "1.0"
+}

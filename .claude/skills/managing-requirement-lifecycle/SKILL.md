@@ -22,7 +22,7 @@ description: 需求全生命周期管理伞形 Skill，被 8 个 /requirement:* 
    - 查看状态 → 读 meta.yaml 输出阶段+最近动作
    - 回退 → 归档当前 artifacts + 改 phase + 写 notes.md
    - 列出 → 扫 `requirements/*/meta.yaml`，输出需求索引
-   - **提交 PR** → 按 `reference/submit-rules.md` 做前置门禁、推分支、开 PR、回写 `pr_url` / `pr_number`
+   - **提交 PR** → 按 `reference/submit-rules.md` 做前置门禁、推分支、开 PR、回写 `pr_url` / `pr_number`。**默认走 codex review-loop**（2026-05-21 翻转，详 `reference/submit-rules.md §7.5`）；用户显式传 `--no-codex` 才跳过。包装层负责向底层 `submit_codex.py` 追加 `--codex` flag，底层 CLI 默认值仍 opt-in。
    - 归档 → archive（phase=testing|completed → completed + archived_at；委托 `archive_runner.archive_requirement`）
 
 2. **状态持久化**：每次状态变更必须更新 `meta.yaml` 字段；submit 动作只回写 PR 字段，不改 phase

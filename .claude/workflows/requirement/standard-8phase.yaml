@@ -674,25 +674,34 @@ nodes:
   # ════════════════════════════════════════════════════════════════════
 
   - id: pr-submit
-    bash: |
-      set -e
-      git push origin "$BRANCH_NAME"
-      EXISTING=$(gh pr list --head "$BRANCH_NAME" --state open --json url --jq '.[0].url' 2>/dev/null || true)
-      if [ -n "$EXISTING" ]; then
-        PR_URL="$EXISTING"
-      else
-        PR_URL=$(gh pr create --title "$PR_TITLE" --body-file "$PR_BODY_FILE" \
-                              --base "$BASE_BRANCH" ${DRAFT_FLAG:+--draft})
-      fi
-      [[ -z "$PR_URL" ]] && { echo "ERROR: gh pr create 未返回 PR URL（RUN_ID=$RUN_ID）" >&2; exit 1; }
-      yq e ".pr_url = \"$PR_URL\"" -i "$META_PATH"
-      echo "PR 已创建：$PR_URL"
-    timeout: 120000
-    depends_on: [test-final-confirm]
+    # Bug-20 修复：原 bash 节点引用 PR_TITLE / PR_BODY_FILE / BASE_BRANCH / DRAFT_FLAG
+    # 4 个 env 变量，但 workflow_dispatcher 从未注入它们 → gh pr create 必败。
+    # 改为 prompt 节点，由 main agent 调 canonical /requirement:submit 完成 PR 提交
+    # （含 PR 正文渲染 + gates + 默认 codex review-loop + meta.yaml 回写）。
+    # main agent 完成后用 `save_node_result.py --kind=skill_result --output '{"pr_url":"..."}'`
+    # 写 node_completed，workflow 继续推进到 pr-merged-gate。
+    prompt: |
+      请调用 `/requirement:submit` 为本需求开 PR（默认含 --codex 走 codex review-loop；
+      如需关闭显式传 --no-codex）。
+
+      完成后用：
+        python3 scripts/lib/save_node_result.py \
+          --run $RUN_ID \
+          --node pr-submit \
+          --kind skill_result \
+          --output '{"pr_url": "<返回的 PR URL>"}'
+
+      写 node_completed 让 workflow 推进。
+
+      失败处理：
+      - 门禁 fail → 修复 + 重跑 /requirement:submit（幂等更新 PR 正文）
+      - blocker-level 评审问题 → 显式 --force-with-blockers 或 --bypass-review-blockers 放行
     output_format:
       type: object
       properties:
         pr_url: { type: string }
+      required: [pr_url]
+    depends_on: [test-final-confirm]
 
   - id: pr-merged-gate
     approval:
