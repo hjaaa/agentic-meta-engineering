@@ -61,9 +61,11 @@ RE_TABLE_ROW = re.compile(r"^\s*\|.*\|\s*$")
 # 设计 spec 文档（requirement.md / outline-design.md / detailed-design.md /
 # tech-feasibility.md / plan.md）仍然走 W002 全集。
 W002_DERIVED_FILENAME_PATTERNS = (
-    re.compile(r"^review-\d{8}-\d{6}\.md$"),    # /code-review 输出的评审报告
-    re.compile(r"^retrospective\.md$"),          # 阶段回顾
-    re.compile(r"^test-report\.md$"),            # testing 阶段验收报告
+    re.compile(r"^review-\d{8}-\d{6}\.md$"),                          # /code-review 单次评审报告（旧时间戳格式）
+    re.compile(r"^review-F-\d+-\d{8}\.md$"),                          # Bug-22：per-feature 评审报告 review-F-NNN-YYYYMMDD.md
+    re.compile(r"^review-[A-Za-z0-9._-]+-\d+\.md$"),                  # 通用 review-<topic>-<round>.md 派生格式
+    re.compile(r"^retrospective\.md$"),                                # 阶段回顾
+    re.compile(r"^test-report\.md$"),                                  # testing 阶段验收报告
 )
 W002_DERIVED_PARENT_DIRS = (
     "tasks",                                       # tasks/F-*.md 任务清单

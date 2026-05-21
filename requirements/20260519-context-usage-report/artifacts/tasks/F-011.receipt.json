@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-011",
+  "status": "DONE",
+  "commit_sha": "9df21a5",
+  "files_changed": [
+    "scripts/lib/context_usage_report.py",
+    ".gitignore",
+    "tests/lib/test_context_usage_report.py"
+  ],
+  "test_summary": "69 passed in 0.50s (pytest tests/lib/test_context_usage_report.py)",
+  "fix_commits": ["cab4933"],
+  "review_conclusion": "looks_clean_after_fix",
+  "review_report": "artifacts/review-F-011-20260520.md",
+  "touches_violations": [
+    {
+      "path": "/Users/richardhuang/learnspace/agentic-meta-engineering/.worktrees/feat-req-20260519-context-usage-report/tests/lib/test_context_usage_report.py",
+      "ts": "2026-05-20T06:36:06+00:00",
+      "tool": "Edit"
+    }
+  ],
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-20T14:20:00+08:00"
+}

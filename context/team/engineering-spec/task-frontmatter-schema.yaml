@@ -39,6 +39,10 @@ required_fields:
   - touches
   - created_at
   - updated_at
+# review_report 字段：未列入 required_fields（历史 task.md 缺该字段不挡 gate），
+# 但其在 fields 段下有定义并属于 _NORMALIZE_TASK_FIELDS 白名单。理由：dev 期演进字段，
+# `done` 时由主 Agent 填入 reviews/code-<F>-<NNN>.json 路径，pending/in-progress 期为 null；
+# 与 status / updated_at 同属 R005 假阳性源。
 
 # ---------- 顶层字段格式 ----------
 format:
@@ -108,3 +112,7 @@ fields:
     type: string
     required: true
     description: "task 最后更新时间戳（YYYY-MM-DD HH:MM:SS，Asia/Shanghai）"
+  review_report:
+    type: string_or_null
+    required: false
+    description: "code-review verdict 路径（reviews/code-<F>-<NNN>.json），feature 转 done 时填；pending/in-progress 期为 null。dev 期演进字段，纳入 _NORMALIZE_TASK_FIELDS 白名单避免 R005 假阳性。未列入 required_fields（兼容历史 task.md）"

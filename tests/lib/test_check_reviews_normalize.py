@@ -89,6 +89,27 @@ def test_evolving_status_yields_same_hash(tmp_path, evolving_status):
     assert len(h_set) == 1  # 3 个 status 产生相同 hash
 
 
+def test_evolving_review_report_yields_same_hash(tmp_path):
+    """review_report 字段从 null → reviews/code-F-001-NNN.json 时 normalize 后 hash 相同。
+
+    场景：feature 转 done 时主 Agent 把 review_report 从 null 改为最新 review 路径，
+    若不在 _NORMALIZE_TASK_FIELDS 白名单中，会和 status/updated_at 一样污染 hash，
+    让 by_feature.artifact_hashes 与 verdict.reviewed_artifacts[].sha256 漂移。
+    本测试覆盖 review_report 的 dev 期演进字段身份。
+    """
+    body = (
+        "---\nfeature_id: F-001\nstatus: done\nupdated_at: '2026-05-17 18:00:00'\n"
+        "review_report: {rr}\n---\n# body\n"
+    )
+    rel = "artifacts/tasks/F-001.md"
+    h_set: set[str] = set()
+    for rr in ["null", "reviews/code-F-001-001.json", "reviews/code-F-001-002.json"]:
+        fp = tmp_path / f"{rr.replace('/', '_')}.md"
+        fp.write_text(body.format(rr=rr), encoding="utf-8")
+        h_set.add(_compute_hash_with_normalize(fp, rel))
+    assert len(h_set) == 1, f"review_report 演进应产生相同 normalize hash，实际 {len(h_set)} 个：{h_set}"
+
+
 def test_crlf_and_lf_same_logical_content_yield_same_hash(tmp_path):
     """codex round-1 C1：CRLF 与 LF 行尾的同一逻辑 task.md 在 normalize 后产生相同 hash。
 

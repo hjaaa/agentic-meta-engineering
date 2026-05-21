@@ -28,7 +28,7 @@ from common import REPO_ROOT, Report, Severity, paint, rel
 # 但不代表 artifact 内容语义变化。双侧 normalize 剔除这些字段再算 sha256，
 # 杜绝 R005 假阳性。ADR：D-001（A2 路径）/ D-007（白名单字段集）。
 # schema 加新「dev 期演进」字段时必须同步扩充本集合（test_check_reviews_normalize_schema_sync 兜底）。
-_NORMALIZE_TASK_FIELDS: set[str] = {"status", "updated_at"}
+_NORMALIZE_TASK_FIELDS: set[str] = {"status", "updated_at", "review_report"}
 
 # save_review 同目录，scripts/lib 已在 sys.path 中（脚本入口由 sh 启动）
 sys.path.insert(0, str(Path(__file__).resolve().parent))

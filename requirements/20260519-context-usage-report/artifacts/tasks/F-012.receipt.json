@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-012",
+  "status": "DONE",
+  "commit_sha": "d226a24",
+  "files_changed": [],
+  "test_summary": "107 passed in 0.51s (pytest tests/lib/test_context_usage_report*.py) + ruff check passed",
+  "fix_commits": [],
+  "review_conclusion": "looks_clean",
+  "review_report": "artifacts/review-F-012-20260520.md",
+  "touches_violations": [],
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-20T15:00:00+08:00",
+  "notes": "audit-only commit (--allow-empty); AC1/AC2/AC3 fully covered by tests written during F-004~F-011 TDD; 8-critic group skipped because diff is empty"
+}

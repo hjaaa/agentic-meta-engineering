@@ -292,7 +292,9 @@ def _dispatch_prompt_node(
     if "prompt" in node:
         raw_text: str = node["prompt"]
     elif "prompt_file" in node:
-        prompt_path = root / node["prompt_file"]
+        from workflow_loader import _resolve_prompt_file  # Bug-8 workaround: dispatcher/loader 解析逻辑对齐
+        # Bug-19 修复：透传 `root`（测试 fixture 注入；生产场景仍回退模块级常量）
+        prompt_path = _resolve_prompt_file(node["prompt_file"], repo_root=root)
         try:
             raw_text = prompt_path.read_text(encoding="utf-8")
         except FileNotFoundError as exc:
@@ -433,6 +435,146 @@ def _dispatch_approval_node(
     return DispatchResult(outcome="approval_pending")
 
 
+def _read_last_loop_iteration_outcome(jsonl_path: Path, node_id: str) -> str | None:
+    """反扫 jsonl，找最后一条 loop_iteration_completed 事件中该 node_id 的 data.outcome。
+
+    Bug-14 修复：interactive 模式 dispatcher 根据上一轮 outcome 决定终止/继续。
+    返回 None 表示无对应事件或 outcome 字段缺失。
+    """
+    if not jsonl_path.exists():
+        return None
+    try:
+        lines = jsonl_path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    for line in reversed(lines):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            evt = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if evt.get("type") == "loop_iteration_completed" and evt.get("node_id") == node_id:
+            return (evt.get("data") or {}).get("outcome")
+    return None
+
+
+def _resolve_loop_prompt_text(loop_cfg: dict, node_id: str) -> str:
+    """读取 loop.prompt（inline）或 loop.prompt_file（外置文件）。
+
+    Bug-14 修复：interactive loop 节点需要 prompt 文本提供给 Claude。
+    """
+    if "prompt" in loop_cfg:
+        return loop_cfg["prompt"]
+    if "prompt_file" in loop_cfg:
+        from workflow_loader import _resolve_prompt_file
+        prompt_path = _resolve_prompt_file(loop_cfg["prompt_file"])
+        try:
+            return prompt_path.read_text(encoding="utf-8")
+        except FileNotFoundError as exc:
+            raise WorkflowError(
+                f"loop prompt_file not found: {prompt_path}"
+            ) from exc
+    raise WorkflowError(
+        f"interactive loop 节点 {node_id!r} 需配 loop.prompt 或 loop.prompt_file"
+    )
+
+
+def _dispatch_loop_interactive(
+    node: dict,
+    env: dict[str, Any],
+    run_state: RunState,
+    jsonl_path: Path,
+    node_id: str,
+    loop_cfg: dict,
+    max_iterations: int,
+    current_iteration: int,
+) -> DispatchResult:
+    """interactive=true 时的 loop 节点派发（Bug-14 修复主体）。
+
+    决策顺序：
+      1. 上一轮 outcome=all_done → loop_completed + node_completed → loop_done
+      2. counter ≥ max_iterations → loop_max_iterations_exceeded + node_completed → loop_done
+      3. 否则 → loop_iteration_started + node_ready{loop_iteration, prompt} → awaiting_claude_action
+
+    Claude 干完本轮活后必须调:
+      save_node_result --kind=loop_iteration --output='{"outcome":"continue"|"all_done"}'
+    写入 loop_iteration_completed{iteration, outcome}（continue 时附带 loop_counter_advanced）。
+    """
+    # 1) Claude 已声明 all_done → 终止
+    last_outcome = _read_last_loop_iteration_outcome(jsonl_path, node_id)
+    if last_outcome == "all_done":
+        append_event(jsonl_path, {
+            "type": "loop_completed",
+            "node_id": node_id,
+            "data": {"iteration": current_iteration},
+        })
+        append_event(jsonl_path, {
+            "type": "node_completed",
+            "node_id": node_id,
+            "data": {
+                "output": "",
+                "loop_done": True,
+                "iteration": current_iteration,
+            },
+        })
+        return DispatchResult(outcome="loop_done")
+
+    # 2) max_iterations 兜底终止
+    if current_iteration >= max_iterations:
+        append_event(jsonl_path, {
+            "type": "loop_max_iterations_exceeded",
+            "node_id": node_id,
+            "data": {
+                "max_iterations": max_iterations,
+                "iteration": current_iteration,
+            },
+        })
+        append_event(jsonl_path, {
+            "type": "node_completed",
+            "node_id": node_id,
+            "data": {
+                "output": "",
+                "loop_done": True,
+                "max_iterations_exceeded": True,
+                "iteration": current_iteration,
+            },
+        })
+        return DispatchResult(outcome="loop_done")
+
+    # 3) 进入新一轮：渲染 prompt + 写 node_ready + 等 Claude
+    raw_prompt = _resolve_loop_prompt_text(loop_cfg, node_id)
+    loop_env = {
+        **env,
+        "LOOP_ITERATION": str(current_iteration),
+        "LOOP_PREV_OUTPUT": str(env.get("LOOP_PREV_OUTPUT", "")),
+        "LOOP_USER_INPUT": str(env.get("LOOP_USER_INPUT", "")),
+    }
+    rendered = substitute_vars(
+        raw_prompt, run_state.node_outputs, loop_env, escape_for_bash=False
+    )
+
+    append_event(jsonl_path, {
+        "type": "loop_iteration_started",
+        "node_id": node_id,
+        "data": {"iteration": current_iteration},
+    })
+    contract = _build_external_action_contract(node)
+    append_event(jsonl_path, {
+        "type": "node_ready",
+        "node_id": node_id,
+        "run_id": run_state.run_id,
+        "data": {
+            "node_kind": "loop_iteration",
+            "prompt": rendered,
+            "loop_iteration": current_iteration,
+            "external_action_contract": contract,
+        },
+    })
+    return DispatchResult(outcome="awaiting_claude_action")
+
+
 def _dispatch_loop_node(
     node: dict,
     env: dict[str, Any],
@@ -450,6 +592,9 @@ def _dispatch_loop_node(
     - until_bash timeout（30s） → error 写 data.error = "timeout: <cmd>"，按 max_iterations 兜底
     - until_bash 不传 → 完全走既有路径（保护 F-011 历史行为）
 
+    Bug-14 修复：interactive=true 时走交互路径，每轮写 node_ready + 等 Claude
+    通过 save_node_result --kind=loop_iteration 写 loop_iteration_completed{outcome}。
+
     约束：
     - data["iteration"] 必须存在，供 RunState.rebuild 中 loop_counters 累计消费
     - max_iterations 取自 node["loop"]["max_iterations"]；缺省视为 1
@@ -460,9 +605,17 @@ def _dispatch_loop_node(
     loop_cfg: dict = node.get("loop") or {}
     max_iterations: int = int(loop_cfg.get("max_iterations", 1))
     until_bash: str | None = loop_cfg.get("until_bash")
+    interactive: bool = bool(loop_cfg.get("interactive"))
 
     # 当前迭代索引（0-based）：首次不在 loop_counters 中，取 0
     current_iteration: int = run_state.loop_counters.get(node_id, 0)
+
+    # Bug-14：interactive=true → 走交互式路径（不走 until_bash / 既有路径）
+    if interactive:
+        return _dispatch_loop_interactive(
+            node, env, run_state, jsonl_path,
+            node_id, loop_cfg, max_iterations, current_iteration,
+        )
 
     # AC-07：until_bash 优先判定（仅在传入时生效）
     if until_bash:
@@ -484,6 +637,15 @@ def _dispatch_loop_node(
                     "type": "loop_completed",
                     "node_id": node_id,
                     "data": {"iteration": current_iteration},
+                })
+                # loop_done 也属于节点完成生命周期：补写 node_completed 让 rebuild
+                # 能把 loop 节点标 SUCCESS_TERMINAL，避免 bootstrap 把它当 ready 重派。
+                # 对齐 completed / sub_workflow_done 两个 outcome 的 jsonl 写入语义。
+                append_event(jsonl_path, {
+                    "type": "node_completed",
+                    "node_id": node_id,
+                    "data": {"output": "", "loop_done": True,
+                              "iteration": current_iteration},
                 })
                 return DispatchResult(outcome="loop_done")
             # exit≠0 → 条件不成立，继续走迭代路径
@@ -556,6 +718,15 @@ def _loop_check_max_or_continue(
             "type": "loop_max_iterations_exceeded",
             "node_id": node_id,
             "data": {"max_iterations": max_iterations, "iteration": current_iteration},
+        })
+        # 与 until_bash exit=0 路径对称：loop_done 必须伴随 node_completed，
+        # 否则 rebuild 时 loop 节点缺 SUCCESS_TERMINAL 标记，bootstrap 反复重派。
+        append_event(jsonl_path, {
+            "type": "node_completed",
+            "node_id": node_id,
+            "data": {"output": "", "loop_done": True,
+                      "max_iterations_exceeded": True,
+                      "iteration": current_iteration},
         })
         return DispatchResult(outcome="loop_done")
     return DispatchResult(outcome="loop_continue")

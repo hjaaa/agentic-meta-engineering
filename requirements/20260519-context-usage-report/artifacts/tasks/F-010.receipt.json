@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-010",
+  "status": "DONE",
+  "commit_sha": "c8c3dbb9a5afbb833cf7d37b2a9682a0169dc5ca",
+  "files_changed": [
+    "scripts/lib/context_usage_report.py",
+    "tests/lib/test_context_usage_report.py"
+  ],
+  "test_summary": "55 passed in 0.37s (pytest tests/lib/test_context_usage_report.py)",
+  "fix_commits": ["93ea344"],
+  "review_conclusion": "needs_attention_accepted_with_followup",
+  "review_report": "artifacts/review-F-010-20260520.md",
+  "touches_violations": [],
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-20T00:00:00+08:00"
+}

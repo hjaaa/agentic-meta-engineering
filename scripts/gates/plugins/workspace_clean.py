@@ -11,12 +11,16 @@ precheck：
   - 其他 trigger 一律继续。
   （pre-tool-use 已于 F-002 退役）
 
-stash 残留过滤（F-004 round-4）：
+stash 残留过滤（F-004 round-4；Bug-21：扩展支持新需求 ID 格式）：
   state_io.stash_state 在 _run_gates 前为 write_state plugin（如 GATE-REVIEW-VERDICT）
   对 requirements/<id>/meta.yaml 创建 .bak 备份，全 pass 路径下由 cleanup_snapshots
   清理。但 GATE-WORKSPACE-CLEAN 在拓扑序中可能晚于 stash，会把 .bak 误判为 untracked
   导致 phase-transition 永远过不去。本 plugin 显式忽略已知 stash residue（路径模式
-  `requirements/REQ-YYYY-NNN/meta.yaml.bak`），不影响真实用户改动的检测。
+  `requirements/<id>/meta.yaml.bak`），不影响真实用户改动的检测。
+
+  支持的 id 格式与 scripts/lib/requirement_naming.py 对齐：
+    - legacy：`REQ-YYYY-NNN`（如 `REQ-2026-014`）
+    - new   ：`YYYYMMDD-<slug>[-NN]`（如 `20260519-context-usage-report`）
 """
 from __future__ import annotations
 
@@ -27,11 +31,14 @@ from typing import Optional
 from .base import Decision, Gate, GateContext, Report, Severity, Skip
 
 
-# F-004 round-4：state_io.stash_state 残留的合法 .bak 文件模式
-# 仅匹配 `?? requirements/REQ-YYYY-NNN/meta.yaml.bak`（git status --porcelain 格式：
-# `?? <path>`，untracked 文件前缀两空格）。其他 .bak 文件不匹配，仍按 dirty 处理。
+# F-004 round-4 + Bug-21：state_io.stash_state 残留的合法 .bak 文件模式
+# 匹配 `?? requirements/<id>/meta.yaml.bak`（git status --porcelain 格式：
+# `?? <path>`，untracked 文件前缀两空格）。<id> 同时接受 legacy 与 new 格式。
+# 其他 .bak 文件不匹配，仍按 dirty 处理。
 _STASH_RESIDUE_PATTERN = re.compile(
-    r"^\?\?\s+requirements/REQ-\d{4}-\d{3}/meta\.yaml\.bak\s*$"
+    r"^\?\?\s+requirements/"
+    r"(?:REQ-\d{4}-\d{3}|\d{8}-[a-z0-9]+(?:-[a-z0-9]+)*(?:-\d{2})?)"
+    r"/meta\.yaml\.bak\s*$"
 )
 
 

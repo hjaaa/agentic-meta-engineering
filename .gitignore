@@ -42,3 +42,6 @@ scripts/gates/audit/*
 !scripts/gates/audit/.gitkeep
 # 新路径（F-004 异步 audit，仓库根 audit/）
 /audit/
+
+# 上下文知识利用率报告（F-011 生成的运行态产物）
+reports/

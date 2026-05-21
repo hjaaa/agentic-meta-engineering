@@ -1,0 +1,333 @@
+{
+  "schema_version": "1.0",
+  "requirement_id": "20260519-context-usage-report",
+  "features": [
+    {
+      "id": "F-001",
+      "title": "抽取 markdown_links.py 公共模块",
+      "description": "从 scripts/lib/check_index.py 抽出 LINK_RE / extract_links / resolve_link / is_external_or_intra_anchor / slugify / extract_headings 6 个函数 + 新增 mask_code_blocks / glob_match，形成纯函数模块，无 CLI 入口。",
+      "modules": [
+        "scripts/lib/markdown_links.py"
+      ],
+      "touches": [
+        "scripts/lib/markdown_links.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": [],
+      "complexity": "light",
+      "acceptance": [
+        "新模块 scripts/lib/markdown_links.py 创建，含 8 个公开函数 / NamedTuple，签名与 detailed-design.md §接口签名 / markdown_links 章节一致",
+        "纯函数，无 print / 文件 IO 写副作用",
+        "MarkdownLink NamedTuple 字段 text / url / line 完整",
+        "mask_code_blocks 同长度保偏移，可被任意调用方安全前置"
+      ],
+      "estimate_days": 0.5,
+      "interfaces_frozen": true
+    },
+    {
+      "id": "F-002",
+      "title": "切换 check_index.py 调用到 markdown_links",
+      "description": "将 scripts/lib/check_index.py 中原有 6 个内部函数（LINK_RE 等）删除，改为 from markdown_links import ...；保留 _load_config / _glob_match_any / _fnmatch_glob / 主 CLI 逻辑不变；保证 tests/gates/test_index_integrity_plugin.py 全绿。",
+      "modules": [
+        "scripts/lib/check_index.py"
+      ],
+      "touches": [
+        "scripts/lib/check_index.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": [
+        "F-001"
+      ],
+      "complexity": "light",
+      "acceptance": [
+        "check_index.py 不再包含 LINK_RE / _extract_links / _resolve_link / _is_external_or_intra_anchor / _slugify / _extract_headings 函数体",
+        "tests/gates/test_index_integrity_plugin.py 全绿（pytest 无新增失败用例）",
+        "index-config.yaml 的 ignore 语义未受影响（手动跑 python3 scripts/lib/check_index.py 输出与切换前对比 diff 为空）"
+      ],
+      "estimate_days": 0.25,
+      "interfaces_frozen": true
+    },
+    {
+      "id": "F-003",
+      "title": "tests/lib/test_markdown_links.py 4 类用例覆盖",
+      "description": "为 markdown_links.py 增加 4 类 pytest 用例：LINK_RE 匹配 / slug 规则 / glob ** 扩展 / 外链与 intra-anchor 跳过。覆盖 mask_code_blocks 的 fenced / inline code 边界。",
+      "modules": [
+        "tests/lib/test_markdown_links.py"
+      ],
+      "touches": [
+        "tests/lib/test_markdown_links.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": [
+        "F-001"
+      ],
+      "complexity": "light",
+      "acceptance": [
+        "test_markdown_links.py 至少 12 个 test case，覆盖 LINK_RE / extract_links / resolve_link / slugify / extract_headings / glob_match / mask_code_blocks 7 个公开 API",
+        "code block mask 至少 3 个用例：fenced ```、inline `code`、跨行 fenced",
+        "pytest tests/lib/test_markdown_links.py 全绿"
+      ],
+      "estimate_days": 0.25,
+      "interfaces_frozen": true
+    },
+    {
+      "id": "F-004",
+      "title": "ContextInventory 组件实现",
+      "description": "实现 ContextInventory 类，scan() 方法：rglob context/**/*.md + index-config.yaml ignore 过滤 + 剔除 INDEX.md，输出 list[KnowledgeFile]。",
+      "modules": [
+        "scripts/lib/context_usage_report.py"
+      ],
+      "touches": [
+        "scripts/lib/context_usage_report.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": [
+        "F-001"
+      ],
+      "complexity": "light",
+      "acceptance": [
+        "ContextInventory.scan() 返回 list[KnowledgeFile]，每条带 path / rel_path / kind / size_bytes / fs_mtime 完整字段",
+        "kind 字段正确区分 team / project（rel_path 第二段判定）",
+        "ignore_patterns 生效（fixture: 给一个 ignore=`**/draft/**`，确认 draft 目录文件被排除）",
+        "INDEX.md 自身被排除（rglob 不返回）",
+        "context_dir 不存在时抛 FileNotFoundError"
+      ],
+      "estimate_days": 0.25,
+      "interfaces_frozen": true
+    },
+    {
+      "id": "F-005",
+      "title": "IndexGraph 实现：断链与孤岛识别",
+      "description": "实现 IndexGraph.build()：扫 context/**/INDEX.md → markdown_links.extract_links + resolve_link → 输出 IndexGraphResult（indexed_by / broken_links / orphans）。",
+      "modules": [
+        "scripts/lib/context_usage_report.py"
+      ],
+      "touches": [
+        "scripts/lib/context_usage_report.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": [
+        "F-001",
+        "F-004"
+      ],
+      "complexity": "light",
+      "acceptance": [
+        "IndexGraphResult.indexed_by 键为文件 rel_path，值为 INDEX 路径列表（按字典序）",
+        "broken_links: 给一个 fixture INDEX 列了不存在的文件，能在结果中识别且带 index_path:line + target",
+        "orphans: 给一个 fixture 文件存在但 INDEX 未引用，能识别",
+        "外链（http://...）与 intra-anchor（#foo）跳过，不计入 indexed_by"
+      ],
+      "estimate_days": 0.25,
+      "interfaces_frozen": true
+    },
+    {
+      "id": "F-006",
+      "title": "EvidenceScanner 4 种引用形式扫描",
+      "description": "实现 EvidenceScanner.scan()：扫 requirements/** 下 .md / .json / .txt / .yaml，按后缀分发，识别 markdown_link / raw_path / source_marker / json_value 4 种引用形式，输出 list[ReferenceEvidence]；reviews/*.json 解析失败 fail-open warning。",
+      "modules": [
+        "scripts/lib/context_usage_report.py"
+      ],
+      "touches": [
+        "scripts/lib/context_usage_report.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": [
+        "F-001"
+      ],
+      "complexity": "medium",
+      "acceptance": [
+        "ReferenceEvidence 含 target / source / line / kind / context_line 完整字段",
+        "4 种引用形式 fixture 各覆盖至少 1 个用例",
+        "JSON 解析失败 fail-open：warnings 列表追加一条，不抛异常",
+        "context 路径必须在传入的 candidate set 内才记录（避免噪音）",
+        "code block 内的伪引用不计入（mask_code_blocks 前置）"
+      ],
+      "estimate_days": 0.75,
+      "interfaces_frozen": true
+    },
+    {
+      "id": "F-007",
+      "title": "AppliedSignalClassifier 复合窗口 + code block mask",
+      "description": "实现 AppliedSignalClassifier.classify()：对每条 ReferenceEvidence 判定（A）复合上下文窗口（同 ## 二级小节 ∧ 前 5 行 + 后 10 行）命中 APPLIED_KEYWORDS，（B）显式升级声明命中 UPGRADE_PHRASES；保守优先。",
+      "modules": [
+        "scripts/lib/context_usage_report.py"
+      ],
+      "touches": [
+        "scripts/lib/context_usage_report.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": [
+        "F-006"
+      ],
+      "complexity": "medium",
+      "acceptance": [
+        "AppliedEvidence 含 reference / rule / matched_keyword / section_heading 完整字段",
+        "复合窗口边界正确：fixture: 关键字在前 5/后 10 行外 → 不命中；在 ## 不同小节 → 不命中",
+        "fenced code 内关键字不命中（mask_code_blocks 生效）",
+        "显式升级声明任一短语命中即归类为 applied",
+        "保守优先：fixture: 关键字在窗口边界外但同段落 → 不命中（不可宽容判定）"
+      ],
+      "estimate_days": 0.75,
+      "interfaces_frozen": true
+    },
+    {
+      "id": "F-008",
+      "title": "GitTimestamp 批量获取 + fs_mtime 回退",
+      "description": "实现 git log 子进程批量获取：subprocess git log --name-only --since=<N>d --pretty=%H|%cI，缓存 path → GitTimestamp(first/last/source)；失败回退 fs_mtime，warnings 标记。",
+      "modules": [
+        "scripts/lib/context_usage_report.py"
+      ],
+      "touches": [
+        "scripts/lib/context_usage_report.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": [],
+      "complexity": "light",
+      "acceptance": [
+        "GitTimestamp 含 first_commit_at / last_commit_at / source 完整字段，时区统一 UTC",
+        "git log 失败（shallow clone 模拟、subprocess returncode != 0）→ source=fs_mtime，first_commit_at=None",
+        "fixture: 真实 git 仓库下能解析 git log 输出 path → ts 映射",
+        "warnings 在 fallback 时追加一条全局提示"
+      ],
+      "estimate_days": 0.375,
+      "interfaces_frozen": true
+    },
+    {
+      "id": "F-009",
+      "title": "UsageAggregator 评分 + 状态分类",
+      "description": "实现 UsageAggregator.aggregate()：合并所有证据 + git timestamps + 计算 usage_score（4 子项相加）+ _classify_status（6 状态判定流程图）。高价值优先于陈旧。",
+      "modules": [
+        "scripts/lib/context_usage_report.py"
+      ],
+      "touches": [
+        "scripts/lib/context_usage_report.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": [
+        "F-004",
+        "F-005",
+        "F-006",
+        "F-007",
+        "F-008"
+      ],
+      "complexity": "medium",
+      "acceptance": [
+        "KnowledgeUsageSummary 字段与 detailed-design.md §数据结构 / KnowledgeUsageSummary 一致（14 个字段）",
+        "_compute_score 范围 [0, 82]，单测覆盖 4 个子项的上限边界",
+        "_classify_status 单测覆盖 TC-1 ~ TC-8（详细设计 §状态机表）",
+        "TC-5 验证：同时满足 high_value 与 stale → 归 high_value",
+        "now 参数可注入（便于时间相关测试）",
+        "UsageAggregator.__init__ 接受 inventory / index_result / references / applied / git_timestamps / now 共 6 个入参并正确串联（不丢任何一路证据）"
+      ],
+      "estimate_days": 0.5,
+      "interfaces_frozen": true
+    },
+    {
+      "id": "F-010",
+      "title": "ReportRenderer Markdown 4 章节 + JSON 渲染",
+      "description": "实现 ReportRenderer.render_markdown() 与 render_json()：Markdown 输出固定 4 章节（## 总览 / ## 高价值知识 / ## 待治理知识 / ## 引用明细）；JSON 顶层结构与 detailed-design §数据结构 / JSON 顶层结构一致。write() 原子化（临时文件 + os.replace）。",
+      "modules": [
+        "scripts/lib/context_usage_report.py"
+      ],
+      "touches": [
+        "scripts/lib/context_usage_report.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": [
+        "F-009"
+      ],
+      "complexity": "light",
+      "acceptance": [
+        "Markdown 报告包含 4 个 H2 标题，章节顺序固定",
+        "JSON 报告 schema 含 generated_at / tool_version / schema_version / config / summary / files / warnings 全部字段",
+        "datetime 字段 ISO-8601 UTC 格式（2026-05-19T08:30:00Z）",
+        "Enum 字段序列化为 .value 字符串",
+        "write() 写入时使用临时文件 + os.replace，Ctrl-C 中断不污染目标文件",
+        "reports/ 目录不存在时自动 mkdir -p"
+      ],
+      "estimate_days": 0.375,
+      "interfaces_frozen": true
+    },
+    {
+      "id": "F-011",
+      "title": "CLI 入口 + argparse 参数 + 退出码 + .gitignore",
+      "description": "实现 main()：argparse 11 个参数（--context-dir / --requirements-dir / --output / --json-output / --since / --project / --only-experience / --format / --fail-on-broken-index / --fail-on-orphan / --repo-root），调度 6 个组件 + Renderer；按 detailed-design §异常处理表实现 6 档退出码。同步追加 reports/ 到 .gitignore。",
+      "modules": [
+        "scripts/lib/context_usage_report.py",
+        ".gitignore"
+      ],
+      "touches": [
+        "scripts/lib/context_usage_report.py",
+        ".gitignore"
+      ],
+      "depends_on": [],
+      "depends_on_features": [
+        "F-010"
+      ],
+      "complexity": "light",
+      "acceptance": [
+        "python3 scripts/lib/context_usage_report.py 默认参数能跑通仓库当前数据，写出 reports/context-usage.md + .json",
+        "11 个 CLI 参数 argparse 解析正确，--help 输出可读",
+        "退出码 0/1/2/3/4/5 各有 fixture 触发用例",
+        ".gitignore 末尾追加 `reports/` 一行，commit 说明「需求决策表豁免」",
+        "stdout 摘要正常打印（总数 / 各状态计数 / warnings 数）",
+        "stderr 警告行格式 `WARN <msg>` / `ERROR <msg>`"
+      ],
+      "estimate_days": 0.375,
+      "interfaces_frozen": true
+    },
+    {
+      "id": "F-012",
+      "title": "单元测试：TC-1~TC-8 + 评分 + 各组件",
+      "description": "实现 tests/lib/test_context_usage_report.py：覆盖 _classify_status 8 个 TC + _compute_score 4 子项边界 + 6 个组件的核心路径与异常路径。",
+      "modules": [
+        "tests/lib/test_context_usage_report.py"
+      ],
+      "touches": [
+        "tests/lib/test_context_usage_report.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": [
+        "F-009"
+      ],
+      "complexity": "light",
+      "acceptance": [
+        "_classify_status 8 个 TC（TC-1 ~ TC-8）全部覆盖",
+        "_compute_score 至少 4 个边界用例：reference_cap=30、applied_cap=40、recency 30d/90d 切换、全 0",
+        "6 个组件各至少 3 个核心用例 + 1 个异常路径用例（24 + 6 = 30 用例）",
+        "pytest tests/lib/test_context_usage_report.py 全绿"
+      ],
+      "estimate_days": 0.5,
+      "interfaces_frozen": true,
+      "status": "done"
+    },
+    {
+      "id": "F-013",
+      "title": "Fixture 仓库 + 回归测试 + CI <5s 性能守门",
+      "description": "构建 tests/fixtures/context_usage_report/ 小型仿真仓库（含 context + requirements + INDEX 断链 + 孤岛 + 各种引用形式样本）；写端到端回归测试；CI 加 1000 文件 fixture 性能回归（time 命令守门 < 5s）。",
+      "modules": [
+        "tests/fixtures/context_usage_report/",
+        "tests/lib/test_context_usage_report.py"
+      ],
+      "touches": [
+        "tests/fixtures/context_usage_report/",
+        "tests/lib/test_context_usage_report.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": [
+        "F-011",
+        "F-012"
+      ],
+      "complexity": "light",
+      "acceptance": [
+        "fixture 仓库结构：≥ 10 个 context 文件覆盖 team/project 两种 kind + ≥ 5 个 requirements 文件 + 至少 1 个 INDEX 断链 + 至少 1 个孤岛 + 4 种引用形式样本",
+        "端到端测试运行 context_usage_report.main()，断言输出 JSON 各 status 计数、broken_links 数、orphans 数",
+        "1000 文件性能 fixture 在 CI 运行 < 5s（用 time.perf_counter 守门，超时 pytest.fail）",
+        "在仓库当前真实数据上跑一次，确认不修改任何非报告文件（git status 仅 reports/* untracked）"
+      ],
+      "estimate_days": 0.375,
+      "interfaces_frozen": true,
+      "status": "done"
+    }
+  ]
+}

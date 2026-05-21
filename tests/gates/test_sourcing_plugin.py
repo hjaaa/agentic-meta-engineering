@@ -90,6 +90,39 @@ def test_sourcing_exempts_w002_for_review_files(tmp_path):
     )
 
 
+def test_sourcing_exempts_w002_for_per_feature_review_files(tmp_path):
+    """Bug-22：per-feature review 文件 review-F-NNN-YYYYMMDD.md 必须豁免 W002。
+
+    这种命名格式由 /code-review 在 feature-level review 时产出（如 review-F-001-20260519.md），
+    与 review-YYYYMMDD-HHMMSS.md 同属衍生文档（评审结论），不应受 W002 强制三态标记约束。
+    本测试锁定 Bug-22 修复：原 regex `^review-\\d{8}-\\d{6}\\.md$` 漏 per-feature 命名。
+    """
+    md_file = tmp_path / "review-F-001-20260519.md"
+    _write_md(md_file, _md_with_w002_trigger())
+
+    gate = plugin_mod.SourcingGate()
+    ctx = GateContext(trigger="ci", extra={"sourcing_paths": [str(md_file)]})
+    report = gate.run(ctx)
+
+    assert report.decision == Decision.PASS, (
+        f"review-F-NNN-YYYYMMDD.md 应豁免 W002 (Bug-22)，实际 decision={report.decision}, message={report.message}"
+    )
+
+
+def test_sourcing_exempts_w002_for_generic_review_topic_round_format(tmp_path):
+    """Bug-22：通用衍生 review 命名 review-<topic>-<round>.md 也应豁免（如 review-rebase-002.md）。"""
+    md_file = tmp_path / "review-rebase-002.md"
+    _write_md(md_file, _md_with_w002_trigger())
+
+    gate = plugin_mod.SourcingGate()
+    ctx = GateContext(trigger="ci", extra={"sourcing_paths": [str(md_file)]})
+    report = gate.run(ctx)
+
+    assert report.decision == Decision.PASS, (
+        f"review-<topic>-<round>.md 应豁免 W002，实际 decision={report.decision}"
+    )
+
+
 def test_sourcing_exempts_w002_for_tasks_files(tmp_path):
     """given_tasks_subdir_when_run_then_w002_skipped。
 
@@ -135,7 +168,8 @@ def test_sourcing_still_emits_w002_for_design_spec(tmp_path):
 
     设计 spec 文档（detailed-design / requirement / outline-design / tech-feasibility）
     必须仍受 W002 约束——豁免范围不能扩大到 spec 文档。
-    （strict 升级 warning→error 是 runner 层职责，本测试仅断言 plugin 仍发出 warning。）
+    （strict 升级 warning→error 由 plugin 在 ctx.cli_flags["strict"] 下处理，Bug-18 修复后；
+     本测试仅断言 plugin 仍把 warning 透传到 vars。）
     """
     md_file = tmp_path / "detailed-design.md"
     _write_md(md_file, _md_with_w002_trigger())
@@ -148,6 +182,73 @@ def test_sourcing_still_emits_w002_for_design_spec(tmp_path):
     has_w002 = any("W002" in str(w) for w in warnings)
     assert has_w002, (
         f"detailed-design.md 应发出 W002 warning，实际 vars.warnings={warnings}"
+    )
+
+
+# ====================== Bug-18 修复回归（warning-only 与 strict 联动） ======================
+
+
+def test_sourcing_warning_only_passes_in_non_strict(tmp_path):
+    """Bug-18 修复：仅 warning 在非 strict 模式应 PASS（恢复 docstring 原意）。
+
+    场景：detailed-design.md 含 W002 触发条件 + 无 ERROR finding + ctx.cli_flags 不含 strict。
+    预期：decision=PASS，warnings 透传到 vars，message 提示 N warnings ignored。
+    """
+    md_file = tmp_path / "detailed-design.md"
+    _write_md(md_file, _md_with_w002_trigger())
+
+    gate = plugin_mod.SourcingGate()
+    ctx = GateContext(
+        trigger="submit",
+        extra={"sourcing_paths": [str(md_file)]},
+        cli_flags={"strict": False},
+    )
+    report = gate.run(ctx)
+
+    assert report.decision == Decision.PASS, (
+        f"Bug-18 修复：non-strict + warning-only 应 PASS，实际 {report.decision}"
+    )
+    warnings = report.vars.get("warnings", []) if report.vars else []
+    assert any("W002" in str(w) for w in warnings), (
+        f"warnings 应透传到 vars，实际 {warnings}"
+    )
+    assert "warning(s) ignored" in (report.message or ""), (
+        f"message 应提示 N warnings ignored，实际 message={report.message!r}"
+    )
+
+
+def test_sourcing_warning_only_fails_in_strict(tmp_path):
+    """Bug-18 修复：strict 模式下 warning-only 仍 FAIL（与 CI/pre-commit 严格语义一致）。"""
+    md_file = tmp_path / "detailed-design.md"
+    _write_md(md_file, _md_with_w002_trigger())
+
+    gate = plugin_mod.SourcingGate()
+    ctx = GateContext(
+        trigger="ci",
+        extra={"sourcing_paths": [str(md_file)]},
+        cli_flags={"strict": True},
+    )
+    report = gate.run(ctx)
+
+    assert report.decision == Decision.FAIL, (
+        f"strict + warning-only 应 FAIL，实际 {report.decision}"
+    )
+    assert report.code == "R-WARNING-ONLY"
+    warnings = report.vars.get("warnings", []) if report.vars else []
+    assert any("W002" in str(w) for w in warnings)
+
+
+def test_sourcing_warning_only_default_no_strict_flag_treated_non_strict(tmp_path):
+    """ctx.cli_flags 不含 strict key 时（旧 ctx 默认行为）→ 视为 non-strict → PASS。"""
+    md_file = tmp_path / "detailed-design.md"
+    _write_md(md_file, _md_with_w002_trigger())
+
+    gate = plugin_mod.SourcingGate()
+    ctx = GateContext(trigger="post-dev", extra={"sourcing_paths": [str(md_file)]})
+    report = gate.run(ctx)
+
+    assert report.decision == Decision.PASS, (
+        f"cli_flags 缺 strict key 应当 non-strict → PASS，实际 {report.decision}"
     )
 
 
