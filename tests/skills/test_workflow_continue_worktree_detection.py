@@ -21,7 +21,6 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _LIB_DIR = _REPO_ROOT / "scripts" / "lib"
