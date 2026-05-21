@@ -16,13 +16,16 @@ def test_real_repo_returns_agentic_meta_engineering():
     assert wb._infer_default_project() == "agentic-meta-engineering"
 
 
-def test_multi_project_picks_first_sorted(tmp_path, monkeypatch):
-    """多 project → 默认取首个（按字典序）"""
+def test_multi_project_returns_empty_no_silent_pick(tmp_path, monkeypatch, caplog):
+    """多 project → 返回空 + warning（codex P2 修订：不再静默自动选首个）"""
     fake_repo = tmp_path
     (fake_repo / "context" / "project" / "alpha").mkdir(parents=True)
     (fake_repo / "context" / "project" / "beta").mkdir(parents=True)
     monkeypatch.setattr(wb, "REPO_ROOT", fake_repo)
-    assert wb._infer_default_project() == "alpha"
+    import logging as _l
+    with caplog.at_level(_l.WARNING):
+        assert wb._infer_default_project() == ""
+    assert any("多个 project" in r.message or "alpha" in r.message for r in caplog.records)
 
 
 def test_zero_project_returns_empty(tmp_path, monkeypatch):

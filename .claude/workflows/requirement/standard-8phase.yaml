@@ -183,7 +183,7 @@ nodes:
     bash: |
       set -e
       python3 scripts/lib/meta_set.py --path "$META_PATH" --set .phase=tech-research --append .gates_passed=GATE-REQUIREMENT-SIGNOFF
-      python3 scripts/lib/append_process.py "phase-transition: definition → tech-research"
+      python3 scripts/lib/append_process.py --run "$RUN_ID" "phase-transition: definition → tech-research"
     timeout: 30000
     depends_on: [req-confirm]
 
@@ -269,7 +269,7 @@ nodes:
     bash: |
       set -e
       python3 scripts/lib/meta_set.py --path "$META_PATH" --set .phase=outline-design --set-json '.affected_modules=$tech-feasibility-assess.output.affected_modules'
-      python3 scripts/lib/append_process.py "phase-transition: tech-research → outline-design"
+      python3 scripts/lib/append_process.py --run "$RUN_ID" "phase-transition: tech-research → outline-design"
     timeout: 30000
     depends_on: [tech-research-confirm]
 
@@ -345,7 +345,7 @@ nodes:
     bash: |
       set -e
       python3 scripts/lib/meta_set.py --path "$META_PATH" --set .phase=detail-design
-      python3 scripts/lib/append_process.py "phase-transition: outline-design → detail-design"
+      python3 scripts/lib/append_process.py --run "$RUN_ID" "phase-transition: outline-design → detail-design"
     timeout: 30000
     depends_on: [outline-design-confirm]
 
@@ -452,7 +452,7 @@ nodes:
     bash: |
       set -e
       python3 scripts/lib/meta_set.py --path "$META_PATH" --set .phase=task-planning
-      python3 scripts/lib/append_process.py "phase-transition: detail-design → task-planning"
+      python3 scripts/lib/append_process.py --run "$RUN_ID" "phase-transition: detail-design → task-planning"
     timeout: 30000
     depends_on: [detail-design-confirm]
 
@@ -508,7 +508,7 @@ nodes:
     bash: |
       set -e
       python3 scripts/lib/meta_set.py --path "$META_PATH" --set .phase=development
-      python3 scripts/lib/append_process.py "phase-transition: task-planning → development"
+      python3 scripts/lib/append_process.py --run "$RUN_ID" "phase-transition: task-planning → development"
     timeout: 30000
     depends_on: [task-confirm]
 
@@ -550,7 +550,7 @@ nodes:
     bash: |
       set -e
       python3 scripts/lib/meta_set.py --path "$META_PATH" --set .phase=testing
-      python3 scripts/lib/append_process.py "phase-transition: development → testing"
+      python3 scripts/lib/append_process.py --run "$RUN_ID" "phase-transition: development → testing"
     timeout: 30000
     depends_on: [dev-all-features-done-check]
 
@@ -712,7 +712,7 @@ nodes:
         --set ".phase=completed" \
         --set ".workflow_status=completed" \
         --set ".completed_at=$COMPLETED_AT"
-      python3 scripts/lib/append_process.py "phase-transition: completed → archived" 2>/dev/null || true
+      python3 scripts/lib/append_process.py --run "$RUN_ID" "phase-transition: completed → archived" 2>/dev/null || true
       echo "归档完成；RUN_ID=$RUN_ID"
       echo "建议手动跑：git branch -d $BRANCH_NAME"
     timeout: 30000

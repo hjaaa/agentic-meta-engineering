@@ -157,10 +157,14 @@ def _now_shanghai_str() -> str:
 def _infer_default_project() -> str:
     """bootstrap 时推断 meta.yaml.project 字段（Bug-2）。
 
-    规则：
+    规则（codex P2 修订后）：
       - context/project/<X>/ 单个目录 → 返回 <X>
-      - 多目录 → 返回首个（按名排序）+ warning（用户后续可手工改 meta.yaml）
-      - 零目录 → 返回空（保留旧行为，后续 check_meta 在 bootstrap 阶段已放宽）
+      - 多目录 → 返回空 + warning（要求用户显式编辑 meta.yaml；不静默自动选避免
+        多 project 仓库误绑定到字典序首项）
+      - 零目录 → 返回空
+
+    多 project 时返回空让 check_meta 在 bootstrap 阶段已放宽路径通过，
+    并以 warning 提示用户在 definition 阶段离开前手工填 project 字段。
     """
     project_root = REPO_ROOT / "context" / "project"
     if not project_root.is_dir():
@@ -173,10 +177,11 @@ def _infer_default_project() -> str:
     if len(candidates) == 1:
         return candidates[0]
     logging.warning(
-        "_infer_default_project: 发现多个 project (%s)，默认取首个 %s；如需切换请手工编辑 meta.yaml",
-        candidates, candidates[0],
+        "_infer_default_project: 发现多个 project (%s)，bootstrap 不自动选；"
+        "请在 definition 阶段离开前手工编辑 meta.yaml.project 字段指向目标 project",
+        candidates,
     )
-    return candidates[0]
+    return ""
 
 
 def _render_meta_yaml(
