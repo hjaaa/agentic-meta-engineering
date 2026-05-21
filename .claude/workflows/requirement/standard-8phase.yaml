@@ -363,39 +363,32 @@ nodes:
 
   - id: features-json-generate
     prompt: |
-      基于 $ARTIFACTS_DIR/detailed-design.md 拆分功能点。
+      基于 $ARTIFACTS_DIR/detailed-design.md 拆分功能点，产出 $ARTIFACTS_DIR/features.json。
 
-      产出 $ARTIFACTS_DIR/features.json，schema：
-      {
-        "features": [
-          {
-            "id": "feat-001",
-            "title": "<简短标题>",
-            "description": "<描述>",
-            "module": "<所属模块>",
-            "estimated_hours": <数字>,
-            "depends_on": ["feat-XXX"],
-            "acceptance_criteria": ["..."],
-            "status": "pending"
-          }
-        ],
-        "total_features": <数字>,
-        "total_estimated_hours": <数字>
-      }
+      **schema 唯一事实源**：`context/team/engineering-spec/features-schema.yaml`
+      （生成前请读取该文件，禁止凭记忆/旧示例拼字段）。
+
+      关键字段约束（与 schema 对齐，违反必撞 check_features.py）：
+      - 顶层必填：`schema_version: "1.0"` / `requirement_id: <REQ-ID>` / `features: []`
+      - feature.id：正则 `^F-\d{3}$`（**不是** feat-NNN）
+      - 字段名：`acceptance`（不是 acceptance_criteria）/ `estimate_days`（不是 estimated_hours）
+      - 必填字段：`id` / `title` / `description` / `acceptance` / `complexity` /
+        `interfaces_frozen` / `depends_on` / `depends_on_features` / `modules` / `touches`
+      - `complexity` 枚举：`trivial` / `light` / `medium` / `heavy`（不是 low/medium/high）
+      - 顶层**不需要** `total_features` / `total_estimated_hours`（report 字段自动派生）
 
       规则：
-      - 每个 feature 工作量 0.5-2 天（超出必须拆分）
+      - 每个 feature 工作量对应 `complexity` 而非小时数；trivial≈0.5d / light≈1d / medium≈2d / heavy≈3d+
       - 验收标准对应 requirement.md 的验收条款
-      - 依赖关系不可成环
-      - id 用 feat-NNN 三位数字
+      - 依赖关系不可成环（`depends_on_features` 拓扑序）
+      - `touches` 显式列出该 feature 修改文件，给 touches_guard.py 用
     context: shared
     model: opus[1m]
     output_format:
       type: object
       properties:
-        total_features: { type: integer, minimum: 1 }
-        total_estimated_hours: { type: number }
-      required: [total_features, total_estimated_hours]
+        features_json_path: { type: string }
+      required: [features_json_path]
     depends_on: [detail-design-draft]
 
   - id: detail-design-review
@@ -440,10 +433,6 @@ nodes:
         - 数据结构：$detail-design-review.output.data_structure_review
         - 时序图：$detail-design-review.output.sequence_diagram_review
         - features.json：$detail-design-review.output.features_json_review
-
-        ### features.json 摘要
-        - 总 feature 数：$features-json-generate.output.total_features
-        - 总估算工时：$features-json-generate.output.total_estimated_hours h
 
         ### 问题
         $detail-design-review.output.issues
