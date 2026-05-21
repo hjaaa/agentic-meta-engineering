@@ -90,6 +90,39 @@ def test_sourcing_exempts_w002_for_review_files(tmp_path):
     )
 
 
+def test_sourcing_exempts_w002_for_per_feature_review_files(tmp_path):
+    """Bug-22：per-feature review 文件 review-F-NNN-YYYYMMDD.md 必须豁免 W002。
+
+    这种命名格式由 /code-review 在 feature-level review 时产出（如 review-F-001-20260519.md），
+    与 review-YYYYMMDD-HHMMSS.md 同属衍生文档（评审结论），不应受 W002 强制三态标记约束。
+    本测试锁定 Bug-22 修复：原 regex `^review-\\d{8}-\\d{6}\\.md$` 漏 per-feature 命名。
+    """
+    md_file = tmp_path / "review-F-001-20260519.md"
+    _write_md(md_file, _md_with_w002_trigger())
+
+    gate = plugin_mod.SourcingGate()
+    ctx = GateContext(trigger="ci", extra={"sourcing_paths": [str(md_file)]})
+    report = gate.run(ctx)
+
+    assert report.decision == Decision.PASS, (
+        f"review-F-NNN-YYYYMMDD.md 应豁免 W002 (Bug-22)，实际 decision={report.decision}, message={report.message}"
+    )
+
+
+def test_sourcing_exempts_w002_for_generic_review_topic_round_format(tmp_path):
+    """Bug-22：通用衍生 review 命名 review-<topic>-<round>.md 也应豁免（如 review-rebase-002.md）。"""
+    md_file = tmp_path / "review-rebase-002.md"
+    _write_md(md_file, _md_with_w002_trigger())
+
+    gate = plugin_mod.SourcingGate()
+    ctx = GateContext(trigger="ci", extra={"sourcing_paths": [str(md_file)]})
+    report = gate.run(ctx)
+
+    assert report.decision == Decision.PASS, (
+        f"review-<topic>-<round>.md 应豁免 W002，实际 decision={report.decision}"
+    )
+
+
 def test_sourcing_exempts_w002_for_tasks_files(tmp_path):
     """given_tasks_subdir_when_run_then_w002_skipped。
 
