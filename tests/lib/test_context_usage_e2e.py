@@ -254,3 +254,80 @@ def test_perf_1000_files(tmp_path: Path) -> None:
 
     assert exit_code == 0, f"main() 返回非 0 退出码: {exit_code}"
     assert elapsed < 10.0, f"性能不达标：{elapsed:.2f}s > 10.0s"
+
+
+# ============================================================================
+# Bug-23 / Bug-24 回归测试（codex round=1 P1 finding）
+# 锁 _build_file_cache / _build_all_files_for_git 用 repo_root 而非 requirements_dir
+# 拼 evidence.source（后者是 repo-root-relative，前者会双前缀全部 miss）
+# ============================================================================
+
+
+def test_bug23_file_cache_uses_repo_root_for_evidence_source(tmp_path: Path) -> None:
+    """Bug-23 回归：evidence.source 已是 repo-root-relative，必须用 repo_root 拼接。
+
+    构造：tmp_path/requirements/REQ-X/foo.md，evidence.source = "requirements/REQ-X/foo.md"。
+    错误实现（requirements_dir / source）→ 找 tmp_path/requirements/requirements/REQ-X/foo.md → miss
+    正确实现（repo_root / source）→ 找 tmp_path/requirements/REQ-X/foo.md → hit
+    """
+    from context_usage_evidence import ReferenceEvidence
+    from context_usage_report import _build_file_cache
+
+    # 构造与 EvidenceScanner 输出一致的 repo-root-relative source
+    src_file = tmp_path / "requirements" / "REQ-X" / "foo.md"
+    src_file.parent.mkdir(parents=True)
+    src_file.write_text("CONTENT_FOO", encoding="utf-8")
+
+    evidence = ReferenceEvidence(
+        target="context/team/glossary.md",
+        source="requirements/REQ-X/foo.md",
+        line=1,
+        kind="raw_path",
+        context_line="see glossary",
+    )
+    warnings: list[str] = []
+    cache = _build_file_cache([evidence], repo_root=tmp_path, warnings=warnings)
+
+    expected = src_file.resolve()
+    assert any(p.resolve() == expected for p in cache), (
+        f"file_cache 未命中 repo_root-relative source；keys={list(cache)} warnings={warnings}"
+    )
+    assert all("CONTENT_FOO" in v for v in cache.values()), (
+        f"file_cache 内容应是 src_file 文本，实际 {list(cache.values())}"
+    )
+
+
+def test_bug24_git_files_use_repo_root_for_evidence_source(tmp_path: Path) -> None:
+    """Bug-24 回归：reference source 进 git_timestamps 输入时也必须用 repo_root 拼接。"""
+    from context_usage_evidence import ReferenceEvidence
+    from context_usage_report import _build_all_files_for_git
+
+    src_file = tmp_path / "requirements" / "REQ-Y" / "bar.md"
+    src_file.parent.mkdir(parents=True)
+    src_file.write_text("BAR", encoding="utf-8")
+
+    evidence = ReferenceEvidence(
+        target="context/team/some.md",
+        source="requirements/REQ-Y/bar.md",
+        line=1,
+        kind="raw_path",
+        context_line="ref",
+    )
+    warnings: list[str] = []
+    all_files = _build_all_files_for_git(
+        files=[],
+        evidences=[evidence],
+        repo_root=tmp_path,
+        warnings=warnings,
+    )
+
+    rel_paths = {kf.rel_path for kf in all_files}
+    assert "requirements/REQ-Y/bar.md" in rel_paths, (
+        f"all_files 缺 reference source（双前缀拼接 bug 复发）：rel_paths={rel_paths} warnings={warnings}"
+    )
+    # 同时确认 path 字段不是双前缀
+    for kf in all_files:
+        if kf.rel_path == "requirements/REQ-Y/bar.md":
+            assert kf.path.resolve() == src_file.resolve(), (
+                f"path 字段不应被双前缀污染，实际 {kf.path}"
+            )

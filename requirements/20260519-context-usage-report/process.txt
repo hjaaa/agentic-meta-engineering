@@ -59,3 +59,6 @@
 2026-05-20 16:49:38 [phase-transition] development → testing
 2026-05-20 17:04:16 [testing] test-traceability-check FAIL on F-002（_extract_links/_extract_headings/_resolve_link 函数体保留与原 AC-1 字面冲突）→ 用户决策接受偏离 + 修订 AC：原'不再包含 X 函数体'精确化为'不再包含常量/正则/复杂业务逻辑'，IO adapter wrapper 可接受（条件：read_text + 调同名 API + 必要 fallback + 总计 < 25 行）；F-002.md + notes.md 同步更新；将手动 append 节点 -002 PASS supersedes -001 FAIL 推进 testing 流程
 2026-05-21 08:23:14 [testing] submitted PR #84 → develop (https://github.com/hjaaa/agentic-meta-engineering/pull/84)；title=feat(20260519-context-usage-report): Context 知识利用率统计机制；52 commits ahead；canonical 路径绕过 pr-submit yaml Bug-20 + GATE-SOURCING Bug-18 复发（12 个 pre-existing W002/W003 不在本期 diff 内）；test-runner 1799/1812 pass + 1 pre-existing fail (Bug-19)
+2026-05-21 10:00:04 [codex-skipped] reason=ci-pending pr=#84 checks=0
+2026-05-21 10:03:37 [codex-review-triggered] round=1 pr=#84
+2026-05-21 10:21:45 [testing] [codex-review-received] verdict=not_passed round=1 reviewer=chatgpt-codex-connector[bot] reviewed_commit=ca52244 findings=2 P1 (scripts/lib/context_usage_report.py:200+:280：EvidenceScanner.source 已是 repo-root-relative，但 caller 又拼 requirements_dir → 双前缀 .../requirements/requirements/.../ 路径不存在 → applied_signal/git_timestamp 整批失效 → high_value 分类与 last_referenced_at 静默错误)

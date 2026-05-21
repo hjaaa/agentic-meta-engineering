@@ -191,13 +191,21 @@ def _check_dirs(context_dir: Path, requirements_dir: Path) -> int | None:
 
 def _build_file_cache(
     evidences: list[ReferenceEvidence],
-    requirements_dir: Path,
+    repo_root: Path,
     warnings: list[str],
 ) -> dict[Path, str]:
-    """从引用证据收集 source 文件内容缓存。"""
+    """从引用证据收集 source 文件内容缓存。
+
+    Bug-23 修复（codex P1，2026-05-21）：`evidence.source` 由 EvidenceScanner 算成
+    repo-root-relative 路径（如 `requirements/REQ-*/plan.md`，参 context_usage_evidence:263
+    `file_path.resolve().relative_to(self._repo_root)`），调用方必须用 repo_root 拼接而非
+    requirements_dir，否则结果是 `<repo>/requirements/requirements/REQ.../plan.md` 双前缀，
+    文件全部不存在 → file_cache 永远空 → AppliedSignalClassifier 取不到正文 → applied
+    signals 整批 0 → high_value 分类静默错误。
+    """
     file_cache: dict[Path, str] = {}
     for evidence in evidences:
-        src_path = requirements_dir / evidence.source
+        src_path = repo_root / evidence.source
         if src_path not in file_cache and src_path.is_file():
             try:
                 file_cache[src_path] = src_path.read_text(encoding="utf-8")
@@ -269,15 +277,21 @@ def _render_and_write(
 def _build_all_files_for_git(
     files: list[KnowledgeFile],
     evidences: list[ReferenceEvidence],
-    requirements_dir: Path,
+    repo_root: Path,
     warnings: list[str],
 ) -> list[KnowledgeFile]:
-    """合并 context files + reference source files 用于 git 时间戳查询。"""
+    """合并 context files + reference source files 用于 git 时间戳查询。
+
+    Bug-24 修复（codex P1，2026-05-21）：与 _build_file_cache 同根问题——
+    `evidence.source` 是 repo-root-relative，必须用 repo_root 拼接；用 requirements_dir
+    会双前缀导致所有引用源文件被跳过，进而 git_timestamps 缺失 → last_referenced_at=None
+    → recency 评分与 stale 检测整批失效（F-008/F-009 acceptance 静默不达标）。
+    """
     all_files: list[KnowledgeFile] = files.copy()
     reference_source_paths: set[str] = {e.source for e in evidences}
 
     for src_rel in reference_source_paths:
-        src_abs = requirements_dir / src_rel
+        src_abs = repo_root / src_rel
         if src_abs.is_file():
             try:
                 kf = KnowledgeFile(
@@ -442,10 +456,10 @@ def _run(args: argparse.Namespace) -> int:
 
     files, graph_result, evidences = _scan_and_filter(args, warnings)
 
-    file_cache = _build_file_cache(evidences, args.requirements_dir, warnings)
+    file_cache = _build_file_cache(evidences, args.repo_root, warnings)
     applied = AppliedSignalClassifier().classify(evidences, file_cache)
     all_files_for_git = _build_all_files_for_git(
-        files, evidences, args.requirements_dir, warnings
+        files, evidences, args.repo_root, warnings
     )
     timestamps, git_warnings = fetch_git_timestamps(
         all_files_for_git, since_days, repo_root=args.repo_root
