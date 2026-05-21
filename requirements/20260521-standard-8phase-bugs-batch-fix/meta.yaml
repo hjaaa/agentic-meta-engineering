@@ -1,6 +1,6 @@
 id: 20260521-standard-8phase-bugs-batch-fix
 title: Standard-8phase 流程残留 bug 批量修复
-phase: bootstrap
+phase: testing
 created_at: 2026-05-21 14:31:12
 branch: feat/req-20260521-standard-8phase-bugs-batch-fix
 base_branch: develop
@@ -44,7 +44,7 @@ tags:
 - batch-fix
 outcome: ''
 completed_at: ''
-lessons_extracted: false
+lessons_extracted: true
 reviews:
   definition:
     latest: REV-20260521-standard-8phase-bugs-batch-fix-definition-001
