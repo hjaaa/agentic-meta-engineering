@@ -1,1 +1,2 @@
 2026-05-21 14:19:45 [save] definition: 补 ARS-8 / D-003 — worktree cleanup 时机从 pre-archive 推迟到 --finalize（合并进 F-003），第 3 条保护改为 chdir 主仓根再删
+2026-05-21 15:08:00 [phase-transition] definition → tech-research（11 gates 全过：META-SCHEMA / INDEX-INTEGRITY / SOURCING / PLAN-FRESHNESS / WORKSPACE-CLEAN / REVIEW-VERDICT / FEATURES-SCHEMA / TASK-FRONTMATTER / POST-DEV-RECEIPT / TRACEABILITY / TOUCHES-VIOLATION；1 warning W003 scope 子条目缺口非阻断；review verdict REV-...-002 looks_clean@b0f4762）

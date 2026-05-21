@@ -1,13 +1,14 @@
 # ============ 流程组（bootstrap 时填） ============
 id: 20260521-archive-runner-auto-pr
 title: archive_runner 自动开归档 PR + 单需求单分支闭环
-phase: definition
+phase: tech-research
 created_at: 2026-05-21 11:37:32
 branch: feat/req-20260521-archive-runner-auto-pr
 base_branch: develop
 project: agentic-meta-engineering
 services: []
-gates_passed: []
+gates_passed:
+  - phase-transition:definition->tech-research@2026-05-21 15:08:00
 pr_url: ""
 pr_number: 0
 log_layout: split
