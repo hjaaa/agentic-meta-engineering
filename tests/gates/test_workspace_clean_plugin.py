@@ -128,7 +128,7 @@ def test_workspace_clean_does_not_filter_unrelated_bak():
     gate = plugin_mod.WorkspaceCleanGate()
     ctx = GateContext(trigger="phase-transition")
 
-    # 不是 requirements/REQ-XXX/meta.yaml.bak 模式 → 不过滤
+    # 不是 requirements/<id>/meta.yaml.bak 模式 → 不过滤
     other_bak = "?? scripts/foo.yaml.bak"
     with patch("subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(stdout=other_bak, returncode=0)
@@ -136,3 +136,49 @@ def test_workspace_clean_does_not_filter_unrelated_bak():
 
     assert report.decision == Decision.FAIL
     assert "scripts/foo.yaml.bak" in (report.message or "")
+
+
+# ====================== Bug-21：stash residue regex 兼容新 id 格式 ======================
+
+
+def test_workspace_clean_passes_when_stash_residue_uses_new_id_format():
+    """Bug-21：新需求 id `YYYYMMDD-<slug>` 格式的 meta.yaml.bak 也应被过滤为 PASS。"""
+    gate = plugin_mod.WorkspaceCleanGate()
+    ctx = GateContext(trigger="submit")
+
+    # 新格式 id（如本需求）
+    stash_only = "?? requirements/20260519-context-usage-report/meta.yaml.bak"
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(stdout=stash_only, returncode=0)
+        report = gate.run(ctx)
+
+    assert report.decision == Decision.PASS, (
+        f"新格式 id 的 stash residue 应过滤，实际 {report.decision} msg={report.message!r}"
+    )
+
+
+def test_workspace_clean_passes_when_stash_residue_uses_new_id_with_suffix():
+    """Bug-21：新格式 id 带 -NN 后缀（YYYYMMDD-<slug>-01）的 meta.yaml.bak 也应被过滤。"""
+    gate = plugin_mod.WorkspaceCleanGate()
+    ctx = GateContext(trigger="submit")
+
+    stash_only = "?? requirements/20260520-remove-foo-bar-02/meta.yaml.bak"
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(stdout=stash_only, returncode=0)
+        report = gate.run(ctx)
+
+    assert report.decision == Decision.PASS
+
+
+def test_workspace_clean_fails_when_new_id_format_bak_outside_meta_yaml():
+    """新 id 格式但 .bak 不是 meta.yaml.bak → 不过滤，仍 dirty（regex 严格性）。"""
+    gate = plugin_mod.WorkspaceCleanGate()
+    ctx = GateContext(trigger="submit")
+
+    not_meta = "?? requirements/20260519-context-usage-report/notes.md.bak"
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(stdout=not_meta, returncode=0)
+        report = gate.run(ctx)
+
+    assert report.decision == Decision.FAIL
+    assert "notes.md.bak" in (report.message or "")
