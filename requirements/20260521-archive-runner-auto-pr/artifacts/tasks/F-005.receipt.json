@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-005",
+  "status": "DONE_WITH_CONCERNS",
+  "commit_sha": "ae80f3565cbab284cdb55f6e2170e7f537c4021e",
+  "files_changed": [
+    "tests/lifecycle/test_archive_runner.py",
+    "tests/lifecycle/test_finalize.py",
+    "tests/lib/test_check_meta_archive_pr_number.py"
+  ],
+  "test_summary": "pytest 37 TC 全绿（13 TC-F1/F2 + 18 TC-F3 + 6 TC-F4）/ 9 fail-closed R-* 全断言 / TC-F3-5/F3-6 §3.4 字面一致",
+  "touches_violations": [],
+  "concerns": [
+    "边界外：test_archive.py 存在 21 pre-existing failures（fake_repo 缺模板 seed：archive-pr-body.md.tmpl 不在 fixture 中）；F-005 不可修，建议后续 hotfix 在 test_archive.py 的 fake_repo fixture 中补模板 seed"
+  ],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-22 12:00:00"
+}
