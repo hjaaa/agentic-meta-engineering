@@ -621,6 +621,43 @@ def _append_process_event(req_id: str, pr_number: int, archived_at: str) -> None
         f.write(line)
 
 
+def _log_finalize_event(
+    req_id: str, result: ArchiveResult, *, keep_flags: list[str]
+) -> None:
+    """追加 `[finalized]` 事件到 process.txt；幂等（末 10 行扫描）。
+
+    格式（detailed-design §3.5）：
+        YYYY-MM-DD HH:MM:SS [finalized] worktree=<...> local_branch=<...> remote_branch=<...> [archive PR #<N>] (--keep-...)
+
+    - archive PR #<N> 段仅在 result.archive_pr_number > 0 时追加
+    - 括号后缀仅含 keep_flags 中**启用**的 flag，空格分隔，全空则省略
+    - idempotent：扫 process.txt 末 10 行含 `[finalized]` tag → 跳过追加
+
+    与 _append_process_event 同样走 flock + a+ 写法；并发安全。
+    """
+    path = _process_path(req_id)
+    suffix_parts: list[str] = [
+        f"worktree={result.worktree_removed}",
+        f"local_branch={result.local_branch}",
+        f"remote_branch={result.remote_branch}",
+    ]
+    if result.archive_pr_number > 0:
+        suffix_parts.append(f"[archive PR #{result.archive_pr_number}]")
+    if keep_flags:
+        suffix_parts.append(f"({' '.join(keep_flags)})")
+    line = f"{_now_cst_str()} [finalized] {' '.join(suffix_parts)}\n"
+
+    with path.open("a+", encoding="utf-8") as f:
+        _try_lock_exclusive(f)
+        f.seek(0)
+        content = f.read()
+        # idempotent：扫末 10 行（设计文档明确要求；避免历史 finalize 误判）
+        tail = content.splitlines()[-10:]
+        if any("[finalized]" in entry for entry in tail):
+            return
+        f.write(line)
+
+
 def _try_lock_exclusive(file_obj: Any) -> None:
     """尝试取排他文件锁；失败时静默退化（与历史非原子行为兼容）。
 
