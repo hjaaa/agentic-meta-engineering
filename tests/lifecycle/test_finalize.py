@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import types
 from pathlib import Path
@@ -21,6 +22,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "scripts" / "lib"))
 
 import archive_runner  # noqa: E402
+import worktree_manager  # noqa: E402
 from archive_runner import (  # noqa: E402
     ArchivePrompt,
     _FINALIZE_WARN_FORCE_ONLY,
@@ -29,7 +31,7 @@ from archive_runner import (  # noqa: E402
 )
 
 
-# ---------- fixture helpers ----------
+# ---------- fixture 辅助函数 ----------
 
 
 def _make_meta(
@@ -86,7 +88,6 @@ def fake_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         "resolve_main_repo_root",
         lambda _cwd: tmp_path,
     )
-    import worktree_manager
     monkeypatch.setattr(
         worktree_manager,
         "cleanup_worktree_if_owned",
@@ -110,14 +111,17 @@ def _make_run_stub(plan: dict[tuple, Any]):
 
 
 def _ok(stdout: str = "", stderr: str = "", returncode: int = 0):
+    """构造成功 subprocess 结果存根。"""
     return types.SimpleNamespace(returncode=returncode, stdout=stdout, stderr=stderr)
 
 
 def _fail(stderr: str = "error", returncode: int = 1):
+    """构造失败 subprocess 结果存根。"""
     return types.SimpleNamespace(returncode=returncode, stdout="", stderr=stderr)
 
 
 def _merged_pr_json(number: int = 55) -> str:
+    """构造 gh pr view 返回的 MERGED 状态 JSON 字符串。"""
     return json.dumps({"state": "MERGED", "number": number})
 
 
@@ -133,7 +137,7 @@ def _make_happy_path_plan(archive_pr_number: int = 55, branch: str = "feat/req-2
     }
 
 
-# ---------- TC-F3-1: finalize happy path ----------
+# ---------- TC-F3-1: finalize 正常路径 ----------
 
 
 def test_finalize_happy_path(
@@ -372,7 +376,7 @@ def test_finalize_user_answers_no(
     assert not delete_called, "no delete operations should happen when user answers N"
 
 
-# ---------- TC-F3-8: finalize cwd in main repo ----------
+# ---------- TC-F3-8: finalize cwd 在主仓 ----------
 
 
 def test_finalize_cwd_in_main_repo(
@@ -397,7 +401,7 @@ def test_finalize_cwd_in_main_repo(
     assert result.experience != "aborted by user", "should complete normally when cwd is main repo"
 
 
-# ---------- TC-F3-9: finalize cwd in linked worktree ----------
+# ---------- TC-F3-9: finalize cwd 在 linked worktree ----------
 
 
 def test_finalize_cwd_in_linked_worktree(
@@ -454,7 +458,6 @@ def test_finalize_cwd_outside_worktree_oserror(
         lambda _cwd: nonexistent,
     )
     # 同时更新 archive_runner 模块中的 worktree_manager 引用
-    import worktree_manager
     monkeypatch.setattr(
         worktree_manager,
         "resolve_main_repo_root",
@@ -612,9 +615,10 @@ def test_finalize_all_keep_flags(
     )
 
     process_content = (fake_repo / req_id / "process.txt").read_text(encoding="utf-8")
-    assert "--keep-worktree" in process_content, "process.txt should contain --keep-worktree"
-    assert "--keep-local-branch" in process_content, "process.txt should contain --keep-local-branch"
-    assert "--keep-remote-branch" in process_content, "process.txt should contain --keep-remote-branch"
+    # _log_finalize_event 三 flag 合并为单括号后缀（archive_runner._finalize_collect_keep_flags + _log_finalize_event）
+    assert "(--keep-worktree --keep-local-branch --keep-remote-branch)" in process_content, (
+        f"process.txt should contain '(--keep-worktree --keep-local-branch --keep-remote-branch)', got:\n{process_content}"
+    )
 
 
 # ---------- TC-F3-16: finalize --legacy-resurrect-remote remote 不存在 ----------
@@ -727,4 +731,60 @@ def test_finalize_delete_local_branch_strict_squash_merge(
     # strict=True 路径：R-* 错误码必须出现（fail-closed 强制断言 features.json:138）
     assert "R-FINALIZE-LOCAL-BRANCH-FAILED" in err, (
         f"stderr must contain R-FINALIZE-LOCAL-BRANCH-FAILED (fail-closed 强制), got: {err!r}"
+    )
+
+
+# ---------- TC-F3-19: finalize 预检 subprocess.TimeoutExpired ----------
+
+
+def test_finalize_precheck_subprocess_timeout(
+    fake_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """TC-F3-19: gh pr view 抛 TimeoutExpired → SystemExit(1) + R-FINALIZE-ARCHIVE-PR-FETCH-FAILED。"""
+    req_id = "REQ-2099-002"
+    _make_meta(fake_repo, req_id=req_id, archive_pr_number=55)
+
+    # _make_run_stub 支持 isinstance(result, BaseException) → raise result
+    plan = {
+        ("gh", "pr", "view"): subprocess.TimeoutExpired(cmd=["gh"], timeout=30),
+    }
+    monkeypatch.setattr(archive_runner, "_run", _make_run_stub(plan))
+
+    with pytest.raises(SystemExit) as excinfo:
+        finalize_requirement(req_id, yes_finalize=True)
+
+    assert excinfo.value.code == 1, "should exit 1 on TimeoutExpired"
+    err = capsys.readouterr().err
+    assert "R-FINALIZE-ARCHIVE-PR-FETCH-FAILED" in err, (
+        f"stderr must contain R-FINALIZE-ARCHIVE-PR-FETCH-FAILED on timeout, got: {err!r}"
+    )
+
+
+# ---------- TC-F3-20: finalize 预检 FileNotFoundError ----------
+
+
+def test_finalize_precheck_subprocess_file_not_found(
+    fake_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """TC-F3-20: gh pr view 抛 FileNotFoundError → SystemExit(1) + R-FINALIZE-ARCHIVE-PR-FETCH-FAILED。"""
+    req_id = "REQ-2099-002"
+    _make_meta(fake_repo, req_id=req_id, archive_pr_number=55)
+
+    # FileNotFoundError = gh 二进制不在 PATH 中
+    plan = {
+        ("gh", "pr", "view"): FileNotFoundError("gh: command not found"),
+    }
+    monkeypatch.setattr(archive_runner, "_run", _make_run_stub(plan))
+
+    with pytest.raises(SystemExit) as excinfo:
+        finalize_requirement(req_id, yes_finalize=True)
+
+    assert excinfo.value.code == 1, "should exit 1 on FileNotFoundError"
+    err = capsys.readouterr().err
+    assert "R-FINALIZE-ARCHIVE-PR-FETCH-FAILED" in err, (
+        f"stderr must contain R-FINALIZE-ARCHIVE-PR-FETCH-FAILED on FileNotFoundError, got: {err!r}"
     )

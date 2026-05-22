@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import json
 import sys
 import types
 from pathlib import Path
@@ -30,7 +31,7 @@ from archive_runner import (  # noqa: E402
 )
 
 
-# ---------- fixture helpers ----------
+# ---------- fixture 辅助函数 ----------
 
 
 def _make_meta(
@@ -115,14 +116,16 @@ def _make_run_stub(plan: dict[tuple, Any]):
 
 
 def _ok(stdout: str = "", stderr: str = "", returncode: int = 0):
+    """构造成功 subprocess 结果存根。"""
     return types.SimpleNamespace(returncode=returncode, stdout=stdout, stderr=stderr)
 
 
 def _fail(stderr: str = "error", returncode: int = 1):
+    """构造失败 subprocess 结果存根。"""
     return types.SimpleNamespace(returncode=returncode, stdout="", stderr=stderr)
 
 
-# ---------- TC-F1-1: _commit_archive_metadata idempotent ----------
+# ---------- TC-F1-1: _commit_archive_metadata 幂等 ----------
 
 
 def test_commit_archive_metadata_idempotent(
@@ -223,7 +226,7 @@ def test_commit_archive_metadata_non_whitelist_dirty(
     )
 
 
-# ---------- TC-F1-4: _push_feat_branch idempotent ----------
+# ---------- TC-F1-4: _push_feat_branch 幂等 ----------
 
 
 def test_push_feat_branch_idempotent(
@@ -260,7 +263,7 @@ def test_push_feat_branch_idempotent(
     assert not push_called, "idempotent: git push should not be called when HEAD == origin"
 
 
-# ---------- TC-F1-5: _push_feat_branch 首次 push ----------
+# ---------- TC-F1-5: _push_feat_branch 首次推送 ----------
 
 
 def test_push_feat_branch_first_push(
@@ -301,7 +304,7 @@ def test_push_feat_branch_first_push(
     )
 
 
-# ---------- TC-F2-1: _create_archive_pr idempotent OPEN ----------
+# ---------- TC-F2-1: _create_archive_pr 幂等 OPEN ----------
 
 
 def test_create_archive_pr_idempotent_open(
@@ -309,8 +312,6 @@ def test_create_archive_pr_idempotent_open(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """TC-F2-1: gh pr list 返回 OPEN PR → reuse；不调 gh pr create。"""
-    import json
-
     req_id = "REQ-2099-001"
     req_dir = _make_meta(fake_repo, req_id=req_id)
     meta = yaml.safe_load((req_dir / "meta.yaml").read_text(encoding="utf-8"))
@@ -351,8 +352,6 @@ def test_create_archive_pr_idempotent_merged(
     capsys: pytest.CaptureFixture,
 ) -> None:
     """TC-F2-2: gh pr list 返回 MERGED PR 但 meta.archive_pr_number=0 → SystemExit(1) + R-ARCHIVE-PR-ALREADY-MERGED。"""
-    import json
-
     req_id = "REQ-2099-001"
     req_dir = _make_meta(fake_repo, req_id=req_id)
     meta = yaml.safe_load((req_dir / "meta.yaml").read_text(encoding="utf-8"))
@@ -382,8 +381,6 @@ def test_create_archive_pr_idempotent_closed(
     capsys: pytest.CaptureFixture,
 ) -> None:
     """TC-F2-3: gh pr list 返回 CLOSED PR → SystemExit(1) + R-ARCHIVE-PR-CLOSED。"""
-    import json
-
     req_id = "REQ-2099-001"
     req_dir = _make_meta(fake_repo, req_id=req_id)
     meta = yaml.safe_load((req_dir / "meta.yaml").read_text(encoding="utf-8"))
@@ -412,8 +409,6 @@ def test_create_archive_pr_number_mismatch(
     capsys: pytest.CaptureFixture,
 ) -> None:
     """TC-F2-4: meta.archive_pr_number=42 但 gh 返回 number=99 → SystemExit(1) + R-ARCHIVE-PR-NUMBER-MISMATCH。"""
-    import json
-
     req_id = "REQ-2099-001"
     req_dir = _make_meta(fake_repo, req_id=req_id, archive_pr_number=42)
     meta = yaml.safe_load((req_dir / "meta.yaml").read_text(encoding="utf-8"))
@@ -472,7 +467,7 @@ def test_create_archive_pr_creates_new(
     )
 
 
-# ---------- TC-F2-6: _write_archive_pr_number idempotent ----------
+# ---------- TC-F2-6: _write_archive_pr_number 幂等 ----------
 
 
 def test_write_archive_pr_number_idempotent(

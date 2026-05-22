@@ -21,7 +21,7 @@ from check_meta import _check_archive_pr_number_state_machine  # noqa: E402
 from common import Report  # noqa: E402
 
 
-# ---------- helpers ----------
+# ---------- 辅助函数 ----------
 
 
 def _run_check(meta: dict[str, Any]) -> Report:
