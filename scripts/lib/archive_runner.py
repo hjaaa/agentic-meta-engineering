@@ -240,7 +240,7 @@ def _filter_dirty_lines_by_whitelist(lines: list[str], req_id: str) -> list[str]
 
     返回剩余非白名单 dirty 路径列表；调用方决定是否 abort。
     """
-    allowed: list[str] = []
+    non_whitelisted: list[str] = []
     for line in lines:
         if not line:
             continue
@@ -251,8 +251,8 @@ def _filter_dirty_lines_by_whitelist(lines: list[str], req_id: str) -> list[str]
             raw_path = raw_path.split(" -> ")[-1].strip()
         if _is_whitelist_path(raw_path, req_id):
             continue
-        allowed.append(raw_path)
-    return allowed
+        non_whitelisted.append(raw_path)
+    return non_whitelisted
 
 
 def _is_whitelist_path(path: str, req_id: str) -> bool:
@@ -548,14 +548,11 @@ def _run_experience(
     result.experience = "yes"
 
 
-def _commit_archive_metadata(req_id: str, result: ArchiveResult) -> None:  # noqa: ARG001
-    """阶段 1 step 6：提交 requirements/<req_id>/ 及经验类白名单文件（幂等）。
+def _idempotent_skip_if_commit_exists(req_id: str) -> bool:
+    """幂等检测：HEAD commit subject 命中 ARCHIVE_COMMIT_RE(req_id) → 返回 True。
 
-    幂等检测：HEAD commit subject 命中 ARCHIVE_COMMIT_RE(req_id) → 跳过整步。
-    非白名单 dirty 文件 → abort R-ARCHIVE-CONTEXT-DIRTY（fail-closed）。
-    git commit 失败 → abort R-ARCHIVE-COMMIT-FAILED。
+    git log 调用失败 → abort R-ARCHIVE-COMMIT-FAILED。
     """
-    # 幂等：HEAD commit message 命中正则则跳过
     head_subject = _run_or_abort(
         ["git", "log", "-1", "--format=%s"],
         cwd=REPO_ROOT,
@@ -567,9 +564,15 @@ def _commit_archive_metadata(req_id: str, result: ArchiveResult) -> None:  # noq
         (head_subject.stdout or "").strip()
     ):
         logger.info("commit_archive_metadata: skipped (idempotent) req_id=%s", req_id)
-        return
+        return True
+    return False
 
-    # 用 git status --porcelain 列出 dirty 文件，按白名单分类
+
+def _collect_paths_to_add(req_id: str) -> list[str]:
+    """跑 git status --porcelain，校验无非白名单 dirty 后返回需 add 的白名单路径列表。
+
+    非白名单 dirty / git status 调用失败 → abort R-ARCHIVE-CONTEXT-DIRTY。
+    """
     status_result = _run_or_abort(
         ["git", "status", "--porcelain"],
         cwd=REPO_ROOT,
@@ -585,8 +588,6 @@ def _commit_archive_metadata(req_id: str, result: ArchiveResult) -> None:  # noq
         )
 
     raw_lines = (status_result.stdout or "").splitlines()
-
-    # 检查非白名单 dirty
     non_whitelisted = _filter_dirty_lines_by_whitelist(raw_lines, req_id)
     if non_whitelisted:
         _abort(
@@ -595,7 +596,6 @@ def _commit_archive_metadata(req_id: str, result: ArchiveResult) -> None:  # noq
             req_id,
         )
 
-    # 按白名单逐个 add（避免 git add <不存在路径> 报错）
     to_add: list[str] = []
     for line in raw_lines:
         if not line:
@@ -605,11 +605,11 @@ def _commit_archive_metadata(req_id: str, result: ArchiveResult) -> None:  # noq
             raw_path = raw_path.split(" -> ")[-1].strip()
         if _is_whitelist_path(raw_path, req_id):
             to_add.append(raw_path)
+    return to_add
 
-    if not to_add:
-        logger.info("commit_archive_metadata: nothing to add req_id=%s", req_id)
-        return
 
+def _stage_and_commit(req_id: str, to_add: list[str]) -> None:
+    """对 to_add 列表执行 git add + git commit，失败 → abort R-ARCHIVE-COMMIT-FAILED。"""
     for path in to_add:
         add_proc = _run_or_abort(
             ["git", "add", path],
@@ -642,20 +642,28 @@ def _commit_archive_metadata(req_id: str, result: ArchiveResult) -> None:  # noq
     logger.info("commit_archive_metadata: committed req_id=%s", req_id)
 
 
-def _push_feat_branch(meta: dict[str, Any], req_id: str, result: ArchiveResult) -> None:  # noqa: ARG001
-    """阶段 1 step 7：推送 feat 分支到 origin（幂等，不带 --force）。
+def _commit_archive_metadata(req_id: str, result: ArchiveResult) -> None:  # noqa: ARG001 — result 保留供 F-003 finalize_requirement 写 outcome；签名对称 _push_feat_branch
+    """阶段 1 step 6：提交 requirements/<req_id>/ 及经验类白名单文件（幂等）。
 
-    幂等检测：HEAD == origin/<branch> → 跳过。
-    push 失败 → abort R-ARCHIVE-PUSH-FAILED。
+    幂等检测：HEAD commit subject 命中 ARCHIVE_COMMIT_RE(req_id) → 跳过整步。
+    非白名单 dirty 文件 → abort R-ARCHIVE-CONTEXT-DIRTY（fail-closed）。
+    git commit 失败 → abort R-ARCHIVE-COMMIT-FAILED。
     """
-    branch = (meta.get("branch") or "").strip()
-    base_branch = (meta.get("base_branch") or "").strip()
-    # F-05：与 _delete_local_branch / _delete_remote_branch 对称——
-    # refspec / 选项前缀 / 受保护分支三道防御，命中即 fail-closed
-    is_invalid, reason = _check_branch_safe_for_remote_op(branch, base_branch)
-    if is_invalid:
-        _abort("R-ARCHIVE-PUSH-FAILED", f"拒绝推送：{reason}", req_id)
+    if _idempotent_skip_if_commit_exists(req_id):
+        return
+    to_add = _collect_paths_to_add(req_id)
+    if not to_add:
+        logger.info("commit_archive_metadata: nothing to add req_id=%s", req_id)
+        return
+    _stage_and_commit(req_id, to_add)
 
+
+def _check_head_eq_remote(branch: str, req_id: str) -> bool:
+    """跑 git rev-parse HEAD / origin/<branch>，相等返回 True（push 幂等跳过）。
+
+    rev-parse HEAD 失败 → abort R-ARCHIVE-PUSH-FAILED。
+    rev-parse origin/<branch> 失败（如远端无该分支）→ 返回 False，让 push 路径正常走。
+    """
     local_sha_proc = _run_or_abort(
         ["git", "rev-parse", "HEAD"],
         cwd=REPO_ROOT,
@@ -678,10 +686,11 @@ def _push_feat_branch(meta: dict[str, Any], req_id: str, result: ArchiveResult) 
         req_id=req_id,
         label=f"git rev-parse origin/{branch}",
     )
-    if remote_sha_proc.returncode == 0 and remote_sha_proc.stdout.strip() == local_sha:
-        logger.info("push skipped: HEAD == origin/%s req_id=%s", branch, req_id)
-        return
+    return remote_sha_proc.returncode == 0 and remote_sha_proc.stdout.strip() == local_sha
 
+
+def _do_push_with_recovery_hint(branch: str, base_branch: str, req_id: str) -> None:
+    """git push origin <branch>，失败 → abort R-ARCHIVE-PUSH-FAILED + 手工恢复指引。"""
     push_proc = _run_or_abort(
         ["git", "push", "origin", branch],
         cwd=REPO_ROOT,
@@ -701,6 +710,27 @@ def _push_feat_branch(meta: dict[str, Any], req_id: str, result: ArchiveResult) 
             req_id,
         )
     logger.info("push_feat_branch: pushed origin/%s req_id=%s", branch, req_id)
+
+
+def _push_feat_branch(meta: dict[str, Any], req_id: str, result: ArchiveResult) -> None:  # noqa: ARG001 — result 保留供 F-003 finalize_requirement 写 outcome；签名对称 _commit_archive_metadata
+    """阶段 1 step 7：推送 feat 分支到 origin（幂等，不带 --force）。
+
+    幂等检测：HEAD == origin/<branch> → 跳过。
+    push 失败 → abort R-ARCHIVE-PUSH-FAILED。
+    """
+    branch = (meta.get("branch") or "").strip()
+    base_branch = (meta.get("base_branch") or "").strip()
+    # F-05：与 _delete_local_branch / _delete_remote_branch 对称——
+    # refspec / 选项前缀 / 受保护分支三道防御，命中即 fail-closed
+    is_invalid, reason = _check_branch_safe_for_remote_op(branch, base_branch)
+    if is_invalid:
+        _abort("R-ARCHIVE-PUSH-FAILED", f"拒绝推送：{reason}", req_id)
+
+    if _check_head_eq_remote(branch, req_id):
+        logger.info("push skipped: HEAD == origin/%s req_id=%s", branch, req_id)
+        return
+
+    _do_push_with_recovery_hint(branch, base_branch, req_id)
 
 
 def _delete_local_branch(
