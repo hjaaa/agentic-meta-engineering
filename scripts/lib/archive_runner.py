@@ -41,6 +41,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -624,8 +625,6 @@ def _check_existing_archive_pr(
     gh 调用失败 → abort R-ARCHIVE-PR-CREATE-FAILED。
     JSON 解析失败 → abort R-ARCHIVE-PR-CREATE-FAILED。
     """
-    import tempfile
-
     proc = _run_or_abort(
         [
             "gh", "pr", "list",
@@ -670,8 +669,6 @@ def _do_create_archive_pr(
     渲染模板 → 写临时文件 → gh pr create --body-file → unlink。
     失败 → abort R-ARCHIVE-PR-CREATE-FAILED。
     """
-    import tempfile
-
     pr_number = meta.get("pr_number", 0)
     try:
         pr_number = int(pr_number or 0)
@@ -732,15 +729,70 @@ def _do_create_archive_pr(
     return new_number
 
 
+def _handle_existing_pr_state(
+    existing: dict[str, Any],
+    meta: dict[str, Any],
+    req_id: str,
+    result: ArchiveResult,
+) -> int:
+    """阶段 1 step 8 helper：处理 _check_existing_archive_pr 返回的非 None 结果。
+
+    - OPEN：复用，写 result.archive_pr_action="reused"，return number
+    - MERGED：abort R-ARCHIVE-PR-ALREADY-MERGED（已被 _precheck_phase 保证 meta=0）
+    - CLOSED：abort R-ARCHIVE-PR-CLOSED
+    - 冲突：meta.archive_pr_number > 0 且 != gh number → R-ARCHIVE-PR-NUMBER-MISMATCH（C-3）
+
+    设计来源：detailed-design.md §2.1（idempotent 三态分支 + C-3 冲突决策）
+    """
+    state = (existing.get("state") or "").upper()
+    number = int(existing.get("number") or 0)
+    url = (existing.get("url") or "").strip()
+
+    if state == "MERGED":
+        _abort(
+            "R-ARCHIVE-PR-ALREADY-MERGED",
+            (
+                f"归档 PR #{number} 已 MERGED 但 archive_pr_number 未写入 "
+                f"req={req_id}；请手工把 archive_pr_number: {number} 写入 meta.yaml 后重跑"
+            ),
+            req_id,
+        )
+    if state == "CLOSED":
+        _abort(
+            "R-ARCHIVE-PR-CLOSED",
+            f"归档 PR #{number} 已 CLOSED req={req_id}；如需重开，请手工恢复后重跑",
+            req_id,
+        )
+
+    # OPEN — 复用；先做冲突检查（C-3 决策）
+    try:
+        meta_pr = int(meta.get("archive_pr_number") or 0)
+    except (TypeError, ValueError):
+        meta_pr = 0
+    if meta_pr > 0 and meta_pr != number:
+        _abort(
+            "R-ARCHIVE-PR-NUMBER-MISMATCH",
+            (
+                f"meta.archive_pr_number={meta_pr} 与 gh 返回 #{number} 不符 "
+                f"req={req_id}；请手工核对后再重跑"
+            ),
+            req_id,
+        )
+
+    result.archive_pr_number = number
+    result.archive_pr_url = url
+    result.archive_pr_action = "reused"
+    logger.info("create_archive_pr: reused pr=#%d req_id=%s", number, req_id)
+    return number
+
+
 def _create_archive_pr(
     meta: dict[str, Any], req_id: str, result: ArchiveResult
 ) -> int:
-    """Step 8：调 gh pr create 开归档 PR；返回 PR number。
+    """阶段 1 step 8：调 gh pr create 开归档 PR；返回 PR number。
 
-    Idempotent：先 gh pr list 检查：
-      - OPEN：取 number；写 result.archive_pr_action="reused"；return number
-      - MERGED：abort R-ARCHIVE-PR-ALREADY-MERGED
-      - CLOSED：abort R-ARCHIVE-PR-CLOSED
+    Idempotent：先 gh pr list 检查，委托 _handle_existing_pr_state 处理三态：
+      - OPEN：复用；MERGED / CLOSED：abort。
     存在性检查后才 create。create 失败抛 R-ARCHIVE-PR-CREATE-FAILED。
 
     冲突检查：若 meta.archive_pr_number > 0 且 != gh 返回 number →
@@ -758,50 +810,8 @@ def _create_archive_pr(
         )
 
     existing = _check_existing_archive_pr(branch, req_id)
-
     if existing is not None:
-        state = (existing.get("state") or "").upper()
-        number = int(existing.get("number") or 0)
-        url = (existing.get("url") or "").strip()
-
-        if state == "MERGED":
-            _abort(
-                "R-ARCHIVE-PR-ALREADY-MERGED",
-                (
-                    f"归档 PR #{number} 已 MERGED 但 archive_pr_number 未写入 "
-                    f"req={req_id}；请手工把 archive_pr_number: {number} 写入 meta.yaml 后重跑"
-                ),
-                req_id,
-            )
-        if state == "CLOSED":
-            _abort(
-                "R-ARCHIVE-PR-CLOSED",
-                f"归档 PR #{number} 已 CLOSED req={req_id}；如需重开，请手工恢复后重跑",
-                req_id,
-            )
-        # OPEN — 复用
-        # 冲突检查：meta 中已记录不为 0 且与 gh 返回不符
-        try:
-            meta_pr = int(meta.get("archive_pr_number") or 0)
-        except (TypeError, ValueError):
-            meta_pr = 0
-        if meta_pr > 0 and meta_pr != number:
-            _abort(
-                "R-ARCHIVE-PR-NUMBER-MISMATCH",
-                (
-                    f"meta.archive_pr_number={meta_pr} 与 gh 返回 #{number} 不符 "
-                    f"req={req_id}；请手工核对后再重跑"
-                ),
-                req_id,
-            )
-
-        result.archive_pr_number = number
-        result.archive_pr_url = url
-        result.archive_pr_action = "reused"
-        logger.info(
-            "create_archive_pr: reused pr=#%d req_id=%s", number, req_id
-        )
-        return number
+        return _handle_existing_pr_state(existing, meta, req_id, result)
 
     # 无已有 PR → 新建
     return _do_create_archive_pr(meta, req_id, branch, result)
@@ -810,7 +820,7 @@ def _create_archive_pr(
 def _write_archive_pr_number(
     req_id: str, meta: dict[str, Any], pr_number: int
 ) -> None:
-    """Step 9：把 archive_pr_number 落回 meta.yaml（tmp + os.replace）。
+    """阶段 1 step 9：把 archive_pr_number 落回 meta.yaml（tmp + os.replace）。
 
     Idempotent：meta.archive_pr_number == pr_number 时跳过写盘。
     只改 archive_pr_number 单字段，其余字段维持原状。
