@@ -7,11 +7,11 @@ base_branch: develop
 project: agentic-meta-engineering
 services: []
 gates_passed:
-- phase-transition:definition->tech-research@2026-05-21 15:08:00
-- phase-transition:tech-research->outline-design@2026-05-21 15:44:47
-- phase-transition:outline-design->detail-design@2026-05-21 16:00:06
-- phase-transition:detail-design->task-planning@2026-05-21 16:55:00
-- phase-transition:task-planning->development@2026-05-21 17:05:00
+  - phase-transition:definition->tech-research@2026-05-21 15:08:00
+  - phase-transition:tech-research->outline-design@2026-05-21 15:44:47
+  - phase-transition:outline-design->detail-design@2026-05-21 16:00:06
+  - phase-transition:detail-design->task-planning@2026-05-21 16:55:00
+  - phase-transition:task-planning->development@2026-05-21 17:05:00
 pr_url: ''
 pr_number: 0
 log_layout: split
@@ -19,7 +19,8 @@ worktree:
   enabled: true
   owner: workflow
   path: .worktrees/feat-req-20260521-archive-runner-auto-pr
-  absolute_path: /Users/richardhuang/learnspace/agentic-meta-engineering/.worktrees/feat-req-20260521-archive-runner-auto-pr
+  absolute_path: 
+    /Users/richardhuang/learnspace/agentic-meta-engineering/.worktrees/feat-req-20260521-archive-runner-auto-pr
   branch: feat/req-20260521-archive-runner-auto-pr
   base_branch: develop
   created_at: 2026-05-21 11:37:32
@@ -33,15 +34,15 @@ worktree:
 feature_area: lifecycle
 change_type: refactor
 affected_modules:
-- scripts/lib/archive_runner.py
-- context/team/engineering-spec/meta-schema.yaml
-- .claude/skills/managing-requirement-lifecycle/reference/archive-rules.md
-- .claude/commands/requirement/archive.md
-- tests/lifecycle/test_archive_runner.py
+  - scripts/lib/archive_runner.py
+  - context/team/engineering-spec/meta-schema.yaml
+  - .claude/skills/managing-requirement-lifecycle/reference/archive-rules.md
+  - .claude/commands/requirement/archive.md
+  - tests/lifecycle/test_archive_runner.py
 tags:
-- squash-merge
-- single-branch-lifecycle
-- archive-automation
+  - squash-merge
+  - single-branch-lifecycle
+  - archive-automation
 outcome: ''
 completed_at: ''
 lessons_extracted: false
@@ -51,31 +52,51 @@ reviews:
     conclusion: looks_clean
     reviewed_commit: b0f4762
     artifact_hashes:
-      artifacts/requirement.md: d18316680202f0ab2b7fa3380507e0f3b9ba29f1288528ef79b2f751a74f1879
+      artifacts/requirement.md: 
+        d18316680202f0ab2b7fa3380507e0f3b9ba29f1288528ef79b2f751a74f1879
     history:
-    - REV-20260521-archive-runner-auto-pr-definition-001
-    - REV-20260521-archive-runner-auto-pr-definition-002
+      - REV-20260521-archive-runner-auto-pr-definition-001
+      - REV-20260521-archive-runner-auto-pr-definition-002
     stale: false
   outline-design:
     latest: REV-20260521-archive-runner-auto-pr-outline-design-002
     conclusion: looks_clean
     reviewed_commit: 5dbea1e
     artifact_hashes:
-      artifacts/outline-design.md: 5f6aa872288c2e96b3a40dc88e336380ac84bf11f2b76d7d003a19e89c9c9c85
-      artifacts/requirement.md: d18316680202f0ab2b7fa3380507e0f3b9ba29f1288528ef79b2f751a74f1879
+      artifacts/outline-design.md: 
+        5f6aa872288c2e96b3a40dc88e336380ac84bf11f2b76d7d003a19e89c9c9c85
+      artifacts/requirement.md: 
+        d18316680202f0ab2b7fa3380507e0f3b9ba29f1288528ef79b2f751a74f1879
     history:
-    - REV-20260521-archive-runner-auto-pr-outline-design-001
-    - REV-20260521-archive-runner-auto-pr-outline-design-002
+      - REV-20260521-archive-runner-auto-pr-outline-design-001
+      - REV-20260521-archive-runner-auto-pr-outline-design-002
     stale: false
   detail-design:
     latest: REV-20260521-archive-runner-auto-pr-detail-design-002
     conclusion: looks_clean
     reviewed_commit: 6c64c56
     artifact_hashes:
-      artifacts/detailed-design.md: ce01c4722e0b985c30113182a822b92be74b190efceb4934b5034a8624cff84a
-      artifacts/features.json: 0982e3468fb60311a2fff28812faf4e552dcd1651e6fc5f6957bd91b869a2917
-      artifacts/outline-design.md: 5f6aa872288c2e96b3a40dc88e336380ac84bf11f2b76d7d003a19e89c9c9c85
+      artifacts/detailed-design.md: 
+        ce01c4722e0b985c30113182a822b92be74b190efceb4934b5034a8624cff84a
+      artifacts/features.json: 
+        0982e3468fb60311a2fff28812faf4e552dcd1651e6fc5f6957bd91b869a2917
+      artifacts/outline-design.md: 
+        5f6aa872288c2e96b3a40dc88e336380ac84bf11f2b76d7d003a19e89c9c9c85
     history:
-    - REV-20260521-archive-runner-auto-pr-detail-design-001
-    - REV-20260521-archive-runner-auto-pr-detail-design-002
+      - REV-20260521-archive-runner-auto-pr-detail-design-001
+      - REV-20260521-archive-runner-auto-pr-detail-design-002
     stale: false
+  code:
+    by_feature:
+      F-001:
+        history:
+          - REV-20260521-archive-runner-auto-pr-code-F-001-001
+        latest: REV-20260521-archive-runner-auto-pr-code-F-001-001
+        conclusion: blocked
+        reviewed_commit: cc3e6aa
+        artifact_hashes:
+          artifacts/features.json: 
+            0982e3468fb60311a2fff28812faf4e552dcd1651e6fc5f6957bd91b869a2917
+          artifacts/tasks/F-001.md: 
+            e98a98ad481f10569f3dac09325e9cb59e9a3dc8ea441ac519e47382f0bbdf8d
+        stale: false

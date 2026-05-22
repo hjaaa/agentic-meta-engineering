@@ -1,0 +1,112 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-20260521-archive-runner-auto-pr-code-F-001-001",
+  "requirement_id": "20260521-archive-runner-auto-pr",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-22 08:15:50",
+  "reviewed_commit": "cc3e6aa",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "0982e3468fb60311a2fff28812faf4e552dcd1651e6fc5f6957bd91b869a2917"
+    },
+    {
+      "path": "artifacts/tasks/F-001.md",
+      "sha256": "e98a98ad481f10569f3dac09325e9cb59e9a3dc8ea441ac519e47382f0bbdf8d"
+    }
+  ],
+  "conclusion": "blocked",
+  "score": 62,
+  "dimensions": {
+    "design_consistency": {
+      "score": 55,
+      "issues": [
+        {
+          "severity": "blocker",
+          "description": "scripts/lib/archive_runner.py:967 _cleanup_worktree_before_archive 仍在 archive_requirement 主流程被调用，直接违反 detailed-design §1.1 1-H + §1.4 注释 + F-001 task.md 步骤 5 (三件套搬迁到 F-003)。L986-987 注释自相矛盾，声称已移除但实际未移除"
+        }
+      ]
+    },
+    "security": {
+      "score": 70,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/archive_runner.py:595 _push_feat_branch 的 git push origin <branch> 无 _PROTECTED_BRANCHES 白名单检查，与 _delete_local_branch:625 / _delete_remote_branch:745 防御不对称；meta.branch 被污染时可能触发 +HEAD:refs/heads/develop 强推或 :develop 删除等 refspec 注入"
+        }
+      ]
+    },
+    "concurrency": {
+      "score": 90,
+      "issues": []
+    },
+    "complexity": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/archive_runner.py:208 _is_whitelist_path 5 个 if 分支 CC 偏高（critic 称 8 未经工具实测，实测 ~6），可考虑用 tuple + any 简化"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/archive_runner.py:571 _push_feat_branch CC 接近阈值（critic 称 9），可拆 sha-check 与 push 两个 helper"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 65,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/archive_runner.py:509,517,552,561,581,590,595 共 7 处 _run() 调用缺 try/except (TimeoutExpired/FileNotFoundError/OSError)，与 _precheck_pr_merged:301-310 模式不对称；TimeoutExpired 抛出会以 unhandled traceback 形式 crash，绕过 R-ARCHIVE-COMMIT-FAILED / R-ARCHIVE-PUSH-FAILED 错误码契约"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/archive_runner.py:509 head_subject.returncode != 0 时幂等检查 fall-through 进入 commit 路径，可能造成第二次 archive commit；应 fail-closed abort"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/archive_runner.py:596 push 失败 _abort 错误信息缺手工恢复提示（如 git push origin <branch> 重试指引）"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 75,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/archive_runner.py:70 ARCHIVE_COMMIT_RE 全大写但实为函数，违反 PEP 8 N802（已加 # noqa 豁免）；详细设计 §1.2 把它描述为模块级常量但实现因 req_id 参数化为函数 — 文档与实现不完全对齐"
+        }
+      ]
+    },
+    "performance": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/archive_runner.py:551 _commit_archive_metadata 逐文件 git add 循环（每个 add 起一次子进程），可合并为 git add -- path1 path2 ... 单次调用"
+        }
+      ]
+    },
+    "history_context": {
+      "score": 88,
+      "issues": []
+    }
+  },
+  "required_fixes": [
+    {
+      "description": "scripts/lib/archive_runner.py:967 移除 _cleanup_worktree_before_archive 调用（连同 L965-966 注释块）；该步骤已由 detailed-design §1.1 1-H + task.md 步骤 5 明确搬迁到 F-003 finalize_requirement",
+      "location": "scripts/lib/archive_runner.py:967",
+      "severity": "blocker"
+    }
+  ],
+  "suggestions": [
+    "_commit_archive_metadata 与 _push_feat_branch 的错误处理设计是 fail-closed + 错误码契约，但 7 处 _run() 缺 try/except 让契约失效；应统一引入 _run_or_abort(code, label) helper 把 TimeoutExpired/FileNotFoundError/OSError 兜成 _abort，与 _precheck_pr_merged 模式对齐",
+    "_push_feat_branch 与 _delete_remote_branch 都是远程 git 写操作，但前者无 _PROTECTED_BRANCHES 防御；建议把 branch 白名单/refspec 字符检查抽成 _validate_branch_for_remote_op 共享 helper，让所有写远端的入口对称"
+  ],
+  "scope": {
+    "feature_id": "F-001"
+  },
+  "supersedes": null
+}
