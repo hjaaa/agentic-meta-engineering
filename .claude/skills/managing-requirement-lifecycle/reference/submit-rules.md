@@ -122,22 +122,26 @@ PR 开启 / 更新成功后，必须等待该 PR 关联的 GitHub Actions 状态
 **轮询命令**（Bash 工具调用）：
 
 ```bash
-gh pr checks <num> --json name,status,conclusion,bucket
+gh pr checks <num> --json name,state,bucket,link
 ```
+
+> 字段说明（2026-05-22 更新）：`gh` v2.x 的 `pr checks --json` 实际支持的字段是 `bucket`/`completedAt`/`description`/`event`/`link`/`name`/`startedAt`/`state`/`workflow`，**不**再有 `status` / `conclusion`。
+> - `state ∈ {SUCCESS, FAILURE, CANCELLED, TIMED_OUT, NEUTRAL, SKIPPED, IN_PROGRESS, QUEUED, PENDING}`：单 check 终态 / 中间态。
+> - `bucket ∈ {pass, fail, pending, cancel, skipping}`：state 的语义分组（codex CI 预检与 §7.5 用 bucket）。
 
 **轮询节奏与终止条件**：
 
 - 间隔：`--ci-poll-interval`，默认 15s
 - 总超时：`--ci-timeout`，默认 600s
-- 终止条件：所有 check 的 `status == "COMPLETED"`（无 PENDING / IN_PROGRESS / QUEUED）
+- 终止条件：所有 check 的 `state ∈ {SUCCESS, FAILURE, CANCELLED, TIMED_OUT, NEUTRAL, SKIPPED}`（即排除 `IN_PROGRESS / QUEUED / PENDING`）
 
 **判定矩阵**：
 
 | 全部 check 终态 | 行为 |
 |---|---|
-| 全部 SUCCESS | step 11 通过；若 `--codex` 同传则进入 §7.5 状态机；否则进入 step 12 终端反馈 |
-| 任一 FAILURE / CANCELLED / TIMED_OUT | exit 1，stderr 列出失败 check 名 + `gh run view <runId> --log-failed` 提示；**不**继续 codex；process.txt 追加 `[ci-failed]` 事件 |
-| 全部 NEUTRAL / SKIPPED | 视为通过（无错误信号），警告并放行 |
+| 全部 state=SUCCESS（bucket=pass） | step 11 通过；若 `--codex` 同传则进入 §7.5 状态机；否则进入 step 12 终端反馈 |
+| 任一 state=FAILURE / CANCELLED / TIMED_OUT（bucket=fail / cancel） | exit 1，stderr 列出失败 check 名 + `gh run view <runId> --log-failed` 提示；**不**继续 codex；process.txt 追加 `[ci-failed]` 事件 |
+| 全部 state=NEUTRAL / SKIPPED（bucket=skipping） | 视为通过（无错误信号），警告并放行 |
 | 总超时未稳定 | exit 0，stderr `⚠️ CI did not stabilize within <timeout>s`；process.txt 追加 `[ci-timeout]` 事件；**不**继续 codex（避免对未知质量 PR 触发 review） |
 | `--no-ci-wait` 传入 | 跳过 step 11 的 CI 等待**但仍要求 codex 进入前 CI 状态为 SUCCESS**（codex 仍走 §7.5；CI 红或未跑时 `--no-ci-wait` 不放行 codex，等同 CI failed 路径 exit 1）；仅用于已知 CI 配置缺失场景以加速终态反馈 |
 
@@ -145,9 +149,9 @@ gh pr checks <num> --json name,status,conclusion,bucket
 
 > Codex review-loop 的前置条件是 **PR CI 已全绿**（或 NEUTRAL/SKIPPED）。
 > 无论传不传 `--no-ci-wait`，**进入 §7.5 状态机前 runner 必须显式查询 `gh pr checks <num>` 一次**：
-> - 任一 check `conclusion=FAILURE/CANCELLED/TIMED_OUT` → 拒绝进入 codex，exit 1
-> - 任一 check `status != COMPLETED` 且未传 `--no-ci-wait` → 进入轮询等待
-> - 任一 check `status != COMPLETED` 且传了 `--no-ci-wait` → 视为"未稳定"，拒绝进入 codex，exit 0 + warning
+> - 任一 check `state ∈ {FAILURE, CANCELLED, TIMED_OUT}` → 拒绝进入 codex，exit 1
+> - 任一 check `state ∉ {SUCCESS, FAILURE, CANCELLED, TIMED_OUT, NEUTRAL, SKIPPED}` 且未传 `--no-ci-wait` → 进入轮询等待
+> - 任一 check 同上但传了 `--no-ci-wait` → 视为"未稳定"，拒绝进入 codex，exit 0 + warning
 >
 > 这条约束的存在理由：codex review 是稀缺成本（每次都消耗注意力 + bot 配额），
 > 对 CI 都跑不绿的 PR 触发 review 等于把 reviewer 拉进无效会话。`--no-ci-wait` 的
