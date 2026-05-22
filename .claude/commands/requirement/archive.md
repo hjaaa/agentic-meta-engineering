@@ -13,7 +13,7 @@ description: PR 合并后做收尾闭环——phase=completed + archived_at + �
 
 PR 合并后做收尾闭环：phase=completed + archived_at + 经验沉淀 + 删本地+远程分支（提示）。
 
-不做：迁移 `requirements/<id>/` 目录、阶段状态机膨胀（D-005 / D-006 已锁定）。
+不做：迁移 `requirements/<req_id>/` 目录、阶段状态机膨胀（D-005 / D-006 已锁定）。
 
 ## 何时跑（前置约束 — 主 Agent 必读）
 
@@ -48,7 +48,7 @@ archive 流程的副作用动作分布：
 | 参数 | 默认 | 语义 |
 |---|---|---|
 | `--force` | false | 跳过 PR merged 校验（异常恢复用） |
-| `--keep-branch` | false | 跳过删本地+远程分支两问 |
+| `--keep-branch` | false | （已被 F-003 弃用，阶段 1 不再删分支；保留兼容 CLI 参数签名）|
 | `--no-experience` | false | 跳过经验沉淀提示 |
 | `--yes-experience` | false | 经验问跳问，等价用户答 y（CLI 自动化场景） |
 | `--yes-local-branch` | false | 本地分支问跳问，等价用户答 y |
@@ -128,7 +128,7 @@ worktree cleanup 已迁移到阶段 2（`--finalize`）执行，不在阶段 1 a
 2. 主对话场景注入 `prompts_callback` → 调 callback，由主 Agent 串行问
 3. CLI 自动化无 callback → 默认按 N 处理（保守不删 / 不沉淀）
 
-阶段 1：`--keep-branch` 跳过删分支两问（历史行为保留兼容），`--no-experience` 跳过经验沉淀问。
+阶段 1：`--no-experience` 跳过经验沉淀问。`--keep-branch` 已被 F-003 弃用（阶段 1 archive 不再删分支），仅保留 CLI 参数签名兼容。
 
 ## 终端反馈格式（spec §5.3 第 5 步）
 

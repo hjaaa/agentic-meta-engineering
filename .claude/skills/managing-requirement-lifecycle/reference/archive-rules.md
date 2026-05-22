@@ -12,12 +12,12 @@ archive 流程拆分为**两个阶段**，不可逆操作（分支删除 / workt
 
 | 阶段 | 命令 | 执行内容 | 终止时机 |
 |---|---|---|---|
-| **阶段 1 archive** | `python3 scripts/lib/archive_runner.py <id>` | 写 meta.yaml + process.txt + 经验沉淀 → commit → push → 自动创建归档 PR → 写 archive_pr_number | 等 reviewer 审查、merge 归档 PR |
-| **阶段 2 finalize** | `python3 scripts/lib/archive_runner.py <id> --finalize` | 校验归档 PR 已 merged → 删本地 feat 分支 → 删远程 feat 分支 → cleanup worktree | 终态（不可逆） |
+| **阶段 1 archive** | `python3 scripts/lib/archive_runner.py <req_id>` | 写 meta.yaml + process.txt + 经验沉淀 → commit → push → 自动创建归档 PR → 写 archive_pr_number | 等 reviewer 审查、merge 归档 PR |
+| **阶段 2 finalize** | `python3 scripts/lib/archive_runner.py <req_id> --finalize` | 校验归档 PR 已 merged → 删本地 feat 分支 → 删远程 feat 分支 → cleanup worktree | 终态（不可逆） |
 
 **状态流转示意**（`archive_pr_number × phase`，来源：detailed-design §8.1）：
 
-```
+```text
 phase=testing, pr_number=0
         │ archive_requirement()
         ▼
@@ -46,7 +46,7 @@ archive 是**用户显式触发**的动作，不是 PR 合并的自动后置步�
 
 PR 合并只代表代码进入 base_branch，**不代表测试已闭环**。常态时间窗口：
 
-```
+```text
 PR merged ──┐
             ├─→ 测试人员回归 / 验收
             ├─→ 发现 bug → 新一轮 hotfix（原 feat 分支或新 hotfix 分支补 commit）
@@ -67,7 +67,7 @@ PR merged ──┐
 
 **前置硬要求**（预检 5）：触发 archive 前 `meta.yaml.lessons_extracted` 必须为 True；
 否则 archive_runner 在预检 5 直接 SystemExit(1)。意思是即使用户已说「可以归档了」，
-若经验沉淀未跑或脚本未把字段翻为 True，archive 也不会进入第 §2 步——是机器强制，
+若经验沉淀未跑或脚本未把字段翻为 True，archive 也不会进入 §2——是机器强制，
 不是 AI 自觉判断。需要先跑 `/knowledge:extract-experience <req_id>` 完成沉淀。
 
 ### 0.3 分支位置约束
@@ -118,7 +118,7 @@ PR merged ──┐
 
 ---
 
-## archive 前 CI gate 预检（D-002 / D-008）
+## 1.5 archive 前 CI gate 预检（D-002 / D-008）
 
 5 项硬门禁过后、调 `archive_requirement` **之前**，主 Agent 必须先执行：
 
@@ -196,7 +196,7 @@ archive 阶段 1 在写完 meta / process.txt / 经验沉淀后，自动 commit 
 **非匹配不触发跳过**：如果 HEAD commit 用了其他格式（如 `chore(archive): metadata`），重跑时不识别为 idempotent，会新建 commit——这是故意的，防止非 archive 产生的 commit 被误认为已归档。
 
 **commit 白名单范围**（来源：detailed-design §1.2，`C-1` 决策）：
-- `requirements/<id>/meta.yaml` + `requirements/<id>/process.txt` + `requirements/<id>/notes.md` + `requirements/<id>/artifacts/`
+- `requirements/<req_id>/meta.yaml` + `requirements/<req_id>/process.txt` + `requirements/<req_id>/notes.md` + `requirements/<req_id>/artifacts/`
 - `context/team/experience/`（经验沉淀产物）
 - `context/project/*/experience/`（项目经验产物）
 - `context/INDEX.md` / `context/team/experience/INDEX.md`
@@ -208,8 +208,8 @@ archive metadata commit push 成功后，`_create_archive_pr`（来源：`script
 
 ```bash
 gh pr create \
-  --base develop --head feat/<id> \
-  --title "archive(<id>): metadata + lessons" \
+  --base develop --head feat/<req_id> \
+  --title "archive(<req_id>): metadata + lessons" \
   --body-file <渲染后的 archive-pr-body>
 ```
 
@@ -221,7 +221,7 @@ gh pr create \
 | `__PR_NUMBER__` | `meta["pr_number"]`（需求 PR number，非归档 PR number） |
 | `__BRANCH__` | `meta["branch"]`（feat 分支名） |
 
-**idempotent 处置**（先调 `gh pr list --head feat/<id> --base develop --state all`）：
+**idempotent 处置**（先调 `gh pr list --head feat/<req_id> --base develop --state all`）：
 
 | 状态 | 处置 |
 |---|---|
@@ -277,7 +277,7 @@ archive 命令始终 exit 0（除非 5 项预检挂）。
 | 远程分支删 | `remote ref does not exist` | 折叠为 `already-deleted`，**不报错** |
 | 远程分支删 | 网络 / 401 / 403 | 透传 error → `outcome=failed` |
 
-副作用动作 `outcome` 全部记录到 `ArchiveResult`。archive 命令始终 exit 0（除非 4 项预检挂）。
+副作用动作 `outcome` 全部记录到 `ArchiveResult`。archive 命令始终 exit 0（除非 5 项预检挂）。
 
 ---
 
@@ -323,9 +323,9 @@ python3 scripts/lib/archive_runner.py <req_id> --finalize
 | `--keep-worktree` | false | 跳过 cleanup worktree（用户仍在 worktree 内继续操作时） |
 | `--legacy-resurrect-remote` | false | 老需求兜底：扩大 already-deleted 识别到 `not found` / `unknown`（详见 §B） |
 
-### §A.3 finalize 10 步顺序
+### §A.3 finalize 12 步顺序
 
-```
+```text
 1. _rebind_to_main_repo          → REPO_ROOT 绑到主仓根
 2. _load_meta                    → 读 meta.yaml
 3. §3.4 警告文案                  → --force / --force+--yes-finalize 警告
