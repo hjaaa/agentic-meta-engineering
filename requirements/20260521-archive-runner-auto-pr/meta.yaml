@@ -13,8 +13,8 @@ gates_passed:
   - phase-transition:detail-design->task-planning@2026-05-21 16:55:00
   - phase-transition:task-planning->development@2026-05-21 17:05:00
   - phase-transition:development->testing@2026-05-22 16:10:00
-pr_url: ''
-pr_number: 0
+pr_url: https://github.com/hjaaa/agentic-meta-engineering/pull/88
+pr_number: 88
 log_layout: split
 worktree:
   enabled: true
