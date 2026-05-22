@@ -933,25 +933,23 @@ def test_local_branch_delete_proceeds_when_head_elsewhere(
 # ---------- codex P1 F-1 / F-3 回归：archive from inside linked worktree ----------
 
 
-def test_archive_from_inside_worktree_writes_bookkeeping_to_main_repo(
+def test_archive_from_inside_worktree_writes_to_worktree_meta(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """codex P1 F-1 / F-3 回归：archive 从 linked worktree 内启动时，bookkeeping
-    必须写到主仓 requirements/<id>/ 而非被删的 worktree 副本。
+    """worktree-mode hotfix（2026-05-22）：archive 从 linked worktree cwd 启动时，
+    bookkeeping 直接写到 **worktree** requirements/<id>/（即 feat 分支当前检出），
+    不再 rebind 到主仓后写主仓副本。
 
-    场景：
-      1. 主仓 main_repo/ + worktree main_repo/.worktrees/wt/ 并存
-      2. F-004 改造后 bootstrap 把 requirements/<id>/ 写在 worktree 内；PR merged 后
-         主仓 develop 也含相同副本（git pull 同步）
-      3. archive 从 worktree cwd 启动 → Python import scripts.lib.archive_runner 时
-         __file__ 指向 worktree 内副本 → module-level REPO_ROOT/REQUIREMENTS_DIR 锁
-         向 worktree
-      4. _cleanup_worktree_before_archive 删 worktree → 后续 _atomic_write_meta /
-         _append_process_event 仍按 worktree 副本路径解析，写入失败 / 写到已删路径
+    历史：codex P1 F-1 / F-3 的 _rebind_to_main_repo 设计动机是 cleanup_worktree_before_archive
+    即将删 worktree → 必须先 chdir 主仓 + 重绑 REPO_ROOT。F-001 双阶段拆分（D-003）
+    把 cleanup 搬到 finalize 后，阶段 1 archive 不再触发删 worktree，rebind 失去原本
+    动机。worktree-mode hotfix 删除阶段 1 的 rebind 调用 —— 否则主仓 develop checkout
+    没含 feat 分支最新 meta，archive 会 R-ARCHIVE-META-MISSING；即使主仓也含 meta
+    （git pull develop 后），commit 会落到 develop 分支污染历史。
 
-    断言：archive 完成后，**主仓**的 meta.yaml.phase=completed + archived_at 非空，
-    **主仓**的 process.txt 含 `[archived]` 行。
+    断言：archive 完成后，**worktree** 内的 meta.yaml.phase=completed + archived_at
+    非空；主仓 meta 保持不变（因为 archive 不再触碰主仓副本）。
     """
     main_repo = tmp_path / "main_repo"
     worktree_root = main_repo / ".worktrees" / "wt"
@@ -1035,22 +1033,29 @@ def test_archive_from_inside_worktree_writes_bookkeeping_to_main_repo(
 
     result = archive_requirement(req_id, no_experience=True, yes_local_branch=True)
 
-    # —— 断言：bookkeeping 写到主仓副本，而非已删的 worktree ——
+    # —— 断言：bookkeeping 写到 worktree 副本（hotfix 后 archive 不再 rebind 到主仓） ——
+    worktree_meta = yaml.safe_load(
+        (worktree_root / "requirements" / req_id / "meta.yaml").read_text(encoding="utf-8")
+    )
+    assert worktree_meta["phase"] == "completed", "worktree meta.yaml.phase 应被更新为 completed"
+    assert worktree_meta["archived_at"], "worktree meta.yaml.archived_at 应非空"
+    assert worktree_meta["outcome"] == "shipped"
+
+    worktree_process = (worktree_root / "requirements" / req_id / "process.txt").read_text(
+        encoding="utf-8"
+    )
+    assert "[archived]" in worktree_process, "worktree process.txt 应含 [archived] 行"
+
+    # 主仓 meta 应保持原样（archive 不再 rebind 写主仓）
     main_meta = yaml.safe_load(
         (main_repo / "requirements" / req_id / "meta.yaml").read_text(encoding="utf-8")
     )
-    assert main_meta["phase"] == "completed", "主仓 meta.yaml.phase 应被更新为 completed"
-    assert main_meta["archived_at"], "主仓 meta.yaml.archived_at 应非空"
-    assert main_meta["outcome"] == "shipped"
-
-    main_process = (main_repo / "requirements" / req_id / "process.txt").read_text(
-        encoding="utf-8"
+    assert main_meta["phase"] == "testing", (
+        f"主仓 meta 不应被 archive 触碰（hotfix 行为）；实际 phase={main_meta['phase']!r}"
     )
-    assert "[archived]" in main_process, "主仓 process.txt 应含 [archived] 行"
 
     # F-001 双阶段拆分：archive 阶段 1 不再调 _cleanup_worktree_before_archive；
     # worktree cleanup 已搬迁到 finalize_requirement。worktree 目录在 archive 后仍存在。
-    # （cleanup_worktree_if_owned mock 仍注册，finalize 调用时才会实际删除）
     assert worktree_root.exists(), "archive 阶段 1 不调 cleanup，worktree 应仍存在"
 
     assert result.phase == "completed"
@@ -1147,20 +1152,23 @@ def test_archive_dirty_worktree_fails_before_rebind(
     assert worktree_root.exists(), "dirty fail-fast 后 worktree 不应被删"
 
 
-def test_archive_loads_meta_from_main_repo_after_rebind(
+def test_archive_uses_cwd_meta_not_main_repo(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """codex P1 round-4 F-5 回归：archive 从 linked worktree 启动时，meta 必须在
-    rebind 之后从主仓加载，避免 stale worktree 副本覆盖主仓较新 metadata。
+    """worktree-mode hotfix（2026-05-22）：archive 从 worktree cwd 启动时，
+    用 worktree 的 meta（feat 分支视角）而非主仓 develop 的 meta。
 
-    场景：主仓 meta（phase=testing / lessons_extracted=true）vs worktree meta
-    （phase=development / lessons_extracted=false，stale）。
-    - 如用 worktree meta：_precheck_phase 抛 R-ARCHIVE-PHASE 拒绝（development 不允许 archive）
-    - 如用主仓 meta（修复后）：phase=testing 通过 → archive 成功
+    历史：codex P1 round-4 F-5 曾设计「rebind 后从主仓加载 meta」防止 worktree
+    stale 覆盖主仓。但实际工作流下该场景不会发生 —— worktree 是 feat 分支唯一
+    检出，用户在 worktree 编辑 meta；主仓 develop 上的 meta 仅来自 squash-merge 后
+    的「冻结状态」，永远落后于 worktree 的 feat 视角。worktree-mode hotfix 删除
+    阶段 1 rebind，让 cwd 成为权威 —— archive 必须在 feat 分支视角操作 commit/push。
 
-    断言：archive 成功完成；主仓 meta.yaml.phase=completed，且仍含主仓原本的
-    title（"MAIN")，证明 archive 走的是主仓 meta dict 而非 worktree 副本。
+    场景：worktree meta（phase=testing，feat 视角的最新状态）vs 主仓 meta
+    （phase=testing 但 title 不同，模拟 develop 落后视角）。
+    - hotfix 前：rebind 后读主仓 meta → final title=主仓 value
+    - hotfix 后：不 rebind → 读 worktree meta → final title=worktree value（且 archive 写到 worktree）
     """
     main_repo = tmp_path / "main_repo"
     worktree_root = main_repo / ".worktrees" / "wt"
@@ -1170,8 +1178,8 @@ def test_archive_loads_meta_from_main_repo_after_rebind(
     main_req_dir.mkdir(parents=True)
     main_meta = {
         "id": req_id,
-        "title": "MAIN canonical",  # ← 主仓权威值
-        "phase": "testing",         # ← 主仓允许 archive
+        "title": "MAIN repo view (develop)",  # ← 主仓 develop 视角
+        "phase": "testing",
         "branch": "feat/req-2099-w03",
         "base_branch": "develop",
         "pr_number": 42,
@@ -1194,14 +1202,12 @@ def test_archive_loads_meta_from_main_repo_after_rebind(
 
     wt_req_dir = worktree_root / "requirements" / req_id
     wt_req_dir.mkdir(parents=True)
-    stale_meta = dict(main_meta)
-    stale_meta["title"] = "WORKTREE stale"
-    stale_meta["phase"] = "development"  # ← stale，会被 _precheck_phase 拒绝
-    stale_meta["lessons_extracted"] = False
+    wt_meta = dict(main_meta)
+    wt_meta["title"] = "WORKTREE view (feat - canonical)"  # ← worktree 是 feat 视角权威
     with (wt_req_dir / "meta.yaml").open("w", encoding="utf-8") as f:
-        yaml.safe_dump(stale_meta, f, allow_unicode=True, sort_keys=False)
+        yaml.safe_dump(wt_meta, f, allow_unicode=True, sort_keys=False)
     (wt_req_dir / "process.txt").write_text(
-        "2026-05-04 19:00:00 [phase-transition] bootstrap → development\n",
+        "2026-05-04 19:00:00 [phase-transition] bootstrap → testing\n",
         encoding="utf-8",
     )
 
@@ -1210,8 +1216,6 @@ def test_archive_loads_meta_from_main_repo_after_rebind(
         archive_runner, "REQUIREMENTS_DIR", worktree_root / "requirements"
     )
 
-    # F-002 引入 _create_archive_pr 后渲染 PR body 需读 archive-pr-body.md.tmpl；
-    # _render_archive_pr_body 用 REPO_ROOT（rebind 后 = 主仓），必须在主仓 seed 模板
     for root in (main_repo, worktree_root):
         tmpl_dir = root / ".claude/skills/managing-requirement-lifecycle/templates"
         tmpl_dir.mkdir(parents=True, exist_ok=True)
@@ -1225,19 +1229,6 @@ def test_archive_loads_meta_from_main_repo_after_rebind(
         fake_worktree_manager, "resolve_main_repo_root", lambda _cwd: main_repo
     )
 
-    def fake_cleanup(_meta: dict, _main_root: Path):
-        shutil.rmtree(worktree_root)
-        from worktree_manager import CleanupResult
-
-        return CleanupResult(
-            action="removed", reason="workflow_ok", removed_path=worktree_root
-        )
-
-    monkeypatch.setattr(
-        fake_worktree_manager, "cleanup_worktree_if_owned", fake_cleanup
-    )
-
-    # archive 阶段 1 不再调 git branch -d（三件套搬迁到 finalize）
     plan = {
         ("git", "status", "--porcelain"): _ok(),
         ("gh", "pr", "view"): _ok(stdout=json.dumps({"state": "MERGED"})),
@@ -1245,20 +1236,24 @@ def test_archive_loads_meta_from_main_repo_after_rebind(
     monkeypatch.setattr(archive_runner, "_run", _make_run_stub(plan))
     monkeypatch.chdir(worktree_root)
 
-    # 用主仓 meta（testing）走通；用 worktree meta（development）会 SystemExit
     result = archive_requirement(req_id, no_experience=True, yes_local_branch=True)
     assert result.phase == "completed"
 
-    # 主仓 meta 应保留 "MAIN canonical" title，证明 archive 用主仓 meta dict
-    final_meta = yaml.safe_load(
+    # —— 断言：worktree meta 被写为 completed，title 保留 WORKTREE 值 ——
+    wt_final = yaml.safe_load(
+        (worktree_root / "requirements" / req_id / "meta.yaml").read_text(encoding="utf-8")
+    )
+    assert wt_final["title"] == "WORKTREE view (feat - canonical)", (
+        f"hotfix 后 archive 应读 worktree meta；实际 title={wt_final['title']!r}"
+    )
+    assert wt_final["phase"] == "completed"
+
+    # —— 主仓 meta 未被触碰 ——
+    main_final = yaml.safe_load(
         (main_repo / "requirements" / req_id / "meta.yaml").read_text(encoding="utf-8")
     )
-    assert final_meta["title"] == "MAIN canonical", (
-        "archive 应使用主仓 meta dict 写回，title 不应被 worktree stale 覆盖；"
-        f"实际 title={final_meta['title']!r}"
-    )
-    assert final_meta["phase"] == "completed"
-    assert final_meta["lessons_extracted"] is True  # 主仓权威值，非 worktree 的 False
+    assert main_final["title"] == "MAIN repo view (develop)", "主仓 meta 不应被 archive 触碰"
+    assert main_final["phase"] == "testing", "主仓 meta.phase 应保持 testing"
 
 
 def test_archive_from_main_repo_dirty_worktree_fails_fast(

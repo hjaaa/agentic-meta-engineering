@@ -1705,26 +1705,30 @@ def archive_requirement(
         )
 
     # —— 关键顺序约束（codex P1 round-1~5 F-1 / F-3 / F-4 / F-5 / F-6 累积修复 +
-    # F-001 双阶段拆分）——
+    # F-001 双阶段拆分 + worktree-mode hotfix）——
     #
-    # 1. _rebind_to_main_repo 必须在 _load_meta / dirty / write_meta 之前：
-    #    确保 path helper 一律解析到主仓（F-1 / F-3）。
-    # 2. _load_meta 必须在 rebind 之后：从主仓加载 meta dict，避免 worktree stale
-    #    副本覆盖主仓较新 metadata（F-5）。
-    # 3. _precheck_dirty 必须同时检查主仓 + owned worktree（F-4 / F-6）：
-    #      - 主仓 cwd 启动 + worktree dirty 场景（F-6）：rebind 不变 REPO_ROOT=主仓，
-    #        仅看主仓会漏 dirty worktree
-    #      - worktree cwd 启动 + worktree dirty 场景（F-4）：rebind 后 REPO_ROOT 切
-    #        主仓，仅看主仓会漏 dirty worktree
-    #    两种场景都需要显式检查 meta.worktree.path（owner=workflow 时）。
-    # 4. F-001 双阶段拆分：worktree cleanup + 删本地/远程分支三件套已搬迁到 F-003
-    #    finalize_requirement，archive 主流程不再调用。
+    # 阶段 1 archive 不再调 _rebind_to_main_repo。理由：
+    #   - 原 codex P1 F-1 / F-3 的 rebind 动机是「cleanup_worktree_before_archive
+    #     即将删 worktree → 必须先 chdir 主仓 + 重绑 REPO_ROOT」。F-001 双阶段拆分
+    #     已把 worktree cleanup + 删本地/远程 feat 分支搬到 F-003 finalize_requirement，
+    #     阶段 1 不再触发删 worktree，rebind 失去原本动机。
+    #   - 保留 rebind 反而在 worktree cwd 启动时把 git 操作切到主仓 develop：
+    #     主仓 develop 既没 checkout feat 分支也可能没 pull 含本 REQ 的最新 commit，
+    #     导致 _load_meta 抛 R-ARCHIVE-META-MISSING、_commit_archive_metadata 把
+    #     "archive(<id>): metadata" 写到 develop、_push_feat_branch 把 develop HEAD
+    #     推到 origin/feat/<id> 污染分支历史。
+    #   - finalize_requirement（阶段 2）继续保留 _rebind_to_main_repo —— 那里要
+    #     cleanup worktree，必须在主仓 cwd 下跑。
     #
     # 综合顺序：
-    #   rebind → load_meta (main) → 5 precheck → write_meta → process → experience
-    #   → commit_metadata → push_feat_branch
-
-    _rebind_to_main_repo(req_id)
+    #   load_meta (cwd, 可能是主仓或 worktree) → 5 precheck → write_meta → process
+    #   → experience → commit_metadata → push_feat_branch
+    #
+    # _precheck_dirty 双仓检查（主仓 + owned worktree）仍保留：
+    #   - 主仓 cwd 启动（用户在主仓 feat 上跑）：REPO_ROOT=主仓，worktree path=
+    #     主仓/.worktrees/<id>，二者分开检查。
+    #   - worktree cwd 启动（标准 workflow worktree 模式）：REPO_ROOT=worktree，
+    #     worktree path 解析回自身 → 第二段 path 不存在自动 return，只检 cwd 一次。
 
     meta = _load_meta(req_id)
 
