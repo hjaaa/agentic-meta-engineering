@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-003",
+  "status": "DONE_WITH_CONCERNS",
+  "commit_sha": "aecaf3a",
+  "files_changed": [
+    "scripts/lib/archive_runner.py"
+  ],
+  "test_summary": "py_compile 通过；smoke 验证：(1) _build_parser 接收所有 6 个新 flag 解析正常；(2) finalize_requirement 签名 8 个参数全部对齐 §3.1；(3) _delete_local_branch/_delete_remote_branch/_render_summary/_cleanup_worktree_before_archive/_log_finalize_event/_precheck_archive_pr_merged 签名全部按设计扩展；(4) ArchiveResult 新增 worktree_removed/manual_recovery_commands 字段；ArchivePrompt.kind Literal 含 'finalize'；(5) _render_summary(stage='finalize') 输出格式符合 §3.3；(6) finalize_requirement 主入口 79 行非 docstring（≤80 行）。功能测试归 F-005。",
+  "touches_violations": [],
+  "concerns": [
+    "experience 字段被设置为 'aborted by user'（detailed-design §3.1 step 5 / §3.4 force-only N 路径明确给出此字面值），但 ArchiveResult.experience Literal 集合不含此值，运行时 OK 但破坏静态类型约束；已用 `# type: ignore[assignment]` 标注。若 F-005 测试或后续 review 觉得不妥，可考虑：(a) 把 Literal 扩到含 'aborted'，(b) 引入独立 aborted 字段，(c) 用 result.error_messages 表达。本任务严格遵循设计文档字面值，未自主调整。",
+    "_finalize_pull_develop 用 `git pull --ff-only origin develop`（显式指定 origin + ff-only），与设计文档 'git pull --ff develop' 措辞略有差异。语义等价（ff-only 仅前推），但更明确：避免 git pull 默认行为依赖 upstream 配置，且 ff-only 显式禁止 merge commit。如设计组要求字面一致，可改为 `git pull --ff develop`，但默认 pull 行为依赖当前分支 upstream，需调用方先 `git checkout develop` —— 当前实现已 chdir 主仓但不切分支，故选 origin develop 路径更可靠。",
+    "新增错误码 R-FINALIZE-LOCAL-BRANCH-FAILED（_delete_local_branch strict=True 走 fail-closed 路径时用）/ R-FINALIZE-REQ-ID（req_id 空）/ R-FINALIZE-CWD-FAILED（设计明确给出，本任务实现）/ R-FINALIZE-PULL-FAILED（设计明确给出）。前两个未在 detailed-design 错误码表显式列出但风格与 R-FINALIZE-* 一致，需 F-005 测试或后续 review 确认错误码命名是否符合约定。"
+  ],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-22T10:35:00+08:00"
+}
