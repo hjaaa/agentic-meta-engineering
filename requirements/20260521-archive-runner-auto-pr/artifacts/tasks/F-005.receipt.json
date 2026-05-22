@@ -1,19 +1,19 @@
 {
   "schema_version": "1.0",
   "feature_id": "F-005",
-  "status": "DONE_WITH_CONCERNS",
-  "commit_sha": "ae80f3565cbab284cdb55f6e2170e7f537c4021e",
+  "status": "DONE",
+  "commit_sha": "94e49a39178dae1bf1a129d8dadd2196e4c49569",
   "files_changed": [
     "tests/lifecycle/test_archive_runner.py",
     "tests/lifecycle/test_finalize.py",
     "tests/lib/test_check_meta_archive_pr_number.py"
   ],
-  "test_summary": "pytest 37 TC 全绿（13 TC-F1/F2 + 18 TC-F3 + 6 TC-F4）/ 9 fail-closed R-* 全断言 / TC-F3-5/F3-6 §3.4 字面一致",
+  "test_summary": "rev2 patch — 4 required（TC-F3-18 强 R-* 断言 + 3 unused import F401）+ 7 follow-up（TC-F3-15 括号格式 / 4+2 内联 import 提顶 / 节注释中文化 / helper docstring / TC-F3-19/20 subprocess 异常 2 TC 新增）；ruff F401 0 / pytest 37+2=39 TC 全绿；同模式扫描 4 类全过",
   "touches_violations": [],
   "concerns": [
     "边界外：test_archive.py 存在 21 pre-existing failures（fake_repo 缺模板 seed：archive-pr-body.md.tmpl 不在 fixture 中）；F-005 不可修，建议后续 hotfix 在 test_archive.py 的 fake_repo fixture 中补模板 seed"
   ],
   "missing_context": "",
   "block_reason": "",
-  "timestamp": "2026-05-22 12:00:00"
+  "timestamp": "2026-05-22 14:00:00"
 }
