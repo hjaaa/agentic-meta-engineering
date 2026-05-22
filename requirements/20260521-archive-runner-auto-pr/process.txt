@@ -33,3 +33,8 @@
 2026-05-22 19:36:19 [codex-review-triggered] round=1 pr=#88
 2026-05-22 19:40:24 [codex-review-received] verdict=not_passed round=1
 2026-05-22 19:49:45 [save] Codex review round=1 not_passed → 修 2 个 P1（archive_runner.py 二次 commit/push + finalize switch-before-pull）+ 新增 4 TC（TC-F2-9 ×2 + TC-F3-21 ×2）；pytest tests/ 1911 passed / 0 failed @d282545；准备 push + 等 CI + 重跑 codex round=2
+2026-05-22 19:53:26 [codex-review-triggered] round=1 pr=#88
+2026-05-22 20:00:06 [codex-review-received] verdict=not_passed round=1
+2026-05-22 20:06:21 [codex-review-triggered] round=1 pr=#88
+2026-05-22 20:09:03 [codex-review-received] verdict=passed round=1
+2026-05-22 20:09:49 [save] Codex review-loop 完结：round=1 not_passed (2 P1) → round=2 not_passed (1 自引入 P1) → round=3 passed @1f4a425；3 处真实 bug 闭合（archive_pr_number 二次 commit/push / finalize switch-before-pull / git status 失败 fail-closed）+ 5 个新 TC（test_archive_runner 13→16 / test_finalize 20→22）；pytest tests/ 全绿 / ruff F401=0 / CI quality-check 全绿；PR #88 ready-to-merge
