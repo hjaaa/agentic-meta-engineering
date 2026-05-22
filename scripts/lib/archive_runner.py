@@ -1179,21 +1179,37 @@ def _delete_local_branch(
     yes_local: bool,
     callback: Optional[Callable[[ArchivePrompt], bool]],
     result: ArchiveResult,
+    strict: bool = False,
 ) -> None:
-    """删本地分支第 4 步前半。-d safe delete，不允许 -D 强删（D-014）。"""
+    """删本地分支第 4 步前半。-d safe delete，不允许 -D 强删（D-014）。
+
+    F-003 新增 `strict` 参数（detailed-design §3.3）：
+      - strict=False（默认，archive 兼容路径）：所有失败路径维持现有 fail-soft 行为
+      - strict=True（finalize 入口）：所有原本 fail-soft 的失败路径
+        （switch base 失败 / git branch -d 失败 / safety check 失败 /
+        base_branch 为空 / branch 为空）一律 SystemExit(1) + stderr 透传原错误
+
+    注：archive 主流程不再调本函数，default 仍保 False 是为单测易读
+    （detailed-design §3.3 已写明）。
+    """
     if keep_branch:
         result.local_branch = "skipped"
         return
     if not branch:
+        msg = "local_branch: meta.branch 为空，跳过删除"
+        if strict:
+            _abort("R-FINALIZE-LOCAL-BRANCH-FAILED", msg, result.req_id)
         result.local_branch = "skipped"
-        result.error_messages.append("local_branch: meta.branch 为空，跳过删除")
+        result.error_messages.append(msg)
         return
     # 防止误删 base_branch / 受保护分支 + refspec/选项注入（F-05 远程对称）；
     # 即便 base_branch 为空 / 漂移，命中保护分支白名单也直接 fail-soft
     is_invalid, reason = _check_branch_safe_for_remote_op(branch, base_branch)
     if is_invalid:
-        result.local_branch = "failed"
         msg = f"local_branch: 拒绝删除——{reason}"
+        if strict:
+            _abort("R-FINALIZE-LOCAL-BRANCH-FAILED", msg, result.req_id)
+        result.local_branch = "failed"
         result.error_messages.append(msg)
         print(f"⚠️  {msg}", file=sys.stderr)
         return
@@ -1225,6 +1241,8 @@ def _delete_local_branch(
                 f"local_branch: 当前 HEAD 在 {branch!r} 但 base_branch 为空，"
                 f"无法自动切走；请先 `git switch <base>` 再重跑 archive"
             )
+            if strict:
+                _abort("R-FINALIZE-LOCAL-BRANCH-FAILED", msg, result.req_id)
             result.local_branch = "failed"
             result.error_messages.append(msg)
             print(f"⚠️  {msg}", file=sys.stderr)
@@ -1234,6 +1252,8 @@ def _delete_local_branch(
         base_invalid, base_reason = _check_branch_name_safe(base_branch)
         if base_invalid:
             msg = f"local_branch: 拒绝自动切——{base_reason}"
+            if strict:
+                _abort("R-FINALIZE-LOCAL-BRANCH-FAILED", msg, result.req_id)
             result.local_branch = "failed"
             result.error_messages.append(msg)
             print(f"⚠️  {msg}", file=sys.stderr)
@@ -1243,32 +1263,44 @@ def _delete_local_branch(
                 ["git", "switch", base_branch], cwd=REPO_ROOT,
             )
         except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
-            result.local_branch = "failed"
-            result.error_messages.append(
+            msg = (
                 f"local_branch: 自动切 {base_branch!r} 失败（{exc}）；"
                 f"请手动 `git switch {base_branch}` 再重跑 archive"
             )
+            if strict:
+                _abort("R-FINALIZE-LOCAL-BRANCH-FAILED", msg, result.req_id)
+            result.local_branch = "failed"
+            result.error_messages.append(msg)
             return
         if switch_proc.returncode != 0:
             err = (switch_proc.stderr or switch_proc.stdout or "").strip() or f"exit={switch_proc.returncode}"
-            result.local_branch = "failed"
-            result.error_messages.append(
+            msg = (
                 f"local_branch: 自动切 {base_branch!r} 失败：{err}；"
                 f"请手动 `git switch {base_branch}` 再重跑 archive"
             )
+            if strict:
+                _abort("R-FINALIZE-LOCAL-BRANCH-FAILED", msg, result.req_id)
+            result.local_branch = "failed"
+            result.error_messages.append(msg)
             return
 
     try:
         proc = _run(["git", "branch", "-d", branch], cwd=REPO_ROOT)
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
+        msg = f"local_branch: {exc}"
+        if strict:
+            _abort("R-FINALIZE-LOCAL-BRANCH-FAILED", msg, result.req_id)
         result.local_branch = "failed"
-        result.error_messages.append(f"local_branch: {exc}")
+        result.error_messages.append(msg)
         return
     if proc.returncode != 0:
         # 透传 git 原始错误（squash merge 后会被判 not fully merged，由用户决策）
-        msg = (proc.stderr or proc.stdout or "").strip() or f"exit={proc.returncode}"
+        err = (proc.stderr or proc.stdout or "").strip() or f"exit={proc.returncode}"
+        msg = f"local_branch: {err}"
+        if strict:
+            _abort("R-FINALIZE-LOCAL-BRANCH-FAILED", msg, result.req_id)
         result.local_branch = "failed"
-        result.error_messages.append(f"local_branch: {msg}")
+        result.error_messages.append(msg)
         return
     result.local_branch = "deleted"
 
@@ -1302,12 +1334,20 @@ def _delete_remote_branch(
     yes_remote: bool,
     callback: Optional[Callable[[ArchivePrompt], bool]],
     result: ArchiveResult,
+    legacy_resurrect: bool = False,
 ) -> None:
     """删远程分支第 4 步后半。`remote ref does not exist` → already-deleted。
 
     F-8（codex round-4 P1）：与本地删除路径对称，先把 base_branch 拦下——
     `meta.branch` 误配成 `develop` / `main` / `master` 时，搭配 `--yes-remote-branch`
     或 `y` callback 可能在仓库权限够的情况下删掉关键长寿命分支，必须 fail-closed。
+
+    F-003 新增 `legacy_resurrect` 参数（detailed-design §3.3 / F-007 兜底）：
+      - legacy_resurrect=False（默认）：only `remote ref does not exist` 视作
+        already-deleted，维持现有行为
+      - legacy_resurrect=True：扩大识别集到 {remote ref does not exist, not found,
+        unknown}；其他失败仍 fail-soft，但额外把 `git push origin --delete <branch>`
+        塞入 result.manual_recovery_commands 供用户手工恢复
     """
     if keep_branch:
         result.remote_branch = "skipped"
@@ -1345,22 +1385,49 @@ def _delete_remote_branch(
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
         result.remote_branch = "failed"
         result.error_messages.append(f"remote_branch: {exc}")
+        if legacy_resurrect:
+            result.manual_recovery_commands.append(
+                f"git push origin --delete {branch}"
+            )
         return
     if proc.returncode == 0:
         result.remote_branch = "deleted"
         return
     msg = (proc.stderr or proc.stdout or "").strip() or f"exit={proc.returncode}"
-    # GitHub「Automatically delete head branches」勾选后 PR merge 即删远程分支；
-    # 此处把这种 noisy fail 折叠为正常态，避免误导用户
-    if "remote ref does not exist" in msg.lower():
+    msg_lower = msg.lower()
+    # 已删判定：默认仅 `remote ref does not exist`；legacy_resurrect 扩到三关键词
+    already_keywords = ["remote ref does not exist"]
+    if legacy_resurrect:
+        already_keywords.extend(["not found", "unknown"])
+    if any(kw in msg_lower for kw in already_keywords):
         result.remote_branch = "already-deleted"
         return
     result.remote_branch = "failed"
     result.error_messages.append(f"remote_branch: {msg}")
+    if legacy_resurrect:
+        result.manual_recovery_commands.append(
+            f"git push origin --delete {branch}"
+        )
 
 
-def _render_summary(result: ArchiveResult) -> str:
-    """spec §5.3 第 5 步终端反馈格式（6 行：标题 + phase + archived_at + experience + 本地 + 远程；error_messages 非空时再追加 errors 段）。"""
+def _render_summary(
+    result: ArchiveResult, *, stage: Literal["archive", "finalize"] = "archive"
+) -> str:
+    """spec §5.3 第 5 步终端反馈格式。
+
+    stage="archive"（默认，兼容旧行为）：6 行 + 可选 archive PR 行 + errors 段
+      标题 + phase + archived_at + experience + 本地 + 远程
+
+    stage="finalize"（F-003）：finalize 终态汇总
+      标题 + worktree_removed + local_branch + remote_branch + manual_recovery 段
+    """
+    if stage == "finalize":
+        return _render_summary_finalize(result)
+    return _render_summary_archive(result)
+
+
+def _render_summary_archive(result: ArchiveResult) -> str:
+    """archive 阶段 6 行汇总（向后兼容；新增可选 archive PR 行不破坏既有断言）。"""
     icon = {
         "experience": {
             "yes": "✅", "no": "⏭", "skipped": "⏭",
@@ -1383,12 +1450,51 @@ def _render_summary(result: ArchiveResult) -> str:
         f"   local branch:  {icon['local_branch'].get(result.local_branch, '?')} {result.local_branch}",
         f"   remote branch: {icon['remote_branch'].get(result.remote_branch, '?')} {result.remote_branch}",
     ]
+    if result.archive_pr_number > 0:
+        lines.append(f"   archive PR: #{result.archive_pr_number}")
     lines.append("")  # 空行分隔
     lines.append("🟢 archive 前请确认 ci gate exit 0：python3 scripts/gates/run.py --trigger=ci --strict")
     if result.error_messages:
         lines.append("   errors:")
         for msg in result.error_messages:
             lines.append(f"     - {msg}")
+    return "\n".join(lines)
+
+
+def _render_summary_finalize(result: ArchiveResult) -> str:
+    """finalize 阶段汇总（detailed-design §3.3）。
+
+    展示 worktree_removed / local_branch / remote_branch / errors /
+    manual_recovery_commands 字段。
+    """
+    icon = {
+        "worktree_removed": {
+            "removed": "✅", "kept": "⏭", "skipped": "⏭", "failed": "❌",
+        },
+        "local_branch": {
+            "deleted": "✅", "kept": "⏭", "skipped": "⏭", "failed": "❌",
+        },
+        "remote_branch": {
+            "deleted": "✅", "kept": "⏭", "skipped": "⏭",
+            "already-deleted": "✅", "failed": "❌",
+        },
+    }
+    lines = [
+        f"✅ {result.req_id} finalized",
+        f"   worktree: {icon['worktree_removed'].get(result.worktree_removed, '?')} {result.worktree_removed}",
+        f"   local branch:  {icon['local_branch'].get(result.local_branch, '?')} {result.local_branch}",
+        f"   remote branch: {icon['remote_branch'].get(result.remote_branch, '?')} {result.remote_branch}",
+    ]
+    if result.archive_pr_number > 0:
+        lines.append(f"   archive PR: #{result.archive_pr_number}")
+    if result.error_messages:
+        lines.append("   errors:")
+        for msg in result.error_messages:
+            lines.append(f"     - {msg}")
+    if result.manual_recovery_commands:
+        lines.append("   manual recovery:")
+        for cmd in result.manual_recovery_commands:
+            lines.append(f"     $ {cmd}")
     return "\n".join(lines)
 
 
@@ -1428,7 +1534,9 @@ def _rebind_to_main_repo(req_id: str) -> None:
     )
 
 
-def _cleanup_worktree_before_archive(meta: dict[str, Any], req_id: str) -> None:
+def _cleanup_worktree_before_archive(
+    meta: dict[str, Any], req_id: str
+) -> Literal["removed", "skipped", "failed"]:
     """预检全部通过后，atomic_write_meta 之前注入 worktree 清理（F-005 / P1-3 修复）。
 
     三步顺序硬约束（详见 detailed-design §3.5 / P1-3）：
@@ -1438,6 +1546,14 @@ def _cleanup_worktree_before_archive(meta: dict[str, Any], req_id: str) -> None:
 
     OD-3 落点：不读 meta.worktree.cleanup.policy（占位字段，本期不消费）。
     设计来源：detailed-design.md:792-826（§3.5）。
+
+    返回值（F-003 新增）：
+      - "removed"：cleanup_worktree_if_owned action=removed
+      - "skipped"：action=skipped 或 resolve_main_repo_root / chdir 异常
+      - "failed"：action=aborted / failed
+
+    archive 主流程不消费返回值（向后兼容）；finalize_requirement 据此置位
+    result.worktree_removed。
     """
     try:
         main_repo_root = worktree_manager.resolve_main_repo_root(Path.cwd())
@@ -1447,7 +1563,7 @@ def _cleanup_worktree_before_archive(meta: dict[str, Any], req_id: str) -> None:
             "worktree cleanup skipped: resolve_main_repo_root failed req_id=%s reason=%s",
             req_id, getattr(exc, "reason", str(exc)),
         )
-        return
+        return "skipped"
 
     # os.chdir 裸调在权限异常或 race 时会 crash archive 主流程，违反 D-009 fail-soft；
     # 用 OSError 兜住，让 cleanup 跳过而非整体 abort。
@@ -1458,7 +1574,7 @@ def _cleanup_worktree_before_archive(meta: dict[str, Any], req_id: str) -> None:
             "worktree cleanup skipped: chdir to %s failed req_id=%s: %s",
             main_repo_root, req_id, exc,
         )
-        return
+        return "skipped"
 
     cleanup_result = worktree_manager.cleanup_worktree_if_owned(meta, main_repo_root)
 
@@ -1466,13 +1582,15 @@ def _cleanup_worktree_before_archive(meta: dict[str, Any], req_id: str) -> None:
         logger.info("worktree removed: %s", cleanup_result.removed_path)
         # 仅 removed 分支才 mutate meta，避免给 legacy meta 引入空 worktree 段
         meta.setdefault("worktree", {}).setdefault("cleanup", {})["removed_at"] = _now_cst_str()
-    elif cleanup_result.action == "skipped":
+        return "removed"
+    if cleanup_result.action == "skipped":
         logger.info("worktree cleanup skipped: %s", cleanup_result.reason)
-    else:
-        # aborted / failed：记 error 但不阻塞 archive 主流程（D-009）
-        logger.error(
-            "worktree cleanup %s: %s", cleanup_result.action, cleanup_result.reason
-        )
+        return "skipped"
+    # aborted / failed：记 error 但不阻塞 archive 主流程（D-009）
+    logger.error(
+        "worktree cleanup %s: %s", cleanup_result.action, cleanup_result.reason
+    )
+    return "failed"
 
 
 # ---------- 主入口 ----------
