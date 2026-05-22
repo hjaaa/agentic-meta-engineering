@@ -1687,6 +1687,285 @@ def archive_requirement(
     return result
 
 
+# ---------- finalize 子命令（F-003） ----------
+
+
+# §3.4 警告文案常量（精确匹配；test_finalize TC-F3-5/6 会断言）
+_FINALIZE_WARN_FORCE_ONLY = (
+    "⚠️  finalize: --force 已启用——跳过 archive_pr_number 校验。"
+    "即将无视归档 PR 状态删除 feat 分支与 worktree。Y/N？"
+)
+_FINALIZE_WARN_FORCE_AND_YES = (
+    "⚠️  finalize: --force + --yes-finalize 同时启用——双重危险组合"
+    "（跳过 PR 校验 + 跳过合并问询）。请确认你正在做异常恢复且已手工核对归档 PR 状态。"
+    "继续执行。"
+)
+
+
+def _finalize_warn_force(
+    req_id: str,
+    *,
+    force: bool,
+    yes_finalize: bool,
+    prompts_callback: Optional[Callable[[ArchivePrompt], bool]],
+) -> Optional[ArchiveResult]:
+    """§3.4 警告文案：在 _precheck_archive_pr_merged 之前打印。
+
+    返回值语义：
+      - None：继续 finalize 流程
+      - ArchiveResult（experience="aborted by user"）：用户在 force-only 二次确认中
+        答 N；调用方应直接 return 它并 exit 0
+
+    分支：
+      - 无 force：什么都不做
+      - force only：打印警告 + 二次确认；callback 答 N → 返回 aborted result
+      - force + yes_finalize：打印警告，**不**问，直接继续（双重危险已确认）
+    """
+    if not force:
+        return None
+    if yes_finalize:
+        print(_FINALIZE_WARN_FORCE_AND_YES, file=sys.stderr)
+        return None
+    print(_FINALIZE_WARN_FORCE_ONLY, file=sys.stderr)
+    answer = _ask(
+        ArchivePrompt(
+            kind="finalize",
+            question=_FINALIZE_WARN_FORCE_ONLY,
+            default=False,
+        ),
+        yes_flag=False,
+        callback=prompts_callback,
+    )
+    if not answer:
+        result = ArchiveResult(req_id=req_id)
+        result.experience = "aborted by user"  # type: ignore[assignment]
+        return result
+    return None
+
+
+def _finalize_chdir_main_repo(req_id: str) -> Path:
+    """第 6 步：显式 chdir(main_repo_root)。OSError → fail-closed。
+
+    返回 main_repo_root Path（供后续 pull / cleanup 复用）。
+    """
+    try:
+        main_repo_root = worktree_manager.resolve_main_repo_root(Path.cwd())
+    except worktree_manager.WorktreeBootstrapError as exc:
+        _abort(
+            "R-FINALIZE-CWD-FAILED",
+            f"resolve_main_repo_root 失败：{getattr(exc, 'reason', str(exc))}",
+            req_id,
+        )
+    try:
+        os.chdir(main_repo_root)
+    except OSError as exc:
+        _abort(
+            "R-FINALIZE-CWD-FAILED",
+            f"chdir 到主仓根 {main_repo_root} 失败：{exc}",
+            req_id,
+        )
+    return main_repo_root
+
+
+def _finalize_pull_develop(req_id: str, main_repo_root: Path) -> None:
+    """第 7 步：git pull --ff-only origin develop。fail-closed → R-FINALIZE-PULL-FAILED。"""
+    try:
+        proc = _run(["git", "pull", "--ff-only", "origin", "develop"], cwd=main_repo_root)
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
+        _abort("R-FINALIZE-PULL-FAILED", f"git pull --ff develop 调用失败：{exc}", req_id)
+    if proc.returncode != 0:
+        err = (proc.stderr or proc.stdout or "").strip() or f"exit={proc.returncode}"
+        _abort("R-FINALIZE-PULL-FAILED", f"git pull --ff develop 失败：{err}", req_id)
+
+
+def _finalize_collect_keep_flags(
+    *, keep_worktree: bool, keep_local_branch: bool, keep_remote_branch: bool,
+) -> list[str]:
+    """收集启用的 --keep-* flag 名称（_log_finalize_event 用作括号后缀）。"""
+    flags: list[str] = []
+    if keep_worktree:
+        flags.append("--keep-worktree")
+    if keep_local_branch:
+        flags.append("--keep-local-branch")
+    if keep_remote_branch:
+        flags.append("--keep-remote-branch")
+    return flags
+
+
+def _finalize_cleanup_worktree(
+    meta: dict[str, Any],
+    req_id: str,
+    result: ArchiveResult,
+    *,
+    keep_worktree: bool,
+) -> None:
+    """第 8 步：worktree cleanup + 失败时追加 manual_recovery_commands。"""
+    if keep_worktree:
+        result.worktree_removed = "kept"
+        return
+    outcome = _cleanup_worktree_before_archive(meta, req_id)
+    result.worktree_removed = outcome
+    if outcome == "failed":
+        raw_path = ((meta.get("worktree") or {}).get("path") or "").strip()
+        if raw_path:
+            result.manual_recovery_commands.append(
+                f"git worktree remove --force {raw_path}"
+            )
+
+
+def _finalize_post_run(
+    req_id: str,
+    meta: dict[str, Any],
+    result: ArchiveResult,
+    *,
+    keep_worktree: bool,
+    keep_local_branch: bool,
+    keep_remote_branch: bool,
+    legacy_resurrect_remote: bool,
+    prompts_callback: Optional[Callable[[ArchivePrompt], bool]],
+) -> None:
+    """第 8/9/10/11 步合并：worktree cleanup → 删本地 → 删远程 → 写 process 事件。"""
+    # step 8
+    _finalize_cleanup_worktree(meta, req_id, result, keep_worktree=keep_worktree)
+
+    # step 9: _delete_local_branch(strict=True)
+    branch = (meta.get("branch") or "").strip()
+    base_branch = (meta.get("base_branch") or "").strip()
+    if keep_local_branch:
+        result.local_branch = "skipped"
+    else:
+        _delete_local_branch(
+            branch,
+            base_branch,
+            keep_branch=False,
+            yes_local=True,  # finalize 阶段不再二次问询
+            callback=prompts_callback,
+            result=result,
+            strict=True,
+        )
+
+    # step 10: _delete_remote_branch
+    if keep_remote_branch:
+        result.remote_branch = "skipped"
+    else:
+        _delete_remote_branch(
+            branch,
+            base_branch,
+            keep_branch=False,
+            yes_remote=True,
+            callback=prompts_callback,
+            result=result,
+            legacy_resurrect=legacy_resurrect_remote,
+        )
+
+    # step 11: _log_finalize_event
+    keep_flags = _finalize_collect_keep_flags(
+        keep_worktree=keep_worktree,
+        keep_local_branch=keep_local_branch,
+        keep_remote_branch=keep_remote_branch,
+    )
+    _log_finalize_event(req_id, result, keep_flags=keep_flags)
+
+
+def finalize_requirement(
+    req_id: str,
+    *,
+    yes_finalize: bool = False,
+    force: bool = False,
+    keep_local_branch: bool = False,
+    keep_remote_branch: bool = False,
+    keep_worktree: bool = False,
+    legacy_resurrect_remote: bool = False,
+    prompts_callback: Optional[Callable[[ArchivePrompt], bool]] = None,
+) -> ArchiveResult:
+    """finalize 子命令入口（detailed-design §3.1，已 frozen）。
+
+    10 步顺序：
+      1. _rebind_to_main_repo
+      2. _load_meta
+      3. §3.4 警告文案（在 _precheck_archive_pr_merged 之前）
+      4. _precheck_archive_pr_merged（--force 跳过）
+      5. 合并问询 ArchivePrompt(kind="finalize")（--yes-finalize 跳过；N → exit 0）
+      6. os.chdir(main_repo_root)（OSError → R-FINALIZE-CWD-FAILED）
+      7. git pull --ff develop（fail-closed → R-FINALIZE-PULL-FAILED）
+      8. _cleanup_worktree_before_archive（--keep-worktree 跳过）
+      9. _delete_local_branch(strict=True)（--keep-local-branch 跳过）
+     10. _delete_remote_branch(legacy_resurrect=...)（--keep-remote-branch 跳过）
+     11. _log_finalize_event（写 process.txt [finalized]）
+     12. print(_render_summary(result, stage="finalize")) + return
+
+    返回 ArchiveResult；用户在第 3/5 步答 N → result.experience="aborted by user"。
+    """
+    if not req_id:
+        _abort("R-FINALIZE-REQ-ID", "req_id 为空", req_id or "<empty>")
+
+    # 1. rebind
+    _rebind_to_main_repo(req_id)
+
+    # 2. load meta
+    meta = _load_meta(req_id)
+
+    # 3. §3.4 警告文案（必须在 _precheck_archive_pr_merged 之前）
+    aborted = _finalize_warn_force(
+        req_id,
+        force=force,
+        yes_finalize=yes_finalize,
+        prompts_callback=prompts_callback,
+    )
+    if aborted is not None:
+        return aborted
+
+    # 4. _precheck_archive_pr_merged
+    archive_pr_number = _precheck_archive_pr_merged(meta, req_id, force=force)
+
+    # 5. 合并问询
+    if not yes_finalize:
+        answer = _ask(
+            ArchivePrompt(
+                kind="finalize",
+                question=(
+                    f"即将 finalize {req_id}（删 worktree + feat 本地/远程分支）。"
+                    f"确认继续？(y/N)"
+                ),
+                default=False,
+            ),
+            yes_flag=False,
+            callback=prompts_callback,
+        )
+        if not answer:
+            result = ArchiveResult(req_id=req_id)
+            result.experience = "aborted by user"  # type: ignore[assignment]
+            return result
+
+    # 初始化 result
+    result = ArchiveResult(req_id=req_id)
+    result.phase = meta.get("phase", "completed")
+    result.archived_at = (meta.get("archived_at") or "").strip()
+    result.archive_pr_number = archive_pr_number
+
+    # 6. chdir(main_repo_root)
+    main_repo_root = _finalize_chdir_main_repo(req_id)
+
+    # 7. git pull --ff develop
+    _finalize_pull_develop(req_id, main_repo_root)
+
+    # 8/9/10/11. cleanup + 删本地 + 删远程 + 写 process 事件
+    _finalize_post_run(
+        req_id,
+        meta,
+        result,
+        keep_worktree=keep_worktree,
+        keep_local_branch=keep_local_branch,
+        keep_remote_branch=keep_remote_branch,
+        legacy_resurrect_remote=legacy_resurrect_remote,
+        prompts_callback=prompts_callback,
+    )
+
+    # 12. summary + return
+    print(_render_summary(result, stage="finalize"))
+    return result
+
+
 # ---------- CLI 入口（命令直接调用时） ----------
 
 
@@ -1694,13 +1973,14 @@ def _build_parser():
     import argparse
 
     p = argparse.ArgumentParser(
-        description="archive 子动作：phase=completed + archived_at + 三问串行"
+        description="archive 子动作：phase=completed + archived_at + 三问串行；"
+                    "--finalize 切换到 finalize 子命令（worktree + 分支清理）"
     )
     p.add_argument("req_id", help="REQ-YYYY-NNN")
     p.add_argument("--force", action="store_true",
-                   help="跳过 PR merged 校验（异常恢复用）")
+                   help="跳过 PR merged 校验（异常恢复用；finalize 阶段同样适用）")
     p.add_argument("--keep-branch", action="store_true",
-                   help="跳过删本地+远程分支两问")
+                   help="archive：跳过删本地+远程分支两问（已被 F-003 弃用）")
     p.add_argument("--no-experience", action="store_true",
                    help="跳过经验沉淀提示")
     p.add_argument("--yes-experience", action="store_true",
@@ -1715,12 +1995,36 @@ def _build_parser():
         default="shipped",
         help="meta.outcome 终态，默认 shipped；--force 路径下显式给值",
     )
+    # ---- finalize 子命令 flag（F-003） ----
+    p.add_argument("--finalize", action="store_true",
+                   help="切换到 finalize 子命令：归档 PR merge 后清理 worktree + 分支")
+    p.add_argument("--yes-finalize", action="store_true",
+                   help="finalize 合并问询跳问，等价用户答 y")
+    p.add_argument("--keep-local-branch", action="store_true",
+                   help="finalize：跳过删本地分支")
+    p.add_argument("--keep-remote-branch", action="store_true",
+                   help="finalize：跳过删远程分支")
+    p.add_argument("--keep-worktree", action="store_true",
+                   help="finalize：跳过 worktree cleanup")
+    p.add_argument("--legacy-resurrect-remote", action="store_true",
+                   help="finalize：扩大 already-deleted 关键词集（F-007 兜底）")
     return p
 
 
 def main() -> int:
-    """CLI 入口：解析命令行参数并调用 archive_requirement；成功返回 0。"""
+    """CLI 入口：解析命令行参数；--finalize 切 finalize_requirement，否则 archive_requirement。"""
     args = _build_parser().parse_args()
+    if args.finalize:
+        finalize_requirement(
+            args.req_id,
+            yes_finalize=args.yes_finalize,
+            force=args.force,
+            keep_local_branch=args.keep_local_branch,
+            keep_remote_branch=args.keep_remote_branch,
+            keep_worktree=args.keep_worktree,
+            legacy_resurrect_remote=args.legacy_resurrect_remote,
+        )
+        return 0
     archive_requirement(
         args.req_id,
         force=args.force,
