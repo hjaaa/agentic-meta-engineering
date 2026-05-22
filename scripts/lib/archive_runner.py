@@ -1707,6 +1707,7 @@ def _finalize_warn_force(
     *,
     force: bool,
     yes_finalize: bool,
+    keep_flags: list[str],
     prompts_callback: Optional[Callable[[ArchivePrompt], bool]],
 ) -> Optional[ArchiveResult]:
     """§3.4 警告文案：在 _precheck_archive_pr_merged 之前打印。
@@ -1716,10 +1717,12 @@ def _finalize_warn_force(
       - ArchiveResult（experience="aborted by user"）：用户在 force-only 二次确认中
         答 N；调用方应直接 return 它并 exit 0
 
-    分支：
+    分支（detailed-design §3.4 表 4 行）：
       - 无 force：什么都不做
       - force only：打印警告 + 二次确认；callback 答 N → 返回 aborted result
       - force + yes_finalize：打印警告，**不**问，直接继续（双重危险已确认）
+      - force + keep_flags 非空：force-only 警告之后追加列出实际生效的 --keep-* flag，
+        然后照常走二次确认（yes_finalize 路径已被 FORCE_AND_YES 覆盖，不嵌套加 keep）
     """
     if not force:
         return None
@@ -1727,6 +1730,11 @@ def _finalize_warn_force(
         print(_FINALIZE_WARN_FORCE_AND_YES, file=sys.stderr)
         return None
     print(_FINALIZE_WARN_FORCE_ONLY, file=sys.stderr)
+    if keep_flags:
+        print(
+            f"（实际生效 keep flag：{' '.join(keep_flags)}）",
+            file=sys.stderr,
+        )
     answer = _ask(
         ArchivePrompt(
             kind="finalize",
@@ -1906,10 +1914,17 @@ def finalize_requirement(
     meta = _load_meta(req_id)
 
     # 3. §3.4 警告文案（必须在 _precheck_archive_pr_merged 之前）
+    # 先收集 keep_flags：force + keep-* 组合时要在警告里列出实际生效的 flag
+    keep_flags = _finalize_collect_keep_flags(
+        keep_worktree=keep_worktree,
+        keep_local_branch=keep_local_branch,
+        keep_remote_branch=keep_remote_branch,
+    )
     aborted = _finalize_warn_force(
         req_id,
         force=force,
         yes_finalize=yes_finalize,
+        keep_flags=keep_flags,
         prompts_callback=prompts_callback,
     )
     if aborted is not None:
