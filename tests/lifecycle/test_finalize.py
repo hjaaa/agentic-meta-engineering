@@ -788,3 +788,81 @@ def test_finalize_precheck_subprocess_file_not_found(
     assert "R-FINALIZE-ARCHIVE-PR-FETCH-FAILED" in err, (
         f"stderr must contain R-FINALIZE-ARCHIVE-PR-FETCH-FAILED on FileNotFoundError, got: {err!r}"
     )
+
+
+# ---------- TC-F3-21: Codex P1-2 finalize 切 develop 再 pull ----------
+
+
+def test_finalize_switches_develop_before_pull(
+    fake_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """TC-F3-21 (Codex P1-2): finalize 在 git pull develop 之前必须先 git switch develop。
+
+    避免在 feat 分支（squash-merged 后 HEAD 与 origin/develop non-fast-forward）上跑 pull
+    导致 R-FINALIZE-PULL-FAILED。
+    """
+    req_id = "REQ-2099-002"
+    _make_meta(fake_repo, req_id=req_id, archive_pr_number=55)
+
+    calls: list[tuple[str, ...]] = []
+
+    def tracking_run(cmd, *, cwd=None):
+        calls.append(tuple(cmd))
+        if tuple(cmd[:3]) == ("gh", "pr", "view"):
+            return _ok(stdout=_merged_pr_json(55))
+        return _ok()
+
+    monkeypatch.setattr(archive_runner, "_run", tracking_run)
+
+    finalize_requirement(req_id, yes_finalize=True)
+
+    # 找第一个 "git switch develop" 与第一个 "git pull" 的位置
+    switch_develop_idx = next(
+        (i for i, c in enumerate(calls)
+         if c[:2] == ("git", "switch") and len(c) >= 3 and c[2] == "develop"),
+        None,
+    )
+    pull_idx = next(
+        (i for i, c in enumerate(calls) if c[:2] == ("git", "pull")),
+        None,
+    )
+
+    assert switch_develop_idx is not None, (
+        f"finalize must call 'git switch develop' before pull; calls={calls}"
+    )
+    assert pull_idx is not None, (
+        f"finalize must call 'git pull'; calls={calls}"
+    )
+    assert switch_develop_idx < pull_idx, (
+        f"'git switch develop' (idx={switch_develop_idx}) must precede "
+        f"'git pull' (idx={pull_idx}); calls={calls}"
+    )
+
+
+def test_finalize_pull_failed_when_switch_fails(
+    fake_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """TC-F3-21 fail-closed: git switch develop 失败 → SystemExit(1) + R-FINALIZE-PULL-FAILED。"""
+    req_id = "REQ-2099-002"
+    _make_meta(fake_repo, req_id=req_id, archive_pr_number=55)
+
+    plan = {
+        ("gh", "pr", "view"): _ok(stdout=_merged_pr_json(55)),
+        ("git", "switch", "develop"): _fail(
+            "fatal: 'develop' is already checked out at ...",
+            returncode=128,
+        ),
+    }
+    monkeypatch.setattr(archive_runner, "_run", _make_run_stub(plan))
+
+    with pytest.raises(SystemExit) as excinfo:
+        finalize_requirement(req_id, yes_finalize=True)
+
+    assert excinfo.value.code == 1, "should exit 1 when switch fails"
+    err = capsys.readouterr().err
+    assert "R-FINALIZE-PULL-FAILED" in err, (
+        f"stderr should contain R-FINALIZE-PULL-FAILED on switch failure, got: {err!r}"
+    )

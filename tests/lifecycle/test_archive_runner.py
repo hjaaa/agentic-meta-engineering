@@ -1,8 +1,9 @@
 """archive_runner F-001 / F-002 单元测试。
 
-覆盖 13 TC：
+覆盖 14 TC：
   TC-F1-1 ~ TC-F1-5：_commit_archive_metadata / _push_feat_branch
   TC-F2-1 ~ TC-F2-8：_create_archive_pr / _write_archive_pr_number / PR body 渲染
+  TC-F2-9（Codex P1-1）：_commit_and_push_archive_pr_number commit + push 闭合 dirty
 
 外部依赖（subprocess gh / git）全 mock，不触网络、不动真 git。
 """
@@ -24,6 +25,7 @@ import archive_runner  # noqa: E402
 from archive_runner import (  # noqa: E402
     ArchiveResult,
     _commit_archive_metadata,
+    _commit_and_push_archive_pr_number,
     _create_archive_pr,
     _push_feat_branch,
     _write_archive_pr_number,
@@ -538,3 +540,78 @@ def test_render_archive_pr_body_placeholders(
     assert "__REQ_ID__" not in body, "placeholder __REQ_ID__ should be replaced"
     assert "__PR_NUMBER__" not in body, "placeholder __PR_NUMBER__ should be replaced"
     assert "__BRANCH__" not in body, "placeholder __BRANCH__ should be replaced"
+
+
+# ---------- TC-F2-9: Codex P1-1 二次 commit + push ----------
+
+
+def test_commit_and_push_archive_pr_number_commits_and_pushes(
+    fake_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """TC-F2-9 (Codex P1-1): _write_archive_pr_number 后 meta.yaml dirty → git add + commit + push 各调一次。"""
+    req_id = "REQ-2099-001"
+    req_dir = _make_meta(fake_repo, req_id=req_id, archive_pr_number=42)
+    meta = yaml.safe_load((req_dir / "meta.yaml").read_text(encoding="utf-8"))
+
+    calls: list[tuple[str, ...]] = []
+
+    def tracking_run(cmd, *, cwd=None):
+        calls.append(tuple(cmd))
+        if tuple(cmd[:2]) == ("git", "status"):
+            # 模拟 meta.yaml dirty（一行 'M requirements/REQ-2099-001/meta.yaml'）
+            return types.SimpleNamespace(
+                returncode=0,
+                stdout=f" M requirements/{req_id}/meta.yaml\n",
+                stderr="",
+            )
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(archive_runner, "_run", tracking_run)
+
+    _commit_and_push_archive_pr_number(meta, req_id, 42)
+
+    assert any(c[:2] == ("git", "add") for c in calls), (
+        f"git add must be called; calls={calls}"
+    )
+    assert any(c[:2] == ("git", "commit") for c in calls), (
+        f"git commit must be called; calls={calls}"
+    )
+    assert any(c[:2] == ("git", "push") for c in calls), (
+        f"git push must be called; calls={calls}"
+    )
+
+    commit_call = next(c for c in calls if c[:2] == ("git", "commit"))
+    msg = commit_call[commit_call.index("-m") + 1]
+    assert f"archive({req_id})" in msg and "archive_pr_number" in msg, (
+        f"commit message must include req_id + archive_pr_number marker, got: {msg!r}"
+    )
+    # 与 ARCHIVE_COMMIT_RE 的 'metadata' 字面区分（避免被 _idempotent_skip_if_commit_exists 误识别）
+    assert "metadata" not in msg, (
+        f"commit message must NOT match ARCHIVE_COMMIT_RE 'metadata' literal, got: {msg!r}"
+    )
+
+
+def test_commit_and_push_archive_pr_number_idempotent_when_clean(
+    fake_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """TC-F2-9 idempotent: meta.yaml 无 dirty（archive_pr_number 已等于目标）→ 完全不调 git add/commit/push。"""
+    req_id = "REQ-2099-001"
+    req_dir = _make_meta(fake_repo, req_id=req_id, archive_pr_number=42)
+    meta = yaml.safe_load((req_dir / "meta.yaml").read_text(encoding="utf-8"))
+
+    calls: list[tuple[str, ...]] = []
+
+    def tracking_run(cmd, *, cwd=None):
+        calls.append(tuple(cmd))
+        # status 返回 clean
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(archive_runner, "_run", tracking_run)
+
+    _commit_and_push_archive_pr_number(meta, req_id, 42)
+
+    assert all(c[:2] == ("git", "status") for c in calls), (
+        f"only git status should be called when clean; calls={calls}"
+    )

@@ -989,6 +989,70 @@ def _write_archive_pr_number(
     )
 
 
+def _commit_and_push_archive_pr_number(
+    meta: dict[str, Any], req_id: str, archive_pr_number: int
+) -> None:
+    """阶段 1 step 10：把 _write_archive_pr_number 写入的 meta 改动 commit + push。
+
+    Codex Review P1 (PR #88)：原实现写完 archive_pr_number 后未 commit/push，导致归档 PR 的
+    head commit 不含此字段，其他 clone 跑 finalize 会因 R-FINALIZE-ARCHIVE-PR-MISSING 失败。
+
+    Idempotent：meta.yaml 无 dirty 改动时跳过（archive_pr_number 已等于目标值的场景）。
+    commit message 使用 `archive(<req_id>): record archive_pr_number=#<N>`，与
+    `ARCHIVE_COMMIT_RE` 的 `metadata` 字面正则区分，避免被 `_idempotent_skip_if_commit_exists`
+    误识别（来源：scripts/lib/archive_runner.py:128 ARCHIVE_COMMIT_RE）。
+    """
+    branch = (meta.get("branch") or "").strip()
+    if not branch:
+        return  # 无分支可推；与 _push_feat_branch 缺 branch 一致地静默跳过
+    meta_rel = f"requirements/{req_id}/meta.yaml"
+
+    status_proc = _run_or_abort(
+        ["git", "status", "--porcelain", "--", meta_rel],
+        cwd=REPO_ROOT,
+        error_code="R-ARCHIVE-COMMIT-FAILED",
+        req_id=req_id,
+        label="git status meta.yaml",
+    )
+    if status_proc.returncode != 0 or not status_proc.stdout.strip():
+        logger.info(
+            "commit_archive_pr_number: skipped (clean) req_id=%s pr=%d",
+            req_id, archive_pr_number,
+        )
+        return
+
+    _run_or_abort(
+        ["git", "add", "--", meta_rel],
+        cwd=REPO_ROOT,
+        error_code="R-ARCHIVE-COMMIT-FAILED",
+        req_id=req_id,
+        label=f"git add {meta_rel}",
+    )
+    msg = f"archive({req_id}): record archive_pr_number=#{archive_pr_number}"
+    commit_proc = _run_or_abort(
+        ["git", "commit", "-m", msg],
+        cwd=REPO_ROOT,
+        error_code="R-ARCHIVE-COMMIT-FAILED",
+        req_id=req_id,
+        label="git commit archive_pr_number",
+    )
+    if commit_proc.returncode != 0:
+        stderr = (commit_proc.stderr or commit_proc.stdout or "").strip()
+        _abort(
+            "R-ARCHIVE-COMMIT-FAILED",
+            f"git commit archive_pr_number 失败：{stderr}",
+            req_id,
+        )
+
+    _do_push_with_recovery_hint(
+        branch, (meta.get("base_branch") or "").strip(), req_id
+    )
+    logger.info(
+        "commit_archive_pr_number: committed + pushed req_id=%s pr=%d",
+        req_id, archive_pr_number,
+    )
+
+
 def _idempotent_skip_if_commit_exists(req_id: str) -> bool:
     """幂等检测：HEAD commit subject 命中 ARCHIVE_COMMIT_RE(req_id) → 返回 True。
 
@@ -1685,9 +1749,12 @@ def archive_requirement(
     _commit_archive_metadata(req_id, result)
     _push_feat_branch(meta, req_id, result)
 
-    # —— 阶段 1 step 8/9：创建归档 PR + 落 archive_pr_number ——
+    # —— 阶段 1 step 8/9/10：创建归档 PR + 落 archive_pr_number + 二次 commit/push ——
+    # step 10（Codex P1-1）保证 archive_pr_number 跟随归档 PR head commit 一起进入 develop，
+    # 避免其他 clone 跑 finalize 时因 meta.archive_pr_number=0 触发 R-FINALIZE-ARCHIVE-PR-MISSING。
     archive_pr_number = _create_archive_pr(meta, req_id, result)
     _write_archive_pr_number(req_id, meta, archive_pr_number)
+    _commit_and_push_archive_pr_number(meta, req_id, archive_pr_number)
 
     print(_render_summary(result))
     return result
@@ -1782,7 +1849,26 @@ def _finalize_chdir_main_repo(req_id: str) -> Path:
 
 
 def _finalize_pull_develop(req_id: str, main_repo_root: Path) -> None:
-    """第 7 步：git pull --ff-only origin develop。fail-closed → R-FINALIZE-PULL-FAILED。"""
+    """第 7 步：先 git switch develop 再 git pull --ff-only origin develop。fail-closed → R-FINALIZE-PULL-FAILED。
+
+    Codex Review P1 (PR #88)：原实现直接在当前分支跑 pull，feat 分支被 squash-merged 进
+    develop 后 HEAD 与 origin/develop non-fast-forward，pull 必失败。先切到 develop（已在
+    develop 时 git switch 为 no-op）再 pull，从而把 develop 本地引用更新到 origin/develop。
+    后续 _delete_local_branch(strict=True) 在 develop 上 `git branch -d feat/...` 才能
+    安全识别已合并状态。
+    """
+    try:
+        switch_proc = _run(["git", "switch", "develop"], cwd=main_repo_root)
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
+        _abort(
+            "R-FINALIZE-PULL-FAILED",
+            f"git switch develop 调用失败：{exc}",
+            req_id,
+        )
+    if switch_proc.returncode != 0:
+        err = (switch_proc.stderr or switch_proc.stdout or "").strip() or f"exit={switch_proc.returncode}"
+        _abort("R-FINALIZE-PULL-FAILED", f"git switch develop 失败：{err}", req_id)
+
     try:
         proc = _run(["git", "pull", "--ff-only", "origin", "develop"], cwd=main_repo_root)
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
