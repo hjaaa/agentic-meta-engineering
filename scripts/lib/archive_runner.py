@@ -442,6 +442,95 @@ def _precheck_pr_merged(pr_number: int, req_id: str, *, force: bool) -> None:
         )
 
 
+def _precheck_archive_pr_merged(
+    meta: dict[str, Any], req_id: str, *, force: bool
+) -> int:
+    """finalize 阶段预检：归档 PR 必须 MERGED 才允许做后续清理。
+
+    返回 archive_pr_number。`force=True` 时跳过三路径，返回
+    meta.archive_pr_number 或 0（finalize_requirement 调用方负责打 force 警告）。
+
+    三路径全 fail-closed（detailed-design §3.2）：
+
+      R-FINALIZE-ARCHIVE-PR-MISSING
+        meta.archive_pr_number ∈ {None, 0, ""}
+
+      R-FINALIZE-ARCHIVE-PR-FETCH-FAILED
+        gh pr view OSError / 非零退出 / JSON 解析失败
+
+      R-FINALIZE-ARCHIVE-PR-NOT-MERGED
+        gh state != "MERGED"
+
+    与 _precheck_pr_merged 对称，只是错误码换成 R-FINALIZE-* 前缀，
+    并多承担「archive_pr_number 缺失」这一独立预检。
+    """
+    raw = meta.get("archive_pr_number")
+    try:
+        archive_pr_number = int(raw or 0)
+    except (TypeError, ValueError):
+        archive_pr_number = 0
+
+    if force:
+        # --force 跳过三路径校验；返回 meta.archive_pr_number 或 0
+        return archive_pr_number
+
+    if archive_pr_number <= 0:
+        _abort(
+            "R-FINALIZE-ARCHIVE-PR-MISSING",
+            (
+                f"meta.archive_pr_number={raw!r} 缺失；"
+                f"先跑 archive_runner {req_id}（无 --finalize）创建归档 PR"
+            ),
+            req_id,
+        )
+
+    try:
+        result = _run(
+            ["gh", "pr", "view", str(archive_pr_number), "--json", "state"],
+            cwd=REPO_ROOT,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
+        _abort(
+            "R-FINALIZE-ARCHIVE-PR-FETCH-FAILED",
+            (
+                f"gh pr view {archive_pr_number} 调用失败：{exc}；"
+                f"检查网络 / gh auth；--force 可跳过此预检（高风险）"
+            ),
+            req_id,
+        )
+    if result.returncode != 0:
+        _abort(
+            "R-FINALIZE-ARCHIVE-PR-FETCH-FAILED",
+            (
+                f"gh pr view {archive_pr_number} 调用失败：{result.stderr.strip()}；"
+                f"检查网络 / gh auth；--force 可跳过此预检（高风险）"
+            ),
+            req_id,
+        )
+    try:
+        data = json.loads(result.stdout or "{}")
+    except json.JSONDecodeError as exc:
+        _abort(
+            "R-FINALIZE-ARCHIVE-PR-FETCH-FAILED",
+            (
+                f"gh pr view {archive_pr_number} 调用失败：JSON 解析失败 {exc}；"
+                f"检查网络 / gh auth；--force 可跳过此预检（高风险）"
+            ),
+            req_id,
+        )
+    state = (data.get("state") or "").upper()
+    if state != "MERGED":
+        _abort(
+            "R-FINALIZE-ARCHIVE-PR-NOT-MERGED",
+            (
+                f"归档 PR #{archive_pr_number} state={state}，未 merged；"
+                f"等 reviewer merge 后再跑 finalize"
+            ),
+            req_id,
+        )
+    return archive_pr_number
+
+
 def _precheck_lessons_extracted(meta: dict[str, Any], req_id: str) -> None:
     """预检 5：meta.yaml.lessons_extracted 必须为 True。
 
