@@ -633,7 +633,9 @@ def _log_finalize_event(
     - 括号后缀仅含 keep_flags 中**启用**的 flag，空格分隔，全空则省略
     - idempotent：扫 process.txt 末 10 行含 `[finalized]` tag → 跳过追加
 
-    与 _append_process_event 同样走 flock + a+ 写法；并发安全。
+    与 _append_process_event 同样走 flock + a+ 写法：POSIX 平台用 fcntl.flock
+    提供 best-effort 原子性；NFS 老内核 / Windows 不支持时 `_try_lock_exclusive`
+    会静默退化为非原子追加（与 _append_process_event 一致）——并非强保证并发安全。
     """
     path = _process_path(req_id)
     suffix_parts: list[str] = [
