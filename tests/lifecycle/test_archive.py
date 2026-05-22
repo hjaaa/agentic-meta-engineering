@@ -96,6 +96,14 @@ def fake_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         "resolve_main_repo_root",
         lambda _cwd: tmp_path,
     )
+    # F-002 引入 _create_archive_pr 后渲染 PR body 需读 archive-pr-body.md.tmpl；
+    # 测试 fixture seed 一份占位符模板，避免 archive_requirement 主流程 IOError
+    tmpl_dir = tmp_path / ".claude/skills/managing-requirement-lifecycle/templates"
+    tmpl_dir.mkdir(parents=True, exist_ok=True)
+    (tmpl_dir / "archive-pr-body.md.tmpl").write_text(
+        "req=__REQ_ID__ pr=__PR_NUMBER__ branch=__BRANCH__",
+        encoding="utf-8",
+    )
     return tmp_path
 
 
@@ -104,7 +112,8 @@ def _make_run_stub(plan: dict[tuple, Any]):
 
     plan: 形如 {("git", "status", "--porcelain"): SimpleNamespace(returncode=0, stdout="", stderr="")}
     匹配方式：tuple(cmd[: len(key)]) == key（前缀匹配，便于忽略尾部参数差异）。
-    未命中默认返回 returncode=0 / stdout="" / stderr=""。
+    未命中默认：F-002 引入的 `gh pr list` 返回空数组、`gh pr create` 返回 stub URL（PR 42）
+    避免存量测试因 F-002 自动 PR 创建路径炸开；其他未命中命令默认 returncode=0 / stdout=""。
     """
 
     def _stub(cmd, *, cwd=None):  # 匹配 archive_runner._run 签名
@@ -113,6 +122,15 @@ def _make_run_stub(plan: dict[tuple, Any]):
                 if isinstance(result, BaseException):
                     raise result
                 return result
+        # F-002 引入的命令默认响应（存量测试未在 plan 显式 mock）
+        if tuple(cmd[:3]) == ("gh", "pr", "list"):
+            return types.SimpleNamespace(returncode=0, stdout="[]\n", stderr="")
+        if tuple(cmd[:3]) == ("gh", "pr", "create"):
+            return types.SimpleNamespace(
+                returncode=0,
+                stdout="https://github.com/org/repo/pull/42\n",
+                stderr="",
+            )
         return types.SimpleNamespace(returncode=0, stdout="", stderr="")
 
     return _stub
@@ -308,14 +326,17 @@ def test_three_prompts_yes_path(
     fake_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """三问全 y → experience=yes / local=deleted / remote=deleted。"""
+    """三问 experience=yes；local/remote 分支操作已搬迁到 finalize_requirement（双阶段架构）。
+
+    F-001/F-002/F-003 落地后 archive 阶段 1 不再调三件套（删本地/远程/worktree），
+    local_branch / remote_branch 结果字段固定为 "skipped"；
+    prompts_callback 只会被问到 experience（不会被问 local_branch / remote_branch）。
+    """
     req_dir = _make_meta(fake_repo)
     plan = {
         ("git", "status", "--porcelain"): _ok(),
         ("gh", "pr", "view"): _ok(stdout=json.dumps({"state": "MERGED"})),
         ("claude", "/knowledge:extract-experience"): _ok(),
-        ("git", "branch", "-d"): _ok(),
-        ("git", "push", "origin", "--delete"): _ok(),
     }
     monkeypatch.setattr(archive_runner, "_run", _make_run_stub(plan))
 
@@ -323,20 +344,19 @@ def test_three_prompts_yes_path(
 
     def callback(prompt: ArchivePrompt) -> bool:
         callback_calls.append(prompt)
-        return True  # 三问全 y
+        return True  # experience 答 y
 
     result = archive_requirement("REQ-2099-007", prompts_callback=callback)
 
     assert result.experience == "yes"
-    assert result.local_branch == "deleted"
-    assert result.remote_branch == "deleted"
+    # 阶段 1 archive 不调三件套，local/remote 永远 skipped
+    assert result.local_branch == "skipped"
+    assert result.remote_branch == "skipped"
     assert result.phase == "completed"
     assert result.archived_at  # 非空
-    # 三个 prompt kind 都被问到（2026-05-12 spec 修订：先远程后本地，让本地删成为
-    # archive 的最后一步——本地删需要先 git switch 切走 feat，放最后才能让前面所有
-    # bookkeeping 操作都在 feat 分支完成）
+    # 阶段 1 只问 experience，不问 local_branch / remote_branch
     kinds = [p.kind for p in callback_calls]
-    assert kinds == ["experience", "remote_branch", "local_branch"]
+    assert kinds == ["experience"]
     # process.txt 写入了 [archived]
     process = (req_dir / "process.txt").read_text(encoding="utf-8")
     assert "[archived]" in process
@@ -349,12 +369,17 @@ def test_three_prompts_no_path(
     fake_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """三问全 N → outcome=no/kept/kept；meta + process.txt 仍写。"""
+    """experience 答 N；local/remote 分支操作已搬迁到 finalize_requirement（双阶段架构）。
+
+    F-001/F-002/F-003 落地后 archive 阶段 1 不再调三件套；
+    experience=no 时 local_branch / remote_branch 固定为 "skipped"。
+    meta + process.txt 仍正常写入。
+    """
     req_dir = _make_meta(fake_repo)
     plan = {
         ("git", "status", "--porcelain"): _ok(),
         ("gh", "pr", "view"): _ok(stdout=json.dumps({"state": "MERGED"})),
-        # claude / git branch / git push 不会被调用——回答 N 直接跳过
+        # claude / git branch / git push 不会被调用——阶段 1 不走三件套
     }
     monkeypatch.setattr(archive_runner, "_run", _make_run_stub(plan))
 
@@ -364,8 +389,9 @@ def test_three_prompts_no_path(
     result = archive_requirement("REQ-2099-007", prompts_callback=callback)
 
     assert result.experience == "no"
-    assert result.local_branch == "kept"
-    assert result.remote_branch == "kept"
+    # 阶段 1 archive 不调三件套，local/remote 永远 skipped
+    assert result.local_branch == "skipped"
+    assert result.remote_branch == "skipped"
     # meta.yaml 已写 phase=completed + archived_at
     meta = yaml.safe_load((req_dir / "meta.yaml").read_text(encoding="utf-8"))
     assert meta["phase"] == "completed"
@@ -378,24 +404,20 @@ def test_archived_event_idempotent(
     fake_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """重跑 archive：process.txt [archived] 行只追加一次（detail-design §4.3 幂等）。"""
-    req_dir = _make_meta(fake_repo)
-    plan = {
-        ("git", "status", "--porcelain"): _ok(),
-        ("gh", "pr", "view"): _ok(stdout=json.dumps({"state": "MERGED"})),
-    }
-    monkeypatch.setattr(archive_runner, "_run", _make_run_stub(plan))
+    """process.txt [archived] 行只追加一次（detail-design §4.3 幂等）。
 
-    archive_requirement(
-        "REQ-2099-007",
-        no_experience=True,
-        keep_branch=True,
-    )
-    archive_requirement(
-        "REQ-2099-007",
-        no_experience=True,
-        keep_branch=True,
-    )
+    双阶段架构下 _precheck_phase 在 phase=completed + archive_pr_number>0 时拒绝重跑，
+    以防止二次归档覆盖数据。幂等性通过 _append_process_event 内部去重机制保证：
+    直接调两次 _append_process_event，断言 [archived] 只写一次。
+    """
+    req_id = "REQ-2099-007"
+    req_dir = _make_meta(fake_repo, req_id=req_id)
+    archived_at = "2026-05-22 10:00:00"
+    pr_number = 42
+
+    archive_runner._append_process_event(req_id, pr_number=pr_number, archived_at=archived_at)
+    archive_runner._append_process_event(req_id, pr_number=pr_number, archived_at=archived_at)
+
     process = (req_dir / "process.txt").read_text(encoding="utf-8")
     assert process.count("[archived]") == 1
 
@@ -433,19 +455,16 @@ def test_local_branch_delete_rejected(
     fake_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """git branch -d 拒绝（squash merge 模拟） → outcome=failed 透传 git error。"""
+    """archive 阶段 1 不再调三件套（F-001 双阶段拆分），local_branch 固定为 skipped。
+
+    原测试验证 git branch -d 拒绝时 outcome=failed——该逻辑已搬迁到
+    finalize_requirement（test_finalize.py TC-F3-18 覆盖严格模式拒删场景）。
+    此处仅断言 archive 阶段 1 的行为：三件套均 skipped。
+    """
     _make_meta(fake_repo)
     plan = {
         ("git", "status", "--porcelain"): _ok(),
         ("gh", "pr", "view"): _ok(stdout=json.dumps({"state": "MERGED"})),
-        ("git", "branch", "-d"): _ok(
-            returncode=1,
-            stderr=(
-                "error: the branch 'feat/req-2099-007' is not fully merged.\n"
-                "If you are sure you want to delete it, run 'git branch -D'.\n"
-            ),
-        ),
-        ("git", "push", "origin", "--delete"): _ok(),
     }
     monkeypatch.setattr(archive_runner, "_run", _make_run_stub(plan))
 
@@ -455,26 +474,25 @@ def test_local_branch_delete_rejected(
         yes_local_branch=True,
         yes_remote_branch=True,
     )
-    assert result.local_branch == "failed"
-    # 透传原始 git error
-    assert any("not fully merged" in m for m in result.error_messages)
-    assert result.remote_branch == "deleted"
+    # 阶段 1 archive 不调三件套，local/remote 永远 skipped
+    assert result.local_branch == "skipped"
+    assert result.remote_branch == "skipped"
 
 
 def test_remote_branch_already_deleted(
     fake_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """远程已删（GitHub auto-delete）→ outcome=already-deleted，不报错。"""
+    """archive 阶段 1 不再调三件套（F-001 双阶段拆分），remote_branch 固定为 skipped。
+
+    原测试验证远程已删时 outcome=already-deleted——该逻辑已搬迁到
+    finalize_requirement（test_finalize.py TC-F3-17 覆盖远程失败/手工恢复场景）。
+    此处仅断言 archive 阶段 1 的行为：三件套均 skipped。
+    """
     _make_meta(fake_repo)
     plan = {
         ("git", "status", "--porcelain"): _ok(),
         ("gh", "pr", "view"): _ok(stdout=json.dumps({"state": "MERGED"})),
-        ("git", "branch", "-d"): _ok(),
-        ("git", "push", "origin", "--delete"): _ok(
-            returncode=1,
-            stderr="error: unable to delete 'feat/req-2099-007': remote ref does not exist\n",
-        ),
     }
     monkeypatch.setattr(archive_runner, "_run", _make_run_stub(plan))
 
@@ -484,10 +502,9 @@ def test_remote_branch_already_deleted(
         yes_local_branch=True,
         yes_remote_branch=True,
     )
-    assert result.remote_branch == "already-deleted"
-    # 不进 error_messages（已折叠为正常态）
-    assert not any("remote_branch" in m for m in result.error_messages)
-    assert result.local_branch == "deleted"
+    # 阶段 1 archive 不调三件套，local/remote 永远 skipped
+    assert result.remote_branch == "skipped"
+    assert result.local_branch == "skipped"
 
 
 # ---------- 额外：base_branch 防误删 ----------
@@ -497,13 +514,20 @@ def test_refuse_to_delete_base_branch(
     fake_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """meta.branch == meta.base_branch → 拒绝调 git branch -d，记 failed。"""
-    _make_meta(fake_repo, branch="develop", base_branch="develop")
+    """archive 阶段 1 不调三件套（F-001 双阶段拆分），local_branch 固定为 skipped。
+
+    原测试验证 branch==base_branch 时拒绝本地删除——该安全检查已搬迁到
+    finalize_requirement（_delete_local_branch / _delete_remote_branch 函数
+    保留安全分支白名单逻辑，但由 finalize 入口驱动）。
+    archive 阶段 1 不调三件套，不触发 _delete_local_branch 路径。
+
+    注：_push_feat_branch 也对受保护分支做 fail-closed，因此此测试使用
+    普通 feat branch（branch != base_branch），仅验证三件套 skipped 行为。
+    """
+    _make_meta(fake_repo, branch="feat/req-2099-007", base_branch="develop")
     plan = {
         ("git", "status", "--porcelain"): _ok(),
         ("gh", "pr", "view"): _ok(stdout=json.dumps({"state": "MERGED"})),
-        ("git", "branch", "-d"): RuntimeError("不应被调用"),
-        ("git", "push", "origin", "--delete"): _ok(),
     }
     monkeypatch.setattr(archive_runner, "_run", _make_run_stub(plan))
 
@@ -514,8 +538,9 @@ def test_refuse_to_delete_base_branch(
         keep_branch=False,
         yes_remote_branch=False,
     )
-    assert result.local_branch == "failed"
-    assert any("base_branch" in m for m in result.error_messages)
+    # 阶段 1 archive 不调三件套，local/remote 永远 skipped
+    assert result.local_branch == "skipped"
+    assert result.remote_branch == "skipped"
 
 
 @pytest.mark.parametrize("protected", ["main", "master", "develop"])
@@ -524,15 +549,22 @@ def test_protected_branch_blocked_even_when_base_branch_empty(
     monkeypatch: pytest.MonkeyPatch,
     protected: str,
 ) -> None:
-    """codex F-10 (P1) 回归：base_branch 为空 / 漂移时，本地+远程删除仍要拦下
-    main/master/develop 等保护分支——白名单兜底，不依赖 base_branch 配置正确。
+    """archive 阶段 1 不调三件套（F-001 双阶段拆分），不触发保护分支删除路径。
+
+    原测试验证 base_branch 为空时白名单兜底拦下 main/master/develop 本地+远程删除——
+    该安全检查已搬迁到 finalize_requirement（_delete_local_branch / _delete_remote_branch
+    保留白名单逻辑，由 finalize 入口驱动）。
+
+    注：archive 阶段 1 的 _push_feat_branch 对受保护分支做 fail-closed（防止推送），
+    因此当 branch 为受保护分支名时 archive 本身也会 SystemExit(1)。
+    本测试改为验证：archive 阶段 1 对于普通 feat branch 正常完成，三件套均 skipped。
+    保护分支白名单在 finalize 层的覆盖见 test_finalize.py。
     """
-    _make_meta(fake_repo, branch=protected, base_branch="")
+    # 使用普通 feat branch，避免 _push_feat_branch 因受保护分支白名单 abort
+    _make_meta(fake_repo, branch="feat/req-2099-007", base_branch=protected)
     plan = {
         ("git", "status", "--porcelain"): _ok(),
         ("gh", "pr", "view"): _ok(stdout=json.dumps({"state": "MERGED"})),
-        ("git", "branch", "-d"): RuntimeError("不应被调用——保护分支白名单必须拦下"),
-        ("git", "push", "origin", "--delete"): RuntimeError("不应被调用——远程保护分支白名单必须拦下"),
     }
     monkeypatch.setattr(archive_runner, "_run", _make_run_stub(plan))
 
@@ -543,30 +575,27 @@ def test_protected_branch_blocked_even_when_base_branch_empty(
         yes_remote_branch=True,
         keep_branch=False,
     )
-    assert result.local_branch == "failed", f"{protected} 本地保护应失败"
-    assert result.remote_branch == "failed", f"{protected} 远程保护应失败"
-    joined = " | ".join(result.error_messages)
-    assert "受保护" in joined or "protected" in joined.lower(), (
-        f"错误文案应说明保护语义，实际：{joined}"
-    )
+    # 阶段 1 archive 不调三件套，local/remote 永远 skipped
+    assert result.local_branch == "skipped", "archive 阶段 1 不调三件套，local_branch 应 skipped"
+    assert result.remote_branch == "skipped", "archive 阶段 1 不调三件套，remote_branch 应 skipped"
 
 
 def test_refuse_to_delete_remote_base_branch(
     fake_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """codex F-8 (P1) 回归：远程删除路径必须与本地对称——meta.branch == base_branch
-    且用户显式 yes_remote_branch=True 时，仍拒绝调 `git push origin --delete`。
+    """archive 阶段 1 不调三件套（F-001 双阶段拆分），remote_branch 固定为 skipped。
+
+    原测试验证 branch==base_branch 时远程删除被拦下（F-8 回归）——该安全检查已搬迁到
+    finalize_requirement（_delete_remote_branch 保留对称性安全检查，由 finalize 驱动）。
+
+    注：archive 阶段 1 的 _push_feat_branch 对受保护分支做 fail-closed，
+    因此使用普通 feat branch（branch != base_branch），仅验证三件套 skipped 行为。
     """
-    _make_meta(fake_repo, branch="develop", base_branch="develop")
+    _make_meta(fake_repo, branch="feat/req-2099-007", base_branch="develop")
     plan = {
         ("git", "status", "--porcelain"): _ok(),
         ("gh", "pr", "view"): _ok(stdout=json.dumps({"state": "MERGED"})),
-        ("git", "branch", "-d"): RuntimeError("不应被调用"),
-        # 关键：本测试断言这条命令不应被调用；命中即测试失败
-        ("git", "push", "origin", "--delete"): RuntimeError(
-            "不应被调用——base_branch 远程引用必须 fail-closed 拦下"
-        ),
     }
     monkeypatch.setattr(archive_runner, "_run", _make_run_stub(plan))
 
@@ -574,12 +603,12 @@ def test_refuse_to_delete_remote_base_branch(
         "REQ-2099-007",
         no_experience=True,
         yes_local_branch=True,
-        yes_remote_branch=True,    # 显式同意删远程，仍应被前置检测拦下
+        yes_remote_branch=True,
         keep_branch=False,
     )
-    assert result.remote_branch == "failed", f"远程 base_branch 删除应失败，实际 {result.remote_branch}"
-    joined = " | ".join(result.error_messages)
-    assert "base_branch" in joined, f"错误文案应含 base_branch，实际：{joined}"
+    # 阶段 1 archive 不调三件套，local/remote 永远 skipped
+    assert result.remote_branch == "skipped"
+    assert result.local_branch == "skipped"
 
 
 # ---------- 额外：archived_at 重跑保留旧值 ----------
@@ -785,11 +814,11 @@ def test_local_branch_delete_auto_switches_when_head_on_target(
     fake_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """2026-05-12 spec 修订：HEAD 当前在目标 branch 时，archive_runner 应内部自动跑
-    `git switch <base_branch>` 然后 `git branch -d <feat>`，用户不需要分两次跑命令。
+    """archive 阶段 1 不调三件套（F-001 双阶段拆分），不调 git switch / git branch -d。
 
-    旧行为（codex F-7）：报错让用户手动切走 + 重跑 archive；
-    新行为：所有 archive bookkeeping 操作在 feat 分支完成 + 删本地分支自动切走作为最后一步。
+    原测试验证 HEAD 在 feat 分支时 archive 内部自动 switch + delete——该逻辑已搬迁到
+    finalize_requirement（_delete_local_branch 保留 auto-switch 行为，由 finalize 驱动）。
+    此处仅断言 archive 阶段 1 的行为：git switch / git branch -d 不被调用，local_branch=skipped。
     """
     _make_meta(fake_repo, branch="feat/req-2099-007", base_branch="develop")
     switch_calls: list[tuple] = []
@@ -808,6 +837,10 @@ def test_local_branch_delete_auto_switches_when_head_on_target(
             return _ok()
         if cmd[:3] == ["gh", "pr", "view"]:
             return _ok(stdout=json.dumps({"state": "MERGED"}))
+        if tuple(cmd[:3]) == ("gh", "pr", "list"):
+            return _ok(stdout="[]\n")
+        if tuple(cmd[:3]) == ("gh", "pr", "create"):
+            return _ok(stdout="https://github.com/org/repo/pull/42\n")
         return _ok()
 
     monkeypatch.setattr(archive_runner, "_run", _stub)
@@ -820,40 +853,40 @@ def test_local_branch_delete_auto_switches_when_head_on_target(
         keep_branch=False,
     )
 
-    assert result.local_branch == "deleted", (
-        f"HEAD 在目标分支时 archive_runner 应自动切 base 后删，实际 outcome={result.local_branch}"
+    # 阶段 1 archive 不调三件套，local/remote 永远 skipped
+    assert result.local_branch == "skipped", (
+        f"archive 阶段 1 不调三件套，local_branch 应 skipped，实际 {result.local_branch}"
     )
-    # 自动切 base 被调用且参数正确
-    assert switch_calls == [("git", "switch", "develop")], (
-        f"应自动跑 `git switch develop`，实际：{switch_calls}"
-    )
-    # 删除命令最后被调用
-    assert delete_calls == [("git", "branch", "-d", "feat/req-2099-007")], (
-        f"应跑 `git branch -d feat/req-2099-007`，实际：{delete_calls}"
-    )
+    # git switch / git branch -d 不应被调用（archive 阶段 1 不走三件套路径）
+    assert switch_calls == [], f"archive 阶段 1 不应调 git switch，实际：{switch_calls}"
+    assert delete_calls == [], f"archive 阶段 1 不应调 git branch -d，实际：{delete_calls}"
 
 
 def test_local_branch_delete_fails_when_auto_switch_fails(
     fake_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """2026-05-12 spec 修订：自动 `git switch <base>` 失败（base 缺失 / detached 等）时
-    fail-soft，outcome=failed，archive 仍 exit 0；**不**自动 `-D` 强删。
+    """archive 阶段 1 不调三件套（F-001 双阶段拆分），git switch 不被调用。
+
+    原测试验证 auto-switch 失败时 fail-soft——该逻辑已搬迁到 finalize_requirement。
+    此处仅断言 archive 阶段 1 的行为：git switch / git branch -d 不被调用，
+    local_branch=skipped（与 auto-switch 失败路径无关）。
     """
     _make_meta(fake_repo, branch="feat/req-2099-007", base_branch="develop")
 
     def _stub(cmd, **kwargs):
-        if cmd[:3] == ["git", "rev-parse", "--abbrev-ref"]:
-            return _ok(stdout="feat/req-2099-007\n")
         if cmd[:2] == ["git", "switch"]:
-            # 模拟 base_branch 本地缺失
-            return _ok(returncode=1, stderr="fatal: invalid reference: develop\n")
+            pytest.fail("archive 阶段 1 不应调 git switch")
         if cmd[:3] == ["git", "branch", "-d"]:
-            pytest.fail("auto-switch 失败时不应继续调 `git branch -d`")
+            pytest.fail("archive 阶段 1 不应调 git branch -d")
         if cmd[:3] == ["git", "status", "--porcelain"]:
             return _ok()
         if cmd[:3] == ["gh", "pr", "view"]:
             return _ok(stdout=json.dumps({"state": "MERGED"}))
+        if tuple(cmd[:3]) == ("gh", "pr", "list"):
+            return _ok(stdout="[]\n")
+        if tuple(cmd[:3]) == ("gh", "pr", "create"):
+            return _ok(stdout="https://github.com/org/repo/pull/42\n")
         return _ok()
 
     monkeypatch.setattr(archive_runner, "_run", _stub)
@@ -866,24 +899,23 @@ def test_local_branch_delete_fails_when_auto_switch_fails(
         keep_branch=False,
     )
 
-    assert result.local_branch == "failed", f"自动切失败应 outcome=failed，实际 {result.local_branch}"
-    joined = " | ".join(result.error_messages)
-    assert "invalid reference" in joined or "自动切" in joined, (
-        f"错误消息应包含自动切失败原因，实际：{joined}"
-    )
+    # 阶段 1 archive 不调三件套，local/remote 永远 skipped
+    assert result.local_branch == "skipped", f"archive 阶段 1 不调三件套，实际 {result.local_branch}"
 
 
 def test_local_branch_delete_proceeds_when_head_elsewhere(
     fake_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """codex F-7 反向：HEAD 在 develop 时，archive 跑得通（不被前置检测错杀）。"""
+    """archive 阶段 1 不调三件套（F-001 双阶段拆分），local_branch 固定为 skipped。
+
+    原测试验证 HEAD 在 develop 时 archive 正常删本地分支（F-7 反向）——该逻辑已搬迁到
+    finalize_requirement。此处仅断言 archive 阶段 1 正常完成，local_branch=skipped。
+    """
     _make_meta(fake_repo, branch="feat/req-2099-007", base_branch="develop")
     plan = {
         ("git", "status", "--porcelain"): _ok(),
         ("gh", "pr", "view"): _ok(stdout=json.dumps({"state": "MERGED"})),
-        ("git", "rev-parse", "--abbrev-ref", "HEAD"): _ok(stdout="develop\n"),
-        ("git", "branch", "-d"): _ok(),
     }
     monkeypatch.setattr(archive_runner, "_run", _make_run_stub(plan))
 
@@ -894,7 +926,8 @@ def test_local_branch_delete_proceeds_when_head_elsewhere(
         keep_branch=False,
     )
 
-    assert result.local_branch == "deleted", f"HEAD 在 develop 应正常删除，实际 {result.local_branch}"
+    # 阶段 1 archive 不调三件套，local/remote 永远 skipped
+    assert result.local_branch == "skipped", f"archive 阶段 1 不调三件套，实际 {result.local_branch}"
 
 
 # ---------- codex P1 F-1 / F-3 回归：archive from inside linked worktree ----------
@@ -958,6 +991,16 @@ def test_archive_from_inside_worktree_writes_bookkeeping_to_main_repo(
         archive_runner, "REQUIREMENTS_DIR", worktree_root / "requirements"
     )
 
+    # F-002 引入 _create_archive_pr 后渲染 PR body 需读 archive-pr-body.md.tmpl；
+    # _render_archive_pr_body 用 REPO_ROOT（rebind 后 = 主仓），必须在主仓 seed 模板
+    for root in (main_repo, worktree_root):
+        tmpl_dir = root / ".claude/skills/managing-requirement-lifecycle/templates"
+        tmpl_dir.mkdir(parents=True, exist_ok=True)
+        (tmpl_dir / "archive-pr-body.md.tmpl").write_text(
+            "req=__REQ_ID__ pr=__PR_NUMBER__ branch=__BRANCH__",
+            encoding="utf-8",
+        )
+
     # mock worktree_manager 的两个入口：resolve 返主仓；cleanup 实际删 worktree 树
     fake_worktree_manager = sys.modules["worktree_manager"]
 
@@ -979,12 +1022,11 @@ def test_archive_from_inside_worktree_writes_bookkeeping_to_main_repo(
         fake_worktree_manager, "cleanup_worktree_if_owned", fake_cleanup
     )
 
-    # 普通 stub：git status clean / PR merged / branch 删除均成功
+    # 普通 stub：git status clean / PR merged
+    # archive 阶段 1 不再调 git branch -d / git push origin --delete（三件套搬迁到 finalize）
     plan = {
         ("git", "status", "--porcelain"): _ok(),
         ("gh", "pr", "view"): _ok(stdout=json.dumps({"state": "MERGED"})),
-        ("git", "branch", "-d"): _ok(),
-        ("git", "push", "origin", "--delete"): _ok(),
     }
     monkeypatch.setattr(archive_runner, "_run", _make_run_stub(plan))
     # archive 完成后会切到 main_repo cwd（cleanup 内 os.chdir）；改回 tmp_path 让后续
@@ -1006,8 +1048,10 @@ def test_archive_from_inside_worktree_writes_bookkeeping_to_main_repo(
     )
     assert "[archived]" in main_process, "主仓 process.txt 应含 [archived] 行"
 
-    # worktree 副本已被 cleanup 删除
-    assert not worktree_root.exists(), "worktree 应被 cleanup 删除"
+    # F-001 双阶段拆分：archive 阶段 1 不再调 _cleanup_worktree_before_archive；
+    # worktree cleanup 已搬迁到 finalize_requirement。worktree 目录在 archive 后仍存在。
+    # （cleanup_worktree_if_owned mock 仍注册，finalize 调用时才会实际删除）
+    assert worktree_root.exists(), "archive 阶段 1 不调 cleanup，worktree 应仍存在"
 
     assert result.phase == "completed"
     assert result.archived_at
@@ -1166,6 +1210,16 @@ def test_archive_loads_meta_from_main_repo_after_rebind(
         archive_runner, "REQUIREMENTS_DIR", worktree_root / "requirements"
     )
 
+    # F-002 引入 _create_archive_pr 后渲染 PR body 需读 archive-pr-body.md.tmpl；
+    # _render_archive_pr_body 用 REPO_ROOT（rebind 后 = 主仓），必须在主仓 seed 模板
+    for root in (main_repo, worktree_root):
+        tmpl_dir = root / ".claude/skills/managing-requirement-lifecycle/templates"
+        tmpl_dir.mkdir(parents=True, exist_ok=True)
+        (tmpl_dir / "archive-pr-body.md.tmpl").write_text(
+            "req=__REQ_ID__ pr=__PR_NUMBER__ branch=__BRANCH__",
+            encoding="utf-8",
+        )
+
     fake_worktree_manager = sys.modules["worktree_manager"]
     monkeypatch.setattr(
         fake_worktree_manager, "resolve_main_repo_root", lambda _cwd: main_repo
@@ -1183,10 +1237,10 @@ def test_archive_loads_meta_from_main_repo_after_rebind(
         fake_worktree_manager, "cleanup_worktree_if_owned", fake_cleanup
     )
 
+    # archive 阶段 1 不再调 git branch -d（三件套搬迁到 finalize）
     plan = {
         ("git", "status", "--porcelain"): _ok(),
         ("gh", "pr", "view"): _ok(stdout=json.dumps({"state": "MERGED"})),
-        ("git", "branch", "-d"): _ok(),
     }
     monkeypatch.setattr(archive_runner, "_run", _make_run_stub(plan))
     monkeypatch.chdir(worktree_root)
