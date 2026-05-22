@@ -8,11 +8,9 @@
     "tests/lifecycle/test_finalize.py",
     "tests/lib/test_check_meta_archive_pr_number.py"
   ],
-  "test_summary": "rev2 patch — 4 required（TC-F3-18 强 R-* 断言 + 3 unused import F401）+ 7 follow-up（TC-F3-15 括号格式 / 4+2 内联 import 提顶 / 节注释中文化 / helper docstring / TC-F3-19/20 subprocess 异常 2 TC 新增）；ruff F401 0 / pytest 37+2=39 TC 全绿；同模式扫描 4 类全过",
+  "test_summary": "rev2 patch — 4 required（TC-F3-18 强 R-* 断言 + 3 unused import F401）+ 7 follow-up（TC-F3-15 括号格式 / 4+2 内联 import 提顶 / 节注释中文化 / helper docstring / TC-F3-19/20 subprocess 异常 2 TC 新增）；ruff F401 0 / pytest 37+2=39 TC 全绿；同模式扫描 4 类全过；原 concern『test_archive.py 21 pre-existing failures』已在 testing 阶段 trailing cleanup 中由 test_archive.py 33 TC 重写吃掉（pytest tests/lifecycle/test_archive.py = 33 passed @738c0b0），失效",
   "touches_violations": [],
-  "concerns": [
-    "边界外：test_archive.py 存在 21 pre-existing failures（fake_repo 缺模板 seed：archive-pr-body.md.tmpl 不在 fixture 中）；F-005 不可修，建议后续 hotfix 在 test_archive.py 的 fake_repo fixture 中补模板 seed"
-  ],
+  "concerns": [],
   "missing_context": "",
   "block_reason": "",
   "timestamp": "2026-05-22 14:00:00"
