@@ -1,0 +1,39 @@
+<!-- archive_runner 渲染后覆盖到 gh pr create --body-file（详细设计 §2.3 C-5 定稿） -->
+
+## 归档 PR — `__REQ_ID__`
+
+这是 **archive 流程产生的归档 commit**，仅含 metadata + lessons 文件改动。
+
+## 改动范围
+
+- `requirements/__REQ_ID__/meta.yaml` — `phase=completed` + `archived_at` + `outcome`
+- `requirements/__REQ_ID__/process.txt` — `[archived]` 事件追加
+- `requirements/__REQ_ID__/artifacts/` — 全周期产物归档
+- （可能含）`context/team/experience/*.md` 或 `context/project/*/experience/*.md` — `/knowledge:extract-experience` 沉淀产物
+- （可能含）`context/INDEX.md` / `context/team/experience/INDEX.md` — 经验入口更新
+
+## 校验提示
+
+- **若你看到代码改动**：请关闭本 PR，使用 `/requirement:submit` 重开常规需求 PR
+- **正常归档场景**：本 PR 应仅包含 metadata + lessons 改动；CI 跑通后即可 squash merge
+
+## 关联
+
+- 需求 PR：#`__PR_NUMBER__`
+- 需求目录：[`requirements/__REQ_ID__/`](../tree/__BRANCH__/requirements/__REQ_ID__)
+- 详细设计：[`detailed-design.md`](../tree/__BRANCH__/requirements/__REQ_ID__/artifacts/detailed-design.md)
+
+## Merge 后步骤
+
+合并本 PR 后，在主仓根目录跑：
+
+```bash
+python3 scripts/lib/archive_runner.py __REQ_ID__ --finalize
+```
+
+`--finalize` 会做：本地分支删 + 远程分支删 + worktree cleanup（三件套合并问询，
+可加 `--yes-finalize` 跳问）。
+
+---
+
+<sub>由 `archive_runner.py` 自动生成（来源：scripts/lib/archive_runner.py `_create_archive_pr`）。占位符替换由 `str.format_map` 完成。</sub>

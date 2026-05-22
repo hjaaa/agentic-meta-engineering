@@ -1,0 +1,102 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-20260521-archive-runner-auto-pr-code-F-002-001",
+  "requirement_id": "20260521-archive-runner-auto-pr",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-22 09:45:42",
+  "reviewed_commit": "9de6df6",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "0982e3468fb60311a2fff28812faf4e552dcd1651e6fc5f6957bd91b869a2917"
+    },
+    {
+      "path": "artifacts/tasks/F-002.md",
+      "sha256": "f307cc8596b54ec33f0b36a9ad0be8f2d75c20ca325a7fce53a62b2a140317fd"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 75,
+  "dimensions": {
+    "design_consistency": {
+      "score": 90,
+      "issues": []
+    },
+    "security": {
+      "score": 85,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/archive_runner.py:752 _create_archive_pr 内未对 meta.branch 单独跑 _check_branch_name_safe；虽然上游 _push_feat_branch (line 1414) 已覆盖该 branch 的安全校验且 gh CLI 不走 git refspec，但作为防御深度建议在此 fail-closed 前置校验一次"
+        }
+      ]
+    },
+    "concurrency": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/archive_runner.py:760-807 _check_existing_archive_pr 与 _do_create_archive_pr 之间存在理论 TOCTOU 窗口（gh pr list → gh pr create）；单进程顺序执行 + D-006 hook 锁兜底下风险可控，但建议在 _do_create_archive_pr 内对 gh pr create 失败 already exists 做二次 pr list 兜底"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/archive_runner.py:830-836 _write_archive_pr_number 用 yaml.safe_dump 写整个 meta dict 落盘；与 _atomic_write_meta (line 461) 既有惯例一致，但本步骤仅改 archive_pr_number 单字段，建议精简到 read-modify-write 风格而非全量重写，降低字段顺序漂移风险"
+        }
+      ]
+    },
+    "complexity": {
+      "score": 70,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/archive_runner.py:735-807 _create_archive_pr 圈复杂度 CC=13、嵌套深度 5（branch 检查 → existing 检查 → state 分支 → MERGED/CLOSED/OPEN 三态 → 冲突校验）；建议抽出 _handle_existing_pr_state(existing, meta, req_id, result) 把 MERGED/CLOSED/OPEN 三态处理与冲突检查内聚，主函数降到 CC<8"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/archive_runner.py:610 _render_archive_pr_body 的 tmpl_path.read_text() 在模板文件缺失时抛原生 FileNotFoundError，未走 _abort 路径；建议包 try-except 转 R-ARCHIVE-PR-CREATE-FAILED 给用户更明确的错误码"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/archive_runner.py:768-776 MERGED abort 错误信息已含 PR number，但缺当前 meta.archive_pr_number 值的对照展示；建议在 message 末尾追加「当前 meta.archive_pr_number=<value>」方便用户排障"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/archive_runner.py:627 _check_existing_archive_pr 内 import tempfile 但实际未使用 tempfile 任何符号，属死 import；line 673 _do_create_archive_pr 的 import tempfile 才真正使用"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/archive_runner.py:740 / 813 docstring 使用 Step 8/9 与既有风格 阶段 1 step 6/7（line 1408 注释）不一致；建议统一为 阶段 1 step 8/9"
+        }
+      ]
+    },
+    "performance": {
+      "score": 90,
+      "issues": []
+    },
+    "history_context": {
+      "score": 85,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "complexity + auxiliary 叠加在 _create_archive_pr 同一函数（嵌套 5 层 + 风格不一致 docstring）；建议借同次重构一起处理",
+    "concurrency + error_handling 叠加：F-07 写整 meta dict + F-11 模板 IO 原生异常表明本次提交对「错误 path 的精细度」整体较弱；建议补 1-2 个针对性单测（模板缺失 / pr 已存在场景）",
+    "auxiliary 两条 finding（死 import + docstring 风格）单独成本极低，建议同 PR 顺手清理避免遗留技术债"
+  ],
+  "scope": {
+    "feature_id": "F-002"
+  },
+  "supersedes": null
+}

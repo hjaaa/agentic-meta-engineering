@@ -12,6 +12,7 @@ services: []                   # 涉及的服务仓库
 gates_passed: []
 pr_url: ""                     # /requirement:submit 成功后回写
 pr_number: 0                   # /requirement:submit 成功后回写
+archive_pr_number: 0           # archive 阶段 1 创建归档 PR 后回写；0 表示未创建
 log_layout: split              # split（默认，工具日志→process.tool.log / 语义事件→process.txt） | legacy（老格式，全写 process.txt）
 
 # ============ worktree 组（F-008 / F-010；旧需求缺该段视同 enabled=false） ============

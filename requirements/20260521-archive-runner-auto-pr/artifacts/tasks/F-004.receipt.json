@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-004",
+  "status": "DONE",
+  "commit_sha": "HEAD",
+  "timestamp": "2026-05-21T17:10:00+08:00",
+  "files_changed": [
+    "context/team/engineering-spec/meta-schema.yaml",
+    "scripts/lib/check_meta.py",
+    ".claude/skills/managing-requirement-lifecycle/templates/meta.yaml.tmpl"
+  ],
+  "test_summary": "meta 相关回归测试 19/19 PASS（pytest tests/lib/ -k meta -v）；现有 meta.yaml 跑 check_meta.py → ✓ 无问题。完整 6 TC 测试套件由 F-005 统一接管。",
+  "touches_violations": [],
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": ""
+}

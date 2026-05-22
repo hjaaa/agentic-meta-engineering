@@ -133,6 +133,7 @@ optional_fields:
   - reviews
   - archived_at   # 归档时间戳；仅 phase=completed 时允许写入；格式见 context/team/engineering-spec/time-format.md
   - legacy   # PR4 新增；boolean，true 表示豁免 reviewer-verdict 校验（仅 check_reviews 跳过）
+  - archive_pr_number   # 归档 PR number；archive 阶段 1 创建后写入；0/缺失视同未创建
 
 # ---------- fields 段（文档化 + 供 worktree-meta checker 消费） ----------
 # check_meta.py 当前只消费 required_fields / enums / format / conditional_required 四类规则；
@@ -205,3 +206,15 @@ fields:
 #   - true：跳过所有 R001~R007 校验
 #   - false / 缺省：正常校验
 # 引入新字段后切忌泛滥使用；新增 REQ 必须走结构化 reviewer 通道。
+
+# ---------- archive_pr_number 字段（F-004 新增） ----------
+# 用途：记录 archive 阶段 1 创建的归档 PR number；finalize 阶段读取校验 PR 是否已 MERGED
+# 状态机：
+#   - phase=completed 且字段>0  → 已完成归档（正常路径）
+#   - phase=completed 且字段=0  → 半完成可重跑 archive（不报错）
+#   - phase!=completed 且字段>0 → 非法（check_meta.py 报 state-machine error）
+#   - phase!=completed 且字段=0 → 正常（未触发 archive 流程）
+  archive_pr_number:
+    type: int
+    required: false
+    description: "归档 PR number（archive 阶段 1 创建后写入；finalize 阶段读取校验 MERGED）；0/缺失视同未创建。状态机：phase=completed 且字段>0 → 已完成归档；phase=completed 且字段=0 → 半完成可重跑 archive；phase!=completed 且字段>0 → 非法。"

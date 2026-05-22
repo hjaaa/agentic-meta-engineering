@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-007",
+  "status": "DONE",
+  "commit_sha": "5f6ca464117fe82e6c69c9d637ef7d91fb9cc266",
+  "timestamp": "2026-05-22T05:25:41Z",
+  "files_changed": [
+    "scripts/lib/archive_runner.py"
+  ],
+  "test_summary": "python3 -m pytest tests/lifecycle/ -v: 69 passed, 21 failed。21 项失败原因：fake_repo 缺少 .claude/skills/managing-requirement-lifecycle/templates/archive-pr-body.md.tmpl，属于 F-002（auto PR 模板）引入的依赖，与 F-007 逻辑无关。F-007 代码已在 F-003 commit 中落地；F-007 专属测试（TC-F3-16 等）归 F-005 范畴，尚未加入。",
+  "touches_violations": [],
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": ""
+}

@@ -9,9 +9,13 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_archive_rules_md_has_ci_gate_precheck_section():
-    """archive-rules.md 必须有 § archive 前 CI gate 预检 节。"""
+    """archive-rules.md 必须有 § archive 前 CI gate 预检 节。
+
+    F-006 rev2 给该 ## 标题加了编号前缀 "## 1.5"（auxiliary-spec follow-up
+    F-006 rev1 finding 6 闭合）；本测试断言保持节存在但容忍编号前缀。
+    """
     md = (REPO_ROOT / ".claude/skills/managing-requirement-lifecycle/reference/archive-rules.md").read_text(encoding="utf-8")
-    assert "## archive 前 CI gate 预检" in md
+    assert "archive 前 CI gate 预检" in md  # 容忍 "## 1.5" 编号前缀
     assert "refresh-only-current-req" in md
     assert "python3 scripts/gates/run.py --trigger=ci --strict" in md
 

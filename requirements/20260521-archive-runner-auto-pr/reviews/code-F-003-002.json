@@ -1,0 +1,75 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-20260521-archive-runner-auto-pr-code-F-003-002",
+  "requirement_id": "20260521-archive-runner-auto-pr",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-22 11:20:49",
+  "reviewed_commit": "5f6ca46",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "0982e3468fb60311a2fff28812faf4e552dcd1651e6fc5f6957bd91b869a2917"
+    },
+    {
+      "path": "artifacts/tasks/F-003.md",
+      "sha256": "bc3bf2fa25784732eb73777a2a97dee6b47eaf7d0064f5d2d7c8bd18b29407d2"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 90,
+  "dimensions": {
+    "design_consistency": {
+      "score": 92,
+      "issues": []
+    },
+    "security": {
+      "score": 92,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 90,
+      "issues": []
+    },
+    "complexity": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/archive_runner.py:1879,1927 _finalize_collect_keep_flags 在 _finalize_post_run 与 finalize_requirement 各调用一次（同 keep_worktree/keep_local_branch/keep_remote_branch 入参）——结果可上提一次复用；属 cheap follow-up，不影响正确性"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 90,
+      "issues": []
+    },
+    "auxiliary_spec": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/archive_runner.py:637 _log_finalize_event docstring 已补 best-effort 并发说明，但仍未显式声明 'OSError 不抛'（_append_process_event:606 有对照说明）；一行可补，归 follow-up"
+        }
+      ]
+    },
+    "performance": {
+      "score": 92,
+      "issues": []
+    },
+    "history_context": {
+      "score": 90,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "F-003 rev2 全闭合 rev1 三个 keep finding（F-DCS-001 §3.4 force+keep-* 警告分支 / F-CON-001 _log_finalize_event docstring 注释与实际行为对齐 / F-SEC-001 manual_recovery_commands raw_path shlex.quote 包裹）；并顺带在 _delete_remote_branch 两处同模式扩展 shlex.quote 风格统一，超出范围但风险中性",
+    "rev2 自引入 0 critical / 0 major：仅 2 个 informational follow-up（keep_flags 双调用 cheap 优化 + _log_finalize_event docstring 补 'OSError 不抛'），可在后续 finalize 子模块抽取或 F-006 文档收敛阶段一起处理",
+    "rev1 标记的 F-CPLX-002/003 _delete_local_branch/_delete_remote_branch CC 高、F-ERR-006 三个新增 R-FINALIZE-* 错误码未列入 §3.2 表、F-AUX-001 experience Literal 'aborted by user' 字面值冲突——本期保留 follow-up，不阻断；与 F-001 / F-002 rev2 收敛模式一致"
+  ],
+  "scope": {
+    "feature_id": "F-003"
+  },
+  "supersedes": "REV-20260521-archive-runner-auto-pr-code-F-003-001"
+}

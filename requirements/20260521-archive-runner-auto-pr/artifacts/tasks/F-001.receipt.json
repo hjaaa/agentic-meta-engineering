@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-001",
+  "status": "DONE",
+  "commit_sha": "a0981a769ff2ae850e3184bfe56ad37a436327ba",
+  "files_changed": [
+    "scripts/lib/archive_runner.py"
+  ],
+  "test_summary": "py_compile OK（无单测，归 F-005 统一覆盖）",
+  "touches_violations": [],
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-21T09:24:47+08:00"
+}

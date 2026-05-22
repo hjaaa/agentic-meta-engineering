@@ -1,0 +1,192 @@
+{
+  "schema_version": "1.0",
+  "requirement_id": "20260521-archive-runner-auto-pr",
+  "features": [
+    {
+      "id": "F-001",
+      "title": "archive 主流程双阶段化（dirty 白名单 + phase 半完成 + commit + push）",
+      "description": "改造 scripts/lib/archive_runner.py::archive_requirement（来源：scripts/lib/archive_runner.py:733）让阶段 1 仅做 metadata commit + push。具体改造点：(1) _precheck_dirty 加 requirements/<id>/ 前缀白名单（详细设计 §1.1 子项 1-A）；(2) _precheck_phase 允许 phase ∈ {testing} OR (phase=completed AND archive_pr_number=0) 重跑入口（详细设计 §1.1 子项 1-B）；(3) 新增 _commit_archive_metadata 函数（详细设计 §1.2）含 ARCHIVE_COMMIT_RE 正则 idempotent + context/ 经验类白名单 + R-ARCHIVE-CONTEXT-DIRTY fail-closed；(4) 新增 _push_feat_branch 函数（详细设计 §1.3）含 HEAD == origin/<branch> idempotent + R-ARCHIVE-PUSH-FAILED 错误码；(5) 删除 _delete_local_branch / _delete_remote_branch / _cleanup_worktree_before_archive 在 archive_requirement 中的调用——三件套搬迁到 finalize_requirement（F-003）。",
+      "modules": [
+        "scripts/lib/archive_runner.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": ["F-004"],
+      "estimate_days": 1.8,
+      "complexity": "medium",
+      "touches": [
+        "scripts/lib/archive_runner.py"
+      ],
+      "interfaces_frozen": true,
+      "acceptance": [
+        "TC-F1-1: _commit_archive_metadata idempotent — HEAD commit message 含 'archive(<id>): metadata' 时函数提前 return（详细设计 §5.1）",
+        "TC-F1-2: _commit_archive_metadata 白名单 — 仅 requirements/<id>/ + context/team/experience/ 改动正常 commit",
+        "TC-F1-3: _commit_archive_metadata 非白名单 — scripts/lib/foo.py dirty 时 SystemExit(1) + R-ARCHIVE-CONTEXT-DIRTY",
+        "TC-F1-4: _push_feat_branch idempotent — HEAD == origin/feat/<id> 时不调 git push",
+        "TC-F1-5: _push_feat_branch 首次 push — origin 无该分支时 git push 成功"
+      ]
+    },
+    {
+      "id": "F-002",
+      "title": "自动创建归档 PR（_create_archive_pr + body 模板 + archive_pr_number 落 meta）",
+      "description": "新增 _create_archive_pr 函数（详细设计 §2.1）调 gh pr create 自动开归档 PR；含 gh pr list idempotent 三状态处置（OPEN reuse / MERGED abort R-ARCHIVE-PR-ALREADY-MERGED / CLOSED abort R-ARCHIVE-PR-CLOSED）+ meta.archive_pr_number 冲突校验 R-ARCHIVE-PR-NUMBER-MISMATCH（C-3 决策）。新增 _write_archive_pr_number 函数（详细设计 §2.2）原子写 meta + idempotent 跳重写。新增模板 .claude/skills/managing-requirement-lifecycle/templates/archive-pr-body.md.tmpl（详细设计 §2.3 C-5 定稿）含 __REQ_ID__ / __PR_NUMBER__ / __BRANCH__ 三占位符替换（采用与 pr-body.md.tmpl 一致的 __VAR__ 双下划线风格）。模板渲染由 str.replace 三次完成后写临时文件传给 gh pr create --body-file。",
+      "modules": [
+        "scripts/lib/archive_runner.py",
+        ".claude/skills/managing-requirement-lifecycle/templates/archive-pr-body.md.tmpl"
+      ],
+      "depends_on": [],
+      "depends_on_features": ["F-001"],
+      "estimate_days": 2.0,
+      "complexity": "medium",
+      "touches": [
+        "scripts/lib/archive_runner.py",
+        ".claude/skills/managing-requirement-lifecycle/templates/archive-pr-body.md.tmpl"
+      ],
+      "interfaces_frozen": true,
+      "acceptance": [
+        "TC-F2-1: _create_archive_pr idempotent OPEN — gh pr list 返回 OPEN PR → reuse；不调 gh pr create（详细设计 §5.1）",
+        "TC-F2-2: _create_archive_pr idempotent MERGED + meta=0 → SystemExit(1) + R-ARCHIVE-PR-ALREADY-MERGED",
+        "TC-F2-3: _create_archive_pr idempotent CLOSED → SystemExit(1) + R-ARCHIVE-PR-CLOSED",
+        "TC-F2-4: _create_archive_pr 冲突 — meta=42 但 gh 返回 99 → SystemExit(1) + R-ARCHIVE-PR-NUMBER-MISMATCH",
+        "TC-F2-5: _create_archive_pr 正常创建 — gh pr list 空 → gh pr create 一次 + archive_pr_action='created'",
+        "TC-F2-6: _write_archive_pr_number idempotent — meta.archive_pr_number 已等于目标 → 不调 _atomic_write_meta",
+        "TC-F2-7: _write_archive_pr_number 写入 — 0 → 42 原子更新且其余字段不变",
+        "TC-F2-8: PR body 渲染 — __REQ_ID__ / __PR_NUMBER__ / __BRANCH__ 三占位符替换正确"
+      ]
+    },
+    {
+      "id": "F-003",
+      "title": "finalize_requirement 子命令（5 flag + 三件套搬迁 + manual_recovery）",
+      "description": "新增 finalize_requirement 函数 + CLI --finalize 子命令（详细设计 §3.1）。10 步流程：rebind → load_meta → _precheck_archive_pr_merged → 合并问询 → os.chdir(main) → git pull --ff develop → _cleanup_worktree_before_archive → _delete_local_branch(strict=True) → _delete_remote_branch(legacy_resurrect=...) → _render_summary(stage='finalize')。新增预检 _precheck_archive_pr_merged（详细设计 §3.2）三路径全 fail-closed（R-FINALIZE-ARCHIVE-PR-MISSING / FETCH-FAILED / NOT-MERGED）。改造 _delete_local_branch 加 strict: bool（AC-A1）；_render_summary 加 stage: Literal（AC-A2）。新增 5 个 CLI flag：--yes-finalize / --keep-local-branch / --keep-remote-branch / --keep-worktree / --legacy-resurrect-remote（最后一个归 F-007 但 CLI parser 一并加）。新增 _log_finalize_event 写 [finalized] 事件（详细设计 §3.5 C-7 定稿）。--force + --yes-finalize 组合警告文案（详细设计 §3.4 C-6 定稿）。ArchiveResult 扩展 worktree_removed / manual_recovery_commands 字段（outline §5.1）。",
+      "modules": [
+        "scripts/lib/archive_runner.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": ["F-002"],
+      "estimate_days": 3.7,
+      "complexity": "heavy",
+      "touches": [
+        "scripts/lib/archive_runner.py"
+      ],
+      "interfaces_frozen": true,
+      "acceptance": [
+        "TC-F3-1: finalize happy path — archive PR MERGED + user Y → local/remote 删 + worktree removed（详细设计 §5.2）",
+        "TC-F3-2: finalize 预检 MISSING — meta.archive_pr_number=0 → R-FINALIZE-ARCHIVE-PR-MISSING",
+        "TC-F3-3: finalize 预检 FETCH-FAILED — gh pr view 返回 1 → R-FINALIZE-ARCHIVE-PR-FETCH-FAILED",
+        "TC-F3-4: finalize 预检 NOT-MERGED — gh 返回 state=OPEN → R-FINALIZE-ARCHIVE-PR-NOT-MERGED",
+        "TC-F3-5: finalize --force 跳预检 + 警告文案（§3.4 行 1）",
+        "TC-F3-6: finalize --force + --yes-finalize 双重警告文案（§3.4 行 3）+ 不问 callback",
+        "TC-F3-7: finalize 合并问询 N → result.experience='aborted by user' + exit 0",
+        "TC-F3-8/9/10: finalize 三 cwd 路径（主仓 / linked worktree / 已删 worktree 之外）— rebind+chdir 流程正常 / OSError 兜底 fail-closed",
+        "TC-F3-11: finalize git pull --ff develop 失败 → R-FINALIZE-PULL-FAILED",
+        "TC-F3-12/13/14/15: --keep-worktree / --keep-local-branch / --keep-remote-branch 三 flag 单维 + 全开 → 对应组件 skipped + process.txt [finalized] 含 flag 后缀（C-7）",
+        "TC-F3-18: _delete_local_branch strict=True — squash merge 不能删 → SystemExit(1) + transport stderr"
+      ]
+    },
+    {
+      "id": "F-004",
+      "title": "meta-schema 加 archive_pr_number + check_meta 状态机",
+      "description": "(1) context/team/engineering-spec/meta-schema.yaml 在 optional_fields 段追加 archive_pr_number；fields 段加新字段定义（type=int / required=false / 含状态机描述）（详细设计 §4.1 C-4 落点）；(2) scripts/lib/check_meta.py 新增 _check_archive_pr_number_state_machine 函数（详细设计 §4.2），对照 _check_archived_at_state_machine（来源：scripts/lib/check_meta.py:150）模式覆盖 4 场景；非法 case = phase != completed 但已写 archive_pr_number → FAIL state-machine；(3) templates/meta.yaml.tmpl 同步加字段（紧跟 pr_number: 0 下一行，C-4 物理位置）；(4) 历史 15 个 completed REQ 不需要 backfill（状态机表格场景 3 PASS）。",
+      "modules": [
+        "context/team/engineering-spec/meta-schema.yaml",
+        "scripts/lib/check_meta.py",
+        ".claude/skills/managing-requirement-lifecycle/templates/meta.yaml.tmpl"
+      ],
+      "depends_on": [],
+      "depends_on_features": [],
+      "estimate_days": 1.2,
+      "complexity": "light",
+      "touches": [
+        "context/team/engineering-spec/meta-schema.yaml",
+        "scripts/lib/check_meta.py",
+        ".claude/skills/managing-requirement-lifecycle/templates/meta.yaml.tmpl"
+      ],
+      "interfaces_frozen": true,
+      "acceptance": [
+        "TC-F4-1: phase=testing + archive_pr_number=0 → PASS（详细设计 §5.3）",
+        "TC-F4-2: phase=testing + archive_pr_number=42 → FAIL state-machine",
+        "TC-F4-3: phase=completed + archive_pr_number=0 → PASS（兼容历史）",
+        "TC-F4-4: phase=completed + archive_pr_number=42 → PASS",
+        "TC-F4-5: phase=development + 字段缺失 → PASS",
+        "TC-F4-6: phase=completed + archive_pr_number='abc' → int() 转换失败 fallback 当 0 → PASS"
+      ]
+    },
+    {
+      "id": "F-005",
+      "title": "测试套件（archive 单测 + finalize e2e + check_meta 状态机单测）",
+      "description": "三个测试文件总计 37 个测试用例（详细设计 §5）。(1) tests/lifecycle/test_archive_runner.py 覆盖 F-001+F-002 共 13 TC（TC-F1-1~5 + TC-F2-1~8，详细设计 §5.1）——commit prefix 正则 / context/ 白名单边界 / gh pr list 三状态 / archive_pr_number 冲突；(2) tests/lifecycle/test_finalize.py 覆盖 F-003+F-007 共 18 TC（TC-F3-1~18，详细设计 §5.2）——5 flag 组合矩阵 / 三 cwd 路径 / OSError 兜底 / manual_recovery_commands / _delete_local_branch strict=True；(3) tests/lib/test_check_meta_archive_pr_number.py 覆盖 F-004 共 6 TC（TC-F4-1~6，详细设计 §5.3）——状态机 4 场景 + 类型 fallback。PR 拆分以 commit 粒度承载：PR-A 含 test_check_meta_archive_pr_number.py + 配套 schema；PR-B 含 test_archive_runner.py + 主流程；PR-C 含 test_finalize.py + finalize 子命令。fixture：fake-repo（复用 conftest.py）+ gh CLI mock + git CLI mock；三 cwd 路径用真实 os.chdir + tmp_path + symlink 实测（不靠 mock）。PR 归属：PR-A 含 tests/lib/test_check_meta_archive_pr_number.py（随 F-004 同 PR 落地）；PR-B 含 tests/lifecycle/test_archive_runner.py（随 F-001+F-002 同 PR）；PR-C 含 tests/lifecycle/test_finalize.py（随 F-003+F-007 同 PR）。",
+      "modules": [
+        "tests/lifecycle/test_archive_runner.py",
+        "tests/lifecycle/test_finalize.py",
+        "tests/lib/test_check_meta_archive_pr_number.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": ["F-001", "F-002", "F-003", "F-004", "F-007"],
+      "estimate_days": 3.1,
+      "complexity": "medium",
+      "touches": [
+        "tests/lifecycle/test_archive_runner.py",
+        "tests/lifecycle/test_finalize.py",
+        "tests/lib/test_check_meta_archive_pr_number.py"
+      ],
+      "interfaces_frozen": true,
+      "acceptance": [
+        "pytest tests/lifecycle/test_archive_runner.py -v 全绿（13 TC，含 TC-F1-1~5 + TC-F2-1~8）",
+        "pytest tests/lifecycle/test_finalize.py -v 全绿（18 TC，含 TC-F3-1~18）",
+        "pytest tests/lib/test_check_meta_archive_pr_number.py -v 全绿（6 TC，含 TC-F4-1~6）",
+        "coverage report 覆盖 _commit_archive_metadata / _push_feat_branch / _create_archive_pr / _write_archive_pr_number / finalize_requirement / _precheck_archive_pr_merged / _check_archive_pr_number_state_machine 7 函数所有分支",
+        "gh CLI / git CLI 全 mock 不依赖外部网络与真实 gh 安装",
+        "TC-F1-3 / TC-F2-2 / TC-F2-3 / TC-F2-4 / TC-F3-2 / TC-F3-3 / TC-F3-4 / TC-F3-11 / TC-F3-18 九个 fail-closed 路径必须断言 stderr 含具体 R-* 错误码",
+        "TC-F3-5 / TC-F3-6 stderr 断言警告文案与详细设计 §3.4 表格完全一致",
+        "TC-F3-12~15 process.txt 行末 keep flag 括号后缀断言",
+        "TC-F4-2 唯一 FAIL 路径断言 report.errors 含 'state-machine'",
+        "TC-F4-6 非法类型 fallback 行为与 _check_archived_at_state_machine 一致"
+      ]
+    },
+    {
+      "id": "F-006",
+      "title": "skill / command 文档同步（archive-rules.md + archive.md）",
+      "description": ".claude/skills/managing-requirement-lifecycle/reference/archive-rules.md 补 5 段（详细设计 §6.1）：双阶段拓扑章节 / archive PR 自动创建语义 / --finalize + 5 keep flag 详解 / commit message 前缀约定 / 三重保护迁移到 finalize 子标题。.claude/commands/requirement/archive.md 补 finalize 子命令入口说明 + 与 /requirement:archive 关系（详细设计 §6.2）：archive --finalize 调用方式 / 与阶段 1 archive 的接力关系。",
+      "modules": [
+        ".claude/skills/managing-requirement-lifecycle/reference/archive-rules.md",
+        ".claude/commands/requirement/archive.md"
+      ],
+      "depends_on": [],
+      "depends_on_features": ["F-003"],
+      "estimate_days": 0.5,
+      "complexity": "light",
+      "touches": [
+        ".claude/skills/managing-requirement-lifecycle/reference/archive-rules.md",
+        ".claude/commands/requirement/archive.md"
+      ],
+      "interfaces_frozen": true,
+      "acceptance": [
+        "archive-rules.md 新增 5 段（详细设计 §6.1）齐备",
+        "archive.md 含 --finalize 入口示例（python3 scripts/lib/archive_runner.py <id> --finalize）",
+        "5 个 keep flag 文档化（--yes-finalize / --keep-local-branch / --keep-remote-branch / --keep-worktree / --legacy-resurrect-remote）含语义 / 默认 / 适用场景三栏",
+        "commit message 前缀约定段含正则 ^archive\\(<req_id>\\): metadata$"
+      ]
+    },
+    {
+      "id": "F-007",
+      "title": "--legacy-resurrect-remote 老需求兜底",
+      "description": "_delete_remote_branch 函数加 legacy_resurrect: bool 参数（详细设计 §3.3 + §7）。legacy_resurrect=True 时扩大 already-deleted 判定：任何 stderr 含 'remote ref does not exist' / 'not found' / 'unknown' → 都视为 already-deleted；不写 error_messages。CLI parser 加 --legacy-resurrect-remote flag（finalize subcommand 专用）。适用场景：历史 REQ（无归档 PR）走 `--finalize --force --legacy-resurrect-remote` 一次性补归档（远程分支可能早被 GitHub auto-delete-head-branch 删除）。",
+      "modules": [
+        "scripts/lib/archive_runner.py"
+      ],
+      "depends_on": [],
+      "depends_on_features": ["F-003"],
+      "estimate_days": 0.8,
+      "complexity": "light",
+      "touches": [
+        "scripts/lib/archive_runner.py"
+      ],
+      "interfaces_frozen": true,
+      "acceptance": [
+        "TC-F3-16: finalize --legacy-resurrect-remote + remote 不存在 → result.remote_branch='already-deleted' 且不写 error_messages（详细设计 §5.2）",
+        "_delete_remote_branch legacy_resurrect=False 时保留现有行为（'remote ref does not exist' 单一识别）",
+        "CLI parser 含 --legacy-resurrect-remote flag 且仅在 --finalize subcommand 下生效",
+        "stderr 含 'not found' / 'unknown' 时仅在 legacy_resurrect=True 下视为 already-deleted；False 时仍 fail-soft"
+      ]
+    }
+  ]
+}

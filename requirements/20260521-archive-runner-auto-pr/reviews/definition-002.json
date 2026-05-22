@@ -1,0 +1,63 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-20260521-archive-runner-auto-pr-definition-002",
+  "requirement_id": "20260521-archive-runner-auto-pr",
+  "phase": "definition",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-21 14:57:00",
+  "reviewed_commit": "b0f4762",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/requirement.md",
+      "sha256": "d18316680202f0ab2b7fa3380507e0f3b9ba29f1288528ef79b2f751a74f1879"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 92,
+  "dimensions": {
+    "completeness": {
+      "score": 94,
+      "issues": []
+    },
+    "consistency": {
+      "score": 92,
+      "issues": []
+    },
+    "traceability": {
+      "score": 93,
+      "issues": []
+    },
+    "clarity": {
+      "score": 90,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "ARS-9「fail-soft + stderr 打印手工命令」在 archive_runner.py 现有代码风格无先例（_delete_remote_branch / _run_experience 等 fail-soft 路径只写 error_messages 不 print 手工命令）；detail-design 需明确与 _render_summary 汇总机制的分工避免双重打印（F-023 follow-up）"
+        }
+      ]
+    },
+    "testability": {
+      "score": 90,
+      "issues": []
+    },
+    "business_rationale": {
+      "score": 93,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "clarity: detail-design 阶段明确 ARS-9 fail-soft 路径下「stderr 立即 print 手工命令」与「_render_summary 汇总输出」的分工，避免双重打印",
+    "完整 review 报告：requirements/20260521-archive-runner-auto-pr/artifacts/review-20260521-145700.md（round-2，blocked → looks_clean）",
+    "round-1 report：requirements/20260521-archive-runner-auto-pr/artifacts/review-20260521-143940.md（blocked verdict，已 supersede）"
+  ],
+  "scope": null,
+  "supersedes": "REV-20260521-archive-runner-auto-pr-definition-001",
+  "project_specific_issues": [
+    "round-1 → round-2 累计修复 13 条 finding（1 critical + 6 major + 6 minor）；9 条 follow-up 推 detail-design 阶段；3 条 drop（rejected）",
+    "Round-1 F-010 critical（check_sourcing E002）已修：requirement.md:112 来源行号 `:695-696` → `:695`，括号外移说明文字",
+    "Round-2 F-021 major 已修：ARS-9 拆分本地 / 远程 not-found skip 条件 + 非 not-found 失败明确策略",
+    "F-006 / F-022 镜像决策已落地：plan.md D-004~D-008 完整对应 requirement.md ARS-1/2/3/9/10",
+    "check_sourcing --strict 双文件（requirement.md / plan.md）0 error / 0 warning"
+  ]
+}

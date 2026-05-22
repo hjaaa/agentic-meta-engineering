@@ -1,0 +1,54 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-20260521-archive-runner-auto-pr-outline-design-002",
+  "requirement_id": "20260521-archive-runner-auto-pr",
+  "phase": "outline-design",
+  "reviewer": "outline-design-quality-reviewer",
+  "reviewed_at": "2026-05-21 15:58:10",
+  "reviewed_commit": "5dbea1e",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "5f6aa872288c2e96b3a40dc88e336380ac84bf11f2b76d7d003a19e89c9c9c85"
+    },
+    {
+      "path": "artifacts/requirement.md",
+      "sha256": "d18316680202f0ab2b7fa3380507e0f3b9ba29f1288528ef79b2f751a74f1879"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 87,
+  "dimensions": {
+    "alignment_with_requirement": {
+      "score": 90,
+      "issues": []
+    },
+    "module_decomposition": {
+      "score": 86,
+      "issues": []
+    },
+    "tech_choice_rationale": {
+      "score": 88,
+      "issues": []
+    },
+    "scalability": {
+      "score": 86,
+      "issues": []
+    },
+    "integration_with_existing": {
+      "score": 86,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "F-005a 单测范围与 F-005b e2e 范围边界已经清晰（idempotent 静态 vs cwd 动态），detail-design 阶段建议把这一边界以 docstring 形式落到测试文件头注释，避免后续被误并",
+    "待澄清 #7（_commit_archive_metadata 的 git add 是否含 lessons-learned.md）detail-design 阶段需早闭合——否则会卡住 F-001 测试用例编写"
+  ],
+  "scope": null,
+  "supersedes": "REV-20260521-archive-runner-auto-pr-outline-design-001",
+  "architectural_concerns": [
+    "待澄清 #9（gh pr list OPEN 但 number 不一致）的 fail-closed vs 覆盖决策建议在 detail-design 阶段闭合时同步加 process.txt 事件记录，便于事后审计用户中途手工开 PR 的痕迹",
+    "F-005 拆分后单测 / e2e 边界清晰，但长期上仍建议把『测试』作为每个 code feature 的内部交付物而非独立 feature（沿用 round-1 architectural_concern）"
+  ]
+}

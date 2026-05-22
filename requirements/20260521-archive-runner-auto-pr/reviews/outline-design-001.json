@@ -1,0 +1,92 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-20260521-archive-runner-auto-pr-outline-design-001",
+  "requirement_id": "20260521-archive-runner-auto-pr",
+  "phase": "outline-design",
+  "reviewer": "outline-design-quality-reviewer",
+  "reviewed_at": "2026-05-21 15:52:23",
+  "reviewed_commit": "0d05713",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/outline-design.md",
+      "sha256": "4544f780595547f33aa888345361e87ab2382787c1241220061bb80463cec1bb"
+    },
+    {
+      "path": "artifacts/requirement.md",
+      "sha256": "d18316680202f0ab2b7fa3380507e0f3b9ba29f1288528ef79b2f751a74f1879"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 78,
+  "dimensions": {
+    "alignment_with_requirement": {
+      "score": 88,
+      "issues": []
+    },
+    "module_decomposition": {
+      "score": 72,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "第 71/80/286-288 行：F-007 归属 PR-C，但 tech-research §PR 拆分建议（artifacts/tech-research.md:245）把 F-007 放 PR-B；outline-design 未说明覆盖原因。从代码改动点（_delete_remote_branch, archive_runner.py:607）看 PR-C 更合理，但需要在 §6 显式声明 supersedes tech-research 的分配，避免 detail-design 阶段产生歧义"
+        },
+        {
+          "severity": "minor",
+          "description": "第 75-84 行：依赖图把 F-005（测试）整块绑在 F-001~F-004 之下并放 PR-C；但单元测试（step 6/7/8 idempotent 单测）本应随 F-001/F-002 落 PR-B，仅 finalize e2e + 三 cwd 路径 + --keep-* 组合留 PR-C。当前粒度阻碍 PR-B 增量验证，建议把 F-005 拆 F-005a（单测，PR-B）+ F-005b（e2e，PR-C）"
+        }
+      ]
+    },
+    "tech_choice_rationale": {
+      "score": 78,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 95 行：选型 1 反驳候选 C 的理由『候选 C 撞 protect-branch hook（meta.phase 已 completed 手工回滚被拦）』不准确——protect-branch hook 只拦 main/master/develop（CLAUDE.md 第 27 行），feat 分支上手工 git reset 不会被拦。真正反对候选 C 的理由是用户负担非零 + 出错率高 + 不可标准化测试。论证依据失准但决策结论站得住"
+        },
+        {
+          "severity": "minor",
+          "description": "第 127 行：选型 5 反驳候选 C 的理由『commit 早于 gh pr create，顺序冲突』成立但偏弱。更本质的问题是 idempotent 重跑时 commit message 已包含 pr_number 而 meta 还未写，第二次跑若需对齐就要 git commit --amend——破坏 idempotent 简单性。建议补充该论证以闭合 detail-design 阶段疑问"
+        }
+      ]
+    },
+    "scalability": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 199-217 行：失败重跑流程未覆盖『gh pr list 返 OPEN 但 number != meta.archive_pr_number』竞态（用户手工开 PR 后又跑 archive）。idempotent 路径的 _write_archive_pr_number 应 fail-closed 还是覆盖？文档未明确，detail-design 阶段会卡。建议补一条 edge case 或显式记入 §7 待澄清"
+        }
+      ]
+    },
+    "integration_with_existing": {
+      "score": 75,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "第 310 行：待澄清 #8 自相矛盾——流程 2 第 185-187 行明确顺序是 chdir → pull --ff → cleanup_worktree，但 #8 描述『pull 之后立刻 cleanup_worktree 可能让 chdir 路径失效』。cleanup_worktree 删的是 .worktrees/ 下的目录，主仓根 chdir target 不在 worktree 内，路径不可能因 cleanup 失效。该条目应改述为『cleanup_worktree 是否要求 cwd ≡ 主仓根（而非 worktree 内子目录）』或直接关闭"
+        },
+        {
+          "severity": "minor",
+          "description": "第 314-316 行：AC-A1（_delete_local_branch 加 strict: bool 参数）/ AC-A2（_render_summary 加 stage 参数）的决策建议已有明显倾向（单一事实源 / 避免代码重复），可直接在 outline-design 阶段锁定，detail-design 就不必再回合。当前留作开放问题会让 F-001/F-003 边界在实施时再讨论一次"
+        }
+      ]
+    }
+  },
+  "required_fixes": [
+    "在 §6 PR 拆分表里显式声明 F-007 归 PR-C 是覆盖 tech-research §PR 拆分建议的选择，并补一句理由（_delete_remote_branch 改动属 finalize 范畴）",
+    "改写 §7 待澄清 #8：要么按『cleanup_worktree 是否要求 cwd ≡ 主仓根』重新表达，要么直接关闭（流程 2 已明示顺序）"
+  ],
+  "suggestions": [
+    "把 F-005 拆 F-005a（单测随 PR-B）+ F-005b（e2e + 三 cwd + --keep-* 组合留 PR-C），改善增量验证",
+    "选型 1 候选 C 的反驳理由替换为『用户负担非零 + 出错率高 + 不可标准化测试』，删掉 protect-branch hook 论据",
+    "选型 5 候选 C 补充『idempotent 重跑需 git commit --amend』作为更本质的反驳",
+    "失败重跑流程补一条 edge：gh pr list 返 OPEN 但 number ≠ meta.archive_pr_number 时的处置",
+    "AC-A1 / AC-A2 直接在 outline-design 锁定（strict: bool / stage: Literal），detail-design 直接落地"
+  ],
+  "scope": null,
+  "supersedes": null,
+  "architectural_concerns": [
+    "F-005（测试）作为单一 feature 横跨单测 + e2e + 三 cwd 路径 + --keep-* 组合，粒度偏粗；若 PR-B 落地后才补单测会拉长反馈链；建议长期上把『测试』作为每个 code feature 的内部交付物而非独立 feature",
+    "scripts/lib 内首次直接调 gh pr create（tech-research §可行性证据已识别），本期已用 subprocess + json.loads 对称模式控制风险，但未来若类似封装变多（gh pr edit / gh pr ready 等），应抽象 gh_cli.py 通用 wrapper 收敛 subprocess 失败处理逻辑——本期暂不做"
+  ]
+}
