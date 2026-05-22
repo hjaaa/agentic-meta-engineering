@@ -12,7 +12,7 @@ import os
 import sys
 import types
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import pytest
 import yaml
@@ -22,7 +22,6 @@ sys.path.insert(0, str(REPO_ROOT / "scripts" / "lib"))
 
 import archive_runner  # noqa: E402
 from archive_runner import (  # noqa: E402
-    ArchiveResult,
     ArchivePrompt,
     _FINALIZE_WARN_FORCE_ONLY,
     _FINALIZE_WARN_FORCE_AND_YES,
@@ -668,7 +667,7 @@ def test_finalize_remote_network_fail_soft(
 ) -> None:
     """TC-F3-17: remote network 失败 → result.remote_branch='failed'；manual_recovery_commands 含 git push origin --delete <branch>。"""
     req_id = "REQ-2099-002"
-    req_dir = _make_meta(fake_repo, req_id=req_id, archive_pr_number=55, branch="feat/req-2099-002")
+    _make_meta(fake_repo, req_id=req_id, archive_pr_number=55, branch="feat/req-2099-002")
 
     plan = {
         ("gh", "pr", "view"): _ok(stdout=_merged_pr_json(55)),
@@ -725,7 +724,7 @@ def test_finalize_delete_local_branch_strict_squash_merge(
 
     assert excinfo.value.code == 1, "should exit 1 when branch -d fails with strict=True"
     err = capsys.readouterr().err
-    # strict=True 路径透传 git 原始错误 stderr
-    assert "not fully merged" in err or "R-FINALIZE-LOCAL-BRANCH-FAILED" in err, (
-        f"stderr should contain git error or R-FINALIZE-LOCAL-BRANCH-FAILED, got: {err!r}"
+    # strict=True 路径：R-* 错误码必须出现（fail-closed 强制断言 features.json:138）
+    assert "R-FINALIZE-LOCAL-BRANCH-FAILED" in err, (
+        f"stderr must contain R-FINALIZE-LOCAL-BRANCH-FAILED (fail-closed 强制), got: {err!r}"
     )
