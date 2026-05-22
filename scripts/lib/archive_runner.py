@@ -134,16 +134,25 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class ArchivePrompt:
-    """三问串行的单条问句契约（A 案 callback 入参）。"""
+    """三问串行的单条问句契约（A 案 callback 入参）。
 
-    kind: Literal["experience", "local_branch", "remote_branch"]
+    F-003 扩展：新增 "finalize" kind，用于 finalize 阶段的合并问询 +
+    `--force` 二次确认。
+    """
+
+    kind: Literal["experience", "local_branch", "remote_branch", "finalize"]
     question: str
     default: bool = False  # 默认 N
 
 
 @dataclass
 class ArchiveResult:
-    """archive 命令终态汇总（含每个副作用动作的 outcome）。"""
+    """archive 命令终态汇总（含每个副作用动作的 outcome）。
+
+    F-003 扩展两字段：
+      - worktree_removed：finalize 阶段 _cleanup_worktree_before_archive 的 outcome
+      - manual_recovery_commands：legacy_resurrect / worktree 失败路径追加的人工恢复命令
+    """
 
     req_id: str
     phase: str = "completed"
@@ -157,6 +166,8 @@ class ArchiveResult:
     archive_pr_number: int = 0
     archive_pr_url: str = ""
     archive_pr_action: Literal["created", "reused", "skipped"] = "skipped"
+    worktree_removed: Literal["removed", "kept", "skipped", "failed"] = "skipped"
+    manual_recovery_commands: list[str] = field(default_factory=list)
 
 
 # ---------- 内部工具 ----------
