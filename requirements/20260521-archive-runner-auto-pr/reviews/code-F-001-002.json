@@ -1,0 +1,82 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-20260521-archive-runner-auto-pr-code-F-001-002",
+  "requirement_id": "20260521-archive-runner-auto-pr",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-22 08:43:22",
+  "reviewed_commit": "47bc7e8",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "0982e3468fb60311a2fff28812faf4e552dcd1651e6fc5f6957bd91b869a2917"
+    },
+    {
+      "path": "artifacts/tasks/F-001.md",
+      "sha256": "e98a98ad481f10569f3dac09325e9cb59e9a3dc8ea441ac519e47382f0bbdf8d"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 82,
+  "dimensions": {
+    "design_consistency": {
+      "score": 92,
+      "issues": []
+    },
+    "security": {
+      "score": 90,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 90,
+      "issues": []
+    },
+    "complexity": {
+      "score": 72,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/archive_runner.py:551 _commit_archive_metadata CC=16（AST + radon 双源实测），超 C 级阈值 ~6；建议抽 _idempotent_skip_if_commit_exists / _collect_paths_to_add / _do_commit 三 helper（interfaces_frozen 锁的是模块对外签名，函数体内重构允许）"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/archive_runner.py:645 _push_feat_branch CC=11（AST + radon），刚超阈值 1 格；可拆 _check_head_eq_remote + _do_push 两 helper"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 88,
+      "issues": []
+    },
+    "auxiliary_spec": {
+      "score": 80,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/archive_runner.py:243 _filter_dirty_lines_by_whitelist 函数体内局部变量 allowed: list[str] 收集的实际是非白名单路径（docstring 与 return 名都已说明返回 non-whitelisted），仅函数体内变量名反义；建议改名 non_whitelisted 以保持读写一致"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/archive_runner.py:551,645 两处 # noqa: ARG001 缺一行注释解释为何 ArchiveResult/meta 参数保留未用（与 result.* outcome 写入路径预留 / 主流程统一签名相关），按 round-1 F-29 同款修法补"
+        }
+      ]
+    },
+    "performance": {
+      "score": 88,
+      "issues": []
+    },
+    "history_context": {
+      "score": 92,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "复杂度 + auxiliary 两类小修同源：_commit_archive_metadata / _push_feat_branch 拆 helper 的同时，正好可把 ArchiveResult 写入路径明确化，顺手消化 # noqa: ARG001 解释义务",
+    "F-01 base_branch 缺校验事实层成立但攻击面薄：meta.yaml 不属 untrusted input，git switch 对 -prefix 通常返回非零；建议作为 follow-up（与 _check_branch_safe_for_remote_op 复用）而非本期阻塞"
+  ],
+  "scope": {
+    "feature_id": "F-001"
+  },
+  "supersedes": "REV-20260521-archive-runner-auto-pr-code-F-001-001"
+}

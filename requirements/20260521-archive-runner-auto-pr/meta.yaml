@@ -91,9 +91,11 @@ reviews:
       F-001:
         history:
           - REV-20260521-archive-runner-auto-pr-code-F-001-001
-        latest: REV-20260521-archive-runner-auto-pr-code-F-001-001
-        conclusion: blocked
-        reviewed_commit: cc3e6aa
+          - REV-20260521-archive-runner-auto-pr-code-F-001-002
+          - REV-20260521-archive-runner-auto-pr-code-F-001-003
+        latest: REV-20260521-archive-runner-auto-pr-code-F-001-003
+        conclusion: looks_clean
+        reviewed_commit: 41b8da6
         artifact_hashes:
           artifacts/features.json: 
             0982e3468fb60311a2fff28812faf4e552dcd1651e6fc5f6957bd91b869a2917
