@@ -615,3 +615,38 @@ def test_commit_and_push_archive_pr_number_idempotent_when_clean(
     assert all(c[:2] == ("git", "status") for c in calls), (
         f"only git status should be called when clean; calls={calls}"
     )
+
+
+def test_commit_and_push_archive_pr_number_status_fails_closed(
+    fake_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture,
+) -> None:
+    """TC-F2-9 fail-closed (Codex round-2 P1)：git status 非零 → SystemExit(1) + R-ARCHIVE-COMMIT-FAILED；不混入 clean 路径。"""
+    req_id = "REQ-2099-001"
+    req_dir = _make_meta(fake_repo, req_id=req_id, archive_pr_number=42)
+    meta = yaml.safe_load((req_dir / "meta.yaml").read_text(encoding="utf-8"))
+
+    def tracking_run(cmd, *, cwd=None):
+        if tuple(cmd[:2]) == ("git", "status"):
+            # 模拟 status 调用自身失败（repo 权限 / 状态异常）
+            return types.SimpleNamespace(
+                returncode=128,
+                stdout="",
+                stderr="fatal: not a git repository",
+            )
+        return types.SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(archive_runner, "_run", tracking_run)
+
+    with pytest.raises(SystemExit) as excinfo:
+        _commit_and_push_archive_pr_number(meta, req_id, 42)
+
+    assert excinfo.value.code == 1, "git status 非零必须 fail-closed exit=1"
+    err = capsys.readouterr().err
+    assert "R-ARCHIVE-COMMIT-FAILED" in err, (
+        f"stderr 应含 R-ARCHIVE-COMMIT-FAILED，got: {err!r}"
+    )
+    assert "git status" in err, (
+        f"stderr 应指明 git status 失败，got: {err!r}"
+    )

@@ -1014,7 +1014,18 @@ def _commit_and_push_archive_pr_number(
         req_id=req_id,
         label="git status meta.yaml",
     )
-    if status_proc.returncode != 0 or not status_proc.stdout.strip():
+    # Codex round-2 P1：status 自身失败 与 真 clean 必须分离——前者 fail-closed，
+    # 否则 repo 权限 / 状态异常时会静默 skip 重新引入 P1-1 想修的 bug
+    if status_proc.returncode != 0:
+        stderr = (status_proc.stderr or status_proc.stdout or "").strip() or (
+            f"exit={status_proc.returncode}"
+        )
+        _abort(
+            "R-ARCHIVE-COMMIT-FAILED",
+            f"git status --porcelain {meta_rel} 失败：{stderr}",
+            req_id,
+        )
+    if not status_proc.stdout.strip():
         logger.info(
             "commit_archive_pr_number: skipped (clean) req_id=%s pr=%d",
             req_id, archive_pr_number,
