@@ -39,6 +39,7 @@ import json
 import logging
 import os
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -1388,8 +1389,10 @@ def _delete_remote_branch(
         result.remote_branch = "failed"
         result.error_messages.append(f"remote_branch: {exc}")
         if legacy_resurrect:
+            # branch 已经过 _check_branch_safe_for_remote_op 校验（仅 [a-zA-Z0-9_./-]），
+            # shlex.quote 对该字符集是 no-op；此处只为与 worktree 路径拼接保持风格一致。
             result.manual_recovery_commands.append(
-                f"git push origin --delete {branch}"
+                f"git push origin --delete {shlex.quote(branch)}"
             )
         return
     if proc.returncode == 0:
@@ -1407,8 +1410,9 @@ def _delete_remote_branch(
     result.remote_branch = "failed"
     result.error_messages.append(f"remote_branch: {msg}")
     if legacy_resurrect:
+        # 与上方异常路径保持一致：branch 已校验，shlex.quote 仅为风格统一。
         result.manual_recovery_commands.append(
-            f"git push origin --delete {branch}"
+            f"git push origin --delete {shlex.quote(branch)}"
         )
 
 
@@ -1818,8 +1822,11 @@ def _finalize_cleanup_worktree(
     if outcome == "failed":
         raw_path = ((meta.get("worktree") or {}).get("path") or "").strip()
         if raw_path:
+            # raw_path 来自 meta.worktree.path（worktree_manager 写入，理论受控），
+            # 但若含空格 / shell 元字符，用户复制粘贴会被 shell 截断 → 视觉欺骗；
+            # 经 shlex.quote 后保证整段命令在 shell 中按字面值传给 git。
             result.manual_recovery_commands.append(
-                f"git worktree remove --force {raw_path}"
+                f"git worktree remove --force {shlex.quote(raw_path)}"
             )
 
 
