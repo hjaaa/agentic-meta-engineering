@@ -44,7 +44,7 @@ import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable, Literal, Optional
+from typing import Any, Callable, Literal, NoReturn, Optional
 
 import yaml
 
@@ -65,26 +65,52 @@ _SUBPROC_TIMEOUT_SEC = 30
 # 即便 meta.base_branch 为空 / 漂移，命中本集合也直接 fail-closed（codex round-5 P1 F-10）
 _PROTECTED_BRANCHES = frozenset({"main", "master", "develop"})
 
+# 合法 git 分支名正向白名单（F-001 review R3 F-02）：
+# 仅允许 [a-zA-Z0-9_./-]，且必须以字母/数字/下划线开头，禁止任何 git refspec 元字符
+# （'-' 前缀、':' refspec、'@{...}' reflog、'~' / '^' 祖先记号、'..' range 等）
+_VALID_BRANCH_RE = re.compile(r"^[a-zA-Z0-9_][a-zA-Z0-9_./-]*$")
+
+
+def _check_branch_name_safe(branch: str) -> tuple[bool, str]:
+    """字符集合法性校验：branch 仅含 [a-zA-Z0-9_./-] 且非 '-' 开头（防 git 命令注入）。
+
+    与 _check_branch_safe_for_remote_op 不同：只校验字符串安全，**不**检查
+    protected / base_branch 语义。供 `git switch <base_branch>` 等
+    "切换到任意已知分支"的场景调用，避免 protected 检查把合法 base 误拒。
+
+    额外禁止 `..`（git refname 规则禁止 double-dot，且 git 把 `a..b` 当 range 语法）。
+    """
+    if not branch:
+        return True, "branch 为空"
+    if not _VALID_BRANCH_RE.fullmatch(branch):
+        return (
+            True,
+            f"branch={branch!r} 含非法字符（仅允许 [a-zA-Z0-9_./-]，"
+            f"必须以字母/数字/下划线开头）",
+        )
+    if ".." in branch:
+        return True, f"branch={branch!r} 含 '..'（git refname 规则禁止 double-dot）"
+    return False, ""
+
 
 def _check_branch_safe_for_remote_op(branch: str, base_branch: str) -> tuple[bool, str]:
     """判定 branch 是否安全用于远程 git 写操作（push / push --delete / branch -d）。
 
     防御四类风险（F-001 review F-05）：
       - 空 branch：早期防御，避免向 origin 推空 refspec
-      - 选项前缀注入：'-' 开头会被 git 当成选项（如被解析为 `--force`）
-      - refspec 注入：':' 会被 git 解析为 `src:dst`，可推/删任意目标分支
-      - 受保护分支：命中 _PROTECTED_BRANCHES 或 base_branch（meta 漂移兜底）
+      - git refspec 元字符注入：由 _check_branch_name_safe 用正向白名单
+        re.fullmatch(r'^[a-zA-Z0-9_][a-zA-Z0-9_./-]*$') 一次性拦下
+        '-' 前缀 / ':' refspec / '@{' reflog / '~' / '^' / '..' 等
+      - 受保护分支：命中 _PROTECTED_BRANCHES（meta 漂移兜底）
+      - base_branch 漂移：branch == base_branch 也拒绝（防误删 base）
 
     返回 (is_invalid, reason)。调用方按各自 fail 策略处置：
       - _push_feat_branch：fail-closed → _abort(R-ARCHIVE-PUSH-FAILED)
       - _delete_local_branch / _delete_remote_branch：fail-soft → result.X=failed
     """
-    if not branch:
-        return True, "branch 为空"
-    if branch.startswith("-"):
-        return True, f"branch={branch!r} 以 '-' 开头（疑似选项注入）"
-    if ":" in branch:
-        return True, f"branch={branch!r} 含 ':'（疑似 refspec 注入）"
+    is_invalid, reason = _check_branch_name_safe(branch)
+    if is_invalid:
+        return True, reason
     if branch in _PROTECTED_BRANCHES:
         return (
             True,
@@ -163,8 +189,14 @@ def _load_meta(req_id: str) -> dict[str, Any]:
     return data
 
 
-def _abort(code: str, message: str, req_id: str) -> None:
-    """预检失败统一出口：stderr 输出错误码 + 业务主键，并 exit 1。"""
+def _abort(code: str, message: str, req_id: str) -> NoReturn:
+    """预检失败统一出口：stderr 输出错误码 + 业务主键，并 exit 1。
+
+    返回类型 NoReturn 让静态类型检查器知道本函数永不正常返回，
+    使得调用 _abort 的分支不会被推断为"隐式 return None"
+    （特别是 _run_or_abort 的 except 分支，避免与声明返回类型
+    subprocess.CompletedProcess 矛盾——F-001 review R3 F-03）。
+    """
     print(f"❌ {code} req={req_id}: {message}", file=sys.stderr)
     raise SystemExit(1)
 
@@ -205,6 +237,15 @@ def _run_or_abort(
 
 
 def _precheck_phase(meta: dict[str, Any], req_id: str) -> None:
+    """预检 1：phase 必须 ∈ {testing} 或 (completed AND archive_pr_number=0)。
+
+    设计动机（F-001 e5caaab）：archive_pr_number=0 允许半完成重跑——兼容历史
+    meta（无 archive_pr_number 字段视同 0）+ F-001 双阶段拆分中的中间状态
+    （phase 已置 completed 但归档 PR 尚未创建）。archive_pr_number>0 说明已归档
+    PR 已存在，拒绝二次归档防数据覆盖。
+
+    任一条件不满足 → abort R-ARCHIVE-PHASE。
+    """
     phase = meta.get("phase", "")
     if phase == "testing":
         return
@@ -329,6 +370,11 @@ def _precheck_dirty(meta: dict[str, Any], req_id: str) -> None:
 
 
 def _precheck_pr_number(meta: dict[str, Any], req_id: str) -> int:
+    """预检 3：meta.pr_number 必须 > 0；返回该数值供 _precheck_pr_merged 使用。
+
+    pr_number ≤ 0（含缺失 / 非整数 / 0）→ abort R-ARCHIVE-NO-PR
+    （提示用户先跑 /requirement:submit 写入 pr_number）。
+    """
     raw = meta.get("pr_number", 0)
     try:
         pr_number = int(raw or 0)
@@ -703,7 +749,7 @@ def _do_push_with_recovery_hint(branch: str, base_branch: str, req_id: str) -> N
         _abort(
             "R-ARCHIVE-PUSH-FAILED",
             (
-                f"git push origin {branch} 失败: {stderr}"
+                f"git push origin {branch} 失败: {stderr}\n"
                 f"（可手工 `git push origin {branch}` 重试，或 `gh pr create"
                 f" --base {base_branch or 'develop'} --head {branch} --no-codex --skip-rebase` 创建归档 PR 后重跑 archive）"
             ),
@@ -787,6 +833,15 @@ def _delete_local_branch(
                 f"local_branch: 当前 HEAD 在 {branch!r} 但 base_branch 为空，"
                 f"无法自动切走；请先 `git switch <base>` 再重跑 archive"
             )
+            result.local_branch = "failed"
+            result.error_messages.append(msg)
+            print(f"⚠️  {msg}", file=sys.stderr)
+            return
+        # F-001 review R3 F-01：base_branch 也走字符集校验，防止 meta.base_branch
+        # 被污染为 '-f' / 'a:b' / '@{...}' 等触发 git switch 选项/refspec 注入
+        base_invalid, base_reason = _check_branch_name_safe(base_branch)
+        if base_invalid:
+            msg = f"local_branch: 拒绝自动切——{base_reason}"
             result.local_branch = "failed"
             result.error_messages.append(msg)
             print(f"⚠️  {msg}", file=sys.stderr)
