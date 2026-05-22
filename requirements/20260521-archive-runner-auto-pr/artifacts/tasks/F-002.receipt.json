@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "feature_id": "F-002",
+  "status": "DONE",
+  "commit_sha": "f354f5b72bdcbd0a161305fbc09cf8d6cb4cc40b",
+  "files_changed": ["scripts/lib/archive_runner.py"],
+  "test_summary": "py_compile OK + _render_archive_pr_body 三占位符替换手测通过（python3 -c 验证，无单测，归 F-005）",
+  "touches_violations": [],
+  "concerns": [],
+  "missing_context": "",
+  "block_reason": "",
+  "timestamp": "2026-05-22T09:32:42+08:00"
+}
