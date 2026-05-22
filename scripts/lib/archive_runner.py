@@ -1414,6 +1414,10 @@ def archive_requirement(
     _commit_archive_metadata(req_id, result)
     _push_feat_branch(meta, req_id, result)
 
+    # —— 阶段 1 step 8/9：创建归档 PR + 落 archive_pr_number ——
+    archive_pr_number = _create_archive_pr(meta, req_id, result)
+    _write_archive_pr_number(req_id, meta, archive_pr_number)
+
     print(_render_summary(result))
     return result
 
