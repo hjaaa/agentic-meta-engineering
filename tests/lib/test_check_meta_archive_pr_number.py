@@ -36,7 +36,7 @@ def _has_state_machine_error(report: Report) -> bool:
     return any(
         code == "state-machine"
         for _, sev, code, _ in report.findings()
-        if sev == "error"  # Severity.ERROR == "error"
+        if sev == "error"  # Severity.ERROR 的字符串值为 "error"
     )
 
 

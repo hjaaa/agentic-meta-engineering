@@ -291,7 +291,7 @@ archive 命令始终 exit 0（除非 5 项预检挂）。
 
 ## 6. 测试与自举
 
-- 单测：`tests/lifecycle/test_archive.py` 覆盖 TC-F3-1 ~ TC-F3-7（4 预检 + 三问 yes/no + 失败降级）
+- 单测：`tests/lifecycle/test_archive.py` 覆盖 TC-F3-1 ~ TC-F3-7（5 项预检 + 三问 yes/no + 失败降级）
 - finalize 单测：`tests/lifecycle/test_finalize.py` 覆盖 TC-F3-1 ~ TC-F3-18（happy path + 5 keep flag 组合 + --force / --legacy-resurrect-remote）
 - 沙盒 e2e（V-01）：TC-F3-8，REQ-2099-007 走全链路
 - 自举（V-08）：本需求 PR merge 后用 `/requirement:archive` 归档自身——`yq '.archived_at' meta.yaml` 非空 + `grep -c '\[archived\]' process.txt == 1`（幂等校验）

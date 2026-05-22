@@ -1897,7 +1897,7 @@ def finalize_requirement(
 ) -> ArchiveResult:
     """finalize 子命令入口（detailed-design §3.1，已 frozen）。
 
-    10 步顺序：
+    12 步顺序：
       1. _rebind_to_main_repo
       2. _load_meta
       3. §3.4 警告文案（在 _precheck_archive_pr_merged 之前）

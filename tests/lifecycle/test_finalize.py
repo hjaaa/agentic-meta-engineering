@@ -362,7 +362,7 @@ def test_finalize_user_answers_no(
 
     monkeypatch.setattr(archive_runner, "_run", tracking_run)
 
-    # callback answers N for finalize prompt
+    # callback 对 finalize 问询返回 N
     def callback(prompt: ArchivePrompt) -> bool:
         if prompt.kind == "finalize":
             return False
