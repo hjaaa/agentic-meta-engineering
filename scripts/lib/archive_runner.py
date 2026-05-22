@@ -616,6 +616,229 @@ def _render_archive_pr_body(req_id: str, pr_number: int, branch: str) -> str:
     )
 
 
+def _check_existing_archive_pr(
+    branch: str, req_id: str
+) -> Optional[dict[str, Any]]:
+    """gh pr list 查当前归档 PR（state=all）；返回首条记录 dict 或 None（无匹配）。
+
+    gh 调用失败 → abort R-ARCHIVE-PR-CREATE-FAILED。
+    JSON 解析失败 → abort R-ARCHIVE-PR-CREATE-FAILED。
+    """
+    import tempfile
+
+    proc = _run_or_abort(
+        [
+            "gh", "pr", "list",
+            "--head", branch,
+            "--base", "develop",
+            "--state", "all",
+            "--json", "number,state,url",
+            "--limit", "1",
+        ],
+        cwd=REPO_ROOT,
+        error_code="R-ARCHIVE-PR-CREATE-FAILED",
+        req_id=req_id,
+        label="gh pr list",
+    )
+    if proc.returncode != 0:
+        _abort(
+            "R-ARCHIVE-PR-CREATE-FAILED",
+            f"gh pr list 返回非零 req={req_id}: {proc.stderr.strip()}",
+            req_id,
+        )
+    raw = (proc.stdout or "").strip()
+    if not raw or raw == "[]":
+        return None
+    try:
+        items = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        _abort(
+            "R-ARCHIVE-PR-CREATE-FAILED",
+            f"gh pr list JSON 解析失败 req={req_id}: {exc}",
+            req_id,
+        )
+    if not items:
+        return None
+    return items[0]
+
+
+def _do_create_archive_pr(
+    meta: dict[str, Any], req_id: str, branch: str, result: ArchiveResult
+) -> int:
+    """实际调用 gh pr create；返回新建 PR number。
+
+    渲染模板 → 写临时文件 → gh pr create --body-file → unlink。
+    失败 → abort R-ARCHIVE-PR-CREATE-FAILED。
+    """
+    import tempfile
+
+    pr_number = meta.get("pr_number", 0)
+    try:
+        pr_number = int(pr_number or 0)
+    except (TypeError, ValueError):
+        pr_number = 0
+
+    body = _render_archive_pr_body(req_id, pr_number, branch)
+
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".md")
+    try:
+        with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
+            fh.write(body)
+
+        proc = _run_or_abort(
+            [
+                "gh", "pr", "create",
+                "--base", "develop",
+                "--head", branch,
+                "--title", f"archive({req_id}): metadata + lessons",
+                "--body-file", tmp_path,
+            ],
+            cwd=REPO_ROOT,
+            error_code="R-ARCHIVE-PR-CREATE-FAILED",
+            req_id=req_id,
+            label="gh pr create",
+        )
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+    if proc.returncode != 0:
+        _abort(
+            "R-ARCHIVE-PR-CREATE-FAILED",
+            f"gh pr create 失败 req={req_id}: {proc.stderr.strip() or proc.stdout.strip()}",
+            req_id,
+        )
+
+    # gh pr create 成功时 stdout 为 PR URL，例如 "https://github.com/org/repo/pull/42\n"
+    url = (proc.stdout or "").strip()
+    # 从 URL 末段解出 number
+    try:
+        new_number = int(url.rstrip("/").split("/")[-1])
+    except (ValueError, IndexError):
+        _abort(
+            "R-ARCHIVE-PR-CREATE-FAILED",
+            f"gh pr create 输出无法解析 PR number req={req_id}: {url!r}",
+            req_id,
+        )
+
+    result.archive_pr_number = new_number
+    result.archive_pr_url = url
+    result.archive_pr_action = "created"
+    logger.info(
+        "create_archive_pr: created pr=#%d url=%s req_id=%s", new_number, url, req_id
+    )
+    return new_number
+
+
+def _create_archive_pr(
+    meta: dict[str, Any], req_id: str, result: ArchiveResult
+) -> int:
+    """Step 8：调 gh pr create 开归档 PR；返回 PR number。
+
+    Idempotent：先 gh pr list 检查：
+      - OPEN：取 number；写 result.archive_pr_action="reused"；return number
+      - MERGED：abort R-ARCHIVE-PR-ALREADY-MERGED
+      - CLOSED：abort R-ARCHIVE-PR-CLOSED
+    存在性检查后才 create。create 失败抛 R-ARCHIVE-PR-CREATE-FAILED。
+
+    冲突检查：若 meta.archive_pr_number > 0 且 != gh 返回 number →
+    fail-closed R-ARCHIVE-PR-NUMBER-MISMATCH（C-3 决策）。
+
+    raises: SystemExit(1) — 任一异常路径
+    returns: int — 新建或复用的 PR number
+    """
+    branch = (meta.get("branch") or "").strip()
+    if not branch:
+        _abort(
+            "R-ARCHIVE-PR-CREATE-FAILED",
+            f"meta.branch 为空，无法确定 head branch req={req_id}",
+            req_id,
+        )
+
+    existing = _check_existing_archive_pr(branch, req_id)
+
+    if existing is not None:
+        state = (existing.get("state") or "").upper()
+        number = int(existing.get("number") or 0)
+        url = (existing.get("url") or "").strip()
+
+        if state == "MERGED":
+            _abort(
+                "R-ARCHIVE-PR-ALREADY-MERGED",
+                (
+                    f"归档 PR #{number} 已 MERGED 但 archive_pr_number 未写入 "
+                    f"req={req_id}；请手工把 archive_pr_number: {number} 写入 meta.yaml 后重跑"
+                ),
+                req_id,
+            )
+        if state == "CLOSED":
+            _abort(
+                "R-ARCHIVE-PR-CLOSED",
+                f"归档 PR #{number} 已 CLOSED req={req_id}；如需重开，请手工恢复后重跑",
+                req_id,
+            )
+        # OPEN — 复用
+        # 冲突检查：meta 中已记录不为 0 且与 gh 返回不符
+        try:
+            meta_pr = int(meta.get("archive_pr_number") or 0)
+        except (TypeError, ValueError):
+            meta_pr = 0
+        if meta_pr > 0 and meta_pr != number:
+            _abort(
+                "R-ARCHIVE-PR-NUMBER-MISMATCH",
+                (
+                    f"meta.archive_pr_number={meta_pr} 与 gh 返回 #{number} 不符 "
+                    f"req={req_id}；请手工核对后再重跑"
+                ),
+                req_id,
+            )
+
+        result.archive_pr_number = number
+        result.archive_pr_url = url
+        result.archive_pr_action = "reused"
+        logger.info(
+            "create_archive_pr: reused pr=#%d req_id=%s", number, req_id
+        )
+        return number
+
+    # 无已有 PR → 新建
+    return _do_create_archive_pr(meta, req_id, branch, result)
+
+
+def _write_archive_pr_number(
+    req_id: str, meta: dict[str, Any], pr_number: int
+) -> None:
+    """Step 9：把 archive_pr_number 落回 meta.yaml（tmp + os.replace）。
+
+    Idempotent：meta.archive_pr_number == pr_number 时跳过写盘。
+    只改 archive_pr_number 单字段，其余字段维持原状。
+    """
+    try:
+        existing = int(meta.get("archive_pr_number") or 0)
+    except (TypeError, ValueError):
+        existing = 0
+
+    if existing == pr_number:
+        logger.info(
+            "write_archive_pr_number: skipped (idempotent) pr_number=%d req_id=%s",
+            pr_number, req_id,
+        )
+        return
+
+    meta["archive_pr_number"] = pr_number
+
+    path = _meta_path(req_id)
+    tmp = path.with_suffix(".yaml.tmp")
+    with tmp.open("w", encoding="utf-8") as f:
+        yaml.safe_dump(meta, f, allow_unicode=True, sort_keys=False)
+    os.replace(tmp, path)
+    logger.info(
+        "write_archive_pr_number: wrote pr_number=%d req_id=%s", pr_number, req_id
+    )
+
+
 def _idempotent_skip_if_commit_exists(req_id: str) -> bool:
     """幂等检测：HEAD commit subject 命中 ARCHIVE_COMMIT_RE(req_id) → 返回 True。
 
