@@ -54,6 +54,8 @@
 - [`codex-review-precondition-ci-green-and-pr-body-instruction.md`](codex-review-precondition-ci-green-and-pr-body-instruction.md) — codex review-loop 两条流程层硬约束：触发前必查 CI 全绿（FAILURE 拒进 / pending fail-closed）+ 触发评论必含 5 段 PR 正文阅读指令（避免 codex 默认只看 diff）
 - [`id-format-evolution-needs-regex-audit.md`](id-format-evolution-needs-regex-audit.md) — 标识符命名格式演进时（如 `REQ-YYYY-NNN` → `YYYYMMDD-<slug>`），需 grep 全仓审计散落 regex；Bug-21（workspace_clean）+ Bug-22（W002 豁免）同期复发同款盲区
 - [`module-level-path-constant-blocks-fixture-injection.md`](module-level-path-constant-blocks-fixture-injection.md) — Python 模块级 `_CONST = REPO_ROOT / "..."` 在 import 时冻结路径，阻碍 pytest tmp_path 注入；修法 = 函数签名加 `repo_root: Path | None = None`，缺省回退模块级常量
+- [`receipt-done-with-concerns-status-discipline.md`](receipt-done-with-concerns-status-discipline.md) — subagent 写 receipt 时混用 `status=DONE` 与非空 concerns 撞 POST-DEV-RECEIPT gate；dispatch prompt 必显式枚举 `concerns!=[] → DONE_WITH_CONCERNS`
+- [`plan-md-scope-exclude-nested-bullets.md`](plan-md-scope-exclude-nested-bullets.md) — plan.md 范围段 `- 不包含：` 必用缩进子条目，inline `A；B；C` 写法 W003 不识别；CI `--strict` 会升 error 拦 PR
 
 ## 什么值得沉淀
 

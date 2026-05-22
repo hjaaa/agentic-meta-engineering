@@ -38,3 +38,5 @@
 2026-05-22 20:06:21 [codex-review-triggered] round=1 pr=#88
 2026-05-22 20:09:03 [codex-review-received] verdict=passed round=1
 2026-05-22 20:09:49 [save] Codex review-loop 完结：round=1 not_passed (2 P1) → round=2 not_passed (1 自引入 P1) → round=3 passed @1f4a425；3 处真实 bug 闭合（archive_pr_number 二次 commit/push / finalize switch-before-pull / git status 失败 fail-closed）+ 5 个新 TC（test_archive_runner 13→16 / test_finalize 20→22）；pytest tests/ 全绿 / ruff F401=0 / CI quality-check 全绿；PR #88 ready-to-merge
+2026-05-22 20:29:27 [save] 经验沉淀 2 条 → context/team/experience/（receipt-done-with-concerns-status-discipline + plan-md-scope-exclude-nested-bullets）+ INDEX 更新 + submit-rules.md state/bucket schema 文档同步；mark_lessons_extracted.py 翻 True；准备走 /requirement:archive 阶段 1
+2026-05-22 21:03:41 [archived] (PR #88 merged at 2026-05-22 21:03:41)
