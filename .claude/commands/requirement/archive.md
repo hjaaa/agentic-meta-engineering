@@ -54,6 +54,39 @@ archive 流程的副作用动作分布：
 | `--yes-local-branch` | false | 本地分支问跳问，等价用户答 y |
 | `--yes-remote-branch` | false | 远程分支问跳问，等价用户答 y |
 
+## Finalize 子命令（阶段 2）
+
+`/requirement:archive` 执行的是阶段 1（写 meta + commit + push + 自动开归档 PR）。归档 PR 被 reviewer merge 后，用户需要跑阶段 2（finalize）完成不可逆收尾动作：
+
+```bash
+# Skill 入口（推荐）
+/requirement:archive --finalize
+
+# CLI 直接调用
+python3 scripts/lib/archive_runner.py <req_id> --finalize
+```
+
+**阶段 1 → 阶段 2 接力关系**：
+
+| 阶段 | 命令 | 动作 |
+|---|---|---|
+| 阶段 1 archive | `/requirement:archive` | 写 meta.yaml + process.txt + 经验沉淀 → commit → push → 创建归档 PR → 写 archive_pr_number |
+| 阶段 2 finalize | `/requirement:archive --finalize` | 校验归档 PR merged → 删本地 feat 分支 → 删远程 feat 分支 → cleanup worktree |
+
+**触发时机**：archive PR 被 reviewer 通过且 merged 后——不要在 PR merge 前跑 `--finalize`，finalize 有预检会拦截 state != MERGED（除非加 `--force`）。
+
+**5 个 keep flag**（finalize 专用，阶段 1 archive 不认识这些 flag）：
+
+| flag | 默认 | 语义 / 适用场景 |
+|---|---|---|
+| `--yes-finalize` | false | 跳过「确认删除」问询（CI / 自动化脚本使用） |
+| `--keep-local-branch` | false | 跳过删本地 feat 分支（保留 git history 查阅） |
+| `--keep-remote-branch` | false | 跳过删远程 feat 分支（外部协作仍需可见时） |
+| `--keep-worktree` | false | 跳过 cleanup worktree（用户仍在 worktree 内操作时） |
+| `--legacy-resurrect-remote` | false | 历史 REQ 兜底：扩大 already-deleted 识别到 `not found` / `unknown`（远程已被 GitHub auto-delete-head-branch 清掉的老需求） |
+
+完整 finalize 规则见 [`reference/archive-rules.md` §A](../../skills/managing-requirement-lifecycle/reference/archive-rules.md)。
+
 ## 预检（5 项硬门禁，任一 fail → exit 1）
 
 1. `phase ∈ {testing, completed}` —— 错误码 `R-ARCHIVE-PHASE`
@@ -70,21 +103,24 @@ archive 流程的副作用动作分布：
 
 ## worktree cleanup 三重保护（D-008 / D-009）
 
-archive 会在 5 项预检通过后、写 meta 之前自动尝试清理 worktree，但三个条件**同时满足**才会真删：
+worktree cleanup 已迁移到阶段 2（`--finalize`）执行，不在阶段 1 archive 中触发。finalize 内的三重保护：
 
 1. `owner=workflow`（external worktree 跳过）
 2. `worktree.path` 命中路径白名单（`.worktrees/` 前缀）
-3. 当前 cwd ≡ 主仓根（防止 worktree 内 self-remove）
+3. finalize 内部先 `chdir` 主仓根再 cleanup（防止 worktree 内 self-remove，D-003）
 
-任一条件失败 → cleanup 静默跳过 + log，不阻塞 archive。
+任一条件失败 → cleanup 静默跳过 + log，不阻塞 finalize。
 
 ## 三问串行（默认 N）
 
-预检通过后，按交互通道决议：
+**阶段 1 archive** 预检通过后，按交互通道决议触发的 1 问（F-001 后分支删除迁移到 finalize）：
 
 1. 经验沉淀：`是否沉淀经验到 context/team/experience/？`
-2. 本地分支：`是否删除本地分支 <branch>？`
-3. 远程分支：`是否删除远程分支 origin/<branch>？`
+
+**阶段 2 finalize** 合并问询（`kind="finalize"`）：
+
+- 一次性问「即将 finalize（删 worktree + feat 本地/远程分支），确认继续？」
+- `--yes-finalize` 跳过此问
 
 通道优先级（D-016 A 案）：
 
@@ -92,7 +128,7 @@ archive 会在 5 项预检通过后、写 meta 之前自动尝试清理 worktree
 2. 主对话场景注入 `prompts_callback` → 调 callback，由主 Agent 串行问
 3. CLI 自动化无 callback → 默认按 N 处理（保守不删 / 不沉淀）
 
-`--keep-branch` 跳过 2 + 3，`--no-experience` 跳过 1。
+阶段 1：`--keep-branch` 跳过删分支两问（历史行为保留兼容），`--no-experience` 跳过经验沉淀问。
 
 ## 终端反馈格式（spec §5.3 第 5 步）
 

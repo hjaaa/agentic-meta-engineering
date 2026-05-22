@@ -6,6 +6,38 @@
 
 ---
 
+## 双阶段拓扑（F-001 / F-003）
+
+archive 流程拆分为**两个阶段**，不可逆操作（分支删除 / worktree 清理）被整体推迟到阶段 2（finalize），确保 reviewer 对归档 commit 完成审查后再执行破坏性动作。
+
+| 阶段 | 命令 | 执行内容 | 终止时机 |
+|---|---|---|---|
+| **阶段 1 archive** | `python3 scripts/lib/archive_runner.py <id>` | 写 meta.yaml + process.txt + 经验沉淀 → commit → push → 自动创建归档 PR → 写 archive_pr_number | 等 reviewer 审查、merge 归档 PR |
+| **阶段 2 finalize** | `python3 scripts/lib/archive_runner.py <id> --finalize` | 校验归档 PR 已 merged → 删本地 feat 分支 → 删远程 feat 分支 → cleanup worktree | 终态（不可逆） |
+
+**状态流转示意**（`archive_pr_number × phase`，来源：detailed-design §8.1）：
+
+```
+phase=testing, pr_number=0
+        │ archive_requirement()
+        ▼
+phase=completed, archive_pr_number=0   ← 半完成（可重跑 archive）
+        │ idempotent 重跑 archive_requirement()
+        ▼
+phase=completed, archive_pr_number=42  ← 归档 PR 创建完成，等 merge
+        │ finalize_requirement()（PR merged 后）
+        ▼
+phase=completed, archive_pr_number=42  ← 终态
+worktree cleared, branches deleted
+```
+
+**关键约束**：
+- 阶段 1 archive：写 meta + commit + push + 开 PR，**不**执行删除类动作
+- 阶段 2 finalize：预检归档 PR 已 merged，才执行删本地分支 / 删远程分支 / cleanup worktree
+- `--finalize` 在 `_delete_remote_branch` 下才生效的 `--legacy-resurrect-remote` 旗标（F-007）详见本文 §B
+
+---
+
 ## 0. 何时调用 archive（主 Agent 行为约束）
 
 archive 是**用户显式触发**的动作，不是 PR 合并的自动后置步骤。
@@ -117,7 +149,9 @@ rollback）路径。
 
 ---
 
-## 2. 5 步执行（预检通过后）
+## 2. 阶段 1 执行（预检通过后）
+
+阶段 1 的职责：**写 meta + commit + push + 开归档 PR**。删除类不可逆动作（分支删除 / worktree 清理）已整体迁移到阶段 2（finalize，见本文 §A）。
 
 ### 2.1 原子写 meta.yaml
 
@@ -147,25 +181,59 @@ YYYY-MM-DD HH:MM:SS [archived] (PR #<num> merged at <archived_at>)
 
 **fail-soft**：subprocess 不可用 / 退出非零 → `outcome=failed` + `error_messages` 记原因，archive 仍 exit 0。
 
-### 2.4 删远程分支 → 自动切 base → 删本地分支（可选）
+### 2.4 commit + push（archive metadata commit）
 
-两问串行（**先远程后本地**），任一为独立动作。`--keep-branch` flag 同时跳过两问，`outcome=skipped`。
+archive 阶段 1 在写完 meta / process.txt / 经验沉淀后，自动 commit 并 push（来源：`scripts/lib/archive_runner.py:1086`）：
 
-顺序按 §0.3 规则：远程删不需要切走，故先做；本地删需要先 `git switch <base_branch>`，
-放最后让 archive 所有 bookkeeping 操作都在 feat 分支完成后再离开。
+**commit message 前缀约定**（`ARCHIVE_COMMIT_RE`，来源：`scripts/lib/archive_runner.py:128`）：
 
-**远程分支**（`kind="remote_branch"`，先做）：
-- 答 y → `git push origin --delete <branch>`（仍在 feat 分支上执行）
-- 远程已被 GitHub「Automatically delete head branches」清掉 → stderr 含 `remote ref does not exist` → 折叠为 `outcome=already-deleted`，不报错
-- 网络 / 401 / 403 → 透传 error → `outcome=failed`
+- 格式：`archive(<req_id>): metadata`
+- 严格正则：`^archive\(<req_id>\): metadata$`
+- 举例：`archive(20260521-archive-runner-auto-pr): metadata` ✓ / `chore(archive): metadata` ✗
 
-**本地分支**（`kind="local_branch"`，最后做）：
-- 答 y → 若当前 HEAD == `<branch>`，archive_runner 自动跑 `git switch <base_branch>`，然后 `git branch -d <branch>`（safe delete；**不允许 `-D` 强删**，D-014）
-- `base_branch` 为空 / `git switch` 失败 → `outcome=failed` + `error_messages` 提示用户手动切走，**不**自动 `-D` 强删（避免误删尚未合并的提交）
-- `<branch> == base_branch`（如 develop / main）→ `outcome=failed` + `error_messages` 记拒因，跳过实际 git 调用
-- git 拒绝（squash merge 后会被判 not fully merged）→ 透传 git 原始 error → `outcome=failed`
+**idempotent 跳过规则**：`HEAD commit subject` 命中 `ARCHIVE_COMMIT_RE(req_id)` → 整步跳过（archive 重跑安全）。
 
-### 2.5 终端反馈（6 行 + 可选 errors 段）
+**非匹配不触发跳过**：如果 HEAD commit 用了其他格式（如 `chore(archive): metadata`），重跑时不识别为 idempotent，会新建 commit——这是故意的，防止非 archive 产生的 commit 被误认为已归档。
+
+**commit 白名单范围**（来源：detailed-design §1.2，`C-1` 决策）：
+- `requirements/<id>/meta.yaml` + `requirements/<id>/process.txt` + `requirements/<id>/notes.md` + `requirements/<id>/artifacts/`
+- `context/team/experience/`（经验沉淀产物）
+- `context/project/*/experience/`（项目经验产物）
+- `context/INDEX.md` / `context/team/experience/INDEX.md`
+- 非白名单 `context/` 改动 → fail-closed `R-ARCHIVE-CONTEXT-DIRTY`，exit 1
+
+### 2.5 archive PR 自动创建语义
+
+archive metadata commit push 成功后，`_create_archive_pr`（来源：`scripts/lib/archive_runner.py:929`）自动创建归档 PR：
+
+```bash
+gh pr create \
+  --base develop --head feat/<id> \
+  --title "archive(<id>): metadata + lessons" \
+  --body-file <渲染后的 archive-pr-body>
+```
+
+**PR body 模板**：`.claude/skills/managing-requirement-lifecycle/templates/archive-pr-body.md.tmpl`，含三个占位符：
+
+| 占位符 | 替换值 |
+|---|---|
+| `__REQ_ID__` | `req_id` 字符串 |
+| `__PR_NUMBER__` | `meta["pr_number"]`（需求 PR number，非归档 PR number） |
+| `__BRANCH__` | `meta["branch"]`（feat 分支名） |
+
+**idempotent 处置**（先调 `gh pr list --head feat/<id> --base develop --state all`）：
+
+| 状态 | 处置 |
+|---|---|
+| OPEN | 复用已有 PR number（`archive_pr_action="reused"`），不重建 |
+| MERGED 且 `meta.archive_pr_number=0` | fail-closed `R-ARCHIVE-PR-ALREADY-MERGED`（归档 PR 已被手动 merge 但 number 未落地，需人工恢复） |
+| CLOSED | fail-closed `R-ARCHIVE-PR-CLOSED`（用户手动关了 PR） |
+| PR number 冲突 | `meta.archive_pr_number > 0` 且 != gh 返回 number → fail-closed `R-ARCHIVE-PR-NUMBER-MISMATCH`（C-3 决策） |
+| 不存在 | 正常创建（`archive_pr_action="created"`） |
+
+**后续流程**：PR 创建后，`archive_pr_number` 写入 `meta.yaml`（`_write_archive_pr_number`，来源：`scripts/lib/archive_runner.py`），等待 reviewer 审查 + merge 后，用户跑 `--finalize` 触发阶段 2。
+
+### 2.6 终端反馈（6 行 + 可选 errors 段）
 
 按 spec §5.3 第 5 步原样渲染：
 
@@ -174,13 +242,12 @@ YYYY-MM-DD HH:MM:SS [archived] (PR #<num> merged at <archived_at>)
    phase: completed
    archived_at: 2026-05-04 19:30:00
    experience: ✅ yes / ⏭ no / ⏭ skipped / ❌ failed
-   local branch:  ✅ deleted / ⏭ kept / ⏭ skipped / ❌ failed
-   remote branch: ✅ deleted / ⏭ kept / ⏭ skipped / ✅ already-deleted / ❌ failed
+   archive PR: #42 (https://github.com/.../pull/42)
 ```
 
 任意 `outcome=failed` 时追加 `errors:` 段列出 `error_messages`，便于排查。
 
-archive 命令始终 exit 0（除非 4 项预检挂）。
+archive 命令始终 exit 0（除非 5 项预检挂）。
 
 ---
 
@@ -225,5 +292,107 @@ archive 命令始终 exit 0（除非 4 项预检挂）。
 ## 6. 测试与自举
 
 - 单测：`tests/lifecycle/test_archive.py` 覆盖 TC-F3-1 ~ TC-F3-7（4 预检 + 三问 yes/no + 失败降级）
+- finalize 单测：`tests/lifecycle/test_finalize.py` 覆盖 TC-F3-1 ~ TC-F3-18（happy path + 5 keep flag 组合 + --force / --legacy-resurrect-remote）
 - 沙盒 e2e（V-01）：TC-F3-8，REQ-2099-007 走全链路
 - 自举（V-08）：本需求 PR merge 后用 `/requirement:archive` 归档自身——`yq '.archived_at' meta.yaml` 非空 + `grep -c '\[archived\]' process.txt == 1`（幂等校验）
+
+---
+
+## §A. 阶段 2：`finalize_requirement`（三重保护 + keep flag）
+
+阶段 2 负责执行所有不可逆动作（删本地 / 删远程 feat 分支 + cleanup worktree），在归档 PR merged 后由用户主动触发（来源：`scripts/lib/archive_runner.py:1887`）。
+
+### §A.1 触发方式
+
+```bash
+# Skill 入口
+/requirement:archive --finalize
+
+# CLI 直接调用
+python3 scripts/lib/archive_runner.py <req_id> --finalize
+```
+
+### §A.2 `--finalize` 及 5 个 keep flag
+
+| flag | 默认 | 语义 / 适用场景 |
+|---|---|---|
+| `--finalize` | （无，需显式传入） | 触发阶段 2 收尾：检验 archive PR merged → 删本地 + 远程 feat 分支 → cleanup worktree |
+| `--yes-finalize` | false | 跳过「确认删除本地+远程 feat + worktree」问询（CI / 自动化脚本使用） |
+| `--keep-local-branch` | false | 跳过删本地 feat 分支（保留本地 git history 供事后查阅） |
+| `--keep-remote-branch` | false | 跳过删远程 feat 分支（外部协作仍需可见、或远程已被 auto-delete 清掉） |
+| `--keep-worktree` | false | 跳过 cleanup worktree（用户仍在 worktree 内继续操作时） |
+| `--legacy-resurrect-remote` | false | 老需求兜底：扩大 already-deleted 识别到 `not found` / `unknown`（详见 §B） |
+
+### §A.3 finalize 10 步顺序
+
+```
+1. _rebind_to_main_repo          → REPO_ROOT 绑到主仓根
+2. _load_meta                    → 读 meta.yaml
+3. §3.4 警告文案                  → --force / --force+--yes-finalize 警告
+4. _precheck_archive_pr_merged   → 校验 archive PR merged（--force 跳过）
+5. 合并问询（kind="finalize"）    → --yes-finalize 跳过；N → exit 0
+6. os.chdir(main_repo_root)      → fail-closed
+7. git pull --ff develop          → fail-closed（R-FINALIZE-PULL-FAILED）
+8. _cleanup_worktree_before_archive → --keep-worktree 跳过
+9. _delete_local_branch(strict=True) → --keep-local-branch 跳过
+10. _delete_remote_branch(legacy_resurrect=...) → --keep-remote-branch 跳过
+11. _log_finalize_event           → 写 process.txt [finalized] 事件
+12. _render_summary(stage="finalize") → 终端反馈
+```
+
+### §A.4 三重保护（worktree cleanup 条件）
+
+`_cleanup_worktree_before_archive` 内的三件套**同时满足**才会真删（`os.chdir(主仓根)` 已在第 6 步完成，来源：detailed-design §3 C-2 决策）：
+
+1. `owner=workflow`（external worktree 跳过）
+2. `worktree.path` 命中路径白名单（`.worktrees/` 前缀）
+3. **finalize 内部先 `chdir` 主仓根再 cleanup**（cwd ≡ 主仓根，D-003 决策）——防止 worktree 内 self-remove
+
+任一条件失败 → cleanup 静默跳过 + log，不阻塞 finalize。
+
+### §A.5 finalize process.txt 事件（C-7 定稿）
+
+finalize 跑完后（`_log_finalize_event`，来源：`scripts/lib/archive_runner.py:625`）写入一行：
+
+```text
+2026-MM-DD HH:MM:SS [finalized] worktree=removed local_branch=deleted remote_branch=already-deleted [archive PR #<N>]
+2026-MM-DD HH:MM:SS [finalized] worktree=kept   local_branch=kept    remote_branch=kept              [archive PR #<N>] (--keep-worktree --keep-local-branch --keep-remote-branch)
+```
+
+- 事件 tag 唯一：`[finalized]`（不拆细粒度 tag）
+- keep flag 状态展开为 `worktree / local_branch / remote_branch` 三字段；keep flag 名以括号后缀附加便于检索
+- idempotent：process.txt 末 10 行含 `[finalized]` → 跳追加
+
+### §A.6 `--force` + `--yes-finalize` 组合警告（C-6 定稿）
+
+| 组合 | 行为 |
+|---|---|
+| `--force` only | stderr 输出警告 + 调 callback 二次确认（N → exit 0 with "aborted by user"） |
+| `--yes-finalize` only | 无额外警告，正常 happy path |
+| `--force` + `--yes-finalize` | stderr 打印双重危险警告 + **直接继续**（不再调 callback） |
+| `--force` + `--keep-*` | `--force` 警告 + 列出实际生效的 `--keep-*` flag |
+
+### §A.7 finalize 预检错误码
+
+| 错误码 | 触发条件 |
+|---|---|
+| `R-FINALIZE-ARCHIVE-PR-MISSING` | `meta.archive_pr_number ∈ {None, 0, ""}` |
+| `R-FINALIZE-ARCHIVE-PR-FETCH-FAILED` | `gh pr view` 调用失败 |
+| `R-FINALIZE-ARCHIVE-PR-NOT-MERGED` | archive PR state != "MERGED" |
+| `R-FINALIZE-PULL-FAILED` | `git pull --ff develop` 返回非零 |
+| `R-FINALIZE-CWD-FAILED` | `os.chdir(main_repo_root)` 抛 OSError |
+
+---
+
+## §B. `--legacy-resurrect-remote` 兜底（F-007）
+
+`--legacy-resurrect-remote` 仅在 `--finalize` 子命令下生效（来源：`scripts/lib/archive_runner.py:1340`），用于历史 REQ 兜底：
+
+**默认行为**（`legacy_resurrect=False`）：
+- 远程分支不存在 → 仅命中 `remote ref does not exist` 文案 → 折叠为 `already-deleted`
+- 其他 stderr 文案 → fail-soft + `outcome=failed`
+
+**启用后行为**（`legacy_resurrect=True`，扩大识别集）：
+- stderr 含 `remote ref does not exist` / `not found` / `unknown` 任一 → 视为 `already-deleted`，不写 `error_messages`
+
+**适用场景**：历史需求（无归档 PR）走 `--finalize --force --legacy-resurrect-remote` 一次性补归档——远程分支可能早已被 GitHub auto-delete-head-branch 清掉，此时远程删除操作 stderr 包含非标准文案。
