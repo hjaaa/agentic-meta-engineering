@@ -1,0 +1,65 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-20260521-archive-runner-auto-pr-code-F-002-002",
+  "requirement_id": "20260521-archive-runner-auto-pr",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-22 10:02:18",
+  "reviewed_commit": "12305bb",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "0982e3468fb60311a2fff28812faf4e552dcd1651e6fc5f6957bd91b869a2917"
+    },
+    {
+      "path": "artifacts/tasks/F-002.md",
+      "sha256": "f307cc8596b54ec33f0b36a9ad0be8f2d75c20ca325a7fce53a62b2a140317fd"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 90,
+  "dimensions": {
+    "design_consistency": {
+      "score": 92,
+      "issues": []
+    },
+    "security": {
+      "score": 90,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 90,
+      "issues": []
+    },
+    "complexity": {
+      "score": 88,
+      "issues": []
+    },
+    "error_handling": {
+      "score": 90,
+      "issues": []
+    },
+    "auxiliary_spec": {
+      "score": 92,
+      "issues": []
+    },
+    "performance": {
+      "score": 90,
+      "issues": []
+    },
+    "history_context": {
+      "score": 92,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "scripts/lib/archive_runner.py:1037 _delete_local_branch CC=18 / 100 行（radon 实测，pre-existing F-001 代码），D-014 同模式建议独立 followup 重构，不阻塞 F-002",
+    "scripts/lib/archive_runner.py:748 int(existing.get('number') or 0) 缺 try/except ValueError 兜底；gh CLI JSON 协议下 number 字段为 int 风险极低，但作为防御深度可在 followup 增 try/except 统一返 0 触发 R-ARCHIVE-PR-CREATE-FAILED",
+    "scripts/lib/archive_runner.py:1438 _build_parser() 缺 docstring；CLI 入口建议补一行说明 argparse 子命令矩阵，便于后续维护"
+  ],
+  "scope": {
+    "feature_id": "F-002"
+  },
+  "supersedes": "REV-20260521-archive-runner-auto-pr-code-F-002-001"
+}

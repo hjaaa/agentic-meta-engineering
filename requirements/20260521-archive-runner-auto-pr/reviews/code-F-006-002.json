@@ -1,0 +1,68 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-20260521-archive-runner-auto-pr-code-F-006-002",
+  "requirement_id": "20260521-archive-runner-auto-pr",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-22 14:40:00",
+  "reviewed_commit": "24a4d7f",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "0982e3468fb60311a2fff28812faf4e552dcd1651e6fc5f6957bd91b869a2917"
+    },
+    {
+      "path": "artifacts/tasks/F-006.md",
+      "sha256": "19592c6dac26368826c20294efc48fedd205c0b7d7d384c73b976cd065374b69"
+    }
+  ],
+  "conclusion": "looks_clean",
+  "score": 90,
+  "dimensions": {
+    "design_consistency": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": ".claude/skills/managing-requirement-lifecycle/reference/archive-rules.md:294 §6 测试段「4 预检 + 三问 yes/no + 失败降级」与 §1 line 97「5 项预检」+ §2 line 250 / §3 line 280「除非 5 项预检挂」内部不一致（rev2 自引入，rev1 finding-3 同模式延续，L280 已修但 L294 漏修）"
+        }
+      ]
+    },
+    "security": {
+      "score": 90,
+      "issues": []
+    },
+    "concurrency": {
+      "score": 90,
+      "issues": []
+    },
+    "complexity": {
+      "score": 90,
+      "issues": []
+    },
+    "error_handling": {
+      "score": 90,
+      "issues": []
+    },
+    "auxiliary_spec": {
+      "score": 92,
+      "issues": []
+    },
+    "performance": {
+      "score": 90,
+      "issues": []
+    },
+    "history_context": {
+      "score": 92,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "F-001 自引入提示同模式扫描覆盖不全——rev1 reviewer 漏标 L294，receipt self-check 又漏报；建议后续在 D-014 sweep 阶段把「预检数字 / 步骤数 / 占位符 / lang 标签」做成 lint 规则批量收口，避免逐 rev review 拉锯"
+  ],
+  "scope": {
+    "feature_id": "F-006"
+  },
+  "supersedes": "REV-20260521-archive-runner-auto-pr-code-F-006-001"
+}

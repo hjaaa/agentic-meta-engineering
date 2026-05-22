@@ -1,7 +1,5 @@
 {
   "schema_version": "1.0",
   "req_id": "20260521-archive-runner-auto-pr",
-  "current_feature": "F-001",
-  "acquired_at": "2026-05-21T17:21:30+08:00",
-  "acquired_by_pid": 57000
+  "current_feature": null
 }

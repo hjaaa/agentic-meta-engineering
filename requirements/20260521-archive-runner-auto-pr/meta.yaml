@@ -102,3 +102,41 @@ reviews:
           artifacts/tasks/F-001.md: 
             e98a98ad481f10569f3dac09325e9cb59e9a3dc8ea441ac519e47382f0bbdf8d
         stale: false
+      F-003:
+        history:
+          - REV-20260521-archive-runner-auto-pr-code-F-003-002
+        latest: REV-20260521-archive-runner-auto-pr-code-F-003-002
+        conclusion: looks_clean
+        reviewed_commit: 5f6ca46
+        artifact_hashes:
+          artifacts/features.json: 
+            0982e3468fb60311a2fff28812faf4e552dcd1651e6fc5f6957bd91b869a2917
+          artifacts/tasks/F-003.md: 
+            bc3bf2fa25784732eb73777a2a97dee6b47eaf7d0064f5d2d7c8bd18b29407d2
+        stale: false
+      F-006:
+        history:
+          - REV-20260521-archive-runner-auto-pr-code-F-006-001
+          - REV-20260521-archive-runner-auto-pr-code-F-006-002
+        latest: REV-20260521-archive-runner-auto-pr-code-F-006-002
+        conclusion: looks_clean
+        reviewed_commit: 24a4d7f
+        artifact_hashes:
+          artifacts/features.json: 
+            0982e3468fb60311a2fff28812faf4e552dcd1651e6fc5f6957bd91b869a2917
+          artifacts/tasks/F-006.md: 
+            19592c6dac26368826c20294efc48fedd205c0b7d7d384c73b976cd065374b69
+        stale: false
+      F-005:
+        history:
+          - REV-20260521-archive-runner-auto-pr-code-F-005-001
+          - REV-20260521-archive-runner-auto-pr-code-F-005-002
+        latest: REV-20260521-archive-runner-auto-pr-code-F-005-002
+        conclusion: looks_clean
+        reviewed_commit: 5668d76
+        artifact_hashes:
+          artifacts/features.json: 
+            0982e3468fb60311a2fff28812faf4e552dcd1651e6fc5f6957bd91b869a2917
+          artifacts/tasks/F-005.md: 
+            e8964340fcf10a90106d32fe340ac56ffe336166f180c4db4574052b83210095
+        stale: false

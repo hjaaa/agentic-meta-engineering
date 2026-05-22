@@ -1,0 +1,122 @@
+{
+  "schema_version": "1.0",
+  "review_id": "REV-20260521-archive-runner-auto-pr-code-F-003-001",
+  "requirement_id": "20260521-archive-runner-auto-pr",
+  "phase": "code",
+  "reviewer": "code-quality-reviewer",
+  "reviewed_at": "2026-05-22 10:52:01",
+  "reviewed_commit": "9c862db",
+  "reviewed_artifacts": [
+    {
+      "path": "artifacts/features.json",
+      "sha256": "0982e3468fb60311a2fff28812faf4e552dcd1651e6fc5f6957bd91b869a2917"
+    },
+    {
+      "path": "artifacts/tasks/F-003.md",
+      "sha256": "bc3bf2fa25784732eb73777a2a97dee6b47eaf7d0064f5d2d7c8bd18b29407d2"
+    }
+  ],
+  "conclusion": "needs_attention",
+  "score": 78,
+  "dimensions": {
+    "design_consistency": {
+      "score": 70,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/archive_runner.py:1705 _finalize_warn_force 缺 §3.4 表第 4 行 'force + --keep-*' 警告分支——只处理了 force-only / force+yes-finalize；设计文档要求 '--force 警告 + 列出实际生效的 --keep-* flag' 未实现"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/archive_runner.py:160 ArchiveResult.experience Literal 不含 'aborted by user'，detailed-design §3.4 字面值与 Literal 冲突；实现用 # type: ignore[assignment] 绕过（archive_runner.py:1741, 1937）"
+        }
+      ]
+    },
+    "security": {
+      "score": 88,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/archive_runner.py:1812 manual_recovery_commands 中 raw_path (worktree.path) 未经 shlex.quote 直接拼到示例命令；含空格/分号路径打印给用户复制时会截断（视觉欺骗，meta.yaml 受控）"
+        }
+      ]
+    },
+    "concurrency": {
+      "score": 82,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/archive_runner.py:636 _log_finalize_event docstring 声称 '并发安全'，但 _try_lock_exclusive (archive_runner.py:670-675) 在 NFS 老内核 / 非 POSIX 上静默退化——注释与行为不一致"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/archive_runner.py:654-657 _log_finalize_event idempotent 窗口仅扫末 10 行；高频跑或人工编辑 process.txt 后可能误判"
+        }
+      ]
+    },
+    "complexity": {
+      "score": 72,
+      "issues": [
+        {
+          "severity": "major",
+          "description": "scripts/lib/archive_runner.py:1174 _delete_local_branch CC≈26（135 行）—— strict 路径让每个 fail-soft 分支双倍展开；属 F-003 接口扩展副作用，可读性未塌方"
+        },
+        {
+          "severity": "major",
+          "description": "scripts/lib/archive_runner.py:1329 _delete_remote_branch CC≈14；legacy_resurrect 分支让 already-deleted 判定与 manual_recovery 追加交织"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/archive_runner.py 全文件 2042 行 — 超 500 阈值，但模块边界尚清晰；建议 follow-up 抽 finalize 子模块"
+        }
+      ]
+    },
+    "error_handling": {
+      "score": 82,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/archive_runner.py:481/505/516/527 _abort 文案与 detailed-design §3.2 错误码表字面不完全一致（raw!r vs <value>）——实现更精确但破坏字面对照"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/archive_runner.py:1900 新增 R-FINALIZE-LOCAL-BRANCH-FAILED / R-FINALIZE-REQ-ID / R-FINALIZE-CWD-FAILED 未列入 detailed-design §3.2 错误码表（receipt 自报）"
+        }
+      ]
+    },
+    "auxiliary_spec": {
+      "score": 83,
+      "issues": [
+        {
+          "severity": "minor",
+          "description": "scripts/lib/archive_runner.py:160 experience Literal 类型集合与 detailed-design §3.4 字面值不一致；F-AUX-001 / F-DCS-004 同一根因，receipt 已自报"
+        },
+        {
+          "severity": "minor",
+          "description": "scripts/lib/archive_runner.py:1883-1895 finalize_requirement docstring 步骤号硬编码（1-12）；后续插入步骤需同步注释"
+        }
+      ]
+    },
+    "performance": {
+      "score": 90,
+      "issues": []
+    },
+    "history_context": {
+      "score": 90,
+      "issues": []
+    }
+  },
+  "required_fixes": [],
+  "suggestions": [
+    "F-DCS-001 是设计契约未实现（§3.4 表第 4 行 force+keep-* 分支），属本期 major 必修：在 _finalize_warn_force 内补 if force and keep_flags: print(...) 即可（cheap fix）",
+    "F-CPLX-002/003 _delete_local_branch / _delete_remote_branch CC 高属接口扩展副作用，建议 follow-up 抽 strict-mode dispatcher 或 helper（不在本期 must-fix）",
+    "F-AUX-001 / F-DCS-004 experience Literal 与 'aborted by user' 字面值冲突属设计文档自身 oversight；建议 F-005 阶段决定 (a) 扩 Literal 含 'aborted' / (b) 用 result.error_messages 表达",
+    "F-CON-001 _log_finalize_event 注释 '并发安全' 与 _try_lock_exclusive NFS 退化矛盾——仅改注释（标 best-effort）即可闭合",
+    "F-ERR-006 三个新增 R-FINALIZE-* 错误码未在 §3.2 表，建议 F-006 文档更新阶段同步补录",
+    "F-SEC-001 manual_recovery_commands 中 raw_path 建议 shlex.quote 包裹（一行 cheap fix，闭合视觉欺骗）"
+  ],
+  "scope": {
+    "feature_id": "F-003"
+  },
+  "supersedes": null
+}
