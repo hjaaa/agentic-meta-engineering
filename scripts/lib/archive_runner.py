@@ -153,6 +153,9 @@ class ArchiveResult:
         "deleted", "kept", "skipped", "already-deleted", "failed"
     ] = "skipped"
     error_messages: list[str] = field(default_factory=list)
+    archive_pr_number: int = 0
+    archive_pr_url: str = ""
+    archive_pr_action: Literal["created", "reused", "skipped"] = "skipped"
 
 
 # ---------- 内部工具 ----------
@@ -592,6 +595,25 @@ def _run_experience(
         print(f"⚠️  经验沉淀返回非零 req={req_id}: {msg}", file=sys.stderr)
         return
     result.experience = "yes"
+
+
+def _render_archive_pr_body(req_id: str, pr_number: int, branch: str) -> str:
+    """渲染 archive-pr-body.md.tmpl，返回替换后的 PR body 字符串。
+
+    pr_number 是**需求 PR number**（meta["pr_number"]），不是归档 PR number。
+    三占位符：__REQ_ID__ / __PR_NUMBER__ / __BRANCH__。
+    """
+    tmpl_path = (
+        REPO_ROOT
+        / ".claude/skills/managing-requirement-lifecycle/templates/archive-pr-body.md.tmpl"
+    )
+    content = tmpl_path.read_text(encoding="utf-8")
+    return (
+        content
+        .replace("__REQ_ID__", req_id)
+        .replace("__PR_NUMBER__", str(pr_number))
+        .replace("__BRANCH__", branch)
+    )
 
 
 def _idempotent_skip_if_commit_exists(req_id: str) -> bool:
