@@ -192,7 +192,7 @@ title: archive_runner 自动开归档 PR + 单需求单分支闭环 · 技术预
 - severity: medium
 - description: 老 meta.yaml（REQ-2026-001 ~ REQ-2026-014 + 20260519-* 共 15 个 completed 需求）无 archive_pr_number 字段。check_meta.py 若强制 phase=completed 时该字段必须非零，会让所有历史 REQ 校验失败
 - likelihood: high（确定会发生）
-- mitigation: backward-compat 设计——`_check_archive_pr_number_state_machine` 仅校验「phase != completed 时该字段必须为 0/缺失」（防误填），**不**要求 phase == completed 时必须非零（兼容历史）；finalize 子命令读 archive_pr_number 缺失时 fail-closed，但允许 `--force` 跳过
+- mitigation: backward-compat 设计——`_check_archive_pr_number_state_machine` 仅校验「phase != completed 时该字段必须为 0/缺失」（防误填），**不**要求 phase == completed 时必须非零（兼容历史）；finalize 子命令读 archive_pr_number 缺失时 fail-closed，但允许 `--force` 跳过（来源：scripts/lib/check_meta.py:170）
 
 ### 性能风险
 

@@ -28,7 +28,11 @@
 ## 范围
 
 - 包含：archive_runner 改造、meta-schema 新字段、--finalize 二阶段、--legacy-resurrect-remote、单元测试 + e2e、文档同步
-- 不包含：其他 runner（submit、continue 等）的改造；CI 流水线变更
+- 不包含：
+  - 其他 runner（submit / continue / archive 之外的脚本）的改造
+  - CI 流水线（quality-check.yml 等）的修改
+  - meta-schema 既有字段语义变更（仅新增 archive_pr_number）
+  - 历史 completed REQ 的 meta backfill（依赖 check_meta 状态机 backward-compat）
 
 ## Features 预估（7 项，正式拆分在阶段 5 detail-design）
 
