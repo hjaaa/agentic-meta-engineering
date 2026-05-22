@@ -65,6 +65,36 @@ _SUBPROC_TIMEOUT_SEC = 30
 # 即便 meta.base_branch 为空 / 漂移，命中本集合也直接 fail-closed（codex round-5 P1 F-10）
 _PROTECTED_BRANCHES = frozenset({"main", "master", "develop"})
 
+
+def _check_branch_safe_for_remote_op(branch: str, base_branch: str) -> tuple[bool, str]:
+    """判定 branch 是否安全用于远程 git 写操作（push / push --delete / branch -d）。
+
+    防御四类风险（F-001 review F-05）：
+      - 空 branch：早期防御，避免向 origin 推空 refspec
+      - 选项前缀注入：'-' 开头会被 git 当成选项（如被解析为 `--force`）
+      - refspec 注入：':' 会被 git 解析为 `src:dst`，可推/删任意目标分支
+      - 受保护分支：命中 _PROTECTED_BRANCHES 或 base_branch（meta 漂移兜底）
+
+    返回 (is_invalid, reason)。调用方按各自 fail 策略处置：
+      - _push_feat_branch：fail-closed → _abort(R-ARCHIVE-PUSH-FAILED)
+      - _delete_local_branch / _delete_remote_branch：fail-soft → result.X=failed
+    """
+    if not branch:
+        return True, "branch 为空"
+    if branch.startswith("-"):
+        return True, f"branch={branch!r} 以 '-' 开头（疑似选项注入）"
+    if ":" in branch:
+        return True, f"branch={branch!r} 含 ':'（疑似 refspec 注入）"
+    if branch in _PROTECTED_BRANCHES:
+        return (
+            True,
+            f"branch={branch!r} 命中受保护分支白名单 {sorted(_PROTECTED_BRANCHES)}",
+        )
+    if base_branch and branch == base_branch:
+        return True, f"branch={branch!r} == base_branch={base_branch!r}（meta.branch 漂移）"
+    return False, ""
+
+
 # archive commit message 幂等检测正则工厂（模块级命名，便于测试 mock）
 # 用法：ARCHIVE_COMMIT_RE(req_id).match(subject)
 def ARCHIVE_COMMIT_RE(req_id: str) -> re.Pattern:  # noqa: N802 — 保持大写以便 mock
@@ -149,6 +179,26 @@ def _run(cmd: list[str], *, cwd: Optional[Path] = None) -> subprocess.CompletedP
         timeout=_SUBPROC_TIMEOUT_SEC,
         cwd=cwd,
     )
+
+
+def _run_or_abort(
+    cmd: list[str],
+    *,
+    cwd: Optional[Path] = None,
+    error_code: str,
+    req_id: str,
+    label: str,
+) -> subprocess.CompletedProcess:
+    """fail-closed 包装：TimeoutExpired / FileNotFoundError / OSError → _abort。
+
+    返回值仍是 CompletedProcess，调用方继续按 returncode 检查业务语义；
+    本 helper 只把"进程都没起来"或"超时"这三类底层异常映射到结构化错误码，
+    避免裸 Python traceback 绕过 R-ARCHIVE-* 错误码契约（F-001 review F-17）。
+    """
+    try:
+        return _run(cmd, cwd=cwd)
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
+        _abort(error_code, f"{label} 调用失败: {exc}", req_id)
 
 
 # ---------- 4 项预检 ----------
@@ -506,7 +556,13 @@ def _commit_archive_metadata(req_id: str, result: ArchiveResult) -> None:  # noq
     git commit 失败 → abort R-ARCHIVE-COMMIT-FAILED。
     """
     # 幂等：HEAD commit message 命中正则则跳过
-    head_subject = _run(["git", "log", "-1", "--format=%s"], cwd=REPO_ROOT)
+    head_subject = _run_or_abort(
+        ["git", "log", "-1", "--format=%s"],
+        cwd=REPO_ROOT,
+        error_code="R-ARCHIVE-COMMIT-FAILED",
+        req_id=req_id,
+        label="git log -1",
+    )
     if head_subject.returncode == 0 and ARCHIVE_COMMIT_RE(req_id).match(
         (head_subject.stdout or "").strip()
     ):
@@ -514,7 +570,13 @@ def _commit_archive_metadata(req_id: str, result: ArchiveResult) -> None:  # noq
         return
 
     # 用 git status --porcelain 列出 dirty 文件，按白名单分类
-    status_result = _run(["git", "status", "--porcelain"], cwd=REPO_ROOT)
+    status_result = _run_or_abort(
+        ["git", "status", "--porcelain"],
+        cwd=REPO_ROOT,
+        error_code="R-ARCHIVE-CONTEXT-DIRTY",
+        req_id=req_id,
+        label="git status --porcelain",
+    )
     if status_result.returncode != 0:
         _abort(
             "R-ARCHIVE-CONTEXT-DIRTY",
@@ -549,7 +611,13 @@ def _commit_archive_metadata(req_id: str, result: ArchiveResult) -> None:  # noq
         return
 
     for path in to_add:
-        add_proc = _run(["git", "add", path], cwd=REPO_ROOT)
+        add_proc = _run_or_abort(
+            ["git", "add", path],
+            cwd=REPO_ROOT,
+            error_code="R-ARCHIVE-COMMIT-FAILED",
+            req_id=req_id,
+            label=f"git add {path!r}",
+        )
         if add_proc.returncode != 0:
             _abort(
                 "R-ARCHIVE-COMMIT-FAILED",
@@ -558,7 +626,13 @@ def _commit_archive_metadata(req_id: str, result: ArchiveResult) -> None:  # noq
             )
 
     commit_msg = f"archive({req_id}): metadata"
-    commit_proc = _run(["git", "commit", "-m", commit_msg], cwd=REPO_ROOT)
+    commit_proc = _run_or_abort(
+        ["git", "commit", "-m", commit_msg],
+        cwd=REPO_ROOT,
+        error_code="R-ARCHIVE-COMMIT-FAILED",
+        req_id=req_id,
+        label="git commit",
+    )
     if commit_proc.returncode != 0:
         _abort(
             "R-ARCHIVE-COMMIT-FAILED",
@@ -575,10 +649,20 @@ def _push_feat_branch(meta: dict[str, Any], req_id: str, result: ArchiveResult) 
     push 失败 → abort R-ARCHIVE-PUSH-FAILED。
     """
     branch = (meta.get("branch") or "").strip()
-    if not branch:
-        _abort("R-ARCHIVE-PUSH-FAILED", "meta.branch 缺失", req_id)
+    base_branch = (meta.get("base_branch") or "").strip()
+    # F-05：与 _delete_local_branch / _delete_remote_branch 对称——
+    # refspec / 选项前缀 / 受保护分支三道防御，命中即 fail-closed
+    is_invalid, reason = _check_branch_safe_for_remote_op(branch, base_branch)
+    if is_invalid:
+        _abort("R-ARCHIVE-PUSH-FAILED", f"拒绝推送：{reason}", req_id)
 
-    local_sha_proc = _run(["git", "rev-parse", "HEAD"], cwd=REPO_ROOT)
+    local_sha_proc = _run_or_abort(
+        ["git", "rev-parse", "HEAD"],
+        cwd=REPO_ROOT,
+        error_code="R-ARCHIVE-PUSH-FAILED",
+        req_id=req_id,
+        label="git rev-parse HEAD",
+    )
     if local_sha_proc.returncode != 0:
         _abort(
             "R-ARCHIVE-PUSH-FAILED",
@@ -587,17 +671,33 @@ def _push_feat_branch(meta: dict[str, Any], req_id: str, result: ArchiveResult) 
         )
     local_sha = local_sha_proc.stdout.strip()
 
-    remote_sha_proc = _run(["git", "rev-parse", f"origin/{branch}"], cwd=REPO_ROOT)
+    remote_sha_proc = _run_or_abort(
+        ["git", "rev-parse", f"origin/{branch}"],
+        cwd=REPO_ROOT,
+        error_code="R-ARCHIVE-PUSH-FAILED",
+        req_id=req_id,
+        label=f"git rev-parse origin/{branch}",
+    )
     if remote_sha_proc.returncode == 0 and remote_sha_proc.stdout.strip() == local_sha:
         logger.info("push skipped: HEAD == origin/%s req_id=%s", branch, req_id)
         return
 
-    push_proc = _run(["git", "push", "origin", branch], cwd=REPO_ROOT)
+    push_proc = _run_or_abort(
+        ["git", "push", "origin", branch],
+        cwd=REPO_ROOT,
+        error_code="R-ARCHIVE-PUSH-FAILED",
+        req_id=req_id,
+        label=f"git push origin {branch}",
+    )
     if push_proc.returncode != 0:
         stderr = (push_proc.stderr or push_proc.stdout or "").strip()
         _abort(
             "R-ARCHIVE-PUSH-FAILED",
-            f"git push origin {branch} 失败: {stderr}",
+            (
+                f"git push origin {branch} 失败: {stderr}"
+                f"（可手工 `git push origin {branch}` 重试，或 `gh pr create"
+                f" --base {base_branch or 'develop'} --head {branch} --no-codex --skip-rebase` 创建归档 PR 后重跑 archive）"
+            ),
             req_id,
         )
     logger.info("push_feat_branch: pushed origin/%s req_id=%s", branch, req_id)
@@ -620,14 +720,12 @@ def _delete_local_branch(
         result.local_branch = "skipped"
         result.error_messages.append("local_branch: meta.branch 为空，跳过删除")
         return
-    # 防止误删 base_branch（develop / main / master 不可作为 feature 分支被删）；
-    # 即便 base_branch 为空 / 漂移，命中保护分支白名单也直接 fail-closed（F-10 对称）
-    if branch == base_branch or branch in _PROTECTED_BRANCHES:
+    # 防止误删 base_branch / 受保护分支 + refspec/选项注入（F-05 远程对称）；
+    # 即便 base_branch 为空 / 漂移，命中保护分支白名单也直接 fail-soft
+    is_invalid, reason = _check_branch_safe_for_remote_op(branch, base_branch)
+    if is_invalid:
         result.local_branch = "failed"
-        msg = (
-            f"local_branch: 拒绝删除受保护分支 {branch!r}"
-            f"（base_branch={base_branch!r}，meta.branch 可能漂移）"
-        )
+        msg = f"local_branch: 拒绝删除——{reason}"
         result.error_messages.append(msg)
         print(f"⚠️  {msg}", file=sys.stderr)
         return
@@ -740,14 +838,11 @@ def _delete_remote_branch(
     if not branch:
         result.remote_branch = "skipped"
         return
-    # 防止误删 base_branch 远程引用（与 _delete_local_branch 对称）；
-    # base_branch 漂移 / 缺失时仍要兜住保护分支白名单（F-10 远程对称兜底）
-    if branch == base_branch or branch in _PROTECTED_BRANCHES:
+    # 防止误删受保护远程分支 + refspec/选项注入（F-05 推送/本地三处对称）
+    is_invalid, reason = _check_branch_safe_for_remote_op(branch, base_branch)
+    if is_invalid:
         result.remote_branch = "failed"
-        msg = (
-            f"remote_branch: 拒绝删除受保护远程分支 {branch!r}"
-            f"（base_branch={base_branch!r}，meta.branch 可能漂移）"
-        )
+        msg = f"remote_branch: 拒绝删除——{reason}"
         result.error_messages.append(msg)
         print(f"⚠️  {msg}", file=sys.stderr)
         return
@@ -933,23 +1028,25 @@ def archive_requirement(
             req_id,
         )
 
-    # —— 关键顺序约束（codex P1 round-1~5 F-1 / F-3 / F-4 / F-5 / F-6 累积修复）——
+    # —— 关键顺序约束（codex P1 round-1~5 F-1 / F-3 / F-4 / F-5 / F-6 累积修复 +
+    # F-001 双阶段拆分）——
     #
-    # 1. _rebind_to_main_repo 必须在 _load_meta / dirty / cleanup / write_meta 之前：
+    # 1. _rebind_to_main_repo 必须在 _load_meta / dirty / write_meta 之前：
     #    确保 path helper 一律解析到主仓（F-1 / F-3）。
     # 2. _load_meta 必须在 rebind 之后：从主仓加载 meta dict，避免 worktree stale
     #    副本覆盖主仓较新 metadata（F-5）。
-    # 3. _precheck_dirty 必须在 cleanup 之前 且 必须同时检查主仓 + owned worktree
-    #    （F-4 / F-6）：
+    # 3. _precheck_dirty 必须同时检查主仓 + owned worktree（F-4 / F-6）：
     #      - 主仓 cwd 启动 + worktree dirty 场景（F-6）：rebind 不变 REPO_ROOT=主仓，
     #        仅看主仓会漏 dirty worktree
     #      - worktree cwd 启动 + worktree dirty 场景（F-4）：rebind 后 REPO_ROOT 切
     #        主仓，仅看主仓会漏 dirty worktree
     #    两种场景都需要显式检查 meta.worktree.path（owner=workflow 时）。
+    # 4. F-001 双阶段拆分：worktree cleanup + 删本地/远程分支三件套已搬迁到 F-003
+    #    finalize_requirement，archive 主流程不再调用。
     #
     # 综合顺序：
-    #   rebind → load_meta (main) → dirty (both main+owned-worktree) → 其他 precheck
-    #   → cleanup → write_meta
+    #   rebind → load_meta (main) → 5 precheck → write_meta → process → experience
+    #   → commit_metadata → push_feat_branch
 
     _rebind_to_main_repo(req_id)
 
@@ -961,10 +1058,6 @@ def archive_requirement(
     pr_number = _precheck_pr_number(meta, req_id)
     _precheck_pr_merged(pr_number, req_id, force=force)
     _precheck_lessons_extracted(meta, req_id)
-
-    # —— worktree cleanup（REPO_ROOT 已锁到主仓；cleanup 删 worktree 不影响后续
-    # _atomic_write_meta / _append_process_event 对主仓的写入）——
-    _cleanup_worktree_before_archive(meta, req_id)
 
     # —— 5 步执行 ——
     result = ArchiveResult(req_id=req_id)
@@ -984,7 +1077,8 @@ def archive_requirement(
 
     # —— 阶段 1 step 6/7：commit metadata + push feat branch ——
     # 三件套（_cleanup_worktree_before_archive / _delete_remote_branch /
-    # _delete_local_branch）的调用已移除；函数定义保留供 F-003 finalize_requirement 复用。
+    # _delete_local_branch）的调用已全部移除（detailed-design §1.1 1-H / §1.4）；
+    # 函数定义保留供 F-003 finalize_requirement 复用。
     # keep_branch / yes_local_branch / yes_remote_branch 三 flag 保留参数签名（CLI
     # parser 仍有），在 F-003 接管后重新使用。
     _commit_archive_metadata(req_id, result)
