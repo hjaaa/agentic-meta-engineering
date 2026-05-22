@@ -1,6 +1,6 @@
 id: 20260521-archive-runner-auto-pr
 title: archive_runner 自动开归档 PR + 单需求单分支闭环
-phase: development
+phase: testing
 created_at: 2026-05-21 11:37:32
 branch: feat/req-20260521-archive-runner-auto-pr
 base_branch: develop
@@ -12,6 +12,7 @@ gates_passed:
   - phase-transition:outline-design->detail-design@2026-05-21 16:00:06
   - phase-transition:detail-design->task-planning@2026-05-21 16:55:00
   - phase-transition:task-planning->development@2026-05-21 17:05:00
+  - phase-transition:development->testing@2026-05-22 16:10:00
 pr_url: ''
 pr_number: 0
 log_layout: split
