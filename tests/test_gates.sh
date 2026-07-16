@@ -31,6 +31,7 @@ echo "── ac-coverage ──"
 expect 0 "正例通过"           bash "$gates/ac-coverage.sh" "$fx/spec-good.md" "$fx/proj-good"
 expect 1 "AC 无测试必红"       bash "$gates/ac-coverage.sh" "$fx/spec-good.md" "$fx/proj-missing"
 expect 1 "测试被注释掉必红"     bash "$gates/ac-coverage.sh" "$fx/spec-good.md" "$fx/proj-commented"
+expect 1 "测试被 skip 装饰器禁用必红" bash "$gates/ac-coverage.sh" "$fx/spec-good.md" "$fx/proj-skipped"
 
 echo "── pipeline ──"
 expect 0 "正例全通"           env ASD_ROOT="$fx/proj-good" bash "$pipeline" "$fx/spec-good.md"

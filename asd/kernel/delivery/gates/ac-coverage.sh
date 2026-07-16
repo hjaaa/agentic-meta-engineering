@@ -21,6 +21,22 @@ comment=$(mget comment_prefix '#')
 ids=$(grep -E '^\|[[:space:]]*AC-[0-9]{2}[[:space:]]*\|' "$spec" | grep -oE 'AC-[0-9]{2}' | sort -u)
 [ -z "$ids" ] && { echo "✗ [ac-coverage] spec 无 AC 定义行,先修复 spec-lint"; exit 1; }
 
+# skip_deco <file> <line>:检查 def 行上方紧邻的装饰器里有无 skip 族(跳过空行/注释)
+skip_deco() {
+  awk -v n="$2" 'NR < n { buf[NR] = $0 }
+    END {
+      for (i = n - 1; i >= 1; i--) {
+        line = buf[i]
+        if (line ~ /^[[:space:]]*$/ || line ~ /^[[:space:]]*#/) continue
+        if (line ~ /^[[:space:]]*@/) {
+          if (line ~ /@([A-Za-z_.]*\.)?(skip|skipIf|skipUnless)[( ]?/) { print "SKIPPED"; exit }
+          continue
+        }
+        break
+      }
+    }' "$1"
+}
+
 for id in $ids; do
   nn=${id#AC-}
   pat=${pattern_tpl/\{nn\}/$nn}
@@ -33,6 +49,12 @@ for id in $ids; do
     else
       err "$id 无对应测试(期望测试匹配: ${pat})"
     fi
+    continue
+  fi
+  # 活性还要求未被 skip 装饰器禁用——被 skip 的测试套件照样 exit 0,等于从未执行
+  first=$(echo "$active" | head -1)
+  if [ "$(skip_deco "$(echo "$first" | cut -d: -f1)" "$(echo "$first" | cut -d: -f2)")" = "SKIPPED" ]; then
+    err "$id 的测试被 skip 装饰器禁用: $(echo "$first" | cut -d: -f1,2)"
   fi
 done
 
