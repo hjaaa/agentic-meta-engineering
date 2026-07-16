@@ -1,9 +1,0 @@
-{"type": "workflow_started", "ts": "2026-05-08T10:00:00Z", "run_id": "TEST-F1-PARENT", "data": {"workflow_name": "f1-cross-parent-child", "arguments": ""}}
-{"type": "node_started", "ts": "2026-05-08T10:00:01Z", "node_id": "node-a"}
-{"type": "node_completed", "ts": "2026-05-08T10:00:02Z", "node_id": "node-a", "data": {"output": "A"}}
-{"type": "node_started", "ts": "2026-05-08T10:00:03Z", "node_id": "node-b"}
-{"type": "node_completed", "ts": "2026-05-08T10:00:04Z", "node_id": "node-b", "data": {"output": "sub done"}}
-{"type": "node_started", "ts": "2026-05-08T10:00:05Z", "node_id": "node-c"}
-{"type": "node_completed", "ts": "2026-05-08T10:00:06Z", "node_id": "node-c", "data": {"output": "C"}}
-{"type": "node_started", "ts": "2026-05-08T10:00:07Z", "node_id": "node-d"}
-{"type": "node_completed", "ts": "2026-05-08T10:00:08Z", "node_id": "node-d", "data": {"output": "D"}}

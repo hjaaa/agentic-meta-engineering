@@ -1,8 +1,0 @@
-# 嵌套深度 = 2（边界值，loader 必须接受 / TC-F2-2 boundary）
-# 父 → sub-fixtures/level2（叶子节点 bash），共 2 层。
-name: nest-depth-2-root
-version: 1
-category: assist
-nodes:
-  - id: call-leaf
-    sub_workflow: sub-fixtures/level2

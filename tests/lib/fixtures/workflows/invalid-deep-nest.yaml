@@ -1,7 +1,0 @@
-# W150: sub_workflow 嵌套深度 > 2
-name: deep-root
-version: 1
-category: assist
-nodes:
-  - id: call-l1
-    sub_workflow: sub-fixtures/level1

@@ -1,8 +1,0 @@
-{"type": "workflow_started", "run_id": "REQ-2026-014", "data": {"workflow_name": "standard-8phase", "arguments": "worktree 隔离能力完整迁移", "template_path": ".claude/workflows/requirement/standard-8phase.yaml", "title": "worktree 隔离能力完整迁移"}, "ts": "2026-05-17T15:36:47Z"}
-{"type": "save", "run_id": "REQ-2026-014", "data": {"note": "REQ-2026-014 definition reviewer feedback 4 条已闭环；3 commit；jsonl save 通路修复后首次落 jsonl"}, "ts": "2026-05-17T16:07:55Z"}
-{"type": "save", "run_id": "REQ-2026-014", "data": {"note": "REQ-2026-014 definition + infer_run_id_from_branch 修复落库 / 6 commit / 523 lib 回归全过 / 下一步 quality reviewer 或 tech-research"}, "ts": "2026-05-17T16:10:50Z"}
-{"type": "run_resumed", "run_id": "REQ-2026-014", "ts": "2026-05-17T23:53:20Z"}
-{"type": "node_started", "node_id": "bootstrap-validate", "run_id": "REQ-2026-014", "ts": "2026-05-17T23:53:20Z"}
-{"type": "node_completed", "node_id": "bootstrap-validate", "data": {"output": {"artifact_pass": true, "checks_run": 3}}, "ts": "2026-05-17T23:53:20Z"}
-{"type": "node_started", "node_id": "req-input-normalize", "run_id": "REQ-2026-014", "ts": "2026-05-17T23:53:20Z"}
-{"type": "node_ready", "node_id": "req-input-normalize", "run_id": "REQ-2026-014", "data": {"node_kind": "skill", "external_action_contract": {"allowed_tools": [], "denied_tools": [], "mcp": [], "skills": [], "agents": [], "idle_timeout": 300000, "output_format": null}, "skill": "requirement-input-normalizer", "args": {"raw_title": "'worktree 隔离能力完整迁移'"}}, "ts": "2026-05-17T23:53:20Z"}

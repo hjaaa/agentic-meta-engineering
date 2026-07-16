@@ -1,7 +1,0 @@
-# W142: prompt_file 引用的文件不存在
-name: prompt-missing
-version: 1
-category: assist
-nodes:
-  - id: a
-    prompt_file: prompts/this-does-not-exist-xyz.md

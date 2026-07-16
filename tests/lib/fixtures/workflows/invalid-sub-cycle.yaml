@@ -1,7 +1,0 @@
-# W152: sub_workflow 循环引用（root → self-ref → self-ref）
-name: sub-cycle
-version: 1
-category: assist
-nodes:
-  - id: enter
-    sub_workflow: sub-fixtures/self-ref

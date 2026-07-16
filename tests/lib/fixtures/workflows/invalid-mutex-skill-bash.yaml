@@ -1,8 +1,0 @@
-# W110: 节点同时声明 skill + bash（互斥违反 / TC-F2-1）
-name: mutex-skill-bash
-version: 1
-category: assist
-nodes:
-  - id: bad-node
-    skill: foo
-    bash: 'echo bar'

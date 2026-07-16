@@ -1,0 +1,8 @@
+# 闸门自测专用 manifest:启用 python 运行器收集校验
+language: python
+test_dir: tests
+test_glob: test_*.py
+ac_test_pattern: def test_ac{nn}_
+comment_prefix: "#"
+spec_required_sections: 目标,验收标准
+pipeline_steps: spec-lint,test,ac-coverage
