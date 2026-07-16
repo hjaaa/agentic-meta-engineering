@@ -88,6 +88,15 @@ class CleanDownloadsTest(unittest.TestCase):
         self.assertEqual(self.run_silenced(self.target), 0)
         self.assertTrue((self.target / "Others" / "Others").is_file())
 
+    def test_chained_category_blockers_converge_in_single_run(self):
+        self.touch("Others")    # 自阻塞
+        self.touch("Archives")  # 归 Others/,又占住 Archives/ 目录名
+        self.touch("x.tar.gz")  # 依赖 Archives/
+        self.assertEqual(self.run_silenced(self.target), 0)
+        self.assertTrue((self.target / "Archives" / "x.tar.gz").is_file())
+        self.assertTrue((self.target / "Others" / "Archives").is_file())
+        self.assertTrue((self.target / "Others" / "Others").is_file())
+
     def test_dangling_symlink_dest_slot_treated_as_occupied(self):
         docs = self.target / "Documents"
         docs.mkdir()
