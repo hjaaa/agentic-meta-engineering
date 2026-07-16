@@ -37,7 +37,8 @@
 - `categorize(filename) -> str`:文件名 → 类别目录名。
 - `unique_dest(dest_dir, filename) -> Path`:重名序号探测。
 - `plan_moves(target) -> list[tuple[Path, Path]]`:纯规划,不动文件系统。
-- `remove_empty_dirs(target, dry_run) -> list[Path]`:自底向上删空目录,返回删除清单。
+- `remove_empty_dirs(target, dry_run, keep) -> tuple[list[Path], int]`:自底向上删空目录
+  (跳过 keep 中的计划目的地目录),返回(删除清单, 失败计数),单目录失败警告后继续。
 - `main()`:参数解析、执行、dry-run 分支。
 
 错误处理:target 不存在或不是目录 → stderr 提示、退出码 1;单个文件移动失败(权限等)打印
