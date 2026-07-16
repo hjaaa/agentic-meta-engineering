@@ -39,6 +39,8 @@ expect 1 "未被运行器收集必红"       env ASD_MANIFEST="$fx/manifest-unit
 expect 0 "TestCase 方法收集通过"    env ASD_MANIFEST="$fx/manifest-unittest.yaml" bash "$gates/ac-coverage.sh" "$fx/spec-good.md" "$fx/proj-collected"
 expect 1 "类级 skip 必红"          env ASD_MANIFEST="$fx/manifest-unittest.yaml" bash "$gates/ac-coverage.sh" "$fx/spec-good.md" "$fx/proj-class-skip"
 expect 1 "活性文本+被跳过收集交叉必红" env ASD_MANIFEST="$fx/manifest-unittest.yaml" bash "$gates/ac-coverage.sh" "$fx/spec-good.md" "$fx/proj-cross-skip"
+expect 0 "skipIf(False) 实际执行应通过" env ASD_MANIFEST="$fx/manifest-unittest.yaml" bash "$gates/ac-coverage.sh" "$fx/spec-good.md" "$fx/proj-skipif-false"
+expect 0 "tests 导入根级包应通过"      env ASD_MANIFEST="$fx/manifest-unittest.yaml" bash "$gates/ac-coverage.sh" "$fx/spec-good.md" "$fx/proj-root-import"
 
 echo "── pipeline ──"
 expect 0 "正例全通"           env ASD_ROOT="$fx/proj-good" bash "$pipeline" "$fx/spec-good.md"

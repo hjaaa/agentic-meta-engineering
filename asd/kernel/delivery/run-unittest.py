@@ -2,6 +2,7 @@
 """运行 unittest discover 套件,逐测试输出「<测试id> <结局>」(ok|skipped|failed|error)。
 被收集但被跳过(含类级 skip)/失败/根本未收集,在输出中一目了然。
 用法: run-unittest.py <start_dir> <pattern>"""
+import os
 import sys
 import unittest
 
@@ -31,6 +32,9 @@ class OutcomeResult(unittest.TestResult):
 
 def main():
     start_dir, pattern = sys.argv[1], sys.argv[2]
+    # 对齐 `python -m unittest discover` 的导入环境:cwd(项目根)入 sys.path,
+    # 否则本脚本以绝对路径调用时 sys.path[0] 是脚本目录,tests/ 导入根级包会失败
+    sys.path.insert(0, os.getcwd())
     suite = unittest.defaultTestLoader.discover(start_dir, pattern=pattern)
     result = OutcomeResult()
     suite.run(result)
