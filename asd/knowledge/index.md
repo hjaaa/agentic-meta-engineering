@@ -5,4 +5,4 @@
 分工约定:**CLAUDE.md 管"规矩"**(编码规范、命名约定、禁止操作),**knowledge/ 管"事实"**
 (隐式依赖、历史坑点、领域约束——模型猜不出、猜错代价大的东西)。
 
-<!-- 暂无条目;用 /asd-learn 沉淀第一条 -->
+- [合并区间 diff 看不见"引入后又还原"的中间提交变更](merged-range-diff-blind-spot.md) — 关键词: 合并区间 diff, review-package, 复审误报, 净零变更, git show
