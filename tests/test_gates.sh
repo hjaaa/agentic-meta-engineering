@@ -25,6 +25,7 @@ expect 0 "正例通过"           bash "$gates/spec-lint.sh" "$fx/spec-good.md"
 expect 1 "缺必备章节必红"      bash "$gates/spec-lint.sh" "$fx/spec-missing-section.md"
 expect 1 "AC 重复定义必红"     bash "$gates/spec-lint.sh" "$fx/spec-dup-ac.md"
 expect 1 "引用未定义 AC 必红"  bash "$gates/spec-lint.sh" "$fx/spec-undef-ref.md"
+expect 1 "AC 编号断续必红"     bash "$gates/spec-lint.sh" "$fx/spec-gap-ac.md"
 
 echo "── ac-coverage ──"
 expect 0 "正例通过"           bash "$gates/ac-coverage.sh" "$fx/spec-good.md" "$fx/proj-good"

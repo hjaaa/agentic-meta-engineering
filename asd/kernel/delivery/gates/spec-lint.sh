@@ -24,6 +24,12 @@ if [ -z "$defs" ]; then
 else
   dups=$(echo "$defs" | sort | uniq -d)
   [ -n "$dups" ] && err "AC 编号重复定义: $(echo "$dups" | tr '\n' ' ')"
+  # 连续性:必须从 AC-01 起连续递增(与 orchestrator 规则 3 对齐)
+  n=$(echo "$defs" | sort -u | wc -l | tr -d ' ')
+  expected=$(seq -f 'AC-%02g' 1 "$n")
+  if [ "$(echo "$defs" | sort -u)" != "$expected" ]; then
+    err "AC 编号必须从 AC-01 连续递增,实际: $(echo "$defs" | sort -u | tr '\n' ' ')"
+  fi
 fi
 
 # 3) 编号断链:正文引用了没有定义行的 AC
