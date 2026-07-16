@@ -75,6 +75,19 @@ class CleanDownloadsTest(unittest.TestCase):
         self.assertEqual(contents, ["a", "b", "old"])
         self.assertEqual(len(list(docs.iterdir())), 3)
 
+    def test_category_name_blocker_resolved_in_single_run(self):
+        self.touch("Videos")  # 无扩展名普通文件,占住类别目录名
+        self.touch("A.mp4")
+        self.assertEqual(self.run_silenced(self.target), 0)
+        self.assertTrue((self.target / "Videos").is_dir())
+        self.assertTrue((self.target / "Videos" / "A.mp4").is_file())
+        self.assertTrue((self.target / "Others" / "Videos").is_file())
+
+    def test_self_category_blocker_converges(self):
+        self.touch("Others")  # 归类目标恰为 Others/Others,自己堵自己
+        self.assertEqual(self.run_silenced(self.target), 0)
+        self.assertTrue((self.target / "Others" / "Others").is_file())
+
     def test_dangling_symlink_dest_slot_treated_as_occupied(self):
         docs = self.target / "Documents"
         docs.mkdir()

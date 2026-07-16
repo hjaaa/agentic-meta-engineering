@@ -80,16 +80,24 @@ def run(target, dry_run=False):
     prefix = "[dry-run] " if dry_run else ""
     errors = 0
     moves = plan_moves(target)
+    dest_dirs = {dst.parent for _, dst in moves}
+    # 顶层文件可能恰好占住类别目录名(如普通文件 Videos):先移走这类文件,
+    # 依赖该目录名的后续 move 才能建目录
+    moves.sort(key=lambda m: m[0] not in dest_dirs)
     for src, dst in moves:
+        name = src.name
         if not dry_run:
             try:
+                if src == dst.parent:
+                    # 文件名恰为自身类别名(如无扩展名文件 Others):先挪临时名腾出目录名
+                    src = Path(shutil.move(str(src), str(unique_dest(target, name + ".tmp"))))
                 dst.parent.mkdir(exist_ok=True)
                 shutil.move(str(src), str(dst))
             except OSError as e:
-                print(f"warning: failed to move {src.name}: {e}", file=sys.stderr)
+                print(f"warning: failed to move {name}: {e}", file=sys.stderr)
                 errors += 1
                 continue
-        print(f"{prefix}move {src.name} -> {dst.relative_to(target)}")
+        print(f"{prefix}move {name} -> {dst.relative_to(target)}")
     removed, rmdir_errors = remove_empty_dirs(
         target, dry_run=dry_run, keep={dst.parent for _, dst in moves})
     for d in removed:
