@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Sort top-level files of a downloads directory into category folders by
-extension, suffix duplicates with _N, then remove empty subdirectory."""
+extension, suffix duplicates with _N, then remove empty subdirectories."""
 
 import argparse
 import shutil

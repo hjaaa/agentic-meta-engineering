@@ -22,11 +22,15 @@ class CleanDownloadsTest(unittest.TestCase):
     def tree(self):
         return sorted(str(p.relative_to(self.target)) for p in self.target.rglob("*"))
 
+    def run_silenced(self, *args, **kwargs):
+        with redirect_stdout(StringIO()):
+            return run(*args, **kwargs)
+
     def test_ac01_files_sorted_into_category_dirs(self):
         self.touch("a.jpg")
         self.touch("b.pdf")
         self.touch("c.zip")
-        self.assertEqual(run(self.target), 0)
+        self.assertEqual(self.run_silenced(self.target), 0)
         self.assertTrue((self.target / "Images" / "a.jpg").is_file())
         self.assertTrue((self.target / "Documents" / "b.pdf").is_file())
         self.assertTrue((self.target / "Archives" / "c.zip").is_file())
@@ -36,19 +40,19 @@ class CleanDownloadsTest(unittest.TestCase):
     def test_ac02_unknown_and_no_extension_go_to_others(self):
         self.touch("README")
         self.touch("foo.xyz")
-        self.assertEqual(run(self.target), 0)
+        self.assertEqual(self.run_silenced(self.target), 0)
         self.assertTrue((self.target / "Others" / "README").is_file())
         self.assertTrue((self.target / "Others" / "foo.xyz").is_file())
 
     def test_ac07_hidden_files_stay_put(self):
         self.touch(".secret")
-        self.assertEqual(run(self.target), 0)
+        self.assertEqual(self.run_silenced(self.target), 0)
         self.assertTrue((self.target / ".secret").is_file())
 
     def test_ac03_name_clash_gets_suffix_1(self):
         self.touch("Documents/report.pdf", content="old")
         self.touch("report.pdf", content="new")
-        self.assertEqual(run(self.target), 0)
+        self.assertEqual(self.run_silenced(self.target), 0)
         self.assertEqual((self.target / "Documents" / "report.pdf").read_text(), "old")
         self.assertEqual((self.target / "Documents" / "report_1.pdf").read_text(), "new")
 
@@ -56,14 +60,14 @@ class CleanDownloadsTest(unittest.TestCase):
         self.touch("Documents/report.pdf")
         self.touch("Documents/report_1.pdf")
         self.touch("report.pdf", content="new")
-        self.assertEqual(run(self.target), 0)
+        self.assertEqual(self.run_silenced(self.target), 0)
         self.assertEqual((self.target / "Documents" / "report_2.pdf").read_text(), "new")
 
     def test_batch_collision_reserved_slots_never_overwrite(self):
         self.touch("Documents/report.pdf", content="old")
         self.touch("report.pdf", content="a")
         self.touch("report_1.pdf", content="b")
-        self.assertEqual(run(self.target), 0)
+        self.assertEqual(self.run_silenced(self.target), 0)
         docs = self.target / "Documents"
         self.assertEqual((docs / "report.pdf").read_text(), "old")
         contents = sorted(p.read_text() for p in docs.iterdir())
@@ -73,13 +77,13 @@ class CleanDownloadsTest(unittest.TestCase):
     def test_ac05_empty_dirs_removed_including_nested(self):
         (self.target / "empty").mkdir()
         (self.target / "a" / "b").mkdir(parents=True)
-        self.assertEqual(run(self.target), 0)
+        self.assertEqual(self.run_silenced(self.target), 0)
         self.assertFalse((self.target / "empty").exists())
         self.assertFalse((self.target / "a").exists())
 
     def test_ac06_nonempty_subdir_left_untouched(self):
         self.touch("keep/x.txt")
-        self.assertEqual(run(self.target), 0)
+        self.assertEqual(self.run_silenced(self.target), 0)
         self.assertTrue((self.target / "keep" / "x.txt").is_file())
 
     def test_ac08_dry_run_prints_plan_and_changes_nothing(self):
