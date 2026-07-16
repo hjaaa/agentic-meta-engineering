@@ -21,6 +21,17 @@ comment=$(mget comment_prefix '#')
 ids=$(grep -E '^\|[[:space:]]*AC-[0-9]{2}[[:space:]]*\|' "$spec" | grep -oE 'AC-[0-9]{2}' | sort -u)
 [ -z "$ids" ] && { echo "✗ [ac-coverage] spec 无 AC 定义行,先修复 spec-lint"; exit 1; }
 
+# 运行器收集校验(python):静态匹配之外,AC 测试还必须真的被 unittest discover
+# 收集到——顶层函数/嵌套 def 文本存在但永不执行,不算覆盖
+collect_on=0
+collected=""
+id_tpl=$(mget ac_id_pattern 'test_ac{nn}_')
+if [ "$(mget language)" = "python" ]; then
+  collect_on=1
+  collected=$(cd "$proj" && python3 "$(cd "$(dirname "$0")/.." && pwd)/collect-unittest.py" \
+    "$(mget test_dir tests)" "$test_glob" 2>/dev/null || true)
+fi
+
 # skip_deco <file> <line>:检查 def 行上方紧邻的装饰器里有无 skip 族。
 # 跳过空行/注释;用括号深度追踪识别跨多行的装饰器调用(向上扫描时深度>0
 # 说明仍处于某个多行调用体内,继续上溯直到找到打头的 @ 行)
@@ -80,6 +91,12 @@ for id in $ids; do
   done <<<"$active"
   if [ -z "$live" ]; then
     err "$id 的测试全部被 skip 装饰器禁用: $(echo "$active" | head -1 | cut -d: -f1,2)"
+    continue
+  fi
+  if [ "$collect_on" -eq 1 ]; then
+    frag=${id_tpl/\{nn\}/$nn}
+    echo "$collected" | grep -qF "$frag" \
+      || err "$id 的测试未被测试运行器收集(unittest 只执行 TestCase 方法): $(echo "$live" | cut -d: -f1,2)"
   fi
 done
 

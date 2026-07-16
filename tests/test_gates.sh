@@ -35,6 +35,8 @@ expect 1 "测试被 skip 装饰器禁用必红" bash "$gates/ac-coverage.sh" "$f
 expect 0 "skip 遗留+活性替代测试应通过" bash "$gates/ac-coverage.sh" "$fx/spec-good.md" "$fx/proj-skipped-with-live"
 expect 1 "多行 skip 装饰器必红"    bash "$gates/ac-coverage.sh" "$fx/spec-good.md" "$fx/proj-skipped-multiline"
 expect 1 "文档字符串提及不算覆盖"   bash "$gates/ac-coverage.sh" "$fx/spec-good.md" "$fx/proj-doc-mention"
+expect 1 "未被运行器收集必红"       env ASD_MANIFEST="$fx/manifest-unittest.yaml" bash "$gates/ac-coverage.sh" "$fx/spec-good.md" "$fx/proj-uncollected"
+expect 0 "TestCase 方法收集通过"    env ASD_MANIFEST="$fx/manifest-unittest.yaml" bash "$gates/ac-coverage.sh" "$fx/spec-good.md" "$fx/proj-collected"
 
 echo "── pipeline ──"
 expect 0 "正例全通"           env ASD_ROOT="$fx/proj-good" bash "$pipeline" "$fx/spec-good.md"
