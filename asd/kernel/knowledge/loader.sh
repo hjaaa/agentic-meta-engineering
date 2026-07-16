@@ -13,7 +13,7 @@ for f in "$KB"/*.md; do
   [ -e "$f" ] || break
   [ "$(basename "$f")" = "index.md" ] && continue
   for kw in $kws; do
-    if grep -qi -- "$kw" "$f"; then
+    if grep -qiF -- "$kw" "$f"; then
       echo "── 命中: $f"
       cat "$f"
       echo

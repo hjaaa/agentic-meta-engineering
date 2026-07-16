@@ -51,10 +51,18 @@ for id in $ids; do
     fi
     continue
   fi
-  # 活性还要求未被 skip 装饰器禁用——被 skip 的测试套件照样 exit 0,等于从未执行
-  first=$(echo "$active" | head -1)
-  if [ "$(skip_deco "$(echo "$first" | cut -d: -f1)" "$(echo "$first" | cut -d: -f2)")" = "SKIPPED" ]; then
-    err "$id 的测试被 skip 装饰器禁用: $(echo "$first" | cut -d: -f1,2)"
+  # 活性还要求未被 skip 装饰器禁用——被 skip 的测试套件照样 exit 0,等于从未执行。
+  # 任一匹配活性即算覆盖(允许遗留 skip 测试与替代测试并存),全部被禁才红
+  live=""
+  while IFS= read -r m; do
+    [ -z "$m" ] && continue
+    if [ "$(skip_deco "$(echo "$m" | cut -d: -f1)" "$(echo "$m" | cut -d: -f2)")" != "SKIPPED" ]; then
+      live=$m
+      break
+    fi
+  done <<<"$active"
+  if [ -z "$live" ]; then
+    err "$id 的测试全部被 skip 装饰器禁用: $(echo "$active" | head -1 | cut -d: -f1,2)"
   fi
 done
 
