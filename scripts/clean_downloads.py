@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Sort top-level files of a downloads directory into category folders by
-extension, suffix duplicates with _N, then remove empty subdirectories."""
+extension, suffix duplicates with _N, then remove empty subdirectory."""
 
+import argparse
 import shutil
+import sys
 from pathlib import Path
 
 CATEGORIES = {
@@ -62,11 +64,37 @@ def remove_empty_dirs(target, dry_run=False):
     return removed
 
 
-def run(target):
+def run(target, dry_run=False):
+    if not target.is_dir():
+        print(f"error: not a directory: {target}", file=sys.stderr)
+        return 1
+    prefix = "[dry-run] " if dry_run else ""
+    errors = 0
     for src, dst in plan_moves(target):
-        dst.parent.mkdir(exist_ok=True)
-        shutil.move(str(src), str(dst))
-        print(f"move {src.name} -> {dst.relative_to(target)}")
-    for d in remove_empty_dirs(target):
-        print(f"rmdir {d.relative_to(target)}/")
-    return 0
+        if not dry_run:
+            try:
+                dst.parent.mkdir(exist_ok=True)
+                shutil.move(str(src), str(dst))
+            except OSError as e:
+                print(f"warning: failed to move {src.name}: {e}", file=sys.stderr)
+                errors += 1
+                continue
+        print(f"{prefix}move {src.name} -> {dst.relative_to(target)}")
+    for d in remove_empty_dirs(target, dry_run=dry_run):
+        print(f"{prefix}rmdir {d.relative_to(target)}/")
+    return 1 if errors else 0
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Sort downloads into category folders by extension.")
+    parser.add_argument("target", nargs="?", default="~/Downloads",
+                        help="directory to organize (default: ~/Downloads)")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="print planned actions without changing anything")
+    args = parser.parse_args(argv)
+    return run(Path(args.target).expanduser(), dry_run=args.dry_run)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

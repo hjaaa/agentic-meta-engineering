@@ -1,4 +1,6 @@
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -79,6 +81,26 @@ class CleanDownloadsTest(unittest.TestCase):
         self.touch("keep/x.txt")
         self.assertEqual(run(self.target), 0)
         self.assertTrue((self.target / "keep" / "x.txt").is_file())
+
+    def test_ac08_dry_run_prints_plan_and_changes_nothing(self):
+        self.touch("a.jpg")
+        (self.target / "empty").mkdir()
+        before = self.tree()
+        out = StringIO()
+        with redirect_stdout(out):
+            rc = run(self.target, dry_run=True)
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.tree(), before)
+        lines = out.getvalue().splitlines()
+        self.assertIn("[dry-run] move a.jpg -> Images/a.jpg", lines)
+        self.assertIn("[dry-run] rmdir empty/", lines)
+
+    def test_ac09_missing_target_errors_with_exit_1(self):
+        err = StringIO()
+        with redirect_stderr(err):
+            rc = run(self.target / "nope")
+        self.assertEqual(rc, 1)
+        self.assertIn("not a directory", err.getvalue())
 
 
 if __name__ == "__main__":
