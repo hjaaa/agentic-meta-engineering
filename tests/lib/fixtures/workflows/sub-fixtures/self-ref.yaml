@@ -1,7 +1,0 @@
-# 自引用：self-ref.yaml 引用自身（W152 验证用）
-name: self-ref
-version: 1
-category: assist
-nodes:
-  - id: x
-    sub_workflow: sub-fixtures/self-ref

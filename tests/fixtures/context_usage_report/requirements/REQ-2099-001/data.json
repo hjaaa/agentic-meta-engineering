@@ -1,8 +1,0 @@
-{
-  "req_id": "REQ-2099-001",
-  "references": [
-    "context/team/conventions.md",
-    "context/project/alpha/arch.md"
-  ],
-  "context_path": "context/project/alpha/spec.md"
-}

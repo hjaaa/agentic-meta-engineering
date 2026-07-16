@@ -1,6 +1,0 @@
-name: dummy-child
-version: 1
-category: assist
-nodes:
-  - id: child-step
-    bash: echo child

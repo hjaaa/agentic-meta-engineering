@@ -1,7 +1,0 @@
-# W151: sub_workflow 路径未找到
-name: sub-missing
-version: 1
-category: assist
-nodes:
-  - id: x
-    sub_workflow: nonexistent/missing

@@ -1,8 +1,0 @@
-# W110: 节点同时声明 agent + prompt（互斥违反 / TC-F2-1）
-name: mutex-agent-prompt
-version: 1
-category: assist
-nodes:
-  - id: bad-node
-    agent: code-reviewer
-    prompt: 'review this'
