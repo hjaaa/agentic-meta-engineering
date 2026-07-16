@@ -27,12 +27,25 @@ def categorize(filename):
     return DEFAULT_CATEGORY
 
 
+def unique_dest(dest_dir, filename, reserved=frozenset()):
+    stem, suffix = Path(filename).stem, Path(filename).suffix
+    candidate = dest_dir / filename
+    n = 0
+    while candidate.exists() or candidate in reserved:
+        n += 1
+        candidate = dest_dir / f"{stem}_{n}{suffix}"
+    return candidate
+
+
 def plan_moves(target):
     moves = []
+    reserved = set()
     for entry in sorted(target.iterdir()):
         if entry.name.startswith(".") or (entry.is_dir() and not entry.is_symlink()):
             continue
-        moves.append((entry, target / categorize(entry.name) / entry.name))
+        dst = unique_dest(target / categorize(entry.name), entry.name, reserved)
+        reserved.add(dst)
+        moves.append((entry, dst))
     return moves
 
 

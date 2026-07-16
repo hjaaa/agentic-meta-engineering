@@ -43,6 +43,20 @@ class CleanDownloadsTest(unittest.TestCase):
         self.assertEqual(run(self.target), 0)
         self.assertTrue((self.target / ".secret").is_file())
 
+    def test_ac03_name_clash_gets_suffix_1(self):
+        self.touch("Documents/report.pdf", content="old")
+        self.touch("report.pdf", content="new")
+        self.assertEqual(run(self.target), 0)
+        self.assertEqual((self.target / "Documents" / "report.pdf").read_text(), "old")
+        self.assertEqual((self.target / "Documents" / "report_1.pdf").read_text(), "new")
+
+    def test_ac04_suffix_increments_to_next_free_slot(self):
+        self.touch("Documents/report.pdf")
+        self.touch("Documents/report_1.pdf")
+        self.touch("report.pdf", content="new")
+        self.assertEqual(run(self.target), 0)
+        self.assertEqual((self.target / "Documents" / "report_2.pdf").read_text(), "new")
+
 
 if __name__ == "__main__":
     unittest.main()
