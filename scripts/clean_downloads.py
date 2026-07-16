@@ -33,7 +33,8 @@ def unique_dest(dest_dir, filename, reserved=frozenset()):
     stem, suffix = Path(filename).stem, Path(filename).suffix
     candidate = dest_dir / filename
     n = 0
-    while candidate.exists() or candidate in reserved:
+    # is_symlink() 不跟随链接:悬空符号链接 exists() 为 False,但目录项仍被占用
+    while candidate.exists() or candidate.is_symlink() or candidate in reserved:
         n += 1
         candidate = dest_dir / f"{stem}_{n}{suffix}"
     return candidate
