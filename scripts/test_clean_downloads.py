@@ -57,6 +57,17 @@ class CleanDownloadsTest(unittest.TestCase):
         self.assertEqual(run(self.target), 0)
         self.assertEqual((self.target / "Documents" / "report_2.pdf").read_text(), "new")
 
+    def test_batch_collision_reserved_slots_never_overwrite(self):
+        self.touch("Documents/report.pdf", content="old")
+        self.touch("report.pdf", content="a")
+        self.touch("report_1.pdf", content="b")
+        self.assertEqual(run(self.target), 0)
+        docs = self.target / "Documents"
+        self.assertEqual((docs / "report.pdf").read_text(), "old")
+        contents = sorted(p.read_text() for p in docs.iterdir())
+        self.assertEqual(contents, ["a", "b", "old"])
+        self.assertEqual(len(list(docs.iterdir())), 3)
+
 
 if __name__ == "__main__":
     unittest.main()
