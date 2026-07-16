@@ -21,17 +21,25 @@ comment=$(mget comment_prefix '#')
 ids=$(grep -E '^\|[[:space:]]*AC-[0-9]{2}[[:space:]]*\|' "$spec" | grep -oE 'AC-[0-9]{2}' | sort -u)
 [ -z "$ids" ] && { echo "✗ [ac-coverage] spec 无 AC 定义行,先修复 spec-lint"; exit 1; }
 
-# skip_deco <file> <line>:检查 def 行上方紧邻的装饰器里有无 skip 族(跳过空行/注释)
+# skip_deco <file> <line>:检查 def 行上方紧邻的装饰器里有无 skip 族。
+# 跳过空行/注释;用括号深度追踪识别跨多行的装饰器调用(向上扫描时深度>0
+# 说明仍处于某个多行调用体内,继续上溯直到找到打头的 @ 行)
 skip_deco() {
   awk -v n="$2" 'NR < n { buf[NR] = $0 }
     END {
+      depth = 0
       for (i = n - 1; i >= 1; i--) {
         line = buf[i]
         if (line ~ /^[[:space:]]*$/ || line ~ /^[[:space:]]*#/) continue
+        op = gsub(/\(/, "(", line); cl = gsub(/\)/, ")", line)
         if (line ~ /^[[:space:]]*@/) {
-          if (line ~ /@([A-Za-z_.]*\.)?(skip|skipIf|skipUnless)[( ]?/) { print "SKIPPED"; exit }
+          if (line ~ /@([A-Za-z_.]*\.)?(skip|skipIf|skipif|skipUnless)[( ]?/) { print "SKIPPED"; exit }
+          depth += cl - op
+          if (depth < 0) depth = 0
           continue
         }
+        depth += cl - op
+        if (depth > 0) continue
         break
       }
     }' "$1"
