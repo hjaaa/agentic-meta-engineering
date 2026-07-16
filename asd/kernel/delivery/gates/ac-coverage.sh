@@ -21,14 +21,15 @@ comment=$(mget comment_prefix '#')
 ids=$(grep -E '^\|[[:space:]]*AC-[0-9]{2}[[:space:]]*\|' "$spec" | grep -oE 'AC-[0-9]{2}' | sort -u)
 [ -z "$ids" ] && { echo "✗ [ac-coverage] spec 无 AC 定义行,先修复 spec-lint"; exit 1; }
 
-# 运行器收集校验(python):静态匹配之外,AC 测试还必须真的被 unittest discover
-# 收集到——顶层函数/嵌套 def 文本存在但永不执行,不算覆盖
+# 运行器结局校验(python):静态匹配之外,每条 AC 必须有至少一个测试被
+# unittest discover 真实执行且结局为 ok——未收集(顶层/嵌套 def)、被跳过
+# (方法级/类级/多行 skip)、失败,都不算覆盖。运行时真相优先于文本分析
 collect_on=0
-collected=""
+outcomes=""
 id_tpl=$(mget ac_id_pattern 'test_ac{nn}_')
 if [ "$(mget language)" = "python" ]; then
   collect_on=1
-  collected=$(cd "$proj" && python3 "$(cd "$(dirname "$0")/.." && pwd)/collect-unittest.py" \
+  outcomes=$(cd "$proj" && python3 "$(cd "$(dirname "$0")/.." && pwd)/run-unittest.py" \
     "$(mget test_dir tests)" "$test_glob" 2>/dev/null || true)
 fi
 
@@ -95,8 +96,16 @@ for id in $ids; do
   fi
   if [ "$collect_on" -eq 1 ]; then
     frag=${id_tpl/\{nn\}/$nn}
-    echo "$collected" | grep -qF "$frag" \
-      || err "$id 的测试未被测试运行器收集(unittest 只执行 TestCase 方法): $(echo "$live" | cut -d: -f1,2)"
+    rows=$(echo "$outcomes" | grep -F "$frag" || true)
+    if ! echo "$rows" | grep -q ' ok$'; then
+      if echo "$rows" | grep -q ' skipped$'; then
+        err "$id 的测试在运行器下被跳过(方法级/类级 skip): $(echo "$live" | cut -d: -f1,2)"
+      elif echo "$rows" | grep -qE ' (failed|error)$'; then
+        err "$id 的测试在运行器下未通过: $(echo "$live" | cut -d: -f1,2)"
+      else
+        err "$id 的测试未被测试运行器收集(unittest 只执行 TestCase 方法): $(echo "$live" | cut -d: -f1,2)"
+      fi
+    fi
   fi
 done
 
