@@ -51,17 +51,25 @@ def plan_moves(target):
     return moves
 
 
-def remove_empty_dirs(target, dry_run=False):
+def remove_empty_dirs(target, dry_run=False, keep=frozenset()):
     removed = []
+    errors = 0
     subdirs = [p for p in target.rglob("*") if p.is_dir() and not p.is_symlink()]
     for d in sorted(subdirs, key=lambda p: len(p.parts), reverse=True):
-        children = [c for c in d.iterdir() if c not in removed]
-        if children:
+        if d in keep:
+            continue
+        try:
+            children = [c for c in d.iterdir() if c not in removed]
+            if children:
+                continue
+            if not dry_run:
+                d.rmdir()
+        except OSError as e:
+            print(f"warning: failed to remove {d}: {e}", file=sys.stderr)
+            errors += 1
             continue
         removed.append(d)
-        if not dry_run:
-            d.rmdir()
-    return removed
+    return removed, errors
 
 
 def run(target, dry_run=False):
@@ -70,7 +78,8 @@ def run(target, dry_run=False):
         return 1
     prefix = "[dry-run] " if dry_run else ""
     errors = 0
-    for src, dst in plan_moves(target):
+    moves = plan_moves(target)
+    for src, dst in moves:
         if not dry_run:
             try:
                 dst.parent.mkdir(exist_ok=True)
@@ -80,8 +89,11 @@ def run(target, dry_run=False):
                 errors += 1
                 continue
         print(f"{prefix}move {src.name} -> {dst.relative_to(target)}")
-    for d in remove_empty_dirs(target, dry_run=dry_run):
+    removed, rmdir_errors = remove_empty_dirs(
+        target, dry_run=dry_run, keep={dst.parent for _, dst in moves})
+    for d in removed:
         print(f"{prefix}rmdir {d.relative_to(target)}/")
+    errors += rmdir_errors
     return 1 if errors else 0
 
 

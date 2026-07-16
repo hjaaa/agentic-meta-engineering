@@ -106,6 +106,29 @@ class CleanDownloadsTest(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertIn("not a directory", err.getvalue())
 
+    def test_dry_run_keeps_planned_destination_dirs(self):
+        (self.target / "Images").mkdir()
+        self.touch("a.jpg")
+        out = StringIO()
+        with redirect_stdout(out):
+            rc = run(self.target, dry_run=True)
+        self.assertEqual(rc, 0)
+        self.assertNotIn("rmdir Images/", out.getvalue())
+        self.assertTrue((self.target / "Images").is_dir())
+
+    def test_unreadable_subdir_warns_and_continues(self):
+        locked = self.target / "locked"
+        locked.mkdir()
+        (self.target / "empty").mkdir()
+        locked.chmod(0o000)
+        self.addCleanup(lambda: locked.chmod(0o755))
+        err = StringIO()
+        with redirect_stderr(err):
+            rc = self.run_silenced(self.target)
+        self.assertEqual(rc, 1)
+        self.assertIn("warning", err.getvalue())
+        self.assertFalse((self.target / "empty").exists())
+
 
 if __name__ == "__main__":
     unittest.main()
