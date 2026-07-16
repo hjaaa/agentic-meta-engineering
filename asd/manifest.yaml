@@ -12,8 +12,8 @@ test_command: python3 -m unittest discover -s scripts -p "test_*.py"
 ac_test_pattern: def test_ac{nn}_
 comment_prefix: "#"
 
-# spec 必备章节(逗号分隔,匹配任意级标题)
-spec_required_sections: 目标,验收标准
+# spec 必备章节(逗号分隔,匹配任意级标题;与 spec-template.md 对齐)
+spec_required_sections: 背景与目标,系统设计,验收标准,决策确认表
 
 # 管道步骤(按序执行,任一步失败即停)
 pipeline_steps: spec-lint,test,ac-coverage
