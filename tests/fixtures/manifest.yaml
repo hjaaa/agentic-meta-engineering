@@ -1,0 +1,7 @@
+# 闸门自测专用 manifest(经 ASD_MANIFEST 注入)
+test_dir: tests
+test_glob: test_*.py
+ac_test_pattern: def test_ac{nn}_
+comment_prefix: "#"
+spec_required_sections: 目标,验收标准
+pipeline_steps: spec-lint,test,ac-coverage
