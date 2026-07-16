@@ -49,7 +49,16 @@ for id in $ids; do
   nn=${id#AC-}
   pat=${pattern_tpl/\{nn\}/$nn}
   matches=$(grep -RnF --include="$test_glob" "$pat" "$test_dir" 2>/dev/null || true)
-  active=$(echo "$matches" | grep -vE "^[^:]+:[0-9]+:[[:space:]]*${comment}" || true)
+  # 行首锚定(允许缩进):散文/文档字符串中段提及的模式不算测试定义;
+  # 锚定后天然排除注释行(注释行去缩进后以注释符开头,不以 pat 开头)
+  active=""
+  while IFS= read -r m; do
+    [ -z "$m" ] && continue
+    content=${m#*:}; content=${content#*:}
+    trimmed=${content#"${content%%[![:space:]]*}"}
+    case $trimmed in "$pat"*) active="${active}${m}"$'\n' ;; esac
+  done <<<"$matches"
+  active=${active%$'\n'}
   if [ -z "$active" ]; then
     commented=$(echo "$matches" | grep -E "^[^:]+:[0-9]+:[[:space:]]*${comment}" || true)
     if [ -n "$commented" ]; then
