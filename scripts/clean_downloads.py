@@ -49,9 +49,24 @@ def plan_moves(target):
     return moves
 
 
+def remove_empty_dirs(target, dry_run=False):
+    removed = []
+    subdirs = [p for p in target.rglob("*") if p.is_dir() and not p.is_symlink()]
+    for d in sorted(subdirs, key=lambda p: len(p.parts), reverse=True):
+        children = [c for c in d.iterdir() if c not in removed]
+        if children:
+            continue
+        removed.append(d)
+        if not dry_run:
+            d.rmdir()
+    return removed
+
+
 def run(target):
     for src, dst in plan_moves(target):
         dst.parent.mkdir(exist_ok=True)
         shutil.move(str(src), str(dst))
         print(f"move {src.name} -> {dst.relative_to(target)}")
+    for d in remove_empty_dirs(target):
+        print(f"rmdir {d.relative_to(target)}/")
     return 0

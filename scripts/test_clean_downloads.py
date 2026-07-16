@@ -68,6 +68,18 @@ class CleanDownloadsTest(unittest.TestCase):
         self.assertEqual(contents, ["a", "b", "old"])
         self.assertEqual(len(list(docs.iterdir())), 3)
 
+    def test_ac05_empty_dirs_removed_including_nested(self):
+        (self.target / "empty").mkdir()
+        (self.target / "a" / "b").mkdir(parents=True)
+        self.assertEqual(run(self.target), 0)
+        self.assertFalse((self.target / "empty").exists())
+        self.assertFalse((self.target / "a").exists())
+
+    def test_ac06_nonempty_subdir_left_untouched(self):
+        self.touch("keep/x.txt")
+        self.assertEqual(run(self.target), 0)
+        self.assertTrue((self.target / "keep" / "x.txt").is_file())
+
 
 if __name__ == "__main__":
     unittest.main()
