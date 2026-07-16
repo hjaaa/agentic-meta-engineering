@@ -1,3 +1,4 @@
+import os
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
@@ -74,6 +75,15 @@ class CleanDownloadsTest(unittest.TestCase):
         self.assertEqual(contents, ["a", "b", "old"])
         self.assertEqual(len(list(docs.iterdir())), 3)
 
+    def test_dangling_symlink_dest_slot_treated_as_occupied(self):
+        docs = self.target / "Documents"
+        docs.mkdir()
+        (docs / "report.pdf").symlink_to(self.target / "gone.pdf")  # 悬空链接
+        self.touch("report.pdf", content="new")
+        self.assertEqual(self.run_silenced(self.target), 0)
+        self.assertTrue((docs / "report.pdf").is_symlink())  # 原目录项未被替换
+        self.assertEqual((docs / "report_1.pdf").read_text(), "new")
+
     def test_ac05_empty_dirs_removed_including_nested(self):
         (self.target / "empty").mkdir()
         (self.target / "a" / "b").mkdir(parents=True)
@@ -116,6 +126,8 @@ class CleanDownloadsTest(unittest.TestCase):
         self.assertNotIn("rmdir Images/", out.getvalue())
         self.assertTrue((self.target / "Images").is_dir())
 
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0,
+                     "root 不受权限位约束,chmod 000 无法制造不可读目录")
     def test_unreadable_subdir_warns_and_continues(self):
         locked = self.target / "locked"
         locked.mkdir()
